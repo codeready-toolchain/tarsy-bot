@@ -180,10 +180,23 @@ export interface URLContextUsage {
   url_count: number;
 }
 
+export interface CodeBlock {
+  code: string;
+  language?: string;
+}
+
+export interface OutputBlock {
+  output: string;
+  outcome?: string; // 'ok', 'error', etc.
+}
+
 export interface CodeExecutionUsage {
   code_blocks: number;
   output_blocks: number;
   detected: boolean;
+  // Actual code and output content
+  code_block_contents?: CodeBlock[];
+  output_block_contents?: OutputBlock[];
 }
 
 export interface NativeToolsUsage {

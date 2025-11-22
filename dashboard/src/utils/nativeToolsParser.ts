@@ -9,7 +9,9 @@ import type {
   NativeToolsUsage, 
   GoogleSearchUsage, 
   URLContextUsage, 
-  CodeExecutionUsage 
+  CodeExecutionUsage,
+  CodeBlock,
+  OutputBlock
 } from '../types';
 
 /**
@@ -125,6 +127,34 @@ function parseURLContext(metadata: Record<string, any>): URLContextUsage | null 
 }
 
 /**
+ * Helper to parse language field (handles enum values, strings, or numbers)
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseLanguage(language: any): string {
+  if (typeof language === 'string') {
+    const lower = language.toLowerCase();
+    if (lower === 'python' || lower === 'language.python') return 'python';
+  }
+  if (language === 1 || language === 'PYTHON') return 'python';
+  return 'python'; // Default to python as it's the primary language for code execution
+}
+
+/**
+ * Helper to parse outcome field (handles enum values, strings, or numbers)
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseOutcome(outcome: any): string {
+  if (typeof outcome === 'string') {
+    const lower = outcome.toLowerCase();
+    if (lower === 'outcome_ok' || lower === 'ok') return 'ok';
+    if (lower === 'outcome_error' || lower === 'error') return 'error';
+  }
+  if (outcome === 1 || outcome === 'OUTCOME_OK') return 'ok';
+  if (outcome === 2 || outcome === 'OUTCOME_ERROR') return 'error';
+  return 'unknown';
+}
+
+/**
  * Parse Code Execution usage from response metadata and content
  * 
  * Google's native code execution returns structured parts with types:
@@ -142,6 +172,8 @@ function parseCodeExecution(
 ): CodeExecutionUsage | null {
   let codeBlocks = 0;
   let outputBlocks = 0;
+  const codeBlockContents: CodeBlock[] = [];
+  const outputBlockContents: OutputBlock[] = [];
 
   // First, check for structured parts in response metadata (Google native format)
   if (responseMetadata) {
@@ -154,12 +186,58 @@ function parseCodeExecution(
           continue;
         }
         
-        // Check for various formats of code execution parts
-        if (part.executable_code || part.executableCode) {
+        // Check for executable_code (snake_case)
+        if (part.executable_code) {
           codeBlocks++;
+          // Handle both flat structure (code is the string) and nested structure (code is in .code field)
+          const code = typeof part.executable_code === 'string' 
+            ? part.executable_code 
+            : (part.executable_code.code || '');
+          const language = parseLanguage(part.language || part.executable_code?.language);
+          codeBlockContents.push({
+            code,
+            language
+          });
         }
-        if (part.code_execution_result || part.codeExecutionResult) {
+        // Check for executableCode (camelCase)
+        else if (part.executableCode) {
+          codeBlocks++;
+          // Handle both flat structure (code is the string) and nested structure (code is in .code field)
+          const code = typeof part.executableCode === 'string'
+            ? part.executableCode
+            : (part.executableCode.code || '');
+          const language = parseLanguage(part.language || part.executableCode?.language);
+          codeBlockContents.push({
+            code,
+            language
+          });
+        }
+        
+        // Check for code_execution_result (snake_case)
+        if (part.code_execution_result) {
           outputBlocks++;
+          // Handle both flat structure (result is the string) and nested structure (result is in .output field)
+          const output = typeof part.code_execution_result === 'string'
+            ? part.code_execution_result
+            : (part.code_execution_result.output || '');
+          const outcome = parseOutcome(part.outcome || part.code_execution_result?.outcome);
+          outputBlockContents.push({
+            output,
+            outcome
+          });
+        }
+        // Check for codeExecutionResult (camelCase)
+        else if (part.codeExecutionResult) {
+          outputBlocks++;
+          // Handle both flat structure (result is the string) and nested structure (result is in .output field)
+          const output = typeof part.codeExecutionResult === 'string'
+            ? part.codeExecutionResult
+            : (part.codeExecutionResult.output || '');
+          const outcome = parseOutcome(part.outcome || part.codeExecutionResult?.outcome);
+          outputBlockContents.push({
+            output,
+            outcome
+          });
         }
       }
     }
@@ -167,17 +245,34 @@ function parseCodeExecution(
 
   // Also check content for markdown code blocks (fallback or legacy format)
   if (content && typeof content === 'string') {
-    // Count code blocks (```python)
-    const codeBlockMatches = content.match(/```python/gi);
-    const markdownCodeBlocks = codeBlockMatches ? codeBlockMatches.length : 0;
+    // Extract Python code blocks
+    const pythonRegex = /```python\n([\s\S]*?)```/gi;
+    const pythonMatches = [...content.matchAll(pythonRegex)];
+    
+    // Extract output blocks
+    const outputRegex = /```output\n([\s\S]*?)```/gi;
+    const outputMatches = [...content.matchAll(outputRegex)];
 
-    // Count output blocks (```output)
-    const outputBlockMatches = content.match(/```output/gi);
-    const markdownOutputBlocks = outputBlockMatches ? outputBlockMatches.length : 0;
+    // If no structured parts were found, use markdown as fallback
+    if (codeBlocks === 0 && pythonMatches.length > 0) {
+      codeBlocks = pythonMatches.length;
+      for (const match of pythonMatches) {
+        codeBlockContents.push({
+          code: match[1] || '',
+          language: 'python'
+        });
+      }
+    }
 
-    // Add markdown blocks to counts (avoid double-counting if both formats present)
-    if (codeBlocks === 0) codeBlocks = markdownCodeBlocks;
-    if (outputBlocks === 0) outputBlocks = markdownOutputBlocks;
+    if (outputBlocks === 0 && outputMatches.length > 0) {
+      outputBlocks = outputMatches.length;
+      for (const match of outputMatches) {
+        outputBlockContents.push({
+          output: match[1] || '',
+          outcome: 'ok'
+        });
+      }
+    }
   }
 
   // Only consider it as code execution if we found at least one code or output block
@@ -188,7 +283,9 @@ function parseCodeExecution(
   return {
     code_blocks: codeBlocks,
     output_blocks: outputBlocks,
-    detected: true
+    detected: true,
+    code_block_contents: codeBlockContents.length > 0 ? codeBlockContents : undefined,
+    output_block_contents: outputBlockContents.length > 0 ? outputBlockContents : undefined
   };
 }
 

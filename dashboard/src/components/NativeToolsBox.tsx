@@ -249,44 +249,159 @@ function NativeToolsBox({ usage }: NativeToolsBoxProps) {
           )}
 
           {/* Code Execution */}
-          {usage.code_execution && (
-            <Box>
-              {/* Only show header if multiple tools are used */}
-              {usedTools.length > 1 && (
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75 }}>
-                  {createElement(getToolIcon('code_execution'))}
-                  <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>
-                    {getToolDisplayName('code_execution')}
-                  </Typography>
-                  <Chip
-                    label={`${usage.code_execution.code_blocks} ${usage.code_execution.code_blocks === 1 ? 'block' : 'blocks'}`}
-                    size="small"
-                    sx={{
-                      height: 20,
-                      fontSize: '0.7rem',
-                      bgcolor: alpha(theme.palette.secondary.main, 0.1),
-                      color: theme.palette.secondary.main
-                    }}
-                  />
-                </Box>
+          {usage.code_execution && (() => {
+            const codeExecution = usage.code_execution;
+            return (
+              <Box>
+                {/* Only show header if multiple tools are used */}
+                {usedTools.length > 1 && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75 }}>
+                    {createElement(getToolIcon('code_execution'))}
+                    <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                      {getToolDisplayName('code_execution')}
+                    </Typography>
+                    <Chip
+                      label={`${codeExecution.code_blocks} ${codeExecution.code_blocks === 1 ? 'block' : 'blocks'}`}
+                      size="small"
+                      sx={{
+                        height: 20,
+                        fontSize: '0.7rem',
+                        bgcolor: alpha(theme.palette.secondary.main, 0.1),
+                        color: theme.palette.secondary.main
+                      }}
+                    />
+                  </Box>
+                )}
+                
+                {/* Code Blocks */}
+                {codeExecution.code_block_contents && codeExecution.code_block_contents.length > 0 && (
+                  <>
+                    {codeExecution.code_block_contents.map((codeBlock, idx) => (
+                      <Box key={`code-${idx}`} sx={{ mb: 1.5 }}>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          fontWeight: 600,
+                          fontSize: '0.75rem',
+                          color: 'text.secondary',
+                          mb: 0.5,
+                          display: 'block'
+                        }}
+                      >
+                        Generated Code {codeExecution.code_block_contents!.length > 1 ? `${idx + 1}` : ''} ({codeBlock.language || 'python'})
+                      </Typography>
+                      <Box
+                        sx={{
+                          bgcolor: theme.palette.grey[50],
+                          borderRadius: 1,
+                          border: `1px solid ${theme.palette.divider}`,
+                          p: 1.5,
+                          overflow: 'auto',
+                          maxHeight: 400
+                        }}
+                      >
+                        <pre
+                          style={{
+                            margin: 0,
+                            fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+                            fontSize: '0.875rem',
+                            color: theme.palette.text.primary,
+                            whiteSpace: 'pre-wrap',
+                            wordBreak: 'break-word'
+                          }}
+                        >
+                          {codeBlock.code}
+                        </pre>
+                      </Box>
+                    </Box>
+                  ))}
+                </>
               )}
-              <Box
-                sx={{
-                  bgcolor: theme.palette.grey[50],
-                  borderRadius: 1,
-                  border: `1px solid ${theme.palette.divider}`,
-                  p: 1.5
-                }}
-              >
-                <Typography variant="body2" sx={{ fontSize: '0.85rem', color: 'text.primary' }}>
-                  Code blocks: {usage.code_execution.code_blocks}
-                </Typography>
-                <Typography variant="body2" sx={{ fontSize: '0.85rem', color: 'text.primary' }}>
-                  Output blocks: {usage.code_execution.output_blocks}
-                </Typography>
+                
+                {/* Output Blocks */}
+                {codeExecution.output_block_contents && codeExecution.output_block_contents.length > 0 && (
+                  <>
+                    {codeExecution.output_block_contents.map((outputBlock, idx) => (
+                      <Box key={`output-${idx}`} sx={{ mb: idx < codeExecution.output_block_contents!.length - 1 ? 1.5 : 0 }}>
+                        <Typography
+                          variant="caption"
+                          sx={{
+                            fontWeight: 600,
+                            fontSize: '0.75rem',
+                            color: 'text.secondary',
+                            mb: 0.5,
+                            display: 'block'
+                          }}
+                        >
+                          Execution Output {codeExecution.output_block_contents!.length > 1 ? `${idx + 1}` : ''}
+                          {outputBlock.outcome && (
+                            <Chip
+                              label={outputBlock.outcome}
+                              size="small"
+                              sx={{
+                                height: 16,
+                                fontSize: '0.65rem',
+                                ml: 0.75,
+                                bgcolor: outputBlock.outcome === 'ok' 
+                                  ? alpha(theme.palette.success.main, 0.1)
+                                  : alpha(theme.palette.error.main, 0.1),
+                                color: outputBlock.outcome === 'ok'
+                                  ? theme.palette.success.main
+                                  : theme.palette.error.main
+                              }}
+                            />
+                          )}
+                        </Typography>
+                        <Box
+                          sx={{
+                            bgcolor: theme.palette.grey[50],
+                            borderRadius: 1,
+                            border: `1px solid ${theme.palette.divider}`,
+                            p: 1.5,
+                            overflow: 'auto',
+                            maxHeight: 300
+                          }}
+                        >
+                          <pre
+                            style={{
+                              margin: 0,
+                              fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+                              fontSize: '0.875rem',
+                              color: theme.palette.text.primary,
+                              whiteSpace: 'pre-wrap',
+                              wordBreak: 'break-word'
+                            }}
+                          >
+                            {outputBlock.output}
+                          </pre>
+                        </Box>
+                      </Box>
+                    ))}
+                  </>
+                )}
+                
+                {/* Fallback if no content was captured */}
+                {(!codeExecution.code_block_contents || codeExecution.code_block_contents.length === 0) &&
+                 (!codeExecution.output_block_contents || codeExecution.output_block_contents.length === 0) && (
+                  <Box
+                    sx={{
+                      bgcolor: theme.palette.grey[50],
+                      borderRadius: 1,
+                      border: `1px solid ${theme.palette.divider}`,
+                      p: 1.5
+                    }}
+                  >
+                    <Typography variant="body2" sx={{ fontSize: '0.85rem', color: 'text.primary' }}>
+                      Code blocks: {codeExecution.code_blocks}
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontSize: '0.85rem', color: 'text.primary' }}>
+                      Output blocks: {codeExecution.output_blocks}
+                    </Typography>
+                  </Box>
+                )}
               </Box>
-            </Box>
-          )}
+            );
+          })()}
         </Box>
       </Collapse>
     </Box>

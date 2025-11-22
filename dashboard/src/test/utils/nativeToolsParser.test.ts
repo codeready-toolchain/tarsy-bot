@@ -161,11 +161,14 @@ Done.`;
       const result = parseNativeToolsUsage(null, content);
 
       expect(result).not.toBeNull();
-      expect(result?.code_execution).toEqual({
+      expect(result?.code_execution).toMatchObject({
         code_blocks: 1,
         output_blocks: 0,
         detected: true
       });
+      // Verify content is extracted
+      expect(result?.code_execution?.code_block_contents).toBeDefined();
+      expect(result?.code_execution?.code_block_contents?.[0].code).toContain('print("hello")');
     });
 
     it('should detect structured code execution parts in metadata (Google native format)', () => {
@@ -192,10 +195,19 @@ Done.`;
       const result = parseNativeToolsUsage(metadata, null);
 
       expect(result).not.toBeNull();
-      expect(result?.code_execution).toEqual({
+      expect(result?.code_execution).toMatchObject({
         code_blocks: 1,
         output_blocks: 1,
         detected: true
+      });
+      // Verify content is extracted
+      expect(result?.code_execution?.code_block_contents?.[0]).toEqual({
+        code: 'print("hello")',
+        language: 'python'
+      });
+      expect(result?.code_execution?.output_block_contents?.[0]).toEqual({
+        output: 'hello\n',
+        outcome: 'ok'
       });
     });
 
@@ -219,11 +231,13 @@ Done.`;
 
       const result = parseNativeToolsUsage(metadata, null);
 
-      expect(result?.code_execution).toEqual({
+      expect(result?.code_execution).toMatchObject({
         code_blocks: 1,
         output_blocks: 1,
         detected: true
       });
+      expect(result?.code_execution?.code_block_contents?.[0].code).toBe('x = 5');
+      expect(result?.code_execution?.output_block_contents?.[0].output).toBe('');
     });
 
     it('should count multiple structured code execution parts', () => {
@@ -238,11 +252,13 @@ Done.`;
 
       const result = parseNativeToolsUsage(metadata, null);
 
-      expect(result?.code_execution).toEqual({
+      expect(result?.code_execution).toMatchObject({
         code_blocks: 2,
         output_blocks: 2,
         detected: true
       });
+      expect(result?.code_execution?.code_block_contents?.length).toBe(2);
+      expect(result?.code_execution?.output_block_contents?.length).toBe(2);
     });
 
     it('should detect output blocks in content', () => {
@@ -253,11 +269,12 @@ hello world
 
       const result = parseNativeToolsUsage(null, content);
 
-      expect(result?.code_execution).toEqual({
+      expect(result?.code_execution).toMatchObject({
         code_blocks: 0,
         output_blocks: 1,
         detected: true
       });
+      expect(result?.code_execution?.output_block_contents?.[0].output).toContain('hello world');
     });
 
     it('should count multiple code and output blocks in content', () => {
@@ -277,11 +294,13 @@ output2
 
       const result = parseNativeToolsUsage(null, content);
 
-      expect(result?.code_execution).toEqual({
+      expect(result?.code_execution).toMatchObject({
         code_blocks: 2,
         output_blocks: 2,
         detected: true
       });
+      expect(result?.code_execution?.code_block_contents?.length).toBe(2);
+      expect(result?.code_execution?.output_block_contents?.length).toBe(2);
     });
 
     it('should prefer structured parts over markdown when both present', () => {
@@ -337,6 +356,154 @@ output2
       const result = parseNativeToolsUsage(metadata, null);
 
       expect(result).toBeNull();
+    });
+  });
+
+  describe('Code execution content extraction', () => {
+    it('should extract code and output content from structured parts', () => {
+      const metadata = {
+        parts: [
+          {
+            executable_code: {
+              language: 1,
+              code: 'print("hello world")'
+            }
+          },
+          {
+            code_execution_result: {
+              outcome: 1,
+              output: 'hello world\n'
+            }
+          }
+        ]
+      };
+
+      const result = parseNativeToolsUsage(metadata, null);
+
+      expect(result?.code_execution?.code_block_contents).toEqual([
+        { code: 'print("hello world")', language: 'python' }
+      ]);
+      expect(result?.code_execution?.output_block_contents).toEqual([
+        { output: 'hello world\n', outcome: 'ok' }
+      ]);
+    });
+
+    it('should extract code content from markdown blocks', () => {
+      const content = '```python\nfor i in range(10):\n    print(i)\n```';
+
+      const result = parseNativeToolsUsage(null, content);
+
+      expect(result?.code_execution?.code_block_contents).toEqual([
+        { code: 'for i in range(10):\n    print(i)\n', language: 'python' }
+      ]);
+    });
+
+    it('should extract output content from markdown blocks', () => {
+      const content = '```output\nResult: 42\n```';
+
+      const result = parseNativeToolsUsage(null, content);
+
+      expect(result?.code_execution?.output_block_contents).toEqual([
+        { output: 'Result: 42\n', outcome: 'ok' }
+      ]);
+    });
+
+    it('should extract multiple code blocks with content', () => {
+      const metadata = {
+        parts: [
+          { executable_code: { language: 1, code: 'import numpy as np' } },
+          { executable_code: { language: 1, code: 'print(np.array([1,2,3]))' } }
+        ]
+      };
+
+      const result = parseNativeToolsUsage(metadata, null);
+
+      expect(result?.code_execution?.code_block_contents).toEqual([
+        { code: 'import numpy as np', language: 'python' },
+        { code: 'print(np.array([1,2,3]))', language: 'python' }
+      ]);
+    });
+
+    it('should handle different language formats', () => {
+      const testCases = [
+        { language: 1, expected: 'python' },
+        { language: 'PYTHON', expected: 'python' },
+        { language: 'python', expected: 'python' }
+      ];
+
+      for (const testCase of testCases) {
+        const metadata = {
+          parts: [{ executable_code: { language: testCase.language, code: 'test' } }]
+        };
+        const result = parseNativeToolsUsage(metadata, null);
+        expect(result?.code_execution?.code_block_contents?.[0].language).toBe(testCase.expected);
+      }
+    });
+
+    it('should handle different outcome formats', () => {
+      const testCases = [
+        { outcome: 1, expected: 'ok' },
+        { outcome: 'OUTCOME_OK', expected: 'ok' },
+        { outcome: 'ok', expected: 'ok' },
+        { outcome: 2, expected: 'error' },
+        { outcome: 'OUTCOME_ERROR', expected: 'error' },
+        { outcome: 'error', expected: 'error' }
+      ];
+
+      for (const testCase of testCases) {
+        const metadata = {
+          parts: [{ code_execution_result: { outcome: testCase.outcome, output: 'test' } }]
+        };
+        const result = parseNativeToolsUsage(metadata, null);
+        expect(result?.code_execution?.output_block_contents?.[0].outcome).toBe(testCase.expected);
+      }
+    });
+
+    it('should handle flat structure format from backend (actual format)', () => {
+      // This is the actual format the backend stores
+      const metadata = {
+        parts: [
+          {
+            type: 'executable_code',
+            executable_code: 'import numpy as np\nprint("hello")',  // Code as string
+            language: 1,  // Language at root level
+            id: 'test-id',
+            index: 0
+          },
+          {
+            type: 'code_execution_result',
+            code_execution_result: 'hello\nworld',  // Output as string
+            outcome: 1,  // Outcome at root level
+            tool_call_id: '',
+            index: 1
+          }
+        ]
+      };
+
+      const result = parseNativeToolsUsage(metadata, null);
+
+      expect(result?.code_execution).toMatchObject({
+        code_blocks: 1,
+        output_blocks: 1,
+        detected: true
+      });
+      expect(result?.code_execution?.code_block_contents?.[0]).toEqual({
+        code: 'import numpy as np\nprint("hello")',
+        language: 'python'
+      });
+      expect(result?.code_execution?.output_block_contents?.[0]).toEqual({
+        output: 'hello\nworld',
+        outcome: 'ok'
+      });
+    });
+
+    it('should not include content arrays when empty', () => {
+      const content = '```python\n```'; // Empty code block
+
+      const result = parseNativeToolsUsage(null, content);
+
+      // Should still detect, but content arrays might be undefined or empty
+      expect(result?.code_execution?.code_blocks).toBe(1);
     });
   });
 
