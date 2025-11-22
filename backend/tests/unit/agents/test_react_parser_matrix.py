@@ -417,11 +417,13 @@ Action Input: param: value
         assert parsed.is_malformed is True
     
     def test_action_with_only_server(self):
-        """Action: with only server (no dot, no tool) should be malformed"""
+        """Action: with only server (no dot, no tool) should be unknown tool"""
         response = """Thought: Test.Action: kubectl
 Action Input: param: value
 """
         parsed = ReActParser.parse_response(response)
-        # Should fail tool call validation (needs server.tool format)
-        assert parsed.is_malformed is True
+        # Should fail tool call validation (needs server.tool format) - detected as unknown tool
+        assert parsed.is_unknown_tool is True
+        assert parsed.action == "kubectl"
+        assert "Unknown tool 'kubectl'" in parsed.error_message
 

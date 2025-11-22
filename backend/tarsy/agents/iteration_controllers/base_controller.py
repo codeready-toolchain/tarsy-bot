@@ -225,8 +225,21 @@ class ReactController(IterationController):
                     if parsed_response.is_final_answer:
                         self.logger.info("ReAct analysis completed with final answer")
                         return self._build_final_result(conversation_result, parsed_response.final_answer)
+                    
+                    # 6. Handle unknown tool (tool name doesn't match available tools)
+                    elif parsed_response.is_unknown_tool:
+                        self.logger.warning(f"Unknown tool attempted: {parsed_response.action}")
                         
-                    # 6. Handle tool action
+                        # Format error observation using ReActParser (lists all available tools)
+                        error_observation = ReActParser.format_unknown_tool_error(
+                            parsed_response.error_message,
+                            context.available_tools.tools
+                        )
+                        
+                        conversation_result.append_observation(f"Observation: {error_observation}")
+                        self.logger.debug(f"Unknown tool error observation added to conversation")
+                        
+                    # 7. Handle tool action
                     elif parsed_response.has_action:
                         try:
                             self.logger.debug(f"ReAct Action: {parsed_response.action} with input: {parsed_response.action_input[:100] if parsed_response.action_input else 'None'}...")
@@ -259,7 +272,7 @@ class ReactController(IterationController):
                             else:
                                 consecutive_timeout_failures = 0  # Reset on non-timeout errors
                             
-                    # 7. Handle malformed response
+                    # 8. Handle malformed response
                     else:
                         self.logger.warning("ReAct response is malformed - removing it and sending format correction")
                         

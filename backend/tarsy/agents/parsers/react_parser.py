@@ -22,6 +22,12 @@ class ResponseType(Enum):
     THOUGHT_ACTION = "thought_action"
     FINAL_ANSWER = "final_answer"
     MALFORMED = "malformed"
+    UNKNOWN_TOOL = "unknown_tool"
+
+
+class UnknownToolError(Exception):
+    """Raised when a tool name doesn't match the expected server.tool format."""
+    pass
 
 
 class ToolCall(BaseModel):
@@ -59,6 +65,9 @@ class ReActResponse(BaseModel):
     # For FINAL_ANSWER responses
     final_answer: Optional[str] = None
     
+    # For UNKNOWN_TOOL responses
+    error_message: Optional[str] = None
+    
     @property
     def is_final_answer(self) -> bool:
         """Check if this is a final answer response."""
@@ -73,6 +82,11 @@ class ReActResponse(BaseModel):
     def is_malformed(self) -> bool:
         """Check if this response is malformed."""
         return self.response_type == ResponseType.MALFORMED
+    
+    @property
+    def is_unknown_tool(self) -> bool:
+        """Check if this response contains an unknown tool call."""
+        return self.response_type == ResponseType.UNKNOWN_TOOL
 
 
 class ReActParser:
@@ -115,6 +129,16 @@ class ReActParser:
                     action=action,
                     action_input=action_input,
                     tool_call=tool_call
+                )
+            except UnknownToolError as e:
+                # Tool name doesn't match expected format - return unknown tool response
+                logger.warning(f"Unknown tool format: {str(e)}")
+                return ReActResponse(
+                    response_type=ResponseType.UNKNOWN_TOOL,
+                    thought=sections.get('thought'),
+                    action=action,
+                    action_input=action_input,
+                    error_message=str(e)
                 )
             except (ValueError, ValidationError) as e:
                 # Log the error and return malformed response
@@ -484,16 +508,24 @@ class ReActParser:
         Convert action + input to type-safe ToolCall.
         
         Moved from builders.convert_action_to_tool_call() with proper return type.
+        
+        Raises:
+            ValueError: For empty or invalid action format
+            UnknownToolError: When action doesn't match expected server.tool format
         """
         # Trim whitespace from action string before validation
         action = action.strip() if action else ""
         
-        # Validate action is not empty and contains a dot
+        # Validate action is not empty
         if not action:
             raise ValueError("Action cannot be empty or whitespace-only")
         
+        # Check for server.tool format - if missing, this is likely an unknown tool
         if '.' not in action:
-            raise ValueError(f"Action must contain a dot separator (server.tool format): '{action}'")
+            raise UnknownToolError(
+                f"Unknown tool '{action}'. Tools must be in 'server.tool' format. "
+                f"Please check the list of available tools provided in the prompt."
+            )
         
         # Split by first dot and validate both parts
         server, tool = action.split('.', 1)
@@ -698,6 +730,34 @@ Action Input:
 Required structure for conclusion:
 Thought: [final reasoning]
 Final Answer: [complete analysis]"""
+    
+    @staticmethod
+    def format_unknown_tool_error(error_message: str, available_tools: list) -> str:
+        """
+        Format unknown tool error observation with helpful guidance.
+        
+        Provides clear feedback when LLM attempts to use a tool that doesn't exist,
+        including the error message and a complete list of all available tools.
+        
+        Args:
+            error_message: The error message from UnknownToolError
+            available_tools: List of ToolWithServer objects representing available tools
+            
+        Returns:
+            Formatted error observation string
+        """
+        # Build complete list of all available tools (don't truncate - LLM needs to see everything)
+        tools_list = "\n".join([
+            f"  - {tool.server}.{tool.tool.name}: {tool.tool.description or 'No description'}"
+            for tool in available_tools
+        ])
+        
+        error_observation = (
+            f"Error: {error_message}\n\n"
+            f"Available tools:\n{tools_list}"
+        )
+        
+        return error_observation
     
     @staticmethod  
     def format_observation(mcp_data: Dict[str, Any]) -> str:

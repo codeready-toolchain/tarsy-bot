@@ -12,7 +12,8 @@ from tarsy.agents.parsers.react_parser import (
     ReActParser, 
     ReActResponse, 
     ToolCall, 
-    ResponseType
+    ResponseType,
+    UnknownToolError
 )
 
 
@@ -63,8 +64,28 @@ class TestReActResponse:
         assert response.is_final_answer is False
         assert response.has_action is False
         assert response.is_malformed is True
+        assert response.is_unknown_tool is False
         assert response.thought is None
         assert response.final_answer is None
+        assert response.tool_call is None
+    
+    def test_create_unknown_tool_response(self):
+        """Test creating unknown tool response."""
+        response = ReActResponse(
+            response_type=ResponseType.UNKNOWN_TOOL,
+            thought="I need to search for something",
+            action="concise_search",
+            action_input="query: latest kubernetes version",
+            error_message="Unknown tool 'concise_search'. Tools must be in 'server.tool' format."
+        )
+        
+        assert response.is_final_answer is False
+        assert response.has_action is False  # No valid tool_call
+        assert response.is_malformed is False
+        assert response.is_unknown_tool is True
+        assert response.action == "concise_search"
+        assert response.action_input == "query: latest kubernetes version"
+        assert "Unknown tool" in response.error_message
         assert response.tool_call is None
     
     def test_action_without_tool_call_not_has_action(self):
@@ -275,16 +296,56 @@ Action Input:"""
         assert result.tool_call.tool == "namespaces_list"
         assert result.tool_call.parameters == {}  # Empty dict for no parameters
     
-    def test_parse_invalid_action_format_malformed(self):
-        """Test that invalid action format results in malformed."""
+    def test_parse_invalid_action_format_unknown_tool(self):
+        """Test that invalid action format results in unknown tool response."""
         response = """Thought: I need to check something  
 Action: invalid_action_without_dot
 Action Input: some input"""
         
         result = ReActParser.parse_response(response)
         
-        assert result.response_type == ResponseType.MALFORMED
-        assert result.is_malformed is True
+        assert result.response_type == ResponseType.UNKNOWN_TOOL
+        assert result.is_unknown_tool is True
+        assert result.action == "invalid_action_without_dot"
+        assert result.action_input == "some input"
+        assert "Unknown tool 'invalid_action_without_dot'" in result.error_message
+    
+    def test_parse_unknown_tool_from_user_report(self):
+        """Test parsing the exact unknown tool case from user's report.
+        
+        This tests the actual unknown tool response that the user reported:
+        - LLM tries to use "concise_search" without server prefix
+        - Should be detected as unknown tool, not malformed
+        - Should provide helpful error message
+        """
+        response = """Thought: The alert indicates a Kubernetes version check for "prod-cluster" with `current_kubernetes_version: 1.32.5` and `openshift_version: 4.19.3`. The `investigation_needed` field asks about the latest stable Kubernetes version, new features, and upgrade planning.
+
+First, I need to determine which context corresponds to "prod-cluster". Since the alert mentions "prod-cluster" and the available contexts are mostly related to "crc.testing" or "openshiftapps.com", I need to find out if any of these contexts are the "prod-cluster" or if I need to search for the latest stable Kubernetes version externally.
+
+Given the alert data, the `current_kubernetes_version` is 1.32.5 and `openshift_version` is 4.19.3. I need to find out what the latest stable Kubernetes version is and if 1.32.5 is outdated. I will use `concise_search` to find the latest stable Kubernetes version and OpenShift version compatibility.
+
+Action: concise_search
+Action Input: query: latest stable kubernetes version, openshift 4.19.3 kubernetes version"""
+        
+        result = ReActParser.parse_response(response)
+        
+        # Should detect as unknown tool, not malformed
+        assert result.response_type == ResponseType.UNKNOWN_TOOL
+        assert result.is_unknown_tool is True
+        assert result.is_malformed is False
+        
+        # Should preserve the action and input for error reporting
+        assert result.action == "concise_search"
+        assert result.action_input == "query: latest stable kubernetes version, openshift 4.19.3 kubernetes version"
+        
+        # Should have helpful error message
+        assert result.error_message is not None
+        assert "Unknown tool 'concise_search'" in result.error_message
+        assert "server.tool" in result.error_message
+        
+        # Should preserve thought for context
+        assert result.thought is not None
+        assert "prod-cluster" in result.thought
     
     def test_parse_multiline_sections(self):
         """Test parsing multiline sections."""
@@ -735,9 +796,9 @@ class TestToolCallConversion:
         with pytest.raises(ValueError, match="Action cannot be empty or whitespace-only"):
             ReActParser._convert_to_tool_call("", "some input")
     
-    def test_convert_action_no_dot_raises_error(self):
-        """Test that action without dot raises ValueError."""
-        with pytest.raises(ValueError, match="Action must contain a dot separator"):
+    def test_convert_action_no_dot_raises_unknown_tool_error(self):
+        """Test that action without dot raises UnknownToolError."""
+        with pytest.raises(UnknownToolError, match="Unknown tool 'invalid_action'"):
             ReActParser._convert_to_tool_call("invalid_action", "some input")
     
     def test_convert_invalid_json_fallback(self):
@@ -925,6 +986,85 @@ class TestContinuationPrompts:
         assert "Action Input:" in result
         assert "NEW LINE" in result
         assert "system provides Observations" in result or "provides Observations" in result
+    
+    def test_format_unknown_tool_error(self):
+        """Test unknown tool error formatting with available tools."""
+        from tarsy.models.processing_context import ToolWithServer
+        from mcp.types import Tool
+        
+        # Create mock tools
+        tools = [
+            ToolWithServer(
+                server="kubernetes-server",
+                tool=Tool(
+                    name="get_namespace",
+                    description="Get namespace details",
+                    inputSchema={}
+                )
+            ),
+            ToolWithServer(
+                server="kubernetes-server",
+                tool=Tool(
+                    name="list_pods",
+                    description="List pods in namespace",
+                    inputSchema={}
+                )
+            ),
+            ToolWithServer(
+                server="search-server",
+                tool=Tool(
+                    name="web_search",
+                    description="Search the web",
+                    inputSchema={}
+                )
+            ),
+        ]
+        
+        error_msg = "Unknown tool 'concise_search'. Tools must be in 'server.tool' format."
+        
+        result = ReActParser.format_unknown_tool_error(error_msg, tools)
+        
+        # Verify the complete message structure
+        expected = """Error: Unknown tool 'concise_search'. Tools must be in 'server.tool' format.
+
+Available tools:
+  - kubernetes-server.get_namespace: Get namespace details
+  - kubernetes-server.list_pods: List pods in namespace
+  - search-server.web_search: Search the web"""
+        
+        assert result == expected
+    
+    def test_format_unknown_tool_error_lists_all_tools(self):
+        """Test that unknown tool error formatting lists ALL tools without truncation."""
+        from tarsy.models.processing_context import ToolWithServer
+        from mcp.types import Tool
+        
+        # Create 15 mock tools to verify no truncation
+        tools = [
+            ToolWithServer(
+                server=f"server-{i}",
+                tool=Tool(
+                    name=f"tool_{i}",
+                    description=f"Tool number {i}",
+                    inputSchema={}
+                )
+            )
+            for i in range(15)
+        ]
+        
+        error_msg = "Unknown tool 'bad_tool'."
+        
+        result = ReActParser.format_unknown_tool_error(error_msg, tools)
+        
+        # Should include ALL tools (no truncation)
+        assert "server-0.tool_0" in result
+        assert "server-9.tool_9" in result
+        assert "server-10.tool_10" in result
+        assert "server-14.tool_14" in result
+        
+        # Should NOT have truncation message
+        assert "... and" not in result
+        assert "more tools" not in result
 
 
 @pytest.mark.unit
