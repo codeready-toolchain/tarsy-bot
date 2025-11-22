@@ -112,6 +112,12 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
   const [expandedServers, setExpandedServers] = useState<Set<string>>(new Set());
   const [nativeToolsExpanded, setNativeToolsExpanded] = useState(false);
   
+  // Track if component was initialized with a value (e.g., from resubmit)
+  const initializedWithValueRef = useRef(value !== undefined);
+  
+  // Track if defaults have been loaded (to avoid premature onChange calls)
+  const defaultsLoadedRef = useRef(false);
+  
   // Ref to track the latest alert type
   // Updated whenever alertType prop changes to prevent race conditions
   const latestAlertTypeRef = useRef<string | undefined>(alertType);
@@ -148,6 +154,9 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
       
       setDefaultConfig(defaults);
       setAvailableServers(serversResponse.servers);
+      
+      // Mark that defaults have been loaded
+      defaultsLoadedRef.current = true;
       
       // Don't call setCurrentConfig here - let the reconciliation useEffect handle it
       // This preserves incoming value prop overrides
@@ -191,17 +200,26 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
     const changed = !configsAreEqual(currentConfig, defaultConfig);
     setHasChanges(changed);
     
+    // Only notify parent after defaults have been loaded at least once
+    // This prevents clearing resubmit configs when defaults first load
+    if (!defaultsLoadedRef.current) {
+      return;
+    }
+    
     // Notify parent with proper semantics:
     // - undefined = no override, use defaults from agent config
     // - actual config = explicit override (including servers with tools: [])
     //
     // Note: We send the complete config including servers with tools: []
     // The parent/form submission will filter those out before sending to backend
-    if (!changed) {
-      // No changes from defaults -> don't send override (use agent defaults)
+    //
+    // Special case: If component was initialized with a value (resubmit), always send
+    // the current config, even if it matches defaults. This preserves resubmit configs.
+    if (!changed && !initializedWithValueRef.current) {
+      // No changes from defaults AND not initialized with value -> don't send override
       onChange(undefined);
     } else {
-      // User made changes -> send the complete override
+      // User made changes OR initialized with value -> send the complete override
       onChange(currentConfig || undefined);
     }
   }, [currentConfig, defaultConfig, onChange]);
@@ -213,6 +231,8 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
     setCurrentConfig(defaultConfig);
     setExpandedServers(new Set());
     setNativeToolsExpanded(false);
+    // Clear the initialized flag so onChange sends undefined (no override)
+    initializedWithValueRef.current = false;
   };
   
   /**
