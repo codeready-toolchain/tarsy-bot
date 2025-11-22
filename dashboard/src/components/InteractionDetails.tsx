@@ -4,12 +4,17 @@ import {
   Typography, 
   Collapse, 
   Divider,
-  Stack
+  Stack,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import type { LLMInteraction, MCPInteraction, SystemEvent, LLMMessage } from '../types';
 import CopyButton from './CopyButton';
 import JsonDisplay from './JsonDisplay';
 import TokenUsageDisplay from './TokenUsageDisplay';
+import NativeToolsDisplay from './NativeToolsDisplay';
 
 interface InteractionDetailsProps {
   type: 'llm' | 'mcp' | 'system';
@@ -276,6 +281,37 @@ function InteractionDetails({
           </Box>
         )}
       </Box>
+      
+      {/* Native Tools Section */}
+      {(llmDetails.native_tools_config || llmDetails.response_metadata) && (
+        <Box>
+          <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+            Native Tools
+          </Typography>
+          <NativeToolsDisplay
+            config={llmDetails.native_tools_config}
+            responseMetadata={llmDetails.response_metadata}
+            variant="detailed"
+            interactionDetails={llmDetails}
+          />
+        </Box>
+      )}
+      
+      {/* Raw Response Metadata (for debugging) */}
+      {llmDetails.response_metadata && (
+        <Box>
+          <Accordion sx={{ boxShadow: 'none', border: 1, borderColor: 'divider' }}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Typography variant="caption" sx={{ fontWeight: 600, textTransform: 'uppercase' }}>
+                Raw Response Metadata
+              </Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <JsonDisplay data={llmDetails.response_metadata} maxHeight={400} />
+            </AccordionDetails>
+          </Accordion>
+        </Box>
+      )}
     </Stack>
   );
 };

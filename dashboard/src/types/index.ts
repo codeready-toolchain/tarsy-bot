@@ -162,6 +162,34 @@ export interface LLMEventDetails {
   tool_calls: any | null;
   tool_results: any | null;
   mcp_event_id?: string | null;  // For summarization - links to the tool call being summarized
+  
+  // Native tools fields (Google/Gemini only)
+  native_tools_config?: Record<string, boolean> | null;
+  response_metadata?: Record<string, any> | null;
+}
+
+// Native tools usage types (parsed from response_metadata on frontend)
+export interface GoogleSearchUsage {
+  queries: string[];
+  query_count: number;
+  search_entry_point?: Record<string, any>;
+}
+
+export interface URLContextUsage {
+  urls: Array<{ uri: string; title: string }>;
+  url_count: number;
+}
+
+export interface CodeExecutionUsage {
+  code_blocks: number;
+  output_blocks: number;
+  detected: boolean;
+}
+
+export interface NativeToolsUsage {
+  google_search?: GoogleSearchUsage;
+  url_context?: URLContextUsage;
+  code_execution?: CodeExecutionUsage;
 }
 
 // MCP event details

@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { Box, Typography, Chip } from '@mui/material';
 import type { LLMInteraction, LLMMessage } from '../types';
 import { parseThoughtAndAction } from '../utils/reactParser';
+import NativeToolsDisplay from './NativeToolsDisplay';
 
 interface LLMInteractionPreviewProps {
   interaction: LLMInteraction;
@@ -212,13 +213,23 @@ function LLMInteractionPreview({
   return (
     <Box sx={{ mt: 1 }}>
       {/* Interaction Type Badge */}
-      <Box sx={{ mb: 1.5, display: 'flex', gap: 1, alignItems: 'center' }}>
+      <Box sx={{ mb: 1.5, display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
         <Chip 
           label={typeStyle.label} 
           size="small" 
           color={typeStyle.color}
           sx={{ fontWeight: 600, fontSize: '0.7rem' }}
         />
+        
+        {/* Native Tools Display - Compact */}
+        {(interaction.native_tools_config || interaction.response_metadata) && (
+          <NativeToolsDisplay
+            config={interaction.native_tools_config}
+            responseMetadata={interaction.response_metadata}
+            variant="compact"
+            interactionDetails={interaction}
+          />
+        )}
       </Box>
       
       {/* Thought Preview */}
