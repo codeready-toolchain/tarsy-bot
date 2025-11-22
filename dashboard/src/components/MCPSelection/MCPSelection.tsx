@@ -6,7 +6,7 @@
  * Only sends override config when user modifies the defaults.
  */
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Box,
   Accordion,
@@ -112,6 +112,10 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
   const [expandedServers, setExpandedServers] = useState<Set<string>>(new Set());
   const [nativeToolsExpanded, setNativeToolsExpanded] = useState(false);
   
+  // Ref to track the expected alert type for in-flight requests
+  // This prevents race conditions when alertType changes while loading
+  const requestedAlertTypeRef = useRef<string | undefined>(alertType);
+  
   // Load defaults and servers on first expansion or when alert type changes
   useEffect(() => {
     if (expanded && !loading && !error) {
@@ -144,6 +148,12 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
    * Load defaults and server details for the current alert type
    */
   const loadDefaultsAndServers = async () => {
+    // Capture the alert type we're requesting for
+    const requestAlertType = alertType;
+    
+    // Update the ref to track this request
+    requestedAlertTypeRef.current = requestAlertType;
+    
     setLoading(true);
     setError(null);
     
@@ -151,9 +161,16 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
       // Load defaults and servers in parallel
       // Pass alertType to get correct defaults for this alert type's chain
       const [defaults, serversResponse] = await Promise.all([
-        apiClient.getDefaultToolsConfig(alertType),
+        apiClient.getDefaultToolsConfig(requestAlertType),
         apiClient.getMCPServers()
       ]);
+      
+      // Check if alertType changed while we were loading
+      // If it did, discard these results (a newer request is active or will fire)
+      if (requestedAlertTypeRef.current !== requestAlertType) {
+        console.debug(`Discarding stale results for alertType="${requestAlertType}"`);
+        return;
+      }
       
       setDefaultConfig(defaults);
       setAvailableServers(serversResponse.servers);
@@ -165,10 +182,16 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
       setExpandedServers(new Set());
       setNativeToolsExpanded(false);
     } catch (err: any) {
-      console.error('Failed to load defaults:', err);
-      setError(err.message || 'Failed to load configuration. Please try again.');
+      // Only set error if this request is still current
+      if (requestedAlertTypeRef.current === requestAlertType) {
+        console.error('Failed to load defaults:', err);
+        setError(err.message || 'Failed to load configuration. Please try again.');
+      }
     } finally {
-      setLoading(false);
+      // Only clear loading if this request is still current
+      if (requestedAlertTypeRef.current === requestAlertType) {
+        setLoading(false);
+      }
     }
   };
   
