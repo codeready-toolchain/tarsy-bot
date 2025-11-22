@@ -40,6 +40,27 @@ import MCPSelection from './MCPSelection/MCPSelection';
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
 /**
+ * Filter out servers with empty tool arrays from MCP selection config
+ * Backend treats tools: [] as invalid, so we remove those servers
+ */
+const filterMCPSelection = (config: MCPSelectionConfig | undefined): MCPSelectionConfig | undefined => {
+  if (!config) return undefined;
+  
+  const filteredServers = config.servers.filter(server => {
+    // Keep servers with null (all tools) or non-empty arrays
+    return server.tools === null || (Array.isArray(server.tools) && server.tools.length > 0);
+  });
+  
+  // If all servers were filtered out, return undefined (no override)
+  if (filteredServers.length === 0) return undefined;
+  
+  return {
+    ...config,
+    servers: filteredServers
+  };
+};
+
+/**
  * Default runbook option constant
  */
 const DEFAULT_RUNBOOK = 'Default Runbook';
@@ -431,8 +452,10 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
       }
 
       // Add MCP selection if configured (only when user made changes from defaults)
-      if (mcpSelection !== undefined) {
-        alertData.mcp = mcpSelection;
+      // Filter out servers with no tools selected (tools: [])
+      const filteredMCP = filterMCPSelection(mcpSelection);
+      if (filteredMCP !== undefined) {
+        alertData.mcp = filteredMCP;
       }
 
       // Submit alert
@@ -516,8 +539,10 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
       }
 
       // Add MCP selection if configured (only when user made changes from defaults)
-      if (mcpSelection !== undefined) {
-        alertData.mcp = mcpSelection;
+      // Filter out servers with no tools selected (tools: [])
+      const filteredMCP2 = filterMCPSelection(mcpSelection);
+      if (filteredMCP2 !== undefined) {
+        alertData.mcp = filteredMCP2;
       }
 
       // Submit alert

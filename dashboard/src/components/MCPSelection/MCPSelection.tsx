@@ -193,12 +193,15 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
     
     // Notify parent with proper semantics:
     // - undefined = no override, use defaults from agent config
-    // - actual config (even with servers: []) = explicit override
+    // - actual config = explicit override (including servers with tools: [])
+    //
+    // Note: We send the complete config including servers with tools: []
+    // The parent/form submission will filter those out before sending to backend
     if (!changed) {
       // No changes from defaults -> don't send override (use agent defaults)
       onChange(undefined);
     } else {
-      // User made changes -> send the override (even if servers: [] for tool-less agent)
+      // User made changes -> send the complete override
       onChange(currentConfig || undefined);
     }
   }, [currentConfig, defaultConfig, onChange]);
@@ -283,7 +286,8 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
           };
         } else {
           // Unchecking "All Tools": set to empty array (no tools selected)
-          // This allows user to see the change and then select individual tools
+          // This gives visual feedback - all individual checkboxes become unchecked
+          // User can then check individual tools they want
           return {
             ...server,
             tools: []
@@ -330,6 +334,8 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
           newTools = Array.from(toolSet);
         }
         
+        // Allow empty array - user can have server selected with no tools
+        // The onChange callback will filter these out when sending to backend
         return { ...server, tools: newTools };
       }
       return server;
@@ -383,6 +389,15 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
     if (server.tools === null) return true;  // All tools
     if (!server.tools) return false;  // Type guard
     return server.tools.includes(toolName);
+  };
+  
+  /**
+   * Check if a server has no tools selected (empty array)
+   */
+  const hasNoToolsSelected = (serverId: string): boolean => {
+    const server = currentConfig?.servers.find(s => s.name === serverId);
+    if (!server) return false;
+    return Array.isArray(server.tools) && server.tools.length === 0;
   };
   
   /**
@@ -617,6 +632,19 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
                         <Typography variant="caption" color="text.secondary" sx={{ ml: 4, display: 'block', mt: 0.5 }}>
                           {server.tools.length} tool{server.tools.length !== 1 ? 's' : ''} available
                         </Typography>
+
+                        {/* Warning when no tools selected */}
+                        {isSelected && hasNoToolsSelected(server.server_id) && (
+                          <MuiAlert 
+                            severity="warning" 
+                            sx={{ ml: 4, mt: 1, py: 0.5 }}
+                            icon={<InfoIcon fontSize="small" />}
+                          >
+                            <Typography variant="caption">
+                              No tools selected. Select at least one tool, otherwise this MCP server won't be used.
+                            </Typography>
+                          </MuiAlert>
+                        )}
 
                         {/* Tool selection */}
                         {isSelected && server.tools.length > 0 && (
