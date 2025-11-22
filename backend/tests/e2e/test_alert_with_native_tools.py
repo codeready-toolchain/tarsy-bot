@@ -130,10 +130,10 @@ class TestAlertWithNativeTools:
         call_args = mock_process.call_args
         processing_alert = call_args[0][0]
         
-        # Verify only google_search is enabled
+        # Verify only google_search is enabled, others remain None (use provider defaults)
         assert processing_alert.mcp.native_tools.google_search is True
-        assert processing_alert.mcp.native_tools.code_execution is None or processing_alert.mcp.native_tools.code_execution is False
-        assert processing_alert.mcp.native_tools.url_context is None or processing_alert.mcp.native_tools.url_context is False
+        assert processing_alert.mcp.native_tools.code_execution is None
+        assert processing_alert.mcp.native_tools.url_context is None
     
     @pytest.mark.asyncio
     async def test_native_tools_validation(self):

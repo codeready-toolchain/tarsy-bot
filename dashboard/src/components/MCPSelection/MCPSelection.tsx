@@ -180,6 +180,17 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
   };
   
   /**
+   * Normalize tool arrays: convert empty arrays to null to match backend semantics.
+   * Backend treats both null and [] as "all tools", but UI shows [] as "no tools".
+   */
+  const normalizeServers = (servers: MCPSelectionConfig['servers']): MCPSelectionConfig['servers'] => {
+    return servers.map(server => ({
+      ...server,
+      tools: server.tools && server.tools.length > 0 ? server.tools : null
+    }));
+  };
+
+  /**
    * Handle server selection toggle
    */
   const handleServerToggle = (serverId: string) => {
@@ -213,7 +224,7 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
     
     setCurrentConfig({
       ...currentConfig,
-      servers: newServers
+      servers: normalizeServers(newServers)
     });
   };
   
@@ -238,17 +249,34 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
     
     const newServers = currentConfig.servers.map(server => {
       if (server.name === serverId) {
-        return {
-          ...server,
-          tools: checked ? null : []  // null = all, empty = none (will default to all)
-        };
+        if (checked) {
+          // Checking "All Tools": set to null (no filtering)
+          return {
+            ...server,
+            tools: null
+          };
+        } else {
+          // Unchecking "All Tools": switch to individual selection with all tools initially selected
+          const serverInfo = availableServers.find(s => s.server_id === serverId);
+          if (serverInfo && serverInfo.tools.length > 0) {
+            return {
+              ...server,
+              tools: serverInfo.tools.map(t => t.name)
+            };
+          }
+          // Fallback: if no tools available, keep as null (all tools)
+          return {
+            ...server,
+            tools: null
+          };
+        }
       }
       return server;
     });
     
     setCurrentConfig({
       ...currentConfig,
-      servers: newServers
+      servers: normalizeServers(newServers)
     });
   };
   
@@ -270,7 +298,7 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
               .map(t => t.name)
               .filter(t => t !== toolName);
           } else {
-            newTools = [];
+            newTools = null;  // No server info, keep as all tools
           }
         } else {
           // Toggle in existing array
@@ -290,7 +318,7 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
     
     setCurrentConfig({
       ...currentConfig,
-      servers: newServers
+      servers: normalizeServers(newServers)
     });
   };
   

@@ -293,7 +293,7 @@ class LLMClient:
         }
         
         enabled_tools = []
-        overridden_from_default = []
+        enabled_from_defaults = []
         
         # Google Search tool
         should_enable_search = override.google_search if override.google_search is not None else \
@@ -306,7 +306,7 @@ class LLMClient:
                 )
                 enabled_tools.append(GoogleNativeTool.GOOGLE_SEARCH.value)
                 if override.google_search is None:
-                    overridden_from_default.append(GoogleNativeTool.GOOGLE_SEARCH.value)
+                    enabled_from_defaults.append(GoogleNativeTool.GOOGLE_SEARCH.value)
             except Exception as e:
                 logger.warning(f"Failed to create {GoogleNativeTool.GOOGLE_SEARCH.value} tool override: {e}")
         
@@ -321,7 +321,7 @@ class LLMClient:
                 )
                 enabled_tools.append(GoogleNativeTool.CODE_EXECUTION.value)
                 if override.code_execution is None:
-                    overridden_from_default.append(GoogleNativeTool.CODE_EXECUTION.value)
+                    enabled_from_defaults.append(GoogleNativeTool.CODE_EXECUTION.value)
             except Exception as e:
                 logger.warning(f"Failed to create {GoogleNativeTool.CODE_EXECUTION.value} tool override: {e}")
         
@@ -336,14 +336,14 @@ class LLMClient:
                 )
                 enabled_tools.append(GoogleNativeTool.URL_CONTEXT.value)
                 if override.url_context is None:
-                    overridden_from_default.append(GoogleNativeTool.URL_CONTEXT.value)
+                    enabled_from_defaults.append(GoogleNativeTool.URL_CONTEXT.value)
             except Exception as e:
                 logger.warning(f"Failed to create {GoogleNativeTool.URL_CONTEXT.value} tool override: {e}")
         
         log_msg = f"Applied native tools override for {self.provider_name}: enabled={enabled_tools}"
-        if overridden_from_default:
-            log_msg += f" (from provider defaults: {overridden_from_default})"
-        disabled = [k for k in overridden_tools.keys() if overridden_tools[k] is None]
+        if enabled_from_defaults:
+            log_msg += f" (from provider defaults: {enabled_from_defaults})"
+        disabled = [name for name, tool in overridden_tools.items() if tool is None]
         if disabled:
             log_msg += f", disabled={disabled}"
         logger.info(log_msg)
@@ -855,7 +855,8 @@ class LLMClient:
                     token_str += str(block)
             return token_str
         
-        return token
+        # Defensive str() coercion for future-proofing against potential library API shifts
+        return str(token) if not isinstance(token, str) else token
     
     def _store_usage_metadata(
         self, 

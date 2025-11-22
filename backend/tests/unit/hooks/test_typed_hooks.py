@@ -13,6 +13,7 @@ from tarsy.hooks.hook_context import BaseHook
 from tarsy.hooks.history_hooks import (
     LLMHistoryHook,
     MCPHistoryHook,
+    MCPListHistoryHook,
     StageExecutionHistoryHook,
 )
 from tarsy.models.constants import StageStatus, MAX_LLM_MESSAGE_CONTENT_SIZE
@@ -230,7 +231,6 @@ class TestMCPListHistoryHook:
     @pytest.fixture
     def mcp_list_hook(self, mock_history_service):
         """Create MCP list history hook."""
-        from tarsy.hooks.history_hooks import MCPListHistoryHook
         return MCPListHistoryHook(mock_history_service)
     
     @pytest.fixture
@@ -246,7 +246,6 @@ class TestMCPListHistoryHook:
     
     def test_hook_initialization(self, mock_history_service):
         """Test hook initializes correctly."""
-        from tarsy.hooks.history_hooks import MCPListHistoryHook
         hook = MCPListHistoryHook(mock_history_service)
         assert hook.name == "mcp_list_history"
         assert hook.history_service == mock_history_service

@@ -164,6 +164,44 @@ class TestLLMProviderConfigNativeTools:
         assert config.get_native_tool_status("code_execution") is False
         assert config.get_native_tool_status("url_context") is True
 
+    def test_get_native_tool_status_raises_for_unknown_tool(self) -> None:
+        """Test that get_native_tool_status raises ValueError for unknown tool names.
+        
+        This ensures typos and invalid tool names are caught at runtime rather than
+        silently defaulting to enabled, which could be a security concern.
+        """
+        config = LLMProviderConfig(
+            type="google",
+            model="gemini-2.5-flash",
+            api_key_env="GOOGLE_API_KEY"
+        )
+        
+        # Unknown tool name should raise ValueError
+        with pytest.raises(ValueError) as exc_info:
+            config.get_native_tool_status("unknown_tool")
+        
+        assert "Unknown native tool: unknown_tool" in str(exc_info.value)
+        assert "google_search" in str(exc_info.value)  # Should list valid options
+        
+        # Typo'd tool name should also raise
+        with pytest.raises(ValueError) as exc_info:
+            config.get_native_tool_status("google_serach")  # typo
+        
+        assert "Unknown native tool: google_serach" in str(exc_info.value)
+        
+        # Test with native_tools dict present as well
+        config_with_tools = LLMProviderConfig(
+            type="google",
+            model="gemini-2.5-flash",
+            api_key_env="GOOGLE_API_KEY",
+            native_tools={"google_search": True}
+        )
+        
+        with pytest.raises(ValueError) as exc_info:
+            config_with_tools.get_native_tool_status("invalid_tool")
+        
+        assert "Unknown native tool: invalid_tool" in str(exc_info.value)
+
 
 @pytest.mark.unit
 class TestLLMProviderConfigValidation:

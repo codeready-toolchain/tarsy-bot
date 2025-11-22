@@ -141,7 +141,7 @@ class LLMProviderConfig(BaseModel):
         supported_tools = {tool.value for tool in GoogleNativeTool}
         
         # Validate all provided tools are recognized
-        for tool_name in v.keys():
+        for tool_name in v:
             if tool_name not in supported_tools:
                 raise ValueError(
                     f"Unsupported native tool: {tool_name}. "
@@ -166,6 +166,9 @@ class LLMProviderConfig(BaseModel):
         Returns:
             True if tool is enabled (or should be enabled by default), False otherwise
             
+        Raises:
+            ValueError: If tool_name is not a recognized GoogleNativeTool value
+            
         Default behavior when native_tools is None:
             - google_search → True (enabled by default)
             - url_context → True (enabled by default)
@@ -180,11 +183,17 @@ class LLMProviderConfig(BaseModel):
             - If tool explicitly set to False → False (tool disabled)
             - If tool explicitly set to True → True (tool enabled)
         """
+        # Validate tool_name is recognized
+        supported_tools = {tool.value for tool in GoogleNativeTool}
+        if tool_name not in supported_tools:
+            raise ValueError(
+                f"Unknown native tool: {tool_name}. "
+                f"Must be one of: {', '.join(sorted(supported_tools))}"
+            )
+        
         if self.native_tools is None:
             # Default: code_execution disabled, others enabled
-            if tool_name == GoogleNativeTool.CODE_EXECUTION.value:
-                return False
-            return True
+            return tool_name != GoogleNativeTool.CODE_EXECUTION.value
         
         # When native_tools dict is present, use same defaults for missing keys
         if tool_name == GoogleNativeTool.CODE_EXECUTION.value:
