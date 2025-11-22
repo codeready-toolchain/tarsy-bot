@@ -1,8 +1,9 @@
 """
-Monkeypatch for url_context support in langchain-google-genai.
+Monkeypatch for URL_CONTEXT support in langchain-google-genai.
 
-This module patches LangChain's Google Gemini integration to support the url_context
-tool, which is not yet natively supported in langchain-google-genai v2.1.5.
+This module patches LangChain's Google Gemini integration to support the URL_CONTEXT
+tool (GoogleNativeTool.URL_CONTEXT), which is not yet natively supported in 
+langchain-google-genai v2.1.5.
 
 PROBLEM:
 --------
@@ -16,7 +17,7 @@ to the underlying Google API Tool object, bypassing LangChain's validation.
 
 SCOPE:
 ------
-- Only affects: Gemini models with url_context tool
+- Only affects: Gemini models with GoogleNativeTool.URL_CONTEXT enabled
 - Does NOT affect: Other LLM providers, other Gemini tools, function calling
 - Safe: Gracefully handles errors, won't break initialization
 
@@ -25,13 +26,16 @@ TODO: Remove this patch when langchain-google-genai adds native url_context supp
 """
 
 import logging
+from tarsy.models.llm_models import GoogleNativeTool
 
 logger = logging.getLogger(__name__)
 
 
 def apply_url_context_patch() -> bool:
     """
-    Apply monkeypatch to enable url_context tool support in LangChain.
+    Apply monkeypatch to enable URL_CONTEXT tool support in LangChain.
+    
+    Enables GoogleNativeTool.URL_CONTEXT for Google/Gemini models.
     
     Returns:
         bool: True if patch was applied successfully, False otherwise
@@ -45,7 +49,7 @@ def apply_url_context_patch() -> bool:
         def _patched_convert_to_genai_function_declarations(tools):
             """Patched version that handles url_context in tool dictionaries.
             
-            LangChain's current version doesn't recognize url_context as a native
+            LangChain's current version doesn't recognize GoogleNativeTool.URL_CONTEXT as a native
             Google tool. This patch intercepts the conversion process and manually
             attaches url_context to the Google API Tool object.
             
@@ -56,6 +60,8 @@ def apply_url_context_patch() -> bool:
                 gapic.Tool object with url_context properly attached
             """
             # Separate url_context tools from others
+            # Note: Using string literal here as LangChain's API expects it
+            URL_CONTEXT_KEY = GoogleNativeTool.URL_CONTEXT.value
             standard_tools = []
             url_context_config = None
             
@@ -67,9 +73,9 @@ def apply_url_context_patch() -> bool:
                 
             for tool in tools_seq:
                 is_url_context = False
-                if isinstance(tool, dict) and 'url_context' in tool:
+                if isinstance(tool, dict) and URL_CONTEXT_KEY in tool:
                     is_url_context = True
-                    url_context_config = tool['url_context']
+                    url_context_config = tool[URL_CONTEXT_KEY]
                 
                 if not is_url_context:
                     standard_tools.append(tool)

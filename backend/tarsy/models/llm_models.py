@@ -21,6 +21,14 @@ class LLMProviderType(str, Enum):
     VERTEXAI = "vertexai"
 
 
+class GoogleNativeTool(str, Enum):
+    """Supported Google/Gemini native tools."""
+    
+    GOOGLE_SEARCH = "google_search"
+    CODE_EXECUTION = "code_execution"
+    URL_CONTEXT = "url_context"
+
+
 # Type alias for backward compatibility
 ProviderType = LLMProviderType
 
@@ -68,7 +76,7 @@ class LLMProviderConfig(BaseModel):
     )
     native_tools: Optional[Dict[str, bool]] = Field(
         default=None,
-        description="Native tool configuration for Google/Gemini models (google_search, code_execution, url_context). Default: all enabled"
+        description="Native tool configuration for Google/Gemini models (GoogleNativeTool enum values). Default: all enabled"
     )
     
     # Runtime fields (added by Settings.get_llm_config())
@@ -120,7 +128,7 @@ class LLMProviderConfig(BaseModel):
         """Validate native_tools configuration.
         
         Validates that tool names are recognized and values are boolean.
-        Supported tools: google_search, code_execution, url_context
+        Supported tools defined in GoogleNativeTool enum.
         """
         if v is None:
             return None
@@ -128,7 +136,8 @@ class LLMProviderConfig(BaseModel):
         if not isinstance(v, dict):
             raise ValueError(f"native_tools must be a dictionary, got: {type(v).__name__}")
         
-        supported_tools = {"google_search", "code_execution", "url_context"}
+        # Get supported tool names from enum
+        supported_tools = {tool.value for tool in GoogleNativeTool}
         
         # Validate all provided tools are recognized
         for tool_name in v.keys():
@@ -151,7 +160,7 @@ class LLMProviderConfig(BaseModel):
         """Get native tool status with default=True behavior.
         
         Args:
-            tool_name: Name of the tool (google_search, code_execution, url_context)
+            tool_name: Name of the tool (use GoogleNativeTool enum values)
             
         Returns:
             True if tool is enabled (or should be enabled by default), False if explicitly disabled

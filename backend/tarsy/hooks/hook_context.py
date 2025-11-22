@@ -323,13 +323,20 @@ def get_hook_manager() -> HookManager:
 
 
 @asynccontextmanager
-async def llm_interaction_context(session_id: str, request_data: Dict[str, Any], stage_execution_id: Optional[str] = None) -> AsyncContextManager[InteractionHookContext[LLMInteraction]]:
+async def llm_interaction_context(
+    session_id: str, 
+    request_data: Dict[str, Any], 
+    stage_execution_id: Optional[str] = None,
+    native_tools_config: Optional[Dict[str, bool]] = None
+) -> AsyncContextManager[InteractionHookContext[LLMInteraction]]:
     """
     Create a typed context for LLM interactions.
     
     Args:
         session_id: Session identifier
         request_data: LLM request data
+        stage_execution_id: Optional stage execution ID
+        native_tools_config: Optional native tools configuration (Google/Gemini only)
         
     Yields:
         Typed hook context for LLM interaction
@@ -340,7 +347,8 @@ async def llm_interaction_context(session_id: str, request_data: Dict[str, Any],
         model_name=request_data.get('model', 'unknown'),
         provider=request_data.get('provider', 'unknown'),
         temperature=request_data.get('temperature'),
-        interaction_type=LLMInteractionType.INVESTIGATION.value
+        interaction_type=LLMInteractionType.INVESTIGATION.value,
+        native_tools_config=native_tools_config
         # Note: conversation will be set by LLMClient after successful response
         # Note: interaction_type may be updated by LLMClient based on response content
     )

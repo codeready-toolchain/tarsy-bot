@@ -3,7 +3,7 @@
 import pytest
 from pydantic import ValidationError
 
-from tarsy.models.llm_models import LLMProviderConfig, LLMProviderType
+from tarsy.models.llm_models import GoogleNativeTool, LLMProviderConfig, LLMProviderType
 
 
 @pytest.mark.unit
@@ -51,16 +51,16 @@ class TestLLMProviderConfigNativeTools:
             model="gemini-2.5-flash",
             api_key_env="GOOGLE_API_KEY",
             native_tools={
-                "google_search": True,
-                "code_execution": True,
-                "url_context": False
+                GoogleNativeTool.GOOGLE_SEARCH.value: True,
+                GoogleNativeTool.CODE_EXECUTION.value: True,
+                GoogleNativeTool.URL_CONTEXT.value: False
             }
         )
         
         assert config.native_tools == {
-            "google_search": True,
-            "code_execution": True,
-            "url_context": False
+            GoogleNativeTool.GOOGLE_SEARCH.value: True,
+            GoogleNativeTool.CODE_EXECUTION.value: True,
+            GoogleNativeTool.URL_CONTEXT.value: False
         }
 
     def test_native_tools_with_non_google_provider(self) -> None:
@@ -73,7 +73,7 @@ class TestLLMProviderConfigNativeTools:
             type="openai",
             model="gpt-4",
             api_key_env="OPENAI_API_KEY",
-            native_tools={"google_search": True}
+            native_tools={GoogleNativeTool.GOOGLE_SEARCH.value: True}
         )
         
         # Configuration should accept it
@@ -100,7 +100,7 @@ class TestLLMProviderConfigNativeTools:
                 type="google",
                 model="gemini-2.5-flash",
                 api_key_env="GOOGLE_API_KEY",
-                native_tools={"google_search": "yes"}  # type: ignore
+                native_tools={GoogleNativeTool.GOOGLE_SEARCH.value: "yes"}  # type: ignore
             )
         
         errors = exc_info.value.errors()
@@ -112,12 +112,12 @@ class TestLLMProviderConfigNativeTools:
             type="google",
             model="gemini-2.5-flash",
             api_key_env="GOOGLE_API_KEY",
-            native_tools={"google_search": True, "code_execution": False}
+            native_tools={GoogleNativeTool.GOOGLE_SEARCH.value: True, GoogleNativeTool.CODE_EXECUTION.value: False}
         )
         
         config_dict = config.model_dump()
         assert "native_tools" in config_dict
-        assert config_dict["native_tools"] == {"google_search": True, "code_execution": False}
+        assert config_dict["native_tools"] == {GoogleNativeTool.GOOGLE_SEARCH.value: True, GoogleNativeTool.CODE_EXECUTION.value: False}
 
     def test_get_native_tool_status_with_none_returns_true(self) -> None:
         """Test that get_native_tool_status returns True when native_tools is None."""
@@ -128,9 +128,9 @@ class TestLLMProviderConfigNativeTools:
         )
         
         # All tools enabled by default
-        assert config.get_native_tool_status("google_search") is True
-        assert config.get_native_tool_status("code_execution") is True
-        assert config.get_native_tool_status("url_context") is True
+        assert config.get_native_tool_status(GoogleNativeTool.GOOGLE_SEARCH.value) is True
+        assert config.get_native_tool_status(GoogleNativeTool.CODE_EXECUTION.value) is True
+        assert config.get_native_tool_status(GoogleNativeTool.URL_CONTEXT.value) is True
 
     def test_get_native_tool_status_with_missing_tool_returns_true(self) -> None:
         """Test that get_native_tool_status returns True for missing tools."""
@@ -138,14 +138,14 @@ class TestLLMProviderConfigNativeTools:
             type="google",
             model="gemini-2.5-flash",
             api_key_env="GOOGLE_API_KEY",
-            native_tools={"google_search": False}
+            native_tools={GoogleNativeTool.GOOGLE_SEARCH.value: False}
         )
         
-        # google_search explicitly disabled
-        assert config.get_native_tool_status("google_search") is False
+        # GOOGLE_SEARCH explicitly disabled
+        assert config.get_native_tool_status(GoogleNativeTool.GOOGLE_SEARCH.value) is False
         # Other tools default to enabled
-        assert config.get_native_tool_status("code_execution") is True
-        assert config.get_native_tool_status("url_context") is True
+        assert config.get_native_tool_status(GoogleNativeTool.CODE_EXECUTION.value) is True
+        assert config.get_native_tool_status(GoogleNativeTool.URL_CONTEXT.value) is True
 
     def test_get_native_tool_status_respects_explicit_values(self) -> None:
         """Test that get_native_tool_status respects explicit True/False values."""
@@ -241,9 +241,9 @@ class TestLLMProviderConfigValidation:
             verify_ssl=True,
             max_tool_result_tokens=500000,
             native_tools={
-                "google_search": True,
-                "code_execution": True,
-                "url_context": False
+                GoogleNativeTool.GOOGLE_SEARCH.value: True,
+                GoogleNativeTool.CODE_EXECUTION.value: True,
+                GoogleNativeTool.URL_CONTEXT.value: False
             },
             api_key="test-key-value",
             disable_ssl_verification=False
@@ -257,9 +257,9 @@ class TestLLMProviderConfigValidation:
         assert config.verify_ssl is True
         assert config.max_tool_result_tokens == 500000
         assert config.native_tools == {
-            "google_search": True,
-            "code_execution": True,
-            "url_context": False
+            GoogleNativeTool.GOOGLE_SEARCH.value: True,
+            GoogleNativeTool.CODE_EXECUTION.value: True,
+            GoogleNativeTool.URL_CONTEXT.value: False
         }
         assert config.api_key == "test-key-value"
         assert config.disable_ssl_verification is False

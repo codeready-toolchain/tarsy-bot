@@ -16,7 +16,7 @@ Agent classes are imported dynamically by AgentFactory when needed.
 
 import copy
 from typing import Dict, Any
-from tarsy.models.llm_models import LLMProviderConfig, LLMProviderType
+from tarsy.models.llm_models import GoogleNativeTool, LLMProviderConfig, LLMProviderType
 from tarsy.models.constants import DEFAULT_LLM_TEMPERATURE
 from tarsy.models.mcp_transport_config import TRANSPORT_STDIO
 
@@ -246,9 +246,9 @@ BUILTIN_LLM_PROVIDERS: Dict[str, LLMProviderConfig] = {
         api_key_env="GOOGLE_API_KEY",
         temperature=DEFAULT_LLM_TEMPERATURE,
         native_tools={
-            "google_search": True,
-            "code_execution": True,
-            "url_context": True,
+            GoogleNativeTool.GOOGLE_SEARCH.value: True,
+            GoogleNativeTool.CODE_EXECUTION.value: True,
+            GoogleNativeTool.URL_CONTEXT.value: True,
         },
         max_tool_result_tokens=950000  # Conservative for 1M context
     ),

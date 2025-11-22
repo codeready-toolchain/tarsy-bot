@@ -7,7 +7,7 @@ separate runtime/database model hierarchies and manual conversions.
 """
 
 import uuid
-from typing import List, Optional
+from typing import Dict, List, Optional
 from enum import Enum
 from sqlmodel import Column, Field, SQLModel, Index
 from sqlalchemy import JSON, String, TypeDecorator, ForeignKey
@@ -150,6 +150,13 @@ class LLMInteraction(SQLModel, table=True):
         None,
         sa_column=Column(JSON),
         description="Complete response metadata including grounding sources, tool usage, etc."
+    )
+    
+    # Native tools configuration (Google/Gemini only)
+    native_tools_config: Optional[Dict[str, bool]] = Field(
+        None,
+        sa_column=Column(JSON),
+        description="Native tool configuration at time of interaction (Google/Gemini only)"
     )
     
     # Interaction type for categorization and UI rendering

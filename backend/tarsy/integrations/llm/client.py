@@ -10,7 +10,7 @@ For Google/Gemini models, we use a hybrid approach combining:
 3. .bind() method to attach tools to model (not passed to astream)
 
 This approach enables:
-- Tool combination support (e.g., google_search + code_execution)
+- Tool combination support (GoogleNativeTool enum: GOOGLE_SEARCH, CODE_EXECUTION, URL_CONTEXT)
 - Modern tool format matching Google's official documentation
 - Full LangChain compatibility across all providers
 
@@ -38,7 +38,7 @@ from google.genai import types as google_genai_types  # Google SDK types for too
 from tarsy.config.settings import Settings
 from tarsy.hooks.hook_context import llm_interaction_context
 from tarsy.models.constants import LLMInteractionType, StreamingEventType
-from tarsy.models.llm_models import LLMProviderConfig, LLMProviderType
+from tarsy.models.llm_models import GoogleNativeTool, LLMProviderConfig, LLMProviderType
 from tarsy.models.unified_interactions import LLMConversation, MessageRole
 from tarsy.utils.logger import get_module_logger
 from tarsy.utils.error_details import extract_error_details
@@ -163,11 +163,11 @@ class LLMClient:
         self.settings = settings  # Store settings for feature flag access
         self.available: bool = False
         self._sqlite_warning_logged: bool = False
-        # Store native tools for Google/Gemini models (google_search, code_execution, url_context)
+        # Store native tools for Google/Gemini models (GoogleNativeTool enum values)
         self.native_tools: Dict[str, Optional[google_genai_types.Tool]] = {
-            'google_search': None,
-            'code_execution': None,
-            'url_context': None
+            GoogleNativeTool.GOOGLE_SEARCH.value: None,
+            GoogleNativeTool.CODE_EXECUTION.value: None,
+            GoogleNativeTool.URL_CONTEXT.value: None
         }
         self._initialize_client()
     
@@ -213,10 +213,10 @@ class LLMClient:
     def _initialize_native_tools(self):
         """Initialize Google/Gemini native tools based on config.
         
-        Supports three native tools:
-        - google_search: Web search capability
-        - code_execution: Python code execution in sandbox
-        - url_context: URL grounding for specific web pages
+        Supports three native tools (GoogleNativeTool enum):
+        - GOOGLE_SEARCH: Web search capability
+        - CODE_EXECUTION: Python code execution in sandbox
+        - URL_CONTEXT: URL grounding for specific web pages
         
         All tools are enabled by default unless explicitly disabled in config.
         """
@@ -224,33 +224,33 @@ class LLMClient:
         
         try:
             # Google Search tool
-            if self.config.get_native_tool_status('google_search'):
-                self.native_tools['google_search'] = google_genai_types.Tool(
+            if self.config.get_native_tool_status(GoogleNativeTool.GOOGLE_SEARCH.value):
+                self.native_tools[GoogleNativeTool.GOOGLE_SEARCH.value] = google_genai_types.Tool(
                     google_search=google_genai_types.GoogleSearch()
                 )
-                enabled_tools.append('google_search')
+                enabled_tools.append(GoogleNativeTool.GOOGLE_SEARCH.value)
         except Exception as e:
-            logger.warning(f"Failed to initialize google_search tool for {self.provider_name}: {e}")
+            logger.warning(f"Failed to initialize {GoogleNativeTool.GOOGLE_SEARCH.value} tool for {self.provider_name}: {e}")
         
         try:
             # Code Execution tool
-            if self.config.get_native_tool_status('code_execution'):
-                self.native_tools['code_execution'] = google_genai_types.Tool(
+            if self.config.get_native_tool_status(GoogleNativeTool.CODE_EXECUTION.value):
+                self.native_tools[GoogleNativeTool.CODE_EXECUTION.value] = google_genai_types.Tool(
                     code_execution={}
                 )
-                enabled_tools.append('code_execution')
+                enabled_tools.append(GoogleNativeTool.CODE_EXECUTION.value)
         except Exception as e:
-            logger.warning(f"Failed to initialize code_execution tool for {self.provider_name}: {e}")
+            logger.warning(f"Failed to initialize {GoogleNativeTool.CODE_EXECUTION.value} tool for {self.provider_name}: {e}")
         
         try:
             # URL Context tool
-            if self.config.get_native_tool_status('url_context'):
-                self.native_tools['url_context'] = google_genai_types.Tool(
+            if self.config.get_native_tool_status(GoogleNativeTool.URL_CONTEXT.value):
+                self.native_tools[GoogleNativeTool.URL_CONTEXT.value] = google_genai_types.Tool(
                     url_context={}
                 )
-                enabled_tools.append('url_context')
+                enabled_tools.append(GoogleNativeTool.URL_CONTEXT.value)
         except Exception as e:
-            logger.warning(f"Failed to initialize url_context tool for {self.provider_name}: {e}")
+            logger.warning(f"Failed to initialize {GoogleNativeTool.URL_CONTEXT.value} tool for {self.provider_name}: {e}")
         
         if enabled_tools:
             logger.info(f"Successfully initialized native tools for {self.provider_name}: {enabled_tools}")
@@ -317,8 +317,17 @@ class LLMClient:
             'temperature': self.temperature
         }
         
+        # Prepare native tools config for audit trail (Google/Gemini only)
+        native_tools_config = None
+        if self.config.type == LLMProviderType.GOOGLE:
+            native_tools_config = {
+                GoogleNativeTool.GOOGLE_SEARCH.value: bool(self.native_tools[GoogleNativeTool.GOOGLE_SEARCH.value]),
+                GoogleNativeTool.CODE_EXECUTION.value: bool(self.native_tools[GoogleNativeTool.CODE_EXECUTION.value]),
+                GoogleNativeTool.URL_CONTEXT.value: bool(self.native_tools[GoogleNativeTool.URL_CONTEXT.value])
+            }
+        
         # Use typed hook context for clean data flow
-        async with llm_interaction_context(session_id, request_data, stage_execution_id) as ctx:
+        async with llm_interaction_context(session_id, request_data, stage_execution_id, native_tools_config) as ctx:
             # Get request ID for logging  
             request_id = ctx.get_request_id()
 
@@ -357,7 +366,7 @@ class LLMClient:
                     
                     # HYBRID APPROACH: Bind native tools to model using Google AI SDK types
                     # Tools are converted to dicts and bound to the model, not passed to astream()
-                    # Supports multiple tools: google_search, code_execution, url_context
+                    # Supports multiple tools: GoogleNativeTool enum (GOOGLE_SEARCH, CODE_EXECUTION, URL_CONTEXT)
                     llm_with_tools = self.llm_client
                     if self.config.type == LLMProviderType.GOOGLE:
                         # Collect all enabled native tools
