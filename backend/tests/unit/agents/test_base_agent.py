@@ -46,7 +46,7 @@ class TestBaseAgentAbstractInterface:
         """Create mock LLM client."""
         client = Mock(spec=LLMClient)
         
-        async def mock_generate_response(conversation, session_id, stage_execution_id=None):
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None, native_tools_override=None):
             # Create a new conversation with the assistant response added
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
             updated_conversation.append_assistant_message("Final Answer: Test analysis result")
@@ -734,7 +734,7 @@ class TestBaseAgentErrorHandling:
     def mock_llm_client(self):
         client = Mock(spec=LLMClient)
         
-        async def mock_generate_response(conversation, session_id, stage_execution_id=None):
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None, native_tools_override=None):
             # Create a new conversation with the assistant response added
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
             updated_conversation.append_assistant_message("Final Answer: Test analysis result")
@@ -861,7 +861,7 @@ class TestBaseAgent:
         """Create mock LLM client."""
         client = Mock(spec=LLMClient)
         
-        async def mock_generate_response(conversation, session_id, stage_execution_id=None):
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None, native_tools_override=None):
             # Create a new conversation with the assistant response added
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
             updated_conversation.append_assistant_message("Final Answer: Test analysis result")
@@ -1003,7 +1003,7 @@ class TestPhase3ProcessAlertOverload:
     def mock_llm_client(self):
         client = Mock(spec=LLMClient)
         
-        async def mock_generate_response(conversation, session_id, stage_execution_id=None):
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None, native_tools_override=None):
             # Create a new conversation with the assistant response added
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
             updated_conversation.append_assistant_message("Final Answer: Test analysis result from Phase 3")

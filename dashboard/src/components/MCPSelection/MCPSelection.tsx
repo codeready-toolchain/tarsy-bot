@@ -38,7 +38,7 @@ import { apiClient } from '../../services/api';
 import { NATIVE_TOOL_NAMES, NATIVE_TOOL_LABELS, NATIVE_TOOL_DESCRIPTIONS, type NativeToolName } from '../../utils/nativeToolsConstants';
 
 interface MCPSelectionProps {
-  value: MCPSelectionConfig | null;
+  value: MCPSelectionConfig | undefined;
   onChange: (config: MCPSelectionConfig | undefined) => void;
   disabled?: boolean;
   alertType?: string;  // Optional alert type to load correct defaults

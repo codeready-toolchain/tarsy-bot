@@ -552,7 +552,7 @@ class TestKubernetesAgentIntegrationScenarios:
         mock_mcp.list_tools.return_value = {"kubernetes-server": []}
         
         # Mock LLM to return proper LLMConversation object
-        async def mock_generate_response(conversation, session_id, stage_execution_id=None):
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None, native_tools_override=None):
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
             updated_conversation.append_assistant_message("Final Answer: Pod analysis completed")
             return updated_conversation
@@ -711,7 +711,7 @@ class TestKubernetesAgentIntegrationScenarios:
         mock_mcp.call_tool.return_value = {"result": "Pod details retrieved"}
         
         # Mock LLM to return proper LLMConversation object
-        async def mock_generate_response(conversation, session_id, stage_execution_id=None):
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None, native_tools_override=None):
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
             updated_conversation.append_assistant_message("Final Answer: Comprehensive analysis")
             return updated_conversation

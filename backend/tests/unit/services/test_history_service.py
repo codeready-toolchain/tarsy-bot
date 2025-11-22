@@ -190,7 +190,8 @@ class TestHistoryService:
             {
                 "servers": [
                     {"name": "kubernetes-server", "tools": None}
-                ]
+                ],
+                "native_tools": None
             }
         ),
         (
@@ -205,7 +206,8 @@ class TestHistoryService:
                 "servers": [
                     {"name": "kubernetes-server", "tools": ["list_pods", "get_pod"]},
                     {"name": "argocd-server", "tools": None}
-                ]
+                ],
+                "native_tools": None
             }
         ),
     ])
