@@ -13,6 +13,8 @@ import {
   ExpandLess,
   AutoFixHigh
 } from '@mui/icons-material';
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import { getToolIcon, getToolDisplayName } from '../utils/nativeToolsHelpers';
 import type { NativeToolsUsage } from '../types';
 
@@ -295,23 +297,32 @@ function NativeToolsBox({ usage }: NativeToolsBoxProps) {
                           bgcolor: theme.palette.grey[50],
                           borderRadius: 1,
                           border: `1px solid ${theme.palette.divider}`,
-                          p: 1.5,
                           overflow: 'auto',
-                          maxHeight: 400
+                          maxHeight: 400,
+                          '& pre': {
+                            margin: '0 !important',
+                            padding: '12px !important',
+                            fontSize: '0.875rem !important',
+                            lineHeight: '1.5 !important',
+                            backgroundColor: 'transparent !important'
+                          }
                         }}
                       >
-                        <pre
-                          style={{
+                        <SyntaxHighlighter
+                          language="python"
+                          style={vs}
+                          customStyle={{
                             margin: 0,
-                            fontFamily: 'Consolas, Monaco, "Courier New", monospace',
+                            padding: '12px',
                             fontSize: '0.875rem',
-                            color: theme.palette.text.primary,
-                            whiteSpace: 'pre-wrap',
-                            wordBreak: 'break-word'
+                            lineHeight: 1.5,
+                            backgroundColor: 'transparent'
                           }}
+                          wrapLines={true}
+                          wrapLongLines={true}
                         >
                           {codeBlock.code}
-                        </pre>
+                        </SyntaxHighlighter>
                       </Box>
                     </Box>
                   ))}
