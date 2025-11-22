@@ -4,9 +4,11 @@
 import type { DetailedSession } from '../types';
 import { getMessages } from './conversationParser';
 import { parseReActMessage } from './reactParser';
+import { parseNativeToolsUsage } from './nativeToolsParser';
+import type { NativeToolsUsage } from '../types';
 
 export interface ChatFlowItemData {
-  type: 'thought' | 'tool_call' | 'final_answer' | 'stage_start' | 'summarization' | 'user_message';
+  type: 'thought' | 'tool_call' | 'final_answer' | 'stage_start' | 'summarization' | 'user_message' | 'native_tool_usage';
   timestamp_us: number;
   stageId?: string; // Stage execution_id - used for grouping and collapse functionality
   content?: string; // For thought/final_answer/summarization/user_message
@@ -23,6 +25,9 @@ export interface ChatFlowItemData {
   // For user_message type
   author?: string; // User who sent the message
   messageId?: string; // Message identifier
+  // For native_tool_usage type
+  nativeToolsUsage?: NativeToolsUsage;
+  llmInteractionId?: string; // Link to the LLM interaction
 }
 
 
@@ -80,6 +85,9 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
 
       const parsed = parseReActMessage(lastAssistantMessage.content);
 
+      // Track the last timestamp used for this interaction
+      let lastTimestamp = interaction.timestamp_us;
+
       // Extract based on interaction type
       if (interactionType === 'investigation' && parsed.thought) {
         chatItems.push({
@@ -99,9 +107,10 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
           });
         }
         if (parsed.finalAnswer) {
+          lastTimestamp = interaction.timestamp_us + 1;
           chatItems.push({
             type: 'final_answer',
-            timestamp_us: interaction.timestamp_us + 1, // +1 to ensure it comes after thought
+            timestamp_us: lastTimestamp, // +1 to ensure it comes after thought
             stageId,
             content: parsed.finalAnswer
           });
@@ -116,6 +125,28 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
             stageId,
             content: lastAssistantMessage.content,
             mcp_event_id: (interaction.details as any).mcp_event_id // Link to the tool call being summarized
+          });
+        }
+      }
+
+      // Check for native tools usage in this interaction
+      const nativeToolsConfig = (interaction.details as any).native_tools_config;
+      const responseMetadata = (interaction.details as any).response_metadata;
+      
+      if (nativeToolsConfig || responseMetadata) {
+        const toolsUsage = parseNativeToolsUsage(
+          responseMetadata,
+          lastAssistantMessage.content
+        );
+        
+        // Only add if tools were actually used (not just enabled)
+        if (toolsUsage) {
+          chatItems.push({
+            type: 'native_tool_usage',
+            timestamp_us: lastTimestamp + 2, // +2 to ensure it comes after other items
+            stageId,
+            nativeToolsUsage: toolsUsage,
+            llmInteractionId: interaction.id
           });
         }
       }

@@ -3,6 +3,7 @@ import { Box, Typography, Divider, Chip, alpha, IconButton } from '@mui/material
 import { Flag, AccountCircle, ExpandMore, ExpandLess } from '@mui/icons-material';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import ToolCallBox from './ToolCallBox';
+import NativeToolsBox from './NativeToolsBox';
 import type { ChatFlowItemData } from '../utils/chatFlowParser';
 import { 
   hasMarkdownSyntax, 
@@ -352,6 +353,11 @@ function ChatFlowItem({ item, isCollapsed = false, onToggleCollapse }: ChatFlowI
         </Box>
       </Box>
     );
+  }
+
+  // Render native tool usage indicators
+  if (item.type === 'native_tool_usage' && item.nativeToolsUsage) {
+    return <NativeToolsBox usage={item.nativeToolsUsage} />;
   }
 
   return null;
