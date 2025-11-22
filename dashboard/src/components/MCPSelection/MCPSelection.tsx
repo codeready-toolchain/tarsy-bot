@@ -63,9 +63,11 @@ const configsAreEqual = (a: MCPSelectionConfig | null | undefined, b: MCPSelecti
     const aTools = aSorted[i].tools;
     const bTools = bSorted[i].tools;
     
-    if (aTools === null && bTools === null) continue;
-    if (aTools === null || bTools === null) return false;
-    if (!aTools || !bTools) return false;  // Type guard
+    // Both null or both undefined = same (all tools)
+    if ((aTools === null || aTools === undefined) && (bTools === null || bTools === undefined)) continue;
+    // One null/undefined and other is array = different
+    if (aTools === null || aTools === undefined || bTools === null || bTools === undefined) return false;
+    // Both are arrays now - compare them
     if (aTools.length !== bTools.length) return false;
     
     const aToolsSorted = [...aTools].sort();
@@ -305,6 +307,10 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
           const toolSet = new Set(server.tools);
           if (toolSet.has(toolName)) {
             toolSet.delete(toolName);
+            // If removing last tool, mark server for removal
+            if (toolSet.size === 0) {
+              return null;  // Signal to remove this server
+            }
           } else {
             toolSet.add(toolName);
           }
@@ -316,9 +322,18 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
       return server;
     });
     
+    // Filter out servers marked for removal (null entries)
+    const filteredServers = newServers.filter((s): s is NonNullable<typeof s> => s !== null);
+    
+    // If no servers remain, reset to defaults
+    if (filteredServers.length === 0) {
+      setCurrentConfig(defaultConfig);
+      return;
+    }
+    
     setCurrentConfig({
       ...currentConfig,
-      servers: normalizeServers(newServers)
+      servers: normalizeServers(filteredServers)
     });
   };
   

@@ -154,15 +154,15 @@ class TestLLMProviderConfigNativeTools:
             model="gemini-2.5-flash",
             api_key_env="GOOGLE_API_KEY",
             native_tools={
-                "google_search": True,
-                "code_execution": False,
-                "url_context": True
+                GoogleNativeTool.GOOGLE_SEARCH.value: True,
+                GoogleNativeTool.CODE_EXECUTION.value: False,
+                GoogleNativeTool.URL_CONTEXT.value: True
             }
         )
         
-        assert config.get_native_tool_status("google_search") is True
-        assert config.get_native_tool_status("code_execution") is False
-        assert config.get_native_tool_status("url_context") is True
+        assert config.get_native_tool_status(GoogleNativeTool.GOOGLE_SEARCH.value) is True
+        assert config.get_native_tool_status(GoogleNativeTool.CODE_EXECUTION.value) is False
+        assert config.get_native_tool_status(GoogleNativeTool.URL_CONTEXT.value) is True
 
     def test_get_native_tool_status_raises_for_unknown_tool(self) -> None:
         """Test that get_native_tool_status raises ValueError for unknown tool names.
