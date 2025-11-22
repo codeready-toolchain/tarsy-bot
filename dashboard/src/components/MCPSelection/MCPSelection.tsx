@@ -6,7 +6,7 @@
  * Only sends override config when user modifies the defaults.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Accordion,
@@ -63,10 +63,10 @@ const configsAreEqual = (a: MCPSelectionConfig | null | undefined, b: MCPSelecti
     const aTools = aSorted[i].tools;
     const bTools = bSorted[i].tools;
     
-    // Both null or both undefined = same (all tools)
-    if ((aTools === null || aTools === undefined) && (bTools === null || bTools === undefined)) continue;
-    // One null/undefined and other is array = different
-    if (aTools === null || aTools === undefined || bTools === null || bTools === undefined) return false;
+    // Both null/undefined = same (all tools selected)
+    if (aTools == null && bTools == null) continue;
+    // One null/undefined, other is array = different
+    if (aTools == null || bTools == null) return false;
     // Both are arrays now - compare them
     if (aTools.length !== bTools.length) return false;
     
@@ -391,9 +391,11 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
   /**
    * Count enabled native tools
    */
-  const enabledNativeToolsCount = currentConfig?.native_tools 
-    ? Object.values(currentConfig.native_tools).filter(Boolean).length 
-    : 0;
+  const enabledNativeToolsCount = useMemo(() => {
+    return currentConfig?.native_tools 
+      ? Object.values(currentConfig.native_tools).filter(Boolean).length 
+      : 0;
+  }, [currentConfig?.native_tools]);
 
   return (
     <Box sx={{ px: 4, py: 2 }}>
