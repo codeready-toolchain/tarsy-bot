@@ -334,6 +334,55 @@ output2
       expect(result?.code_execution?.code_blocks).toBe(1);
     });
 
+    it('should handle Windows line endings (\\r\\n) in code blocks', () => {
+      const content = '```python\r\nprint("hello")\r\n```';
+
+      const result = parseNativeToolsUsage(null, content);
+
+      expect(result).not.toBeNull();
+      expect(result?.code_execution?.code_blocks).toBe(1);
+      expect(result?.code_execution?.code_block_contents?.[0].code).toContain('print("hello")');
+    });
+
+    it('should handle Windows line endings in output blocks', () => {
+      const content = '```output\r\nhello world\r\n```';
+
+      const result = parseNativeToolsUsage(null, content);
+
+      expect(result).not.toBeNull();
+      expect(result?.code_execution?.output_blocks).toBe(1);
+      expect(result?.code_execution?.output_block_contents?.[0].output).toContain('hello world');
+    });
+
+    it('should handle extra whitespace after language tag', () => {
+      const content = '```python  \nprint("test")\n```';
+
+      const result = parseNativeToolsUsage(null, content);
+
+      expect(result).not.toBeNull();
+      expect(result?.code_execution?.code_blocks).toBe(1);
+      expect(result?.code_execution?.code_block_contents?.[0].code).toContain('print("test")');
+    });
+
+    it('should handle tab after language tag', () => {
+      const content = '```python\t\ncode()\n```';
+
+      const result = parseNativeToolsUsage(null, content);
+
+      expect(result).not.toBeNull();
+      expect(result?.code_execution?.code_blocks).toBe(1);
+    });
+
+    it('should handle mixed line endings in the same content', () => {
+      const content = '```python\r\ncode1()\n```\n```output  \nresult\r\n```';
+
+      const result = parseNativeToolsUsage(null, content);
+
+      expect(result).not.toBeNull();
+      expect(result?.code_execution?.code_blocks).toBe(1);
+      expect(result?.code_execution?.output_blocks).toBe(1);
+    });
+
     it('should handle metadata without parts array', () => {
       const metadata = {
         other_field: 'value'

@@ -15,7 +15,7 @@ import {
 } from '@mui/icons-material';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
-import { getToolIcon, getToolDisplayName } from '../utils/nativeToolsHelpers';
+import { getToolIcon, getToolDisplayName, TOOL_KEYS, type ToolKey } from '../utils/nativeToolsHelpers';
 import type { NativeToolsUsage } from '../types';
 
 interface NativeToolsBoxProps {
@@ -32,15 +32,15 @@ function NativeToolsBox({ usage }: NativeToolsBoxProps) {
   const theme = useTheme();
 
   // Determine which tools are used
-  const usedTools: Array<{ key: string; name: string }> = [];
+  const usedTools: Array<{ key: ToolKey; name: string }> = [];
   if (usage.google_search) {
-    usedTools.push({ key: 'google_search', name: getToolDisplayName('google_search') });
+    usedTools.push({ key: TOOL_KEYS.GOOGLE_SEARCH, name: getToolDisplayName(TOOL_KEYS.GOOGLE_SEARCH) });
   }
   if (usage.url_context) {
-    usedTools.push({ key: 'url_context', name: getToolDisplayName('url_context') });
+    usedTools.push({ key: TOOL_KEYS.URL_CONTEXT, name: getToolDisplayName(TOOL_KEYS.URL_CONTEXT) });
   }
   if (usage.code_execution) {
-    usedTools.push({ key: 'code_execution', name: getToolDisplayName('code_execution') });
+    usedTools.push({ key: TOOL_KEYS.CODE_EXECUTION, name: getToolDisplayName(TOOL_KEYS.CODE_EXECUTION) });
   }
 
   // Get title and icon based on what's used
@@ -143,9 +143,9 @@ function NativeToolsBox({ usage }: NativeToolsBoxProps) {
               {/* Only show header if multiple tools are used */}
               {usedTools.length > 1 && (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75 }}>
-                  {createElement(getToolIcon('google_search'))}
+                  {createElement(getToolIcon(TOOL_KEYS.GOOGLE_SEARCH))}
                   <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>
-                    {getToolDisplayName('google_search')}
+                    {getToolDisplayName(TOOL_KEYS.GOOGLE_SEARCH)}
                   </Typography>
                   <Chip
                     label={`${usage.google_search.query_count} ${usage.google_search.query_count === 1 ? 'query' : 'queries'}`}
@@ -191,9 +191,9 @@ function NativeToolsBox({ usage }: NativeToolsBoxProps) {
               {/* Only show header if multiple tools are used */}
               {usedTools.length > 1 && (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75 }}>
-                  {createElement(getToolIcon('url_context'))}
+                  {createElement(getToolIcon(TOOL_KEYS.URL_CONTEXT))}
                   <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>
-                    {getToolDisplayName('url_context')}
+                    {getToolDisplayName(TOOL_KEYS.URL_CONTEXT)}
                   </Typography>
                   <Chip
                     label={`${usage.url_context.url_count} ${usage.url_context.url_count === 1 ? 'URL' : 'URLs'}`}
@@ -256,9 +256,9 @@ function NativeToolsBox({ usage }: NativeToolsBoxProps) {
               {/* Only show header if multiple tools are used */}
               {usedTools.length > 1 && (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 0.75 }}>
-                  {createElement(getToolIcon('code_execution'))}
+                  {createElement(getToolIcon(TOOL_KEYS.CODE_EXECUTION))}
                   <Typography variant="caption" sx={{ fontWeight: 600, fontSize: '0.85rem' }}>
-                    {getToolDisplayName('code_execution')}
+                    {getToolDisplayName(TOOL_KEYS.CODE_EXECUTION)}
                   </Typography>
                   <Chip
                     label={`${usage.code_execution.code_blocks} ${usage.code_execution.code_blocks === 1 ? 'block' : 'blocks'}`}

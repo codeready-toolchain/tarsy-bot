@@ -22,7 +22,8 @@ class KubernetesAgent(BaseAgent):
     Kubernetes-specific analysis capabilities.
     """
     
-    def mcp_servers(self) -> List[str]:
+    @classmethod
+    def mcp_servers(cls) -> List[str]:
         """
         Return the MCP server IDs required for Kubernetes operations.
         

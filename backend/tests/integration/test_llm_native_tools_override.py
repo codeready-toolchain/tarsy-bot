@@ -60,7 +60,7 @@ class TestNativeToolsOverride:
         assert overridden_tools[GoogleNativeTool.URL_CONTEXT.value] is not None
     
     def test_apply_native_tools_override_partial(self, llm_client):
-        """Test applying override with only some tools enabled."""
+        """Test applying override with only some tools enabled, others explicitly disabled."""
         override = NativeToolsConfig(
             google_search=True,
             code_execution=False,
@@ -72,6 +72,36 @@ class TestNativeToolsOverride:
         assert overridden_tools[GoogleNativeTool.GOOGLE_SEARCH.value] is not None
         assert overridden_tools[GoogleNativeTool.CODE_EXECUTION.value] is None
         assert overridden_tools[GoogleNativeTool.URL_CONTEXT.value] is None
+    
+    def test_apply_native_tools_override_with_none_uses_provider_defaults(self, llm_client):
+        """Test applying override with None values uses provider defaults (tri-state)."""
+        # Provider config has all tools enabled
+        override = NativeToolsConfig(
+            google_search=None,  # Use provider default (enabled)
+            code_execution=None,  # Use provider default (enabled in this test config)
+            url_context=None  # Use provider default (enabled)
+        )
+        
+        overridden_tools = llm_client._apply_native_tools_override(override)
+        
+        # All should be enabled based on provider config (fixture has all enabled)
+        assert overridden_tools[GoogleNativeTool.GOOGLE_SEARCH.value] is not None
+        assert overridden_tools[GoogleNativeTool.CODE_EXECUTION.value] is not None
+        assert overridden_tools[GoogleNativeTool.URL_CONTEXT.value] is not None
+    
+    def test_apply_native_tools_override_mixed_none_and_explicit(self, llm_client):
+        """Test mixed override: some explicit, some None (use provider default)."""
+        override = NativeToolsConfig(
+            google_search=False,  # Explicitly disable
+            code_execution=None,  # Use provider default (enabled in fixture)
+            url_context=True  # Explicitly enable
+        )
+        
+        overridden_tools = llm_client._apply_native_tools_override(override)
+        
+        assert overridden_tools[GoogleNativeTool.GOOGLE_SEARCH.value] is None  # Explicitly disabled
+        assert overridden_tools[GoogleNativeTool.CODE_EXECUTION.value] is not None  # Provider default (enabled)
+        assert overridden_tools[GoogleNativeTool.URL_CONTEXT.value] is not None  # Explicitly enabled
     
     def test_apply_native_tools_override_none_enabled(self, llm_client):
         """Test applying override with no tools enabled."""

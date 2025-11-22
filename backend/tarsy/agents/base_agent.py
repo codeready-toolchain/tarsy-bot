@@ -133,13 +133,18 @@ class BaseAgent(ABC):
         """Get the maximum number of iterations allowed for this agent."""
         return self._max_iterations
 
+    @classmethod
     @abstractmethod
-    def mcp_servers(self) -> List[str]:
+    def mcp_servers(cls) -> List[str]:
         """
         Return the list of MCP server IDs this agent requires.
         
         This method must be implemented by each specialized agent to specify
         which MCP servers it needs for its operations.
+        
+        This is a class method because the server list is typically static
+        and doesn't depend on instance state. This allows safe querying
+        of required servers without instantiating the agent.
         
         Returns:
             List of MCP server IDs (e.g., ["kubernetes-server"])

@@ -221,11 +221,13 @@ class LLMClient:
         """Initialize Google/Gemini native tools based on config.
         
         Supports three native tools (GoogleNativeTool enum):
-        - GOOGLE_SEARCH: Web search capability
-        - CODE_EXECUTION: Python code execution in sandbox
-        - URL_CONTEXT: URL grounding for specific web pages
+        - GOOGLE_SEARCH: Web search capability (enabled by default)
+        - CODE_EXECUTION: Python code execution in sandbox (disabled by default)
+        - URL_CONTEXT: URL grounding for specific web pages (enabled by default)
         
-        All tools are enabled by default unless explicitly disabled in config.
+        Default behavior when not configured:
+        - google_search and url_context are enabled
+        - code_execution is disabled for security reasons
         """
         enabled_tools = []
         
@@ -269,10 +271,14 @@ class LLMClient:
         override: NativeToolsConfig
     ) -> Dict[str, Optional[google_genai_types.Tool]]:
         """
-        Apply per-session native tools override.
+        Apply per-session native tools override with tri-state semantics.
         
         Creates a temporary tools dictionary based on the override configuration.
-        This completely replaces the provider's default settings for the session.
+        
+        **Tri-state behavior per tool:**
+        - `None`: Use provider default configuration
+        - `True`: Explicitly enable (override provider default)
+        - `False`: Explicitly disable (override provider default)
         
         Args:
             override: Session-level native tools configuration
@@ -287,42 +293,60 @@ class LLMClient:
         }
         
         enabled_tools = []
+        overridden_from_default = []
         
         # Google Search tool
-        if override.google_search is True:
+        should_enable_search = override.google_search if override.google_search is not None else \
+                               self.config.get_native_tool_status(GoogleNativeTool.GOOGLE_SEARCH.value)
+        
+        if should_enable_search:
             try:
                 overridden_tools[GoogleNativeTool.GOOGLE_SEARCH.value] = google_genai_types.Tool(
                     google_search=google_genai_types.GoogleSearch()
                 )
                 enabled_tools.append(GoogleNativeTool.GOOGLE_SEARCH.value)
+                if override.google_search is None:
+                    overridden_from_default.append(GoogleNativeTool.GOOGLE_SEARCH.value)
             except Exception as e:
                 logger.warning(f"Failed to create {GoogleNativeTool.GOOGLE_SEARCH.value} tool override: {e}")
         
         # Code Execution tool
-        if override.code_execution is True:
+        should_enable_code = override.code_execution if override.code_execution is not None else \
+                             self.config.get_native_tool_status(GoogleNativeTool.CODE_EXECUTION.value)
+        
+        if should_enable_code:
             try:
                 overridden_tools[GoogleNativeTool.CODE_EXECUTION.value] = google_genai_types.Tool(
                     code_execution={}
                 )
                 enabled_tools.append(GoogleNativeTool.CODE_EXECUTION.value)
+                if override.code_execution is None:
+                    overridden_from_default.append(GoogleNativeTool.CODE_EXECUTION.value)
             except Exception as e:
                 logger.warning(f"Failed to create {GoogleNativeTool.CODE_EXECUTION.value} tool override: {e}")
         
         # URL Context tool
-        if override.url_context is True:
+        should_enable_url = override.url_context if override.url_context is not None else \
+                            self.config.get_native_tool_status(GoogleNativeTool.URL_CONTEXT.value)
+        
+        if should_enable_url:
             try:
                 overridden_tools[GoogleNativeTool.URL_CONTEXT.value] = google_genai_types.Tool(
                     url_context={}
                 )
                 enabled_tools.append(GoogleNativeTool.URL_CONTEXT.value)
+                if override.url_context is None:
+                    overridden_from_default.append(GoogleNativeTool.URL_CONTEXT.value)
             except Exception as e:
                 logger.warning(f"Failed to create {GoogleNativeTool.URL_CONTEXT.value} tool override: {e}")
         
-        logger.info(
-            f"Applied native tools override for {self.provider_name}: "
-            f"enabled={enabled_tools}, "
-            f"disabled={[k for k in overridden_tools.keys() if overridden_tools[k] is None]}"
-        )
+        log_msg = f"Applied native tools override for {self.provider_name}: enabled={enabled_tools}"
+        if overridden_from_default:
+            log_msg += f" (from provider defaults: {overridden_from_default})"
+        disabled = [k for k in overridden_tools.keys() if overridden_tools[k] is None]
+        if disabled:
+            log_msg += f", disabled={disabled}"
+        logger.info(log_msg)
         
         return overridden_tools
 

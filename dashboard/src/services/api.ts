@@ -428,9 +428,9 @@ class APIClient {
         return {
           servers: response.data.mcp_servers.map(server => ({
             name: server.server_id,  // Backend uses server_id, frontend uses name
-            tools: null  // null means all tools selected by default
+            tools: null,             // null means all tools selected by default
           })),
-          native_tools: response.data.native_tools
+          native_tools: response.data.native_tools ?? undefined,
         };
       } else {
         throw new Error('Invalid default tools response format');

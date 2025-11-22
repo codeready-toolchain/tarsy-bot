@@ -1065,6 +1065,22 @@ Available tools:
         # Should NOT have truncation message
         assert "... and" not in result
         assert "more tools" not in result
+    
+    def test_format_unknown_tool_error_empty_tools_list(self):
+        """Test that empty tools list gets explicit message instead of empty list block."""
+        error_msg = "Unknown tool 'some_tool'. Tools must be in 'server.tool' format."
+        
+        result = ReActParser.format_unknown_tool_error(error_msg, [])
+        
+        # Should have explicit message about no tools being available
+        expected = """Error: Unknown tool 'some_tool'. Tools must be in 'server.tool' format.
+
+No tools are currently available."""
+        
+        assert result == expected
+        
+        # Should NOT have "Available tools:" header followed by empty block
+        assert "Available tools:" not in result
 
 
 @pytest.mark.unit

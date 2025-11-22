@@ -27,6 +27,26 @@ class IterationController(ABC):
     without conditional logic scattered throughout the BaseAgent.
     """
     
+    def _get_native_tools_override(self, context: 'StageContext'):
+        """
+        Extract native tools override from processing context.
+        
+        Args:
+            context: StageContext containing processing alert with optional native tools config
+            
+        Returns:
+            NativeToolsConfig if specified in alert, None otherwise
+        """
+        alert = getattr(context.chain_context, "processing_alert", None)
+        if not alert:
+            return None
+        
+        mcp = getattr(alert, "mcp", None)
+        if not mcp:
+            return None
+        
+        return getattr(mcp, "native_tools", None)
+    
     @abstractmethod
     def needs_mcp_tools(self) -> bool:
         """
@@ -141,21 +161,6 @@ class ReactController(IterationController):
         # Import here to avoid circular imports during class definition
         from tarsy.utils.logger import get_module_logger
         self.logger = get_module_logger(__name__)
-    
-    def _get_native_tools_override(self, context: 'StageContext'):
-        """
-        Extract native tools override from processing context.
-        
-        Args:
-            context: StageContext containing processing alert with optional native tools config
-            
-        Returns:
-            NativeToolsConfig if specified in alert, None otherwise
-        """
-        if (context.chain_context.processing_alert.mcp and 
-            context.chain_context.processing_alert.mcp.native_tools):
-            return context.chain_context.processing_alert.mcp.native_tools
-        return None
         
     def needs_mcp_tools(self) -> bool:
         """All ReAct controllers use tools."""
@@ -256,7 +261,7 @@ class ReactController(IterationController):
                         )
                         
                         conversation_result.append_observation(f"Observation: {error_observation}")
-                        self.logger.debug(f"Unknown tool error observation added to conversation")
+                        self.logger.debug("Unknown tool error observation added to conversation")
                         
                     # 7. Handle tool action
                     elif parsed_response.has_action:

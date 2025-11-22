@@ -115,7 +115,7 @@ class TestAlertWithNativeTools:
                 ],
                 "native_tools": {
                     "google_search": True
-                    # Other tools not specified (will be None/false)
+                    # Other tools not specified (None = use provider defaults)
                 }
             }
         }

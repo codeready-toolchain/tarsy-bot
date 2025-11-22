@@ -746,6 +746,10 @@ Final Answer: [complete analysis]"""
         Returns:
             Formatted error observation string
         """
+        # Handle empty tools list with explicit message
+        if not available_tools:
+            return f"Error: {error_message}\n\nNo tools are currently available."
+        
         # Build complete list of all available tools (don't truncate - LLM needs to see everything)
         tools_list = "\n".join([
             f"  - {tool.server}.{tool.tool.name}: {tool.tool.description or 'No description'}"

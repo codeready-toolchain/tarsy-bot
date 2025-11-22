@@ -95,6 +95,17 @@ class TestLLMHistoryHook:
             await llm_hook.execute(sample_llm_interaction)
     
     @pytest.mark.asyncio
+    async def test_execute_handles_history_service_returns_false(self, llm_hook, mock_history_service, sample_llm_interaction):
+        """Test execution handles when history service returns False (warning path)."""
+        mock_history_service.store_llm_interaction.return_value = False
+        
+        # Should log warning but not raise
+        await llm_hook.execute(sample_llm_interaction)
+        
+        # Verify history service was called
+        mock_history_service.store_llm_interaction.assert_called_once()
+    
+    @pytest.mark.asyncio
     async def test_execute_applies_truncation(self, llm_hook, mock_history_service, sample_llm_interaction):
         """Test that execute applies content truncation before storing."""
         with patch('tarsy.hooks.history_hooks._apply_llm_interaction_truncation') as mock_truncate:
@@ -183,6 +194,89 @@ class TestMCPHistoryHook:
         await mcp_hook.execute(sample_mcp_interaction)
         
         mock_history_service.store_mcp_interaction.assert_called_once_with(sample_mcp_interaction)
+    
+    @pytest.mark.asyncio
+    async def test_execute_handles_history_service_returns_false(self, mcp_hook, mock_history_service, sample_mcp_interaction):
+        """Test execution handles when history service returns False (warning path)."""
+        mock_history_service.store_mcp_interaction.return_value = False
+        
+        # Should log warning but not raise
+        await mcp_hook.execute(sample_mcp_interaction)
+        
+        # Verify history service was called
+        mock_history_service.store_mcp_interaction.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_execute_handles_service_error(self, mcp_hook, mock_history_service, sample_mcp_interaction):
+        """Test execution handles history service errors."""
+        mock_history_service.store_mcp_interaction.side_effect = RuntimeError("Database error")
+        
+        # Should raise the exception
+        with pytest.raises(RuntimeError, match="Database error"):
+            await mcp_hook.execute(sample_mcp_interaction)
+
+
+@pytest.mark.unit
+class TestMCPListHistoryHook:
+    """Test typed MCP list history hook."""
+    
+    @pytest.fixture
+    def mock_history_service(self):
+        """Mock history service."""
+        service = Mock(spec=HistoryService)
+        service.store_mcp_interaction = Mock(return_value=True)
+        return service
+    
+    @pytest.fixture
+    def mcp_list_hook(self, mock_history_service):
+        """Create MCP list history hook."""
+        from tarsy.hooks.history_hooks import MCPListHistoryHook
+        return MCPListHistoryHook(mock_history_service)
+    
+    @pytest.fixture
+    def sample_mcp_list_interaction(self):
+        """Create sample MCP list interaction."""
+        return MCPInteraction(
+            session_id="test-session",
+            server_name="test-server",
+            communication_type="tool_list",
+            step_description="List available tools",
+            success=True
+        )
+    
+    def test_hook_initialization(self, mock_history_service):
+        """Test hook initializes correctly."""
+        from tarsy.hooks.history_hooks import MCPListHistoryHook
+        hook = MCPListHistoryHook(mock_history_service)
+        assert hook.name == "mcp_list_history"
+        assert hook.history_service == mock_history_service
+    
+    @pytest.mark.asyncio
+    async def test_execute_success(self, mcp_list_hook, mock_history_service, sample_mcp_list_interaction):
+        """Test successful execution logs list interaction."""
+        await mcp_list_hook.execute(sample_mcp_list_interaction)
+        
+        mock_history_service.store_mcp_interaction.assert_called_once_with(sample_mcp_list_interaction)
+    
+    @pytest.mark.asyncio
+    async def test_execute_handles_history_service_returns_false(self, mcp_list_hook, mock_history_service, sample_mcp_list_interaction):
+        """Test execution handles when history service returns False (warning path)."""
+        mock_history_service.store_mcp_interaction.return_value = False
+        
+        # Should log warning but not raise
+        await mcp_list_hook.execute(sample_mcp_list_interaction)
+        
+        # Verify history service was called
+        mock_history_service.store_mcp_interaction.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_execute_handles_service_error(self, mcp_list_hook, mock_history_service, sample_mcp_list_interaction):
+        """Test execution handles history service errors."""
+        mock_history_service.store_mcp_interaction.side_effect = RuntimeError("Database error")
+        
+        # Should raise the exception
+        with pytest.raises(RuntimeError, match="Database error"):
+            await mcp_list_hook.execute(sample_mcp_list_interaction)
 
 
 @pytest.mark.unit

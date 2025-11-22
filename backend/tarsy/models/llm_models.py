@@ -76,7 +76,8 @@ class LLMProviderConfig(BaseModel):
     )
     native_tools: Optional[Dict[str, bool]] = Field(
         default=None,
-        description="Native tool configuration for Google/Gemini models (GoogleNativeTool enum values). Default: all enabled"
+        description="Native tool configuration for Google/Gemini models (GoogleNativeTool enum values). "
+                    "Default: google_search and url_context enabled, code_execution disabled"
     )
     
     # Runtime fields (added by Settings.get_llm_config())
@@ -157,20 +158,35 @@ class LLMProviderConfig(BaseModel):
         return v
     
     def get_native_tool_status(self, tool_name: str) -> bool:
-        """Get native tool status with default=True behavior.
+        """Get native tool status with secure defaults.
         
         Args:
             tool_name: Name of the tool (use GoogleNativeTool enum values)
             
         Returns:
-            True if tool is enabled (or should be enabled by default), False if explicitly disabled
+            True if tool is enabled (or should be enabled by default), False otherwise
             
-        Default behavior:
-            - If native_tools is None (not configured) → True (all tools enabled)
-            - If native_tools exists but tool not listed → True (tool enabled by default)
+        Default behavior when native_tools is None:
+            - google_search → True (enabled by default)
+            - url_context → True (enabled by default)
+            - code_execution → False (disabled by default for security)
+            
+        Default behavior when native_tools dict exists but tool not listed:
+            - google_search → True (enabled by default)
+            - url_context → True (enabled by default)
+            - code_execution → False (disabled by default for security)
+            
+        Explicit values always override defaults:
             - If tool explicitly set to False → False (tool disabled)
             - If tool explicitly set to True → True (tool enabled)
         """
         if self.native_tools is None:
-            return True  # All tools enabled if section missing
-        return self.native_tools.get(tool_name, True)  # Default to True if tool not in dict
+            # Default: code_execution disabled, others enabled
+            if tool_name == GoogleNativeTool.CODE_EXECUTION.value:
+                return False
+            return True
+        
+        # When native_tools dict is present, use same defaults for missing keys
+        if tool_name == GoogleNativeTool.CODE_EXECUTION.value:
+            return self.native_tools.get(tool_name, False)  # Default to False for code_execution
+        return self.native_tools.get(tool_name, True)  # Default to True for other tools

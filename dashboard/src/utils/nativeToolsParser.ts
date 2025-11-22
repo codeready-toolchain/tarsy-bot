@@ -246,11 +246,13 @@ function parseCodeExecution(
   // Also check content for markdown code blocks (fallback or legacy format)
   if (content && typeof content === 'string') {
     // Extract Python code blocks
-    const pythonRegex = /```python\n([\s\S]*?)```/gi;
+    // Tolerates \r?\n (Windows/Unix line endings) and optional whitespace after language tag
+    const pythonRegex = /```python\s*\r?\n([\s\S]*?)```/gi;
     const pythonMatches = [...content.matchAll(pythonRegex)];
     
     // Extract output blocks
-    const outputRegex = /```output\n([\s\S]*?)```/gi;
+    // Tolerates \r?\n (Windows/Unix line endings) and optional whitespace after language tag
+    const outputRegex = /```output\s*\r?\n([\s\S]*?)```/gi;
     const outputMatches = [...content.matchAll(outputRegex)];
 
     // If no structured parts were found, use markdown as fallback

@@ -8,7 +8,7 @@
 import { memo, useMemo } from 'react';
 import { Box, Chip, Typography, Accordion, AccordionSummary, AccordionDetails, Stack } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import type { NativeToolsUsage } from '../types';
+import type { NativeToolsUsage, NativeToolsConfig } from '../types';
 import { parseNativeToolsUsage, extractResponseContent } from '../utils/nativeToolsParser';
 import {
   getToolDisplayName,
@@ -20,11 +20,12 @@ import {
   getToolUsageCount,
   getEnabledTools,
   getToolUsageSummary,
-  TOOL_KEYS
+  TOOL_KEYS,
+  type ToolKey
 } from '../utils/nativeToolsHelpers';
 
 interface NativeToolsDisplayProps {
-  config?: Record<string, boolean> | null;
+  config?: NativeToolsConfig | null;
   responseMetadata?: Record<string, any> | null;
   variant: 'compact' | 'detailed';
   interactionDetails?: any; // Full interaction details for content extraction
@@ -45,11 +46,6 @@ function NativeToolsDisplay({
   // Get list of enabled tools
   const enabledTools = useMemo(() => getEnabledTools(config), [config]);
 
-  // If no config and no usage, don't render anything
-  if (enabledTools.length === 0 && !toolUsage) {
-    return null;
-  }
-
   // All tools to display (enabled or used)
   const allTools = useMemo(() => {
     const tools = new Set(enabledTools);
@@ -60,6 +56,11 @@ function NativeToolsDisplay({
     }
     return Array.from(tools);
   }, [enabledTools, toolUsage]);
+
+  // If no tools to display, don't render anything
+  if (allTools.length === 0) {
+    return null;
+  }
 
   if (variant === 'compact') {
     return <CompactView tools={allTools} toolUsage={toolUsage} />;
@@ -75,7 +76,7 @@ function CompactView({
   tools, 
   toolUsage 
 }: { 
-  tools: string[]; 
+  tools: ToolKey[]; 
   toolUsage: NativeToolsUsage | null;
 }) {
   if (tools.length === 0) {
@@ -123,7 +124,7 @@ function DetailedView({
   tools,
   toolUsage
 }: {
-  tools: string[];
+  tools: ToolKey[];
   toolUsage: NativeToolsUsage | null;
 }) {
   if (tools.length === 0) {

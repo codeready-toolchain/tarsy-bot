@@ -741,3 +741,157 @@ describe('API Client Session Resume', () => {
   });
 });
 
+describe('API Client Default Tools Configuration', () => {
+  let consoleErrorSpy: any;
+  const mockClient = mockedAxios.create();
+
+  beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('should handle response with native_tools field', async () => {
+    const successResponse = {
+      data: {
+        alert_type: 'PodCrashLooping',
+        mcp_servers: [
+          { server_id: 'kubernetes', server_type: 'kubectl' },
+          { server_id: 'github', server_type: 'runbook' }
+        ],
+        native_tools: {
+          google_search: true,
+          code_execution: false,
+          url_context: true
+        }
+      },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config: {} as any,
+    };
+
+    mockClient.get.mockResolvedValueOnce(successResponse);
+
+    const result = await apiClient.getDefaultToolsConfig('PodCrashLooping');
+
+    expect(result).toEqual({
+      servers: [
+        { name: 'kubernetes', tools: null },
+        { name: 'github', tools: null }
+      ],
+      native_tools: {
+        google_search: true,
+        code_execution: false,
+        url_context: true
+      }
+    });
+    expect(mockClient.get).toHaveBeenCalledWith('/api/v1/system/default-tools?alert_type=PodCrashLooping');
+  });
+
+  it('should handle response without native_tools field (older backend)', async () => {
+    const responseWithoutNativeTools = {
+      data: {
+        alert_type: 'PodCrashLooping',
+        mcp_servers: [
+          { server_id: 'kubernetes', server_type: 'kubectl' }
+        ]
+        // native_tools field is missing
+      },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config: {} as any,
+    };
+
+    mockClient.get.mockResolvedValueOnce(responseWithoutNativeTools);
+
+    const result = await apiClient.getDefaultToolsConfig('PodCrashLooping');
+
+    expect(result).toEqual({
+      servers: [
+        { name: 'kubernetes', tools: null }
+      ],
+      native_tools: undefined // Should be undefined when field is missing
+    });
+  });
+
+  it('should handle response with null native_tools field', async () => {
+    const responseWithNullNativeTools = {
+      data: {
+        alert_type: 'PodCrashLooping',
+        mcp_servers: [
+          { server_id: 'kubernetes', server_type: 'kubectl' }
+        ],
+        native_tools: null // Explicitly null
+      },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config: {} as any,
+    };
+
+    mockClient.get.mockResolvedValueOnce(responseWithNullNativeTools);
+
+    const result = await apiClient.getDefaultToolsConfig('PodCrashLooping');
+
+    expect(result).toEqual({
+      servers: [
+        { name: 'kubernetes', tools: null }
+      ],
+      native_tools: undefined // Should convert null to undefined
+    });
+  });
+
+  it('should handle default tools without alert_type parameter', async () => {
+    const successResponse = {
+      data: {
+        alert_type: 'DefaultAlert',
+        mcp_servers: [
+          { server_id: 'kubernetes', server_type: 'kubectl' }
+        ],
+        native_tools: {
+          google_search: true,
+          code_execution: false,
+          url_context: true
+        }
+      },
+      status: 200,
+      statusText: 'OK',
+      headers: {},
+      config: {} as any,
+    };
+
+    mockClient.get.mockResolvedValueOnce(successResponse);
+
+    const result = await apiClient.getDefaultToolsConfig();
+
+    expect(result.servers).toBeDefined();
+    expect(result.native_tools).toBeDefined();
+    expect(mockClient.get).toHaveBeenCalledWith('/api/v1/system/default-tools');
+  });
+
+  it('should handle errors when fetching default tools', async () => {
+    const serverError: any = {
+      isAxiosError: true,
+      request: {},
+      response: {
+        status: 503,
+        data: { detail: 'Service not initialized' },
+      },
+      message: 'Request failed with status code 503',
+    };
+
+    mockClient.get.mockRejectedValueOnce(serverError);
+
+    await expect(apiClient.getDefaultToolsConfig('PodCrashLooping')).rejects.toThrow();
+    expect(consoleErrorSpy).toHaveBeenCalledWith(
+      'Error fetching default tools config:',
+      serverError
+    );
+  });
+});
+

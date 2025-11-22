@@ -1076,7 +1076,7 @@ BUILTIN_LLM_PROVIDERS = {
 - **Unified client interface** using LangChain abstraction layer
 - **Automatic retry logic** with exponential backoff for rate limiting
 - **Enhanced token control** with optional `max_tokens` parameter for provider-level enforcement
-- **Native tools for Gemini** including google_search, code_execution, and url_context (enabled by default, configurable via `native_tools`)
+- **Native tools for Gemini** including google_search, code_execution, and url_context (google_search and url_context enabled by default, code_execution disabled by default, all configurable via `native_tools`)
 
 **Provider Integration Pattern**:
 ```python

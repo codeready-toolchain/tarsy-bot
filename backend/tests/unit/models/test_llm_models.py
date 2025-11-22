@@ -119,21 +119,21 @@ class TestLLMProviderConfigNativeTools:
         assert "native_tools" in config_dict
         assert config_dict["native_tools"] == {GoogleNativeTool.GOOGLE_SEARCH.value: True, GoogleNativeTool.CODE_EXECUTION.value: False}
 
-    def test_get_native_tool_status_with_none_returns_true(self) -> None:
-        """Test that get_native_tool_status returns True when native_tools is None."""
+    def test_get_native_tool_status_with_none_uses_secure_defaults(self) -> None:
+        """Test that get_native_tool_status uses secure defaults when native_tools is None."""
         config = LLMProviderConfig(
             type="google",
             model="gemini-2.5-flash",
             api_key_env="GOOGLE_API_KEY"
         )
         
-        # All tools enabled by default
+        # Secure defaults: search and url_context enabled, code_execution disabled
         assert config.get_native_tool_status(GoogleNativeTool.GOOGLE_SEARCH.value) is True
-        assert config.get_native_tool_status(GoogleNativeTool.CODE_EXECUTION.value) is True
+        assert config.get_native_tool_status(GoogleNativeTool.CODE_EXECUTION.value) is False
         assert config.get_native_tool_status(GoogleNativeTool.URL_CONTEXT.value) is True
 
-    def test_get_native_tool_status_with_missing_tool_returns_true(self) -> None:
-        """Test that get_native_tool_status returns True for missing tools."""
+    def test_get_native_tool_status_with_missing_tool_uses_secure_defaults(self) -> None:
+        """Test that get_native_tool_status uses secure defaults for missing tools in dict."""
         config = LLMProviderConfig(
             type="google",
             model="gemini-2.5-flash",
@@ -143,8 +143,8 @@ class TestLLMProviderConfigNativeTools:
         
         # GOOGLE_SEARCH explicitly disabled
         assert config.get_native_tool_status(GoogleNativeTool.GOOGLE_SEARCH.value) is False
-        # Other tools default to enabled
-        assert config.get_native_tool_status(GoogleNativeTool.CODE_EXECUTION.value) is True
+        # Other tools use secure defaults: url_context enabled, code_execution disabled
+        assert config.get_native_tool_status(GoogleNativeTool.CODE_EXECUTION.value) is False
         assert config.get_native_tool_status(GoogleNativeTool.URL_CONTEXT.value) is True
 
     def test_get_native_tool_status_respects_explicit_values(self) -> None:

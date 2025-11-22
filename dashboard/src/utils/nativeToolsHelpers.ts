@@ -5,7 +5,7 @@
  * Provides formatting, icons, colors, and utility functions.
  */
 
-import type { NativeToolsUsage } from '../types';
+import type { NativeToolsUsage, NativeToolsConfig } from '../types';
 import SearchIcon from '@mui/icons-material/Search';
 import CodeIcon from '@mui/icons-material/Code';
 import LinkIcon from '@mui/icons-material/Link';
@@ -24,8 +24,8 @@ export type ToolKey = typeof TOOL_KEYS[keyof typeof TOOL_KEYS];
 /**
  * Get human-readable display name for a tool
  */
-export function getToolDisplayName(toolKey: string): string {
-  const names: Record<string, string> = {
+export function getToolDisplayName(toolKey: ToolKey): string {
+  const names: Record<ToolKey, string> = {
     [TOOL_KEYS.GOOGLE_SEARCH]: 'Google Search',
     [TOOL_KEYS.CODE_EXECUTION]: 'Code Execution',
     [TOOL_KEYS.URL_CONTEXT]: 'URL Context'
@@ -36,8 +36,8 @@ export function getToolDisplayName(toolKey: string): string {
 /**
  * Get Material-UI icon component for a tool
  */
-export function getToolIcon(toolKey: string): typeof SearchIcon | typeof CodeIcon | typeof LinkIcon {
-  const icons: Record<string, typeof SearchIcon | typeof CodeIcon | typeof LinkIcon> = {
+export function getToolIcon(toolKey: ToolKey): typeof SearchIcon | typeof CodeIcon | typeof LinkIcon {
+  const icons: Record<ToolKey, typeof SearchIcon | typeof CodeIcon | typeof LinkIcon> = {
     [TOOL_KEYS.GOOGLE_SEARCH]: SearchIcon,
     [TOOL_KEYS.CODE_EXECUTION]: CodeIcon,
     [TOOL_KEYS.URL_CONTEXT]: LinkIcon
@@ -53,11 +53,11 @@ export function getToolIcon(toolKey: string): typeof SearchIcon | typeof CodeIco
  * @returns MUI color theme key
  */
 export function getToolColor(
-  toolKey: string, 
+  toolKey: ToolKey, 
   used: boolean = false
 ): 'default' | 'primary' | 'secondary' | 'success' | 'info' | 'warning' {
   // Base colors for each tool
-  const baseColors: Record<string, 'primary' | 'secondary' | 'info'> = {
+  const baseColors: Record<ToolKey, 'primary' | 'secondary' | 'info'> = {
     [TOOL_KEYS.GOOGLE_SEARCH]: 'primary',
     [TOOL_KEYS.CODE_EXECUTION]: 'secondary',
     [TOOL_KEYS.URL_CONTEXT]: 'info'
@@ -76,12 +76,12 @@ export function getToolColor(
  * @param used - Whether the tool was actually used
  * @returns CSS color value
  */
-export function getToolBackgroundColor(toolKey: string, used: boolean = false): string {
+export function getToolBackgroundColor(toolKey: ToolKey, used: boolean = false): string {
   if (used) {
     return 'rgba(46, 125, 50, 0.12)'; // success color with transparency
   }
 
-  const colors: Record<string, string> = {
+  const colors: Record<ToolKey, string> = {
     [TOOL_KEYS.GOOGLE_SEARCH]: 'rgba(25, 118, 210, 0.08)',
     [TOOL_KEYS.CODE_EXECUTION]: 'rgba(156, 39, 176, 0.08)',
     [TOOL_KEYS.URL_CONTEXT]: 'rgba(2, 136, 209, 0.08)'
@@ -93,12 +93,12 @@ export function getToolBackgroundColor(toolKey: string, used: boolean = false): 
 /**
  * Get border color for tool badge
  */
-export function getToolBorderColor(toolKey: string, used: boolean = false): string {
+export function getToolBorderColor(toolKey: ToolKey, used: boolean = false): string {
   if (used) {
     return 'rgba(46, 125, 50, 0.5)'; // success color
   }
 
-  const colors: Record<string, string> = {
+  const colors: Record<ToolKey, string> = {
     [TOOL_KEYS.GOOGLE_SEARCH]: 'rgba(25, 118, 210, 0.3)',
     [TOOL_KEYS.CODE_EXECUTION]: 'rgba(156, 39, 176, 0.3)',
     [TOOL_KEYS.URL_CONTEXT]: 'rgba(2, 136, 209, 0.3)'
@@ -110,7 +110,7 @@ export function getToolBorderColor(toolKey: string, used: boolean = false): stri
 /**
  * Check if a specific tool was actually used (has usage data)
  */
-export function isToolUsed(usage: NativeToolsUsage | null | undefined, toolKey: string): boolean {
+export function isToolUsed(usage: NativeToolsUsage | null | undefined, toolKey: ToolKey): boolean {
   if (!usage) {
     return false;
   }
@@ -130,7 +130,7 @@ export function isToolUsed(usage: NativeToolsUsage | null | undefined, toolKey: 
 /**
  * Get usage count for a tool (for badge display)
  */
-export function getToolUsageCount(usage: NativeToolsUsage | null | undefined, toolKey: string): number | null {
+export function getToolUsageCount(usage: NativeToolsUsage | null | undefined, toolKey: ToolKey): number | null {
   if (!usage) {
     return null;
   }
@@ -151,20 +151,20 @@ export function getToolUsageCount(usage: NativeToolsUsage | null | undefined, to
 /**
  * Get list of enabled tools from config
  */
-export function getEnabledTools(config: Record<string, boolean> | null | undefined): string[] {
+export function getEnabledTools(config: NativeToolsConfig | null | undefined): ToolKey[] {
   if (!config) {
     return [];
   }
 
   return Object.entries(config)
     .filter(([_, enabled]) => enabled)
-    .map(([key, _]) => key);
+    .map(([key, _]) => key) as ToolKey[];
 }
 
 /**
  * Get usage summary text for a tool
  */
-export function getToolUsageSummary(usage: NativeToolsUsage | null | undefined, toolKey: string): string | null {
+export function getToolUsageSummary(usage: NativeToolsUsage | null | undefined, toolKey: ToolKey): string | null {
   if (!usage) {
     return null;
   }

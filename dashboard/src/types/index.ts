@@ -164,7 +164,7 @@ export interface LLMEventDetails {
   mcp_event_id?: string | null;  // For summarization - links to the tool call being summarized
   
   // Native tools fields (Google/Gemini only)
-  native_tools_config?: Record<string, boolean> | null;
+  native_tools_config?: NativeToolsConfig | null;
   response_metadata?: Record<string, any> | null;
 }
 

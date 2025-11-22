@@ -166,3 +166,4 @@ class TestMCPSelectionConfigWithNativeTools:
         # Empty native tools should not be included when exclude_none=True
         # since all fields are None
         assert "servers" in data
+        assert "native_tools" not in data

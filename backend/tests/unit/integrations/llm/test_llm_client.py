@@ -1693,12 +1693,12 @@ class TestLLMClientNativeTools:
             assert client.native_tools[GoogleNativeTool.URL_CONTEXT.value] is None
             assert client.available is True
 
-    def test_native_tools_all_enabled_by_default_when_not_configured(self) -> None:
-        """Test that all native tools are enabled by default when native_tools not specified."""
+    def test_native_tools_use_secure_defaults_when_not_configured(self) -> None:
+        """Test that native tools use secure defaults when native_tools not specified."""
         config = create_test_config(
             type="google",
             model="gemini-2.5-flash"
-            # native_tools not specified, all should be enabled by default
+            # native_tools not specified, should use secure defaults
         )
         
         with patch('tarsy.integrations.llm.client.ChatGoogleGenerativeAI') as mock_google:
@@ -1706,9 +1706,9 @@ class TestLLMClientNativeTools:
             
             client = LLMClient("google", config)
             
-            # All tools should be initialized (default = enabled)
+            # Secure defaults: google_search and url_context enabled, code_execution disabled
             assert client.native_tools['google_search'] is not None
-            assert client.native_tools['code_execution'] is not None
+            assert client.native_tools['code_execution'] is None  # Disabled by default
             assert client.native_tools['url_context'] is not None
 
     @pytest.mark.parametrize(

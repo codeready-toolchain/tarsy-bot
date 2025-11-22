@@ -609,17 +609,17 @@ class ChatService:
                 agent_config = self.agent_factory.agent_configs[agent_name]
                 server_names.update(agent_config.mcp_servers)
             else:
-                # Builtin agent - get MCP servers by instantiating the agent class
+                # Builtin agent - get MCP servers by calling the classmethod
                 try:
                     # Get the agent class from the factory's registry
                     agent_class = self.agent_factory.static_agent_classes.get(agent_name)
                     if agent_class:
-                        # Create a temporary instance to call mcp_servers()
-                        temp_agent = agent_class.__new__(agent_class)
-                        if hasattr(temp_agent, 'mcp_servers'):
-                            mcp_server_list = temp_agent.mcp_servers()
-                            server_names.update(mcp_server_list)
-                            logger.debug(f"Got MCP servers from builtin agent {agent_name}: {mcp_server_list}")
+                        # Call mcp_servers() as a classmethod (no instantiation needed)
+                        if hasattr(agent_class, 'mcp_servers'):
+                            mcp_server_list = agent_class.mcp_servers()
+                            if mcp_server_list:  # Guard against None
+                                server_names.update(mcp_server_list)
+                                logger.debug(f"Got MCP servers from builtin agent {agent_name}: {mcp_server_list}")
                 except Exception as e:
                     logger.warning(f"Failed to get MCP servers from builtin agent '{agent_name}': {e}")
         

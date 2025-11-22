@@ -184,7 +184,7 @@ The AI combines all four to make intelligent decisions about investigation appro
 - **LLM Provider Configuration**: Built-in support for multiple AI providers with optional custom configurations
   - *Built-in providers: OpenAI, Google Gemini, xAI Grok, Anthropic Claude, Google Vertex AI*
   - *Custom providers: Proxy configurations, model overrides, content truncation controls via `config/llm_providers.yaml`*
-  - *Native Tools for Gemini: Optional native tools (google_search, code_execution, url_context) via `native_tools` configuration - all enabled by default*
+  - *Native Tools for Gemini: Optional native tools (google_search, code_execution, url_context) via `native_tools` configuration - google_search and url_context enabled by default, code_execution disabled by default*
 - **Configurable Chain Definitions**: Deploy new multi-stage workflows via YAML configuration without code changes
   - *Note: Can override built-in chains via `config/agents.yaml` to customize investigation workflows*
   - *Example config/agents.yaml:*

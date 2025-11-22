@@ -117,6 +117,18 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
     }
   }, [expanded, alertType]);
   
+  // Reconcile value prop and defaultConfig to set currentConfig
+  // Priority: incoming value > defaultConfig > null
+  useEffect(() => {
+    if (value !== undefined) {
+      setCurrentConfig(value);
+    } else if (defaultConfig !== null) {
+      setCurrentConfig(defaultConfig);
+    } else {
+      setCurrentConfig(null);
+    }
+  }, [value, defaultConfig]);
+  
   // Detect changes whenever currentConfig changes
   useEffect(() => {
     const changed = !configsAreEqual(currentConfig, defaultConfig);
@@ -125,13 +137,6 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
     // Notify parent: undefined if no changes, config if changed
     onChange(changed ? currentConfig || undefined : undefined);
   }, [currentConfig, defaultConfig]);
-  
-  // Sync with external value (for form reset, etc.)
-  useEffect(() => {
-    if (value !== undefined) {
-      setCurrentConfig(value);
-    }
-  }, [value]);
   
   /**
    * Load defaults and server details for the current alert type
@@ -151,8 +156,8 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
       setDefaultConfig(defaults);
       setAvailableServers(serversResponse.servers);
       
-      // Always update current config with new defaults when alert type changes
-      setCurrentConfig(defaults);
+      // Don't call setCurrentConfig here - let the reconciliation useEffect handle it
+      // This preserves incoming value prop overrides
       
       // Reset expanded states when defaults change
       setExpandedServers(new Set());
@@ -191,6 +196,13 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
       const newExpanded = new Set(expandedServers);
       newExpanded.delete(serverId);
       setExpandedServers(newExpanded);
+      
+      // If removing the last server, reset to defaults instead of creating invalid config
+      // Backend requires min_length=1 for servers array
+      if (newServers.length === 0) {
+        setCurrentConfig(defaultConfig);
+        return;
+      }
     } else {
       // Add server with all tools
       newServers.push({

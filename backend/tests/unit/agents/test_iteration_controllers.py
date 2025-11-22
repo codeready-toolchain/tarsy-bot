@@ -922,3 +922,163 @@ Action Input: pod_name=test-pod"""
         # None should be handled gracefully
         result = controller._extract_react_final_analysis(None)
         assert result == "No analysis generated"
+
+
+@pytest.mark.unit
+class TestNativeToolsOverride:
+    """
+    Test _get_native_tools_override defensive behavior.
+    
+    Validates that the method safely handles missing processing_alert, mcp, 
+    and native_tools attributes without raising AttributeError.
+    """
+    
+    @pytest.fixture
+    def controller(self):
+        """Create controller instance for testing."""
+        return SimpleReActController(Mock(), Mock())
+    
+    def test_get_native_tools_override_with_all_fields_present(self, controller):
+        """Test extraction when all fields are present."""
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection, NativeToolsConfig
+        from tarsy.utils.timestamp import now_us
+        
+        # Create ProcessingAlert with full MCP configuration
+        native_tools = NativeToolsConfig(
+            google_search=True,
+            code_execution=False,
+            url_context=True
+        )
+        mcp_config = MCPSelectionConfig(
+            servers=[MCPServerSelection(name="test-server")],  # MCPSelectionConfig requires at least 1 server
+            native_tools=native_tools
+        )
+        processing_alert = ProcessingAlert(
+            alert_type="test",
+            severity="warning",
+            timestamp=now_us(),
+            alert_data={},
+            mcp=mcp_config
+        )
+        
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session",
+            current_stage_name="analysis"
+        )
+        
+        stage_context = StageContext(
+            chain_context=chain_context,
+            available_tools=AvailableTools(tools=[]),
+            agent=Mock()
+        )
+        
+        result = controller._get_native_tools_override(stage_context)
+        
+        assert result is not None
+        assert result.google_search is True
+        assert result.code_execution is False
+        assert result.url_context is True
+    
+    def test_get_native_tools_override_with_no_native_tools(self, controller):
+        """Test extraction when mcp exists but native_tools is None."""
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
+        from tarsy.utils.timestamp import now_us
+        
+        # Create ProcessingAlert with MCP but no native_tools
+        mcp_config = MCPSelectionConfig(
+            servers=[MCPServerSelection(name="test-server")]  # MCPSelectionConfig requires at least 1 server
+            # native_tools defaults to None
+        )
+        processing_alert = ProcessingAlert(
+            alert_type="test",
+            severity="warning",
+            timestamp=now_us(),
+            alert_data={},
+            mcp=mcp_config
+        )
+        
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session",
+            current_stage_name="analysis"
+        )
+        
+        stage_context = StageContext(
+            chain_context=chain_context,
+            available_tools=AvailableTools(tools=[]),
+            agent=Mock()
+        )
+        
+        result = controller._get_native_tools_override(stage_context)
+        
+        assert result is None
+    
+    def test_get_native_tools_override_with_no_mcp(self, controller):
+        """Test extraction when processing_alert has no mcp field."""
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        # Create ProcessingAlert without MCP configuration
+        processing_alert = ProcessingAlert(
+            alert_type="test",
+            severity="warning",
+            timestamp=now_us(),
+            alert_data={}
+            # mcp=None (default)
+        )
+        
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session",
+            current_stage_name="analysis"
+        )
+        
+        stage_context = StageContext(
+            chain_context=chain_context,
+            available_tools=AvailableTools(tools=[]),
+            agent=Mock()
+        )
+        
+        result = controller._get_native_tools_override(stage_context)
+        
+        assert result is None
+    
+    def test_get_native_tools_override_with_missing_processing_alert(self, controller):
+        """Test extraction when chain_context has no processing_alert (edge case)."""
+        # Create a minimal ChainContext-like object without processing_alert
+        # This tests the getattr defensive pattern
+        class MinimalChainContext:
+            """Minimal context for testing edge case."""
+            pass
+        
+        minimal_context = MinimalChainContext()
+        
+        stage_context = StageContext(
+            chain_context=minimal_context,  # type: ignore - intentionally invalid for testing
+            available_tools=AvailableTools(tools=[]),
+            agent=Mock()
+        )
+        
+        # Should not raise AttributeError - should return None safely
+        result = controller._get_native_tools_override(stage_context)
+        
+        assert result is None
+    
+    def test_get_native_tools_override_with_invalid_chain_context(self, controller):
+        """Test extraction when chain_context itself is None (extreme edge case)."""
+        # Create StageContext with None chain_context
+        # This tests extreme defensive programming
+        stage_context = StageContext(
+            chain_context=None,  # type: ignore - intentionally invalid for testing
+            available_tools=AvailableTools(tools=[]),
+            agent=Mock()
+        )
+        
+        # The defensive code is so good that even with None chain_context,
+        # it doesn't raise AttributeError - it returns None gracefully!
+        # getattr(None, "processing_alert", None) returns None without error
+        result = controller._get_native_tools_override(stage_context)
+        assert result is None

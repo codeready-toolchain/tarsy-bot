@@ -95,7 +95,8 @@ class ChatAgent(BaseAgent):
         """
         return "ChatAgent"
     
-    def mcp_servers(self) -> List[str]:
+    @classmethod
+    def mcp_servers(cls) -> List[str]:
         """
         Return empty list - ChatAgent uses dynamic MCP from ChainContext.mcp.
         

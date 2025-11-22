@@ -85,4 +85,91 @@ class TestMetadataPersistence:
         # Verify field is accessible and None is allowed
         assert hasattr(interaction, 'response_metadata')
         assert interaction.response_metadata is None
+    
+    def test_response_metadata_persists_to_database(self, test_database_session):
+        """Test that response_metadata survives database round-trip with full JSON content."""
+        from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
+        from tarsy.utils.timestamp import now_us
+        
+        # Create interaction with complex nested metadata
+        expected_metadata = {
+            'finish_reason': 'stop',
+            'grounding_metadata': {
+                'web_search_queries': ['kubernetes pod crash', 'memory leak detection'],
+                'grounding_chunks': [
+                    {
+                        'web': {
+                            'uri': 'https://kubernetes.io/docs/troubleshooting',
+                            'title': 'Kubernetes Troubleshooting Guide'
+                        }
+                    },
+                    {
+                        'web': {
+                            'uri': 'https://example.com/debugging',
+                            'title': 'Memory Debugging Best Practices'
+                        }
+                    }
+                ],
+                'grounding_supports': [
+                    {
+                        'segment': {
+                            'startIndex': 0,
+                            'endIndex': 50
+                        },
+                        'confidenceScores': [0.95, 0.87]
+                    }
+                ]
+            },
+            'usage_metadata': {
+                'prompt_tokens': 100,
+                'completion_tokens': 50,
+                'total_tokens': 150
+            }
+        }
+        
+        conversation = LLMConversation(
+            messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant"),
+                LLMMessage(role=MessageRole.USER, content="Help debug my pod"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Based on web search..."),
+            ]
+        )
+        
+        interaction = LLMInteraction(
+            session_id="test-persistence-session",
+            timestamp_us=now_us(),
+            model_name="gemini-2.0-flash",
+            conversation=conversation,
+            response_metadata=expected_metadata
+        )
+        
+        # Persist to database
+        test_database_session.add(interaction)
+        test_database_session.commit()
+        interaction_id = interaction.interaction_id
+        
+        # Clear session to force fresh read from database
+        test_database_session.expire_all()
+        
+        # Read back from database
+        retrieved = test_database_session.query(LLMInteraction).filter_by(interaction_id=interaction_id).first()
+        
+        assert retrieved is not None, "Failed to retrieve interaction from database"
+        assert retrieved.response_metadata is not None, "Metadata was lost during persistence"
+        
+        # Verify all nested structure survived round-trip
+        assert retrieved.response_metadata['finish_reason'] == 'stop'
+        assert 'grounding_metadata' in retrieved.response_metadata
+        
+        grounding = retrieved.response_metadata['grounding_metadata']
+        assert len(grounding['web_search_queries']) == 2
+        assert 'kubernetes pod crash' in grounding['web_search_queries']
+        assert len(grounding['grounding_chunks']) == 2
+        assert grounding['grounding_chunks'][0]['web']['uri'] == 'https://kubernetes.io/docs/troubleshooting'
+        
+        # Verify usage metadata
+        assert retrieved.response_metadata['usage_metadata']['total_tokens'] == 150
+        
+        # Verify complete equality
+        assert retrieved.response_metadata == expected_metadata
 

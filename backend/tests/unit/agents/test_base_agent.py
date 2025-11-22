@@ -24,7 +24,8 @@ from mcp.types import Tool
 class TestConcreteAgent(BaseAgent):
     """Concrete implementation of BaseAgent for testing."""
 
-    def mcp_servers(self):
+    @classmethod
+    def mcp_servers(cls):
         return ["test-server"]
 
     def custom_instructions(self):
@@ -230,7 +231,8 @@ class TestBaseAgentInstructionComposition:
         """Test instruction composition without custom instructions."""
 
         class NoCustomAgent(BaseAgent):
-            def mcp_servers(self):
+            @classmethod
+            def mcp_servers(cls):
                 return ["test-server"]
 
             def custom_instructions(self):
