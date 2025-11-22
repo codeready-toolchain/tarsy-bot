@@ -6,7 +6,7 @@
  * Only sends override config when user modifies the defaults.
  */
 
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Box,
   Accordion,
@@ -116,38 +116,10 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
   // This prevents race conditions when alertType changes while loading
   const requestedAlertTypeRef = useRef<string | undefined>(alertType);
   
-  // Load defaults and servers on first expansion or when alert type changes
-  useEffect(() => {
-    if (expanded && !loading && !error) {
-      loadDefaultsAndServers();
-    }
-  }, [expanded, alertType]);
-  
-  // Reconcile value prop and defaultConfig to set currentConfig
-  // Priority: incoming value > defaultConfig > null
-  useEffect(() => {
-    if (value !== undefined) {
-      setCurrentConfig(value);
-    } else if (defaultConfig !== null) {
-      setCurrentConfig(defaultConfig);
-    } else {
-      setCurrentConfig(null);
-    }
-  }, [value, defaultConfig]);
-  
-  // Detect changes whenever currentConfig changes
-  useEffect(() => {
-    const changed = !configsAreEqual(currentConfig, defaultConfig);
-    setHasChanges(changed);
-    
-    // Notify parent: undefined if no changes, config if changed
-    onChange(changed ? currentConfig || undefined : undefined);
-  }, [currentConfig, defaultConfig]);
-  
   /**
    * Load defaults and server details for the current alert type
    */
-  const loadDefaultsAndServers = async () => {
+  const loadDefaultsAndServers = useCallback(async () => {
     // Capture the alert type we're requesting for
     const requestAlertType = alertType;
     
@@ -193,7 +165,35 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
         setLoading(false);
       }
     }
-  };
+  }, [alertType]);
+  
+  // Load defaults and servers on first expansion or when alert type changes
+  useEffect(() => {
+    if (expanded && !loading && !error) {
+      loadDefaultsAndServers();
+    }
+  }, [expanded, alertType, loadDefaultsAndServers]);
+  
+  // Reconcile value prop and defaultConfig to set currentConfig
+  // Priority: incoming value > defaultConfig > null
+  useEffect(() => {
+    if (value !== undefined) {
+      setCurrentConfig(value);
+    } else if (defaultConfig !== null) {
+      setCurrentConfig(defaultConfig);
+    } else {
+      setCurrentConfig(null);
+    }
+  }, [value, defaultConfig]);
+  
+  // Detect changes whenever currentConfig changes
+  useEffect(() => {
+    const changed = !configsAreEqual(currentConfig, defaultConfig);
+    setHasChanges(changed);
+    
+    // Notify parent: undefined if no changes, config if changed
+    onChange(changed ? currentConfig || undefined : undefined);
+  }, [currentConfig, defaultConfig]);
   
   /**
    * Reset to defaults
