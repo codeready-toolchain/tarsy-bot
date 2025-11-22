@@ -6,7 +6,7 @@ including supported provider types and configuration structures.
 """
 
 from enum import Enum
-from typing import Optional
+from typing import Dict, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -66,9 +66,9 @@ class LLMProviderConfig(BaseModel):
         gt=0,
         description="Maximum tokens for tool results truncation"
     )
-    enable_native_search: bool = Field(
-        default=False,
-        description="Enable native search grounding (currently Google-only: enables Google Search for Gemini models)"
+    native_tools: Optional[Dict[str, bool]] = Field(
+        default=None,
+        description="Native tool configuration for Google/Gemini models (google_search, code_execution, url_context). Default: all enabled"
     )
     
     # Runtime fields (added by Settings.get_llm_config())
@@ -113,3 +113,55 @@ class LLMProviderConfig(BaseModel):
         if not v.isupper():
             raise ValueError("API key environment variable should be uppercase")
         return v.strip()
+    
+    @field_validator("native_tools", mode="before")
+    @classmethod
+    def validate_native_tools(cls, v: Optional[Dict[str, bool]]) -> Optional[Dict[str, bool]]:
+        """Validate native_tools configuration.
+        
+        Validates that tool names are recognized and values are boolean.
+        Supported tools: google_search, code_execution, url_context
+        """
+        if v is None:
+            return None
+        
+        if not isinstance(v, dict):
+            raise ValueError(f"native_tools must be a dictionary, got: {type(v).__name__}")
+        
+        supported_tools = {"google_search", "code_execution", "url_context"}
+        
+        # Validate all provided tools are recognized
+        for tool_name in v.keys():
+            if tool_name not in supported_tools:
+                raise ValueError(
+                    f"Unsupported native tool: {tool_name}. "
+                    f"Must be one of: {', '.join(sorted(supported_tools))}"
+                )
+        
+        # Validate all values are boolean (strict check before Pydantic coercion)
+        for tool_name, enabled in v.items():
+            if not isinstance(enabled, bool):
+                raise ValueError(
+                    f"Native tool '{tool_name}' value must be boolean, got: {type(enabled).__name__}"
+                )
+        
+        return v
+    
+    def get_native_tool_status(self, tool_name: str) -> bool:
+        """Get native tool status with default=True behavior.
+        
+        Args:
+            tool_name: Name of the tool (google_search, code_execution, url_context)
+            
+        Returns:
+            True if tool is enabled (or should be enabled by default), False if explicitly disabled
+            
+        Default behavior:
+            - If native_tools is None (not configured) → True (all tools enabled)
+            - If native_tools exists but tool not listed → True (tool enabled by default)
+            - If tool explicitly set to False → False (tool disabled)
+            - If tool explicitly set to True → True (tool enabled)
+        """
+        if self.native_tools is None:
+            return True  # All tools enabled if section missing
+        return self.native_tools.get(tool_name, True)  # Default to True if tool not in dict

@@ -231,7 +231,7 @@ chains:
 - **Optional YAML overrides** for custom models, proxy configurations, temperature settings
 - **Multi-provider support** with OpenAI, Google Gemini, xAI Grok, Anthropic Claude, Google Vertex AI
 - **Content truncation controls** with provider-specific `max_tool_result_tokens` limits to prevent context overflow
-- **Google Search grounding** optional native search capability for Gemini models via `enable_native_search` flag
+- **Native tools for Gemini** optional native tools (google_search, code_execution, url_context) via `native_tools` configuration
 
 **Built-in Default Providers**:
 ```python
@@ -279,12 +279,15 @@ llm_providers:
     temperature: 0.0
     max_tool_result_tokens: 150000  # Custom limit for proxy
     
-  # Google provider with search grounding
-  gemini-with-search:
+  # Google provider with native tools
+  gemini-with-tools:
     type: google
     model: gemini-2.5-flash
     api_key_env: GOOGLE_API_KEY
-    enable_native_search: true  # Enable Google Search grounding
+    native_tools:  # Native tools for Gemini (all enabled by default if not specified)
+      google_search: true      # Google Search grounding
+      code_execution: true     # Python code execution sandbox
+      url_context: true        # URL grounding for specific pages
     max_tool_result_tokens: 950000
 ```
 
@@ -1003,7 +1006,7 @@ BUILTIN_LLM_PROVIDERS = {
 - **Unified client interface** using LangChain abstraction layer
 - **Automatic retry logic** with exponential backoff for rate limiting
 - **Enhanced token control** with optional `max_tokens` parameter for provider-level enforcement
-- **Google Search grounding** for Gemini models when `enable_native_search` is enabled (allows LLMs to ground responses with real-time web information)
+- **Native tools for Gemini** including google_search, code_execution, and url_context (enabled by default, configurable via `native_tools`)
 
 **Provider Integration Pattern**:
 ```python
@@ -1056,12 +1059,15 @@ llm_providers:
     temperature: 0.1
     max_tool_result_tokens: 150000  # Custom limit for proxy
     
-  # Google provider with search grounding
-  gemini-with-search:
+  # Google provider with native tools
+  gemini-with-tools:
     type: google
     model: gemini-2.5-flash
     api_key_env: GOOGLE_API_KEY
-    enable_native_search: true  # Enable Google Search for real-time information
+    native_tools:  # Native tools for Gemini (all enabled by default if not specified)
+      google_search: true      # Google Search for real-time information
+      code_execution: true     # Python code execution sandbox
+      url_context: true        # URL grounding for specific pages
     max_tool_result_tokens: 950000
 ```
 

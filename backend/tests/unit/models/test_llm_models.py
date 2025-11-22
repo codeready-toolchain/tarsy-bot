@@ -31,32 +31,40 @@ class TestLLMProviderType:
 
 
 @pytest.mark.unit
-class TestLLMProviderConfigNativeSearch:
-    """Test cases for native search configuration in LLMProviderConfig."""
+class TestLLMProviderConfigNativeTools:
+    """Test cases for native tools configuration in LLMProviderConfig."""
 
-    def test_enable_native_search_defaults_to_false(self) -> None:
-        """Test that enable_native_search defaults to False."""
+    def test_native_tools_defaults_to_none(self) -> None:
+        """Test that native_tools defaults to None."""
         config = LLMProviderConfig(
             type="google",
             model="gemini-2.5-flash",
             api_key_env="GOOGLE_API_KEY"
         )
         
-        assert config.enable_native_search is False
+        assert config.native_tools is None
 
-    def test_enable_native_search_can_be_enabled(self) -> None:
-        """Test that enable_native_search can be explicitly set to True."""
+    def test_native_tools_can_be_configured(self) -> None:
+        """Test that native_tools can be explicitly set."""
         config = LLMProviderConfig(
             type="google",
             model="gemini-2.5-flash",
             api_key_env="GOOGLE_API_KEY",
-            enable_native_search=True
+            native_tools={
+                "google_search": True,
+                "code_execution": True,
+                "url_context": False
+            }
         )
         
-        assert config.enable_native_search is True
+        assert config.native_tools == {
+            "google_search": True,
+            "code_execution": True,
+            "url_context": False
+        }
 
-    def test_enable_native_search_with_non_google_provider(self) -> None:
-        """Test that enable_native_search can be set for non-Google providers.
+    def test_native_tools_with_non_google_provider(self) -> None:
+        """Test that native_tools can be set for non-Google providers.
         
         Note: The configuration allows setting this field for any provider,
         but the LLM client only uses it for Google providers.
@@ -65,41 +73,96 @@ class TestLLMProviderConfigNativeSearch:
             type="openai",
             model="gpt-4",
             api_key_env="OPENAI_API_KEY",
-            enable_native_search=True
+            native_tools={"google_search": True}
         )
         
         # Configuration should accept it
-        assert config.enable_native_search is True
+        assert config.native_tools == {"google_search": True}
 
-    @pytest.mark.parametrize(
-        "enable_value",
-        [True, False],
-    )
-    def test_enable_native_search_accepts_boolean_values(
-        self, enable_value: bool
-    ) -> None:
-        """Test that enable_native_search accepts both True and False."""
-        config = LLMProviderConfig(
-            type="google",
-            model="gemini-2.5-flash",
-            api_key_env="GOOGLE_API_KEY",
-            enable_native_search=enable_value
-        )
+    def test_native_tools_rejects_invalid_tool_names(self) -> None:
+        """Test that invalid tool names are rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            LLMProviderConfig(
+                type="google",
+                model="gemini-2.5-flash",
+                api_key_env="GOOGLE_API_KEY",
+                native_tools={"invalid_tool": True}
+            )
         
-        assert config.enable_native_search == enable_value
+        errors = exc_info.value.errors()
+        assert len(errors) >= 1
+        assert "invalid_tool" in str(errors[0]["ctx"]["error"])
 
-    def test_config_serialization_includes_enable_native_search(self) -> None:
-        """Test that enable_native_search is included in serialization."""
+    def test_native_tools_rejects_non_boolean_values(self) -> None:
+        """Test that non-boolean values are rejected."""
+        with pytest.raises(ValidationError) as exc_info:
+            LLMProviderConfig(
+                type="google",
+                model="gemini-2.5-flash",
+                api_key_env="GOOGLE_API_KEY",
+                native_tools={"google_search": "yes"}  # type: ignore
+            )
+        
+        errors = exc_info.value.errors()
+        assert len(errors) >= 1
+
+    def test_config_serialization_includes_native_tools(self) -> None:
+        """Test that native_tools is included in serialization."""
         config = LLMProviderConfig(
             type="google",
             model="gemini-2.5-flash",
             api_key_env="GOOGLE_API_KEY",
-            enable_native_search=True
+            native_tools={"google_search": True, "code_execution": False}
         )
         
         config_dict = config.model_dump()
-        assert "enable_native_search" in config_dict
-        assert config_dict["enable_native_search"] is True
+        assert "native_tools" in config_dict
+        assert config_dict["native_tools"] == {"google_search": True, "code_execution": False}
+
+    def test_get_native_tool_status_with_none_returns_true(self) -> None:
+        """Test that get_native_tool_status returns True when native_tools is None."""
+        config = LLMProviderConfig(
+            type="google",
+            model="gemini-2.5-flash",
+            api_key_env="GOOGLE_API_KEY"
+        )
+        
+        # All tools enabled by default
+        assert config.get_native_tool_status("google_search") is True
+        assert config.get_native_tool_status("code_execution") is True
+        assert config.get_native_tool_status("url_context") is True
+
+    def test_get_native_tool_status_with_missing_tool_returns_true(self) -> None:
+        """Test that get_native_tool_status returns True for missing tools."""
+        config = LLMProviderConfig(
+            type="google",
+            model="gemini-2.5-flash",
+            api_key_env="GOOGLE_API_KEY",
+            native_tools={"google_search": False}
+        )
+        
+        # google_search explicitly disabled
+        assert config.get_native_tool_status("google_search") is False
+        # Other tools default to enabled
+        assert config.get_native_tool_status("code_execution") is True
+        assert config.get_native_tool_status("url_context") is True
+
+    def test_get_native_tool_status_respects_explicit_values(self) -> None:
+        """Test that get_native_tool_status respects explicit True/False values."""
+        config = LLMProviderConfig(
+            type="google",
+            model="gemini-2.5-flash",
+            api_key_env="GOOGLE_API_KEY",
+            native_tools={
+                "google_search": True,
+                "code_execution": False,
+                "url_context": True
+            }
+        )
+        
+        assert config.get_native_tool_status("google_search") is True
+        assert config.get_native_tool_status("code_execution") is False
+        assert config.get_native_tool_status("url_context") is True
 
 
 @pytest.mark.unit
@@ -177,7 +240,11 @@ class TestLLMProviderConfigValidation:
             temperature=0.7,
             verify_ssl=True,
             max_tool_result_tokens=500000,
-            enable_native_search=True,
+            native_tools={
+                "google_search": True,
+                "code_execution": True,
+                "url_context": False
+            },
             api_key="test-key-value",
             disable_ssl_verification=False
         )
@@ -189,7 +256,11 @@ class TestLLMProviderConfigValidation:
         assert config.temperature == 0.7
         assert config.verify_ssl is True
         assert config.max_tool_result_tokens == 500000
-        assert config.enable_native_search is True
+        assert config.native_tools == {
+            "google_search": True,
+            "code_execution": True,
+            "url_context": False
+        }
         assert config.api_key == "test-key-value"
         assert config.disable_ssl_verification is False
 

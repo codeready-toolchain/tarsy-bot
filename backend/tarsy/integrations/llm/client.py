@@ -163,7 +163,12 @@ class LLMClient:
         self.settings = settings  # Store settings for feature flag access
         self.available: bool = False
         self._sqlite_warning_logged: bool = False
-        self.google_search_tool: Optional[google_genai_types.Tool] = None  # Store Google Search tool for Gemini models
+        # Store native tools for Google/Gemini models (google_search, code_execution, url_context)
+        self.native_tools: Dict[str, Optional[google_genai_types.Tool]] = {
+            'google_search': None,
+            'code_execution': None,
+            'url_context': None
+        }
         self._initialize_client()
     
     def _initialize_client(self):
@@ -191,20 +196,10 @@ class LLMClient:
                     base_url
                 )
                 
-                # Initialize Google Search tool for Google/Gemini models (if enabled)
+                # Initialize native tools for Google/Gemini models
                 # Uses Google AI SDK types (google.genai.types) for tool definition format
-                if (
-                    provider_type == LLMProviderType.GOOGLE
-                    and self.config.enable_native_search
-                ):
-                    try:
-                        self.google_search_tool = google_genai_types.Tool(
-                            google_search=google_genai_types.GoogleSearch()
-                        )
-                        logger.info(f"Successfully initialized Google Search tool for {self.provider_name}")
-                    except Exception as e:
-                        logger.warning(f"Failed to initialize Google Search tool for {self.provider_name}: {e}")
-                        # Don't fail client initialization if tool creation fails
+                if provider_type == LLMProviderType.GOOGLE:
+                    self._initialize_native_tools()
                 
                 self.available = True
                 logger.info(f"Successfully initialized {self.provider_name} with LangChain")
@@ -214,6 +209,53 @@ class LLMClient:
         except Exception as e:
             logger.error(f"Failed to initialize {self.provider_name}: {str(e)}")
             self.available = False
+
+    def _initialize_native_tools(self):
+        """Initialize Google/Gemini native tools based on config.
+        
+        Supports three native tools:
+        - google_search: Web search capability
+        - code_execution: Python code execution in sandbox
+        - url_context: URL grounding for specific web pages
+        
+        All tools are enabled by default unless explicitly disabled in config.
+        """
+        enabled_tools = []
+        
+        try:
+            # Google Search tool
+            if self.config.get_native_tool_status('google_search'):
+                self.native_tools['google_search'] = google_genai_types.Tool(
+                    google_search=google_genai_types.GoogleSearch()
+                )
+                enabled_tools.append('google_search')
+        except Exception as e:
+            logger.warning(f"Failed to initialize google_search tool for {self.provider_name}: {e}")
+        
+        try:
+            # Code Execution tool
+            if self.config.get_native_tool_status('code_execution'):
+                self.native_tools['code_execution'] = google_genai_types.Tool(
+                    code_execution={}
+                )
+                enabled_tools.append('code_execution')
+        except Exception as e:
+            logger.warning(f"Failed to initialize code_execution tool for {self.provider_name}: {e}")
+        
+        try:
+            # URL Context tool
+            if self.config.get_native_tool_status('url_context'):
+                self.native_tools['url_context'] = google_genai_types.Tool(
+                    url_context={}
+                )
+                enabled_tools.append('url_context')
+        except Exception as e:
+            logger.warning(f"Failed to initialize url_context tool for {self.provider_name}: {e}")
+        
+        if enabled_tools:
+            logger.info(f"Successfully initialized native tools for {self.provider_name}: {enabled_tools}")
+        else:
+            logger.info(f"No native tools enabled for {self.provider_name}")
 
     def _convert_conversation_to_langchain(self, conversation: LLMConversation) -> List:
         """Convert typed conversation to LangChain message objects."""
@@ -313,21 +355,23 @@ class LLMClient:
                     if max_tokens is not None:
                         config["max_tokens"] = max_tokens
                     
-                    # HYBRID APPROACH: Bind tools to model using Google AI SDK types
+                    # HYBRID APPROACH: Bind native tools to model using Google AI SDK types
                     # Tools are converted to dicts and bound to the model, not passed to astream()
+                    # Supports multiple tools: google_search, code_execution, url_context
                     llm_with_tools = self.llm_client
-                    if (
-                        self.google_search_tool is not None
-                        and self.config.type == LLMProviderType.GOOGLE
-                    ):
-                        try:
-                            # Convert Google AI SDK tool to dict and bind to model
-                            tools_as_dicts = [self.google_search_tool.model_dump(exclude_none=True)]
-                            llm_with_tools = self.llm_client.bind(tools=tools_as_dicts)
-                            logger.info(f"Bound Google Search tool to {self.provider_name} model")
-                        except Exception as e:
-                            logger.error(f"Failed to bind Google Search tool: {e}, continuing without tools")
-                            llm_with_tools = self.llm_client
+                    if self.config.type == LLMProviderType.GOOGLE:
+                        # Collect all enabled native tools
+                        active_tools = [tool for tool in self.native_tools.values() if tool is not None]
+                        if active_tools:
+                            try:
+                                # Convert all Google AI SDK tools to dicts and bind to model
+                                tools_as_dicts = [t.model_dump(exclude_none=True) for t in active_tools]
+                                llm_with_tools = self.llm_client.bind(tools=tools_as_dicts)
+                                tool_names = [k for k, v in self.native_tools.items() if v is not None]
+                                logger.info(f"Bound native tools to {self.provider_name} model: {tool_names}")
+                            except Exception as e:
+                                logger.error(f"Failed to bind native tools: {e}, continuing without tools")
+                                llm_with_tools = self.llm_client
                     
                     # Aggregate chunks for usage metadata (OpenAI stream_usage=True approach)
                     aggregate_chunk = None

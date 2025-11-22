@@ -45,17 +45,18 @@ def aggregate_chunks(chunks: List[Any]) -> Optional[Any]:
         return None
 
 
-def extract_tool_usage_summary(metadata: dict) -> Optional[Dict[str, Any]]:
+def extract_tool_usage_summary(metadata: dict, content: str = "") -> Optional[Dict[str, Any]]:
     """
-    Extract structured tool usage information from response metadata.
+    Extract structured tool usage information from response metadata and content.
     
     Extracts:
-    - Google Search: web_search_queries, search_entry_point
-    - URL Context: grounding_chunks with web URIs
-    - Code Execution: detected in content, not in metadata
+    - Google Search: web_search_queries, search_entry_point (from metadata)
+    - URL Context: grounding_chunks with web URIs (from metadata)
+    - Code Execution: Python code blocks and output blocks (from content)
     
     Args:
         metadata: Response metadata from aggregated message
+        content: Response content for code execution detection
         
     Returns:
         Structured tool usage summary, or None if no tools used
@@ -70,38 +71,51 @@ def extract_tool_usage_summary(metadata: dict) -> Optional[Dict[str, Any]]:
         >>> print(summary['google_search']['query_count'])
         1
     """
-    if not metadata:
+    if not metadata and not content:
         return None
     
     tool_usage = {}
     
     # Check for grounding metadata (Google Search or URL Context)
-    grounding = metadata.get('grounding_metadata', {})
-    
-    if grounding:
-        # Google Search detection
-        search_queries = grounding.get('web_search_queries', [])
-        if search_queries:
-            tool_usage['google_search'] = {
-                'queries': search_queries,
-                'query_count': len(search_queries)
-            }
+    if metadata:
+        grounding = metadata.get('grounding_metadata', {})
         
-        # URL Context detection (grounding chunks without search queries)
-        chunks = grounding.get('grounding_chunks', [])
-        if chunks and not search_queries:
-            urls = []
-            for chunk in chunks:
-                if 'web' in chunk and 'uri' in chunk['web']:
-                    urls.append({
-                        'uri': chunk['web']['uri'],
-                        'title': chunk['web'].get('title', '')
-                    })
-            if urls:
-                tool_usage['url_context'] = {
-                    'urls': urls,
-                    'url_count': len(urls)
+        if grounding:
+            # Google Search detection
+            search_queries = grounding.get('web_search_queries', [])
+            if search_queries:
+                tool_usage['google_search'] = {
+                    'queries': search_queries,
+                    'query_count': len(search_queries)
                 }
+            
+            # URL Context detection (grounding chunks without search queries)
+            chunks = grounding.get('grounding_chunks', [])
+            if chunks and not search_queries:
+                urls = []
+                for chunk in chunks:
+                    if 'web' in chunk and 'uri' in chunk['web']:
+                        urls.append({
+                            'uri': chunk['web']['uri'],
+                            'title': chunk['web'].get('title', '')
+                        })
+                if urls:
+                    tool_usage['url_context'] = {
+                        'urls': urls,
+                        'url_count': len(urls)
+                    }
+    
+    # Code Execution detection (appears in content, not metadata)
+    if content:
+        code_blocks = content.count("```python")
+        output_blocks = content.count("```output")
+        
+        if code_blocks > 0 or output_blocks > 0:
+            tool_usage['code_execution'] = {
+                'code_blocks': code_blocks,
+                'output_blocks': output_blocks,
+                'detected': True
+            }
     
     return tool_usage if tool_usage else None
 
