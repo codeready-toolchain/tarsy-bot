@@ -157,6 +157,32 @@ class ChatUserMessageData(BaseModel):
 
 
 # =============================================================================
+# CONVERSATION HISTORY MODELS (for final-analysis endpoint)
+# =============================================================================
+
+class ConversationMessage(BaseModel):
+    """Simple message in flat conversation history."""
+    role: str = Field(description="Message role: system, user, or assistant")
+    content: str = Field(description="Message content")
+
+
+class LLMConversationHistory(BaseModel):
+    """
+    LLM conversation with metadata for evaluation/analysis purposes.
+    
+    Contains the flat message history from an LLM interaction along with
+    metadata about the model, timing, and token usage.
+    """
+    model_name: str = Field(description="LLM model identifier used for this conversation")
+    provider: Optional[str] = Field(default=None, description="LLM provider (openai, google, etc.)")
+    timestamp_us: int = Field(description="When this interaction occurred (microseconds since epoch UTC)")
+    input_tokens: Optional[int] = Field(default=None, description="Input/prompt tokens used")
+    output_tokens: Optional[int] = Field(default=None, description="Output/completion tokens used")
+    total_tokens: Optional[int] = Field(default=None, description="Total tokens used")
+    messages: List[ConversationMessage] = Field(description="Flat list of conversation messages in order")
+
+
+# =============================================================================
 # MAIN RESPONSE MODELS
 # =============================================================================
 
@@ -383,7 +409,21 @@ class PaginatedSessions(BaseModel):
 
 
 class FinalAnalysisResponse(BaseModel):
-    """Response for session final analysis endpoint."""
+    """
+    Response for session final analysis endpoint.
+    
+    Optionally includes LLM conversation history for analysis/evaluation purposes.
+    The conversation contains the flat message history (system, user, assistant messages)
+    along with metadata like model name and token usage.
+    """
     final_analysis: Optional[str] = Field(description="Final analysis content (markdown formatted), null if not available")
     session_id: str = Field(description="Session identifier")
     status: AlertSessionStatus = Field(description="Current session status")
+    llm_conversation: Optional[LLMConversationHistory] = Field(
+        default=None,
+        description="LLM conversation history from the final analysis stage (optional, requested via query param)"
+    )
+    chat_conversation: Optional[LLMConversationHistory] = Field(
+        default=None,
+        description="LLM conversation history from the last chat exchange, if chat exists (optional, requested via query param)"
+    )

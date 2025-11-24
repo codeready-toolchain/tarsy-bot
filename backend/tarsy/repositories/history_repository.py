@@ -1230,3 +1230,80 @@ class HistoryRepository:
         except Exception as e:
             logger.error(f"Failed to find orphaned chats: {str(e)}")
             raise
+    
+    # ===== CONVERSATION HISTORY OPERATIONS =====
+    
+    def get_last_llm_interaction_with_conversation(
+        self,
+        session_id: str,
+        prefer_final_analysis: bool = True,
+        chat_id: Optional[str] = None
+    ) -> Optional[LLMInteraction]:
+        """
+        Get the last LLM interaction with conversation data for a session or chat.
+        
+        Strategy:
+        1. If prefer_final_analysis=True, try to get the last 'final_analysis' type interaction
+        2. Fall back to the last LLM interaction by timestamp if no final_analysis found
+        
+        Args:
+            session_id: Session identifier
+            prefer_final_analysis: If True, prefer final_analysis type interactions
+            chat_id: If provided, only get interactions from chat stages (for chat conversation)
+            
+        Returns:
+            LLMInteraction with conversation data, or None if not found
+        """
+        from tarsy.models.constants import LLMInteractionType
+        
+        try:
+            # Build base conditions
+            base_conditions = [LLMInteraction.session_id == session_id]
+            
+            # If chat_id is provided, filter to only chat stage interactions
+            if chat_id:
+                # Get stage execution IDs for this chat
+                chat_stage_ids = select(StageExecution.execution_id).where(
+                    StageExecution.chat_id == chat_id
+                )
+                base_conditions.append(LLMInteraction.stage_execution_id.in_(chat_stage_ids))
+            else:
+                # For main session conversation, exclude chat stages
+                # Get chat for this session (if exists)
+                chat = self.get_chat_by_session(session_id)
+                if chat:
+                    # Exclude chat stage interactions
+                    chat_stage_ids = select(StageExecution.execution_id).where(
+                        StageExecution.chat_id == chat.chat_id
+                    )
+                    base_conditions.append(
+                        LLMInteraction.stage_execution_id.notin_(chat_stage_ids)
+                    )
+            
+            if prefer_final_analysis:
+                # Try to get the last final_analysis type interaction first
+                statement = select(LLMInteraction).where(
+                    and_(
+                        *base_conditions,
+                        LLMInteraction.interaction_type == LLMInteractionType.FINAL_ANALYSIS.value,
+                        LLMInteraction.conversation.isnot(None)
+                    )
+                ).order_by(desc(LLMInteraction.timestamp_us)).limit(1)
+                
+                result = self.session.exec(statement).first()
+                if result:
+                    return result
+            
+            # Fall back to the last LLM interaction by timestamp
+            statement = select(LLMInteraction).where(
+                and_(
+                    *base_conditions,
+                    LLMInteraction.conversation.isnot(None)
+                )
+            ).order_by(desc(LLMInteraction.timestamp_us)).limit(1)
+            
+            return self.session.exec(statement).first()
+            
+        except Exception as e:
+            logger.error(f"Failed to get last LLM interaction for session {session_id}: {str(e)}")
+            return None

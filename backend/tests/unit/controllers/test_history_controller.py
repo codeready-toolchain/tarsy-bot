@@ -1190,6 +1190,278 @@ class TestHistoryControllerEndpoints:
             mock_history_service.reset_mock()
     
     @pytest.mark.unit
+    def test_get_final_analysis_with_conversation(self, app, client, mock_history_service):
+        """Test final analysis retrieval with conversation history."""
+        from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.db_models import AlertSession
+        from tarsy.models.history_models import LLMConversationHistory, ConversationMessage
+        
+        session_id = "test-session-with-conv"
+        
+        # Create mock session
+        mock_session = AlertSession(
+            session_id=session_id,
+            alert_type="TestAlert",
+            agent_type="TestAgent",
+            status=AlertSessionStatus.COMPLETED.value,
+            started_at_us=now_us() - 300000000,
+            completed_at_us=now_us(),
+            alert_data={},
+            chain_id="test-chain",
+            final_analysis="# Analysis\n\nIssue resolved."
+        )
+        
+        # Create mock conversation history
+        mock_conversation = LLMConversationHistory(
+            model_name="gemini-2.0-flash",
+            provider="google",
+            timestamp_us=now_us(),
+            input_tokens=200,
+            output_tokens=100,
+            total_tokens=300,
+            messages=[
+                ConversationMessage(role="system", content="You are an SRE assistant"),
+                ConversationMessage(role="user", content="Analyze the issue"),
+                ConversationMessage(role="assistant", content="The issue is resolved")
+            ]
+        )
+        
+        mock_history_service.get_session.return_value = mock_session
+        mock_history_service.get_session_conversation_history.return_value = (mock_conversation, None)
+        
+        # Override FastAPI dependency
+        app.dependency_overrides[get_history_service] = lambda: mock_history_service
+        
+        response = client.get(
+            f"/api/v1/history/sessions/{session_id}/final-analysis",
+            params={"include_conversation": True}
+        )
+        
+        # Clean up
+        app.dependency_overrides.clear()
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify basic fields
+        assert data["session_id"] == session_id
+        assert data["status"] == "completed"
+        assert data["final_analysis"] == "# Analysis\n\nIssue resolved."
+        
+        # Verify conversation is included
+        assert "llm_conversation" in data
+        assert data["llm_conversation"] is not None
+        assert data["llm_conversation"]["model_name"] == "gemini-2.0-flash"
+        assert data["llm_conversation"]["provider"] == "google"
+        assert data["llm_conversation"]["input_tokens"] == 200
+        assert data["llm_conversation"]["output_tokens"] == 100
+        assert len(data["llm_conversation"]["messages"]) == 3
+        
+        # Verify chat_conversation is null (not requested)
+        assert data["chat_conversation"] is None
+        
+        # Verify service was called with correct params
+        mock_history_service.get_session_conversation_history.assert_called_once_with(
+            session_id=session_id,
+            include_chat=False
+        )
+    
+    @pytest.mark.unit
+    def test_get_final_analysis_with_chat_conversation(self, app, client, mock_history_service):
+        """Test final analysis retrieval with both session and chat conversation."""
+        from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.db_models import AlertSession
+        from tarsy.models.history_models import LLMConversationHistory, ConversationMessage
+        
+        session_id = "test-session-with-chat"
+        
+        # Create mock session
+        mock_session = AlertSession(
+            session_id=session_id,
+            alert_type="TestAlert",
+            agent_type="TestAgent",
+            status=AlertSessionStatus.COMPLETED.value,
+            started_at_us=now_us() - 300000000,
+            completed_at_us=now_us(),
+            alert_data={},
+            chain_id="test-chain",
+            final_analysis="Analysis complete"
+        )
+        
+        # Create mock session conversation
+        session_conversation = LLMConversationHistory(
+            model_name="gemini-2.0-flash",
+            provider="google",
+            timestamp_us=now_us() - 100000000,
+            input_tokens=200,
+            output_tokens=100,
+            total_tokens=300,
+            messages=[
+                ConversationMessage(role="system", content="System"),
+                ConversationMessage(role="user", content="User"),
+                ConversationMessage(role="assistant", content="Assistant")
+            ]
+        )
+        
+        # Create mock chat conversation
+        chat_conversation = LLMConversationHistory(
+            model_name="gemini-2.0-flash",
+            provider="google",
+            timestamp_us=now_us(),
+            input_tokens=150,
+            output_tokens=80,
+            total_tokens=230,
+            messages=[
+                ConversationMessage(role="system", content="Chat system"),
+                ConversationMessage(role="user", content="Follow-up question"),
+                ConversationMessage(role="assistant", content="Chat response")
+            ]
+        )
+        
+        mock_history_service.get_session.return_value = mock_session
+        mock_history_service.get_session_conversation_history.return_value = (session_conversation, chat_conversation)
+        
+        # Override FastAPI dependency
+        app.dependency_overrides[get_history_service] = lambda: mock_history_service
+        
+        response = client.get(
+            f"/api/v1/history/sessions/{session_id}/final-analysis",
+            params={"include_conversation": True, "include_chat_conversation": True}
+        )
+        
+        # Clean up
+        app.dependency_overrides.clear()
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify session conversation
+        assert data["llm_conversation"] is not None
+        assert len(data["llm_conversation"]["messages"]) == 3
+        assert data["llm_conversation"]["input_tokens"] == 200
+        
+        # Verify chat conversation
+        assert data["chat_conversation"] is not None
+        assert len(data["chat_conversation"]["messages"]) == 3
+        assert data["chat_conversation"]["input_tokens"] == 150
+        
+        # Verify service was called with include_chat=True
+        mock_history_service.get_session_conversation_history.assert_called_once_with(
+            session_id=session_id,
+            include_chat=True
+        )
+    
+    @pytest.mark.unit
+    def test_get_final_analysis_without_conversation(self, app, client, mock_history_service):
+        """Test final analysis retrieval without conversation (default behavior)."""
+        from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.db_models import AlertSession
+        
+        session_id = "test-session-no-conv"
+        
+        mock_session = AlertSession(
+            session_id=session_id,
+            alert_type="TestAlert",
+            agent_type="TestAgent",
+            status=AlertSessionStatus.COMPLETED.value,
+            started_at_us=now_us() - 300000000,
+            completed_at_us=now_us(),
+            alert_data={},
+            chain_id="test-chain",
+            final_analysis="Simple analysis"
+        )
+        
+        mock_history_service.get_session.return_value = mock_session
+        
+        # Override FastAPI dependency
+        app.dependency_overrides[get_history_service] = lambda: mock_history_service
+        
+        response = client.get(f"/api/v1/history/sessions/{session_id}/final-analysis")
+        
+        # Clean up
+        app.dependency_overrides.clear()
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Verify basic fields
+        assert data["session_id"] == session_id
+        assert data["final_analysis"] == "Simple analysis"
+        
+        # Verify conversations are null (not requested)
+        assert data["llm_conversation"] is None
+        assert data["chat_conversation"] is None
+        
+        # Verify conversation history was NOT fetched
+        mock_history_service.get_session_conversation_history.assert_not_called()
+    
+    @pytest.mark.unit
+    def test_get_final_analysis_only_chat_conversation(self, app, client, mock_history_service):
+        """Test requesting only chat conversation without session conversation."""
+        from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.db_models import AlertSession
+        from tarsy.models.history_models import LLMConversationHistory, ConversationMessage
+        
+        session_id = "test-session-chat-only"
+        
+        mock_session = AlertSession(
+            session_id=session_id,
+            alert_type="TestAlert",
+            agent_type="TestAgent",
+            status=AlertSessionStatus.COMPLETED.value,
+            started_at_us=now_us() - 300000000,
+            completed_at_us=now_us(),
+            alert_data={},
+            chain_id="test-chain",
+            final_analysis="Analysis"
+        )
+        
+        session_conversation = LLMConversationHistory(
+            model_name="gpt-4",
+            provider="openai",
+            timestamp_us=now_us(),
+            input_tokens=100,
+            output_tokens=50,
+            total_tokens=150,
+            messages=[ConversationMessage(role="system", content="Test")]
+        )
+        
+        chat_conversation = LLMConversationHistory(
+            model_name="gpt-4",
+            provider="openai",
+            timestamp_us=now_us(),
+            input_tokens=80,
+            output_tokens=40,
+            total_tokens=120,
+            messages=[ConversationMessage(role="system", content="Chat")]
+        )
+        
+        mock_history_service.get_session.return_value = mock_session
+        mock_history_service.get_session_conversation_history.return_value = (session_conversation, chat_conversation)
+        
+        # Override FastAPI dependency
+        app.dependency_overrides[get_history_service] = lambda: mock_history_service
+        
+        # Request ONLY chat conversation
+        response = client.get(
+            f"/api/v1/history/sessions/{session_id}/final-analysis",
+            params={"include_conversation": False, "include_chat_conversation": True}
+        )
+        
+        # Clean up
+        app.dependency_overrides.clear()
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Session conversation should be None (not requested)
+        assert data["llm_conversation"] is None
+        
+        # Chat conversation should be present
+        assert data["chat_conversation"] is not None
+        assert data["chat_conversation"]["input_tokens"] == 80
+    
+    @pytest.mark.unit
     def test_get_final_analysis_session_not_found(self, app, client, mock_history_service):
         """Test final analysis retrieval for non-existent session."""
         # Mock service returns None for non-existent session

@@ -11,12 +11,13 @@ import logging
 import random
 import time
 from contextlib import contextmanager
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from tarsy.config.settings import get_settings
 
 from tarsy.models.history_models import (
-    PaginatedSessions, DetailedSession, FilterOptions, SessionStats
+    PaginatedSessions, DetailedSession, FilterOptions, SessionStats,
+    LLMConversationHistory, ConversationMessage
 )
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.models.db_models import AlertSession, StageExecution, Chat, ChatUserMessage
@@ -1141,6 +1142,105 @@ class HistoryService:
             "get_chat_user_messages",
             _get_operation
         ) or []
+    
+    # ===== CONVERSATION HISTORY =====
+    
+    def get_session_conversation_history(
+        self,
+        session_id: str,
+        include_chat: bool = False
+    ) -> Tuple[Optional[LLMConversationHistory], Optional[LLMConversationHistory]]:
+        """
+        Get LLM conversation history for a session and optionally its chat.
+        
+        Strategy:
+        1. For main session: Get the last final_analysis type interaction (or fallback to last by timestamp)
+        2. For chat (if include_chat=True): Get the last chat stage's final_analysis interaction
+        
+        The conversation includes all accumulated messages up to that point,
+        providing the full context for analysis/evaluation.
+        
+        Args:
+            session_id: Session identifier
+            include_chat: If True, also get chat conversation history
+            
+        Returns:
+            Tuple of (session_conversation, chat_conversation), either can be None
+        """
+        if not self.is_enabled:
+            return None, None
+        
+        def _get_conversation_history():
+            with self.get_repository() as repo:
+                if not repo:
+                    return None, None
+                
+                # Get main session conversation
+                session_interaction = repo.get_last_llm_interaction_with_conversation(
+                    session_id=session_id,
+                    prefer_final_analysis=True,
+                    chat_id=None  # Main session, exclude chat stages
+                )
+                session_conversation = self._build_conversation_history(session_interaction)
+                
+                # Get chat conversation if requested
+                chat_conversation = None
+                if include_chat:
+                    chat = repo.get_chat_by_session(session_id)
+                    if chat:
+                        chat_interaction = repo.get_last_llm_interaction_with_conversation(
+                            session_id=session_id,
+                            prefer_final_analysis=True,
+                            chat_id=chat.chat_id
+                        )
+                        chat_conversation = self._build_conversation_history(chat_interaction)
+                
+                return session_conversation, chat_conversation
+        
+        result = self._retry_database_operation(
+            "get_session_conversation_history",
+            _get_conversation_history
+        )
+        return result if result else (None, None)
+    
+    def _build_conversation_history(
+        self,
+        interaction: Optional[LLMInteraction]
+    ) -> Optional[LLMConversationHistory]:
+        """
+        Build LLMConversationHistory from an LLMInteraction.
+        
+        Args:
+            interaction: LLMInteraction with conversation data
+            
+        Returns:
+            LLMConversationHistory model or None if no valid conversation
+        """
+        if not interaction or not interaction.conversation:
+            return None
+        
+        try:
+            # Convert conversation messages to simple format
+            messages = [
+                ConversationMessage(
+                    role=msg.role.value if hasattr(msg.role, 'value') else str(msg.role),
+                    content=msg.content
+                )
+                for msg in interaction.conversation.messages
+            ]
+            
+            return LLMConversationHistory(
+                model_name=interaction.model_name,
+                provider=interaction.provider,
+                timestamp_us=interaction.timestamp_us,
+                input_tokens=interaction.input_tokens,
+                output_tokens=interaction.output_tokens,
+                total_tokens=interaction.total_tokens,
+                messages=messages
+            )
+        except Exception as e:
+            logger.error(f"Failed to build conversation history: {str(e)}")
+            return None
     
     # Pod Tracking & Orphan Detection
     

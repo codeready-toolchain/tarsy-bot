@@ -2150,3 +2150,232 @@ class TestHistoryServiceTokenAggregations:
         assert summary.session_input_tokens == 5051  # 5000 + 1 + 50
         assert summary.session_output_tokens == 2001  # 2000 + 1 + 0 (None treated as 0)
         assert summary.session_total_tokens == 7052   # 7000 + 2 + 50
+
+
+class TestConversationHistory:
+    """Test suite for conversation history retrieval methods."""
+    
+    @pytest.fixture
+    def mock_settings(self, isolated_test_settings):
+        """Create mock settings for testing."""
+        return isolated_test_settings
+    
+    @pytest.fixture
+    def history_service(self, mock_settings):
+        """Create HistoryService instance with mocked dependencies."""
+        with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
+            service = HistoryService()
+            service._initialization_attempted = True
+            service._is_healthy = True
+            service.is_enabled = True
+            return service
+    
+    @pytest.mark.unit
+    def test_build_conversation_history_with_valid_interaction(self, history_service):
+        """Test _build_conversation_history with a valid LLM interaction."""
+        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage, MessageRole
+        
+        # Create a valid LLM interaction with conversation
+        interaction = LLMInteraction(
+            interaction_id="test-int-1",
+            session_id="test-session",
+            model_name="gemini-2.0-flash",
+            provider="google",
+            timestamp_us=1700000000000000,
+            input_tokens=100,
+            output_tokens=50,
+            total_tokens=150,
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are an assistant"),
+                LLMMessage(role=MessageRole.USER, content="What is the issue?"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="The namespace is terminating")
+            ])
+        )
+        
+        # Act
+        result = history_service._build_conversation_history(interaction)
+        
+        # Assert
+        assert result is not None
+        assert result.model_name == "gemini-2.0-flash"
+        assert result.provider == "google"
+        assert result.timestamp_us == 1700000000000000
+        assert result.input_tokens == 100
+        assert result.output_tokens == 50
+        assert result.total_tokens == 150
+        assert len(result.messages) == 3
+        assert result.messages[0].role == "system"
+        assert result.messages[0].content == "You are an assistant"
+        assert result.messages[1].role == "user"
+        assert result.messages[2].role == "assistant"
+    
+    @pytest.mark.unit
+    def test_build_conversation_history_with_none_interaction(self, history_service):
+        """Test _build_conversation_history with None interaction."""
+        result = history_service._build_conversation_history(None)
+        assert result is None
+    
+    @pytest.mark.unit
+    def test_build_conversation_history_with_no_conversation(self, history_service):
+        """Test _build_conversation_history when interaction has no conversation."""
+        from tarsy.models.unified_interactions import LLMInteraction
+        
+        # Create interaction without conversation
+        interaction = LLMInteraction(
+            interaction_id="test-int-1",
+            session_id="test-session",
+            model_name="gpt-4",
+            timestamp_us=1700000000000000,
+            conversation=None
+        )
+        
+        result = history_service._build_conversation_history(interaction)
+        assert result is None
+    
+    @pytest.mark.unit
+    def test_get_session_conversation_history_returns_both(self, history_service):
+        """Test get_session_conversation_history returns both session and chat conversations."""
+        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage, MessageRole
+        from tarsy.models.db_models import Chat
+        
+        # Create mock interactions
+        session_interaction = LLMInteraction(
+            interaction_id="session-int-1",
+            session_id="test-session",
+            model_name="gemini-2.0-flash",
+            provider="google",
+            timestamp_us=1700000000000000,
+            input_tokens=200,
+            output_tokens=100,
+            total_tokens=300,
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System prompt"),
+                LLMMessage(role=MessageRole.USER, content="Analyze issue"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Analysis complete")
+            ])
+        )
+        
+        chat_interaction = LLMInteraction(
+            interaction_id="chat-int-1",
+            session_id="test-session",
+            model_name="gemini-2.0-flash",
+            provider="google",
+            timestamp_us=1700000100000000,
+            input_tokens=150,
+            output_tokens=80,
+            total_tokens=230,
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="Chat prompt"),
+                LLMMessage(role=MessageRole.USER, content="Follow-up question"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Chat response")
+            ])
+        )
+        
+        mock_chat = Chat(
+            chat_id="chat-1",
+            session_id="test-session",
+            conversation_history="Previous context",
+            chain_id="chain-1",
+            context_captured_at_us=1700000000000000
+        )
+        
+        # Setup mock repository
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        dependencies['repository'].get_last_llm_interaction_with_conversation.side_effect = [
+            session_interaction,  # First call for session
+            chat_interaction      # Second call for chat
+        ]
+        dependencies['repository'].get_chat_by_session.return_value = mock_chat
+        
+        with patch.object(history_service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+            mock_get_repo.return_value.__exit__.return_value = None
+            
+            # Act
+            session_conv, chat_conv = history_service.get_session_conversation_history(
+                session_id="test-session",
+                include_chat=True
+            )
+        
+        # Assert
+        assert session_conv is not None
+        assert session_conv.model_name == "gemini-2.0-flash"
+        assert len(session_conv.messages) == 3
+        assert session_conv.input_tokens == 200
+        
+        assert chat_conv is not None
+        assert chat_conv.model_name == "gemini-2.0-flash"
+        assert len(chat_conv.messages) == 3
+        assert chat_conv.input_tokens == 150
+    
+    @pytest.mark.unit
+    def test_get_session_conversation_history_no_chat(self, history_service):
+        """Test get_session_conversation_history when no chat exists."""
+        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage, MessageRole
+        
+        session_interaction = LLMInteraction(
+            interaction_id="session-int-1",
+            session_id="test-session",
+            model_name="gpt-4",
+            provider="openai",
+            timestamp_us=1700000000000000,
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                LLMMessage(role=MessageRole.USER, content="User"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Assistant")
+            ])
+        )
+        
+        # Setup mock repository
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        dependencies['repository'].get_last_llm_interaction_with_conversation.return_value = session_interaction
+        dependencies['repository'].get_chat_by_session.return_value = None  # No chat
+        
+        with patch.object(history_service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+            mock_get_repo.return_value.__exit__.return_value = None
+            
+            # Act
+            session_conv, chat_conv = history_service.get_session_conversation_history(
+                session_id="test-session",
+                include_chat=True
+            )
+        
+        # Assert
+        assert session_conv is not None
+        assert chat_conv is None
+    
+    @pytest.mark.unit
+    def test_get_session_conversation_history_disabled_service(self, history_service):
+        """Test get_session_conversation_history when service is disabled."""
+        history_service.is_enabled = False
+        
+        session_conv, chat_conv = history_service.get_session_conversation_history(
+            session_id="test-session",
+            include_chat=True
+        )
+        
+        assert session_conv is None
+        assert chat_conv is None
+    
+    @pytest.mark.unit
+    def test_get_session_conversation_history_no_interactions(self, history_service):
+        """Test get_session_conversation_history when no interactions exist."""
+        # Setup mock repository
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        dependencies['repository'].get_last_llm_interaction_with_conversation.return_value = None
+        dependencies['repository'].get_chat_by_session.return_value = None
+        
+        with patch.object(history_service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+            mock_get_repo.return_value.__exit__.return_value = None
+            
+            # Act
+            session_conv, chat_conv = history_service.get_session_conversation_history(
+                session_id="test-session",
+                include_chat=False
+            )
+        
+        # Assert
+        assert session_conv is None
+        assert chat_conv is None

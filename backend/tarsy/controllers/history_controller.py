@@ -281,26 +281,44 @@ async def get_session_summary(
     - Non-completed sessions (pending, in_progress, etc.): final_analysis is null
     - Failed/cancelled sessions: final_analysis is null
     
+    **Optional conversation history:**
+    - Use `include_conversation=true` to include the LLM conversation history
+    - Use `include_chat_conversation=true` to include chat conversation (if chat exists)
+    - Conversation includes: model name, tokens, timestamp, and flat message list
+    - Strategy: Returns last final_analysis interaction, falls back to last LLM interaction
+    
     **Response includes:**
     - Final analysis content in markdown format (or null)
     - Current session status
-    - Timestamp of the response
+    - Optional: LLM conversation history with metadata
+    - Optional: Chat LLM conversation history (if chat exists)
     """
 )
 async def get_session_final_analysis(
     *,
     session_id: str = Path(..., description="Unique session identifier"),
+    include_conversation: bool = Query(
+        False,
+        description="Include LLM conversation history (messages, model, tokens) from the analysis"
+    ),
+    include_chat_conversation: bool = Query(
+        False,
+        description="Include chat LLM conversation history if a follow-up chat exists"
+    ),
     history_service: Annotated[HistoryService, Depends(get_history_service)]
 ) -> FinalAnalysisResponse:
     """
-    Get final analysis content for any session.
+    Get final analysis content for any session with optional conversation history.
     
     Args:
         session_id: Unique session identifier
+        include_conversation: If True, include LLM conversation history from the analysis
+        include_chat_conversation: If True, include chat conversation history (if chat exists)
         history_service: Injected history service
         
     Returns:
-        FinalAnalysisResponse containing the analysis content (or null) and session status
+        FinalAnalysisResponse containing the analysis content (or null), session status,
+        and optionally the LLM conversation history
         
     Raises:
         HTTPException: 404 if session not found, 500 for internal errors
@@ -317,11 +335,27 @@ async def get_session_final_analysis(
                 detail=f"Session {session_id} not found"
             )
         
-        # Always return response with current status and final_analysis (or null)
+        # Get conversation history if requested
+        llm_conversation = None
+        chat_conversation = None
+        
+        if include_conversation or include_chat_conversation:
+            llm_conversation, chat_conversation = history_service.get_session_conversation_history(
+                session_id=session_id,
+                include_chat=include_chat_conversation
+            )
+            
+            # Only include session conversation if explicitly requested
+            if not include_conversation:
+                llm_conversation = None
+        
+        # Return response with current status, final_analysis, and optional conversations
         return FinalAnalysisResponse(
             final_analysis=session.final_analysis,  # Will be None if not available
             session_id=session_id,
-            status=AlertSessionStatus(session.status)
+            status=AlertSessionStatus(session.status),
+            llm_conversation=llm_conversation,
+            chat_conversation=chat_conversation
         )
         
     except HTTPException:
