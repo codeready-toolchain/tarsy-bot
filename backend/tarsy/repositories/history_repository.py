@@ -434,7 +434,9 @@ class HistoryRepository:
             elif sort_by == 'duration_ms':
                 # Special handling for duration - compute as SQL expression
                 # duration_ms = (completed_at_us - started_at_us) / 1000
-                # Handle NULL completed_at_us by using current time for in-progress sessions
+                # For in-progress sessions (completed_at_us=NULL), use current runtime.
+                # Note: In practice, the UI filters these out (shown in separate active panel),
+                # but API consumers might query mixed statuses.
                 current_time_us = now_us()
                 duration_expr = case(
                     (AlertSession.completed_at_us.is_not(None), 
