@@ -82,6 +82,19 @@ function DashboardView() {
   const activeReconnectionRef = useRef(false);
   const historicalReconnectionRef = useRef(false);
 
+  // Refs to track current state for stale update detection in async callbacks
+  // These allow us to compare request-time values against current values
+  const filtersRef = useRef(filters);
+  const paginationRef = useRef(pagination);
+  const sortStateRef = useRef(sortState);
+
+  // Keep refs in sync with state
+  useEffect(() => {
+    filtersRef.current = filters;
+    paginationRef.current = pagination;
+    sortStateRef.current = sortState;
+  }, [filters, pagination, sortState]);
+
   // Clean up throttling timeout on unmount
   useEffect(() => {
     return () => {
@@ -239,9 +252,11 @@ function DashboardView() {
       
       // Only update state if filters, pagination, and sort state haven't changed since request started
       // This prevents race conditions where a newer request might be overwritten by an older one
-      const filtersUnchanged = JSON.stringify(filters) === JSON.stringify(requestFilters);
-      const paginationUnchanged = pagination.page === requestPage && pagination.pageSize === requestPageSize;
-      const sortUnchanged = sortState.field === requestSortField && sortState.direction === requestSortDirection;
+      // We use refs here because the closure captures values at callback creation time,
+      // but we need to compare against the CURRENT state at response time
+      const filtersUnchanged = JSON.stringify(filtersRef.current) === JSON.stringify(requestFilters);
+      const paginationUnchanged = paginationRef.current.page === requestPage && paginationRef.current.pageSize === requestPageSize;
+      const sortUnchanged = sortStateRef.current.field === requestSortField && sortStateRef.current.direction === requestSortDirection;
       
       if (filtersUnchanged && paginationUnchanged && sortUnchanged) {
         setHistoricalAlerts(response.sessions);
