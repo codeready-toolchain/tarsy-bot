@@ -183,9 +183,9 @@ class APIClient {
    * Used during reconnection to handle backend startup delays
    * Retries indefinitely on network/502/503/504 errors until backend is ready
    */
-  async getHistoricalSessionsWithRetry(page: number = 1, pageSize: number = 25): Promise<SessionsResponse> {
+  async getHistoricalSessionsWithRetry(page: number = 1, pageSize: number = 25, sortBy?: string, sortOrder?: string): Promise<SessionsResponse> {
     return this.retryOnTemporaryError(
-      () => this.getHistoricalSessions(page, pageSize)
+      () => this.getHistoricalSessions(page, pageSize, sortBy, sortOrder)
     );
   }
 
@@ -194,9 +194,9 @@ class APIClient {
    * Used during reconnection with active filters to handle backend startup delays
    * Retries indefinitely on network/502/503/504 errors until backend is ready
    */
-  async getFilteredSessionsWithRetry(filters: SessionFilter, page: number = 1, pageSize: number = 25): Promise<SessionsResponse> {
+  async getFilteredSessionsWithRetry(filters: SessionFilter, page: number = 1, pageSize: number = 25, sortBy?: string, sortOrder?: string): Promise<SessionsResponse> {
     return this.retryOnTemporaryError(
-      () => this.getFilteredSessions(filters, page, pageSize)
+      () => this.getFilteredSessions(filters, page, pageSize, sortBy, sortOrder)
     );
   }
 
@@ -204,7 +204,7 @@ class APIClient {
    * Fetch historical sessions (completed/failed/cancelled)
    * Gets sessions with terminal statuses
    */
-  async getHistoricalSessions(page: number = 1, pageSize: number = 25): Promise<SessionsResponse> {
+  async getHistoricalSessions(page: number = 1, pageSize: number = 25, sortBy?: string, sortOrder?: string): Promise<SessionsResponse> {
     try {
       // Build query string manually to ensure proper FastAPI format
       const queryParams = new URLSearchParams();
@@ -214,6 +214,15 @@ class APIClient {
       });
       queryParams.append('page', page.toString());
       queryParams.append('page_size', pageSize.toString());
+      
+      // Add sorting parameters if provided
+      if (sortBy) {
+        queryParams.append('sort_by', sortBy);
+      }
+      if (sortOrder) {
+        queryParams.append('sort_order', sortOrder);
+      }
+      
       const url = `/api/v1/history/sessions?${queryParams.toString()}`;
       
       
@@ -526,7 +535,7 @@ class APIClient {
    * Fetch sessions with advanced filtering (Phase 4)
    * Enhanced version of getSessions with comprehensive filtering support
    */
-  async getFilteredSessions(filters: SessionFilter, page: number = 1, pageSize: number = 25): Promise<SessionsResponse> {
+  async getFilteredSessions(filters: SessionFilter, page: number = 1, pageSize: number = 25, sortBy?: string, sortOrder?: string): Promise<SessionsResponse> {
     try {
       const queryParams = new URLSearchParams();
       
@@ -567,6 +576,14 @@ class APIClient {
       // Add pagination parameters
       queryParams.append('page', page.toString());
       queryParams.append('page_size', pageSize.toString());
+      
+      // Add sorting parameters if provided
+      if (sortBy) {
+        queryParams.append('sort_by', sortBy);
+      }
+      if (sortOrder) {
+        queryParams.append('sort_order', sortOrder);
+      }
       
       const url = `/api/v1/history/sessions?${queryParams.toString()}`;
       

@@ -655,7 +655,9 @@ class HistoryService:
         self,
         filters: Optional[Dict[str, Any]] = None,
         page: int = 1,
-        page_size: int = 20
+        page_size: int = 20,
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = None
     ) -> Optional[PaginatedSessions]:
         """
         Retrieve alert sessions with filtering and pagination - returns PaginatedSessions model directly for controllers.
@@ -664,6 +666,8 @@ class HistoryService:
             filters: Dictionary of filters (status, agent_type, alert_type, start_date_us, end_date_us)
             page: Page number for pagination
             page_size: Number of results per page
+            sort_by: Optional field to sort by
+            sort_order: Optional sort order ('asc' or 'desc')
             
         Returns:
             PaginatedSessions model or None if unavailable
@@ -687,7 +691,9 @@ class HistoryService:
                 start_date_us=filters.get('start_date_us'),
                 end_date_us=filters.get('end_date_us'),
                 page=page,
-                page_size=page_size
+                page_size=page_size,
+                sort_by=sort_by,
+                sort_order=sort_order
             )
             
             # Add the applied filters to the model

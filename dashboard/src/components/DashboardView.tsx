@@ -158,10 +158,10 @@ function DashboardView() {
             ? filters.status 
             : TERMINAL_SESSION_STATUSES
         };
-        response = await apiClient.getFilteredSessions(historicalFilters, pagination.page, pagination.pageSize);
+        response = await apiClient.getFilteredSessions(historicalFilters, pagination.page, pagination.pageSize, sortState.field, sortState.direction);
       } else {
         // Use the original historical API (completed + failed + cancelled sessions only)
-        response = await apiClient.getHistoricalSessions(pagination.page, pagination.pageSize);
+        response = await apiClient.getHistoricalSessions(pagination.page, pagination.pageSize, sortState.field, sortState.direction);
       }
       
       setHistoricalAlerts(response.sessions);
@@ -228,11 +228,11 @@ function DashboardView() {
             ? requestFilters.status 
             : TERMINAL_SESSION_STATUSES
         };
-        response = await apiClient.getFilteredSessionsWithRetry(historicalFilters, requestPage, requestPageSize);
+        response = await apiClient.getFilteredSessionsWithRetry(historicalFilters, requestPage, requestPageSize, sortState.field, sortState.direction);
       } else {
         // When no filters are active, use retry API for unfiltered historical sessions
         console.log('📋 Reconnection sync without filters - using retry API');
-        response = await apiClient.getHistoricalSessionsWithRetry(requestPage, requestPageSize);
+        response = await apiClient.getHistoricalSessionsWithRetry(requestPage, requestPageSize, sortState.field, sortState.direction);
       }
       
       // Only update state if filters and pagination haven't changed since request started

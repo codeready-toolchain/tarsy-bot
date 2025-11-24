@@ -9,7 +9,7 @@ and advanced querying capabilities using Unix timestamps for optimal performance
 from typing import Dict, List, Optional, Union
 from collections import defaultdict
 
-from sqlmodel import Session, asc, desc, func, select, and_, or_
+from sqlmodel import Session, asc, desc, func, select, and_, or_, case
 
 from tarsy.models.constants import AlertSessionStatus, StageStatus
 from tarsy.models.db_models import AlertSession, StageExecution, Chat, ChatUserMessage
@@ -347,7 +347,9 @@ class HistoryRepository:
         start_date_us: Optional[int] = None,
         end_date_us: Optional[int] = None,
         page: int = 1,
-        page_size: int = 20
+        page_size: int = 20,
+        sort_by: Optional[str] = None,
+        sort_order: Optional[str] = None
     ) -> Optional[PaginatedSessions]:
         """
         Retrieve alert sessions with filtering and pagination.
@@ -408,8 +410,48 @@ class HistoryRepository:
             if conditions:
                 statement = statement.where(and_(*conditions))
             
-            # Order by started_at descending (most recent first)
-            statement = statement.order_by(desc(AlertSession.started_at_us))
+            # Apply sorting
+            # Map frontend field names to database columns
+            # Note: Only including actual database columns, not computed fields
+            sort_field_map = {
+                'started_at_us': AlertSession.started_at_us,
+                'status': AlertSession.status,
+                'alert_type': AlertSession.alert_type,
+                'agent_type': AlertSession.agent_type,
+                'author': AlertSession.author,
+                'completed_at_us': AlertSession.completed_at_us,
+            }
+            
+            # Default sorting: started_at_us descending (most recent first)
+            sort_column = AlertSession.started_at_us
+            sort_direction = 'desc'
+            
+            # Apply custom sorting if provided and valid
+            if sort_by and sort_by in sort_field_map:
+                sort_column = sort_field_map[sort_by]
+                if sort_order and sort_order.lower() in ('asc', 'desc'):
+                    sort_direction = sort_order.lower()
+            elif sort_by == 'duration_ms':
+                # Special handling for duration - compute as SQL expression
+                # duration_ms = (completed_at_us - started_at_us) / 1000
+                # Handle NULL completed_at_us by using current time for in-progress sessions
+                current_time_us = now_us()
+                duration_expr = case(
+                    (AlertSession.completed_at_us.is_not(None), 
+                     (AlertSession.completed_at_us - AlertSession.started_at_us) / 1000),
+                    else_=((current_time_us - AlertSession.started_at_us) / 1000)
+                )
+                sort_column = duration_expr
+                if sort_order and sort_order.lower() in ('asc', 'desc'):
+                    sort_direction = sort_order.lower()
+            # Note: session_total_tokens sorting not implemented as it requires complex aggregation
+            # Frontend should disable sorting for this column
+            
+            # Apply the sorting direction
+            if sort_direction == 'asc':
+                statement = statement.order_by(asc(sort_column))
+            else:
+                statement = statement.order_by(desc(sort_column))
             
             # Count total results for pagination
             count_statement = select(func.count(AlertSession.session_id))

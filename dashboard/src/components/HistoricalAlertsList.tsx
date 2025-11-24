@@ -77,7 +77,8 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
     { field: 'author', label: 'Submitted by' },
     { field: 'started_at_us', label: 'Time' },
     { field: 'duration_ms', label: 'Duration' },
-    { field: 'session_total_tokens', label: 'Tokens' }, // EP-0009: Add token column
+    // Note: session_total_tokens sorting not implemented in backend (requires complex aggregation)
+    // Column is still displayed but not sortable
   ];
 
   return (
@@ -150,6 +151,7 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
                       )}
                     </TableCell>
                   ))}
+                  <TableCell sx={{ fontWeight: 600 }}>Tokens</TableCell>
                   <TableCell sx={{ fontWeight: 600, width: 60, textAlign: 'center' }}>Chats</TableCell>
                   <TableCell sx={{ fontWeight: 600, width: 60, textAlign: 'center' }}></TableCell>
                 </TableRow>
