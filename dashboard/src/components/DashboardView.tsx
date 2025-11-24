@@ -297,6 +297,16 @@ function DashboardView() {
     setPagination
   ]); // Include all external dependencies: filters, pagination, sort state, and setState functions
 
+  // Stable refs for WebSocket handlers to avoid effect churn
+  // These refs ensure WebSocket subscriptions remain stable while handlers always call latest versions
+  const fetchActiveAlertsWithRetryRef = useRef(fetchActiveAlertsWithRetry);
+  const fetchHistoricalAlertsWithRetryRef = useRef(fetchHistoricalAlertsWithRetry);
+
+  useEffect(() => {
+    fetchActiveAlertsWithRetryRef.current = fetchActiveAlertsWithRetry;
+    fetchHistoricalAlertsWithRetryRef.current = fetchHistoricalAlertsWithRetry;
+  }, [fetchActiveAlertsWithRetry, fetchHistoricalAlertsWithRetry]);
+
   // Throttled refresh function to prevent excessive API calls
   const throttledRefresh = useCallback(() => {
     if (refreshTimeoutRef.current) {
@@ -456,8 +466,8 @@ function DashboardView() {
         console.log('✅ WebSocket connected - real-time updates active');
         // Sync with backend state after reconnection (handles backend restarts)
         console.log('🔄 WebSocket reconnected - syncing dashboard with backend state');
-        fetchActiveAlertsWithRetry();
-        fetchHistoricalAlertsWithRetry();
+        fetchActiveAlertsWithRetryRef.current();
+        fetchHistoricalAlertsWithRetryRef.current();
       } else {
         console.log('❌ WebSocket disconnected - use manual refresh buttons');
       }
@@ -485,7 +495,7 @@ function DashboardView() {
       unsubscribeUpdate();
       unsubscribeConnection();
     };
-  }, [fetchActiveAlertsWithRetry, fetchHistoricalAlertsWithRetry]);
+  }, []); // Empty deps - effect only runs once on mount, refs ensure handlers are always current
 
   // Handle session click with same-tab navigation
   const handleSessionClick = (sessionId: string) => {
