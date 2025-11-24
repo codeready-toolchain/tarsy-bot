@@ -1094,6 +1094,96 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}"""
     ]
 }
 
+# Expected final analysis endpoint responses (normalized)
+# These are compared as-is after normalizing timestamps and session_id
+EXPECTED_FINAL_ANALYSIS_LLM_ONLY = {
+    'final_analysis': '# Alert Analysis Report\n\n**Alert Type:** test-kubernetes\n**Processing Chain:** kubernetes-namespace-terminating-chain\n**Stages:** 3\n**Environment:** production\n**Severity:** warning\n**Timestamp:** {TIMESTAMP}\n\n## Analysis\n\nBased on previous stages, the namespace is stuck due to finalizers.\n\n---\n*Processed through 3 stages*',
+    'session_id': '{SESSION_ID}',
+    'status': 'completed',
+    'llm_conversation': {
+        'model_name': 'gpt-5',
+        'provider': 'openai-default',
+        'timestamp_us': '{TIMESTAMP_US}',
+        'input_tokens': 420,
+        'output_tokens': 180,
+        'total_tokens': 600,
+        'messages': [
+            {
+                'role': 'system',
+                'content': EXPECTED_ANALYSIS_CONVERSATION['messages'][0]['content']
+            },
+            {
+                'role': 'user',
+                'content': EXPECTED_ANALYSIS_CONVERSATION['messages'][1]['content']
+            },
+            {
+                'role': 'assistant',
+                'content': 'Based on previous stages, the namespace is stuck due to finalizers.'
+            }
+        ]
+    },
+    'chat_conversation': None
+}
+
+EXPECTED_FINAL_ANALYSIS_WITH_CHAT = {
+    'final_analysis': '# Alert Analysis Report\n\n**Alert Type:** test-kubernetes\n**Processing Chain:** kubernetes-namespace-terminating-chain\n**Stages:** 3\n**Environment:** production\n**Severity:** warning\n**Timestamp:** {TIMESTAMP}\n\n## Analysis\n\nBased on previous stages, the namespace is stuck due to finalizers.\n\n---\n*Processed through 3 stages*',
+    'session_id': '{SESSION_ID}',
+    'status': 'completed',
+    'llm_conversation': {
+        'model_name': 'gpt-5',
+        'provider': 'openai-default',
+        'timestamp_us': '{TIMESTAMP_US}',
+        'input_tokens': 420,
+        'output_tokens': 180,
+        'total_tokens': 600,
+        'messages': [
+            {
+                'role': 'system',
+                'content': EXPECTED_ANALYSIS_CONVERSATION['messages'][0]['content']
+            },
+            {
+                'role': 'user',
+                'content': EXPECTED_ANALYSIS_CONVERSATION['messages'][1]['content']
+            },
+            {
+                'role': 'assistant',
+                'content': 'Based on previous stages, the namespace is stuck due to finalizers.'
+            }
+        ]
+    },
+    'chat_conversation': {
+        'model_name': 'gpt-5',
+        'provider': 'openai-default',
+        'timestamp_us': '{TIMESTAMP_US}',
+        'input_tokens': 220,
+        'output_tokens': 95,
+        'total_tokens': 315,
+        'messages': [
+            {
+                'role': 'system',
+                'content': EXPECTED_CHAT_MESSAGE_2_CONVERSATION['messages'][0]['content']
+            },
+            {
+                'role': 'user',
+                'content': EXPECTED_CHAT_MESSAGE_2_CONVERSATION['messages'][1]['content']
+            },
+            {
+                'role': 'assistant',
+                'content': EXPECTED_CHAT_MESSAGE_2_CONVERSATION['messages'][2]['content']
+            },
+            {
+                'role': 'user',
+                'content': EXPECTED_CHAT_MESSAGE_2_CONVERSATION['messages'][3]['content']
+            },
+            {
+                'role': 'assistant',
+                'content': EXPECTED_CHAT_MESSAGE_2_CONVERSATION['messages'][4]['content']
+            }
+        ]
+    }
+}
+
+
 # Expected interactions structure for chat messages (similar to EXPECTED_STAGES)
 EXPECTED_CHAT_INTERACTIONS = {
     'message_1': {

@@ -13,14 +13,15 @@ import asyncio
 import logging
 import os
 from unittest.mock import AsyncMock, Mock, patch
-from mcp.types import Tool
 
 import pytest
+from mcp.types import Tool
 
 from tarsy.config.builtin_config import BUILTIN_MCP_SERVERS
 from tarsy.integrations.mcp.client import MCPClient
-from .e2e_utils import E2ETestUtils
 
+from .conftest import create_mock_stream
+from .e2e_utils import E2ETestUtils
 from .expected_conversations import (
     EXPECTED_ANALYSIS_CONVERSATION,
     EXPECTED_CHAT_INTERACTIONS,
@@ -30,8 +31,6 @@ from .expected_conversations import (
     EXPECTED_STAGES,
     EXPECTED_VERIFICATION_CONVERSATION,
 )
-
-from .conftest import create_mock_stream
 
 logger = logging.getLogger(__name__)
 
@@ -447,10 +446,10 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             streaming_mock = create_streaming_mock()
             
             # Import LangChain clients to patch
-            from langchain_openai import ChatOpenAI
             from langchain_anthropic import ChatAnthropic
-            from langchain_xai import ChatXAI
             from langchain_google_genai import ChatGoogleGenerativeAI
+            from langchain_openai import ChatOpenAI
+            from langchain_xai import ChatXAI
             
             # Patch the astream method on all LangChain client classes
             # This works because the method will be called on instances
@@ -533,6 +532,11 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
                     await self._test_chat_functionality(e2e_test_client, session_id)
 
                     print("✅ CHAT FUNCTIONALITY TEST PASSED!")
+
+                    print("🔍 Step 6: Testing final-analysis endpoint with conversation history...")
+                    await self._test_final_analysis_endpoint(e2e_test_client, session_id)
+
+                    print("✅ FINAL ANALYSIS ENDPOINT TEST PASSED!")
 
                     return
 
@@ -1280,3 +1284,101 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             f"    ✅ Chat {message_key} validated: {len(llm_interactions)} LLM, "
             f"{len(mcp_interactions)} MCP interactions"
         )
+
+    async def _test_final_analysis_endpoint(self, test_client, session_id: str):
+        """
+        Test the final-analysis endpoint with conversation history.
+        
+        Verifies that the normalized response matches expected output.
+        """
+        import json
+        from .expected_conversations import (
+            EXPECTED_FINAL_ANALYSIS_LLM_ONLY,
+            EXPECTED_FINAL_ANALYSIS_WITH_CHAT,
+        )
+        
+        logger.info("Testing final-analysis endpoint...")
+
+        # Test 1: With LLM conversation only
+        response_llm_only = test_client.get(
+            f"/api/v1/history/sessions/{session_id}/final-analysis"
+            "?include_conversation=true"
+        )
+        assert response_llm_only.status_code == 200, (
+            f"Final analysis with LLM conversation failed: {response_llm_only.text}"
+        )
+        
+        # Normalize and compare
+        actual_llm_only = self._normalize_final_analysis_response(response_llm_only.json())
+        assert actual_llm_only == EXPECTED_FINAL_ANALYSIS_LLM_ONLY, (
+            f"LLM-only response mismatch.\n"
+            f"Actual:\n{json.dumps(actual_llm_only, indent=2)}"
+        )
+        logger.info("LLM conversation only response verified")
+
+        # Test 2: With both LLM and chat conversation
+        response_full = test_client.get(
+            f"/api/v1/history/sessions/{session_id}/final-analysis"
+            "?include_conversation=true&include_chat_conversation=true"
+        )
+        assert response_full.status_code == 200, (
+            f"Final analysis with full conversation failed: {response_full.text}"
+        )
+        
+        # Normalize and compare
+        actual_full = self._normalize_final_analysis_response(response_full.json())
+        assert actual_full == EXPECTED_FINAL_ANALYSIS_WITH_CHAT, (
+            f"Full response mismatch.\n"
+            f"Actual:\n{json.dumps(actual_full, indent=2)}"
+        )
+        logger.info("Full conversation response verified")
+
+        print("    ✅ Final analysis endpoint verified with conversation history")
+
+    def _normalize_final_analysis_response(self, response: dict) -> dict:
+        """
+        Normalize final analysis response for stable comparison.
+        
+        Replaces dynamic values (session_id, timestamps) with placeholders.
+        """
+        normalized = response.copy()
+        
+        # Replace session_id with placeholder
+        normalized["session_id"] = "{SESSION_ID}"
+        
+        # Normalize final_analysis content (contains timestamps)
+        if normalized.get("final_analysis"):
+            normalized["final_analysis"] = E2ETestUtils.normalize_content(
+                normalized["final_analysis"]
+            )
+        
+        # Normalize LLM conversation if present
+        if normalized.get("llm_conversation"):
+            normalized["llm_conversation"] = self._normalize_conversation(
+                normalized["llm_conversation"]
+            )
+        
+        # Normalize chat conversation if present
+        if normalized.get("chat_conversation"):
+            normalized["chat_conversation"] = self._normalize_conversation(
+                normalized["chat_conversation"]
+            )
+        
+        return normalized
+
+    def _normalize_conversation(self, conversation: dict) -> dict:
+        """Normalize a conversation object by replacing timestamps."""
+        normalized = conversation.copy()
+        normalized["timestamp_us"] = "{TIMESTAMP_US}"
+        
+        # Normalize message content (replace timestamps in content)
+        if "messages" in normalized:
+            normalized["messages"] = [
+                {
+                    "role": msg["role"],
+                    "content": E2ETestUtils.normalize_content(msg["content"])
+                }
+                for msg in normalized["messages"]
+            ]
+        
+        return normalized

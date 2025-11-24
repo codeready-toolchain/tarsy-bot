@@ -7,7 +7,7 @@ native tools override applied.
 
 import pytest
 from httpx import AsyncClient
-from unittest.mock import patch, AsyncMock, Mock
+from unittest.mock import patch, AsyncMock
 
 from tarsy.main import app
 
