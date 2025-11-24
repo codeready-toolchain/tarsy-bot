@@ -194,10 +194,12 @@ function DashboardView() {
       return;
     }
 
-    // Capture current filters and pagination at request time to detect stale updates
+    // Capture current filters, pagination, and sort state at request time to detect stale updates
     const requestFilters = { ...filters };
     const requestPage = pagination.page;
     const requestPageSize = pagination.pageSize;
+    const requestSortField = sortState.field;
+    const requestSortDirection = sortState.direction;
 
     // Check if filters are currently active
     const hasActiveFilters = Boolean(
@@ -228,19 +230,20 @@ function DashboardView() {
             ? requestFilters.status 
             : TERMINAL_SESSION_STATUSES
         };
-        response = await apiClient.getFilteredSessionsWithRetry(historicalFilters, requestPage, requestPageSize, sortState.field, sortState.direction);
+        response = await apiClient.getFilteredSessionsWithRetry(historicalFilters, requestPage, requestPageSize, requestSortField, requestSortDirection);
       } else {
         // When no filters are active, use retry API for unfiltered historical sessions
         console.log('📋 Reconnection sync without filters - using retry API');
-        response = await apiClient.getHistoricalSessionsWithRetry(requestPage, requestPageSize, sortState.field, sortState.direction);
+        response = await apiClient.getHistoricalSessionsWithRetry(requestPage, requestPageSize, requestSortField, requestSortDirection);
       }
       
-      // Only update state if filters and pagination haven't changed since request started
+      // Only update state if filters, pagination, and sort state haven't changed since request started
       // This prevents race conditions where a newer request might be overwritten by an older one
       const filtersUnchanged = JSON.stringify(filters) === JSON.stringify(requestFilters);
       const paginationUnchanged = pagination.page === requestPage && pagination.pageSize === requestPageSize;
+      const sortUnchanged = sortState.field === requestSortField && sortState.direction === requestSortDirection;
       
-      if (filtersUnchanged && paginationUnchanged) {
+      if (filtersUnchanged && paginationUnchanged && sortUnchanged) {
         setHistoricalAlerts(response.sessions);
         setFilteredCount(response.pagination.total_items);
         
@@ -254,7 +257,7 @@ function DashboardView() {
         
         console.log('✅ Historical sessions synced after reconnection');
       } else {
-        console.log('⚠️  Skipping state update - filters or pagination changed during request');
+        console.log('⚠️  Skipping state update - filters, pagination, or sort state changed during request');
       }
       
     } catch (err) {
@@ -270,12 +273,14 @@ function DashboardView() {
     filters,
     pagination.page,
     pagination.pageSize,
+    sortState.field,
+    sortState.direction,
     setHistoricalLoading,
     setHistoricalError,
     setHistoricalAlerts,
     setFilteredCount,
     setPagination
-  ]); // Include all external dependencies: filters, pagination values, and setState functions
+  ]); // Include all external dependencies: filters, pagination, sort state, and setState functions
 
   // Throttled refresh function to prevent excessive API calls
   const throttledRefresh = useCallback(() => {

@@ -73,7 +73,7 @@ async def list_sessions(
     end_date_us: Optional[int] = Query(None, description="Filter sessions started before this timestamp (microseconds since epoch UTC)"),
     page: int = Query(1, ge=1, description="Page number for pagination"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page (1-100)"),
-    sort_by: Optional[str] = Query(None, description="Field to sort by (e.g., 'started_at_us', 'status', 'alert_type', 'agent_type', 'duration_ms', 'session_total_tokens')"),
+    sort_by: Optional[str] = Query(None, description="Field to sort by. Supported: 'started_at_us', 'status', 'alert_type', 'agent_type', 'author', 'duration_ms'. Unsupported values fall back to default ordering."),
     sort_order: Optional[str] = Query(None, description="Sort order: 'asc' or 'desc'"),
     history_service: Annotated[HistoryService, Depends(get_history_service)]
 ) -> PaginatedSessions:
@@ -89,8 +89,10 @@ async def list_sessions(
         end_date_us: Optional end timestamp filter (microseconds since epoch UTC, inclusive)
         page: Page number (starting from 1)
         page_size: Number of items per page (1-100)
-        sort_by: Optional field to sort by (defaults to 'started_at_us')
-        sort_order: Optional sort order 'asc' or 'desc' (defaults to 'desc')
+        sort_by: Field to sort by. Supported: 'started_at_us', 'status', 'alert_type', 
+            'agent_type', 'author', 'duration_ms'. Unsupported values fall back to default 
+            ordering by 'started_at_us' descending.
+        sort_order: Sort order 'asc' or 'desc' (defaults to 'desc')
         history_service: Injected history service
         
     Returns:
