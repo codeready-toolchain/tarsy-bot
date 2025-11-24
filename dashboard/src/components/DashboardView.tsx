@@ -436,7 +436,7 @@ function DashboardView() {
     );
 
     fetchHistoricalAlerts(hasActiveFilters);
-  }, [pagination.page, pagination.pageSize, sortState]);
+  }, [pagination.page, pagination.pageSize, sortState.field, sortState.direction]);
 
   // Set up WebSocket event handlers for real-time updates
   useEffect(() => {
