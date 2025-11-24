@@ -12,7 +12,13 @@ import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
 from tarsy.models.db_models import AlertSession, StageExecution
-from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction, LLMConversation, LLMMessage, MessageRole
+from tarsy.models.unified_interactions import (
+    LLMConversation,
+    LLMInteraction,
+    LLMMessage,
+    MCPInteraction,
+    MessageRole,
+)
 from tarsy.repositories.history_repository import HistoryRepository
 
 
@@ -25,8 +31,8 @@ class TestHistoryRepository:
     
     def test_get_stage_interaction_counts_with_data(self, repository):
         """Test get_stage_interaction_counts with actual data."""
-        from tarsy.utils.timestamp import now_us
         from tarsy.models.constants import StageStatus
+        from tarsy.utils.timestamp import now_us
         
         # Create a stage execution
         stage_execution = StageExecution(
@@ -73,8 +79,8 @@ class TestHistoryRepository:
     
     def test_get_stage_interaction_counts_multiple_stages(self, repository):
         """Test get_stage_interaction_counts with multiple stages."""
-        from tarsy.utils.timestamp import now_us
         from tarsy.models.constants import StageStatus
+        from tarsy.utils.timestamp import now_us
         
         # Create two stage executions
         stage1 = StageExecution(
@@ -139,8 +145,8 @@ class TestHistoryRepository:
     
     def test_get_session_overview_with_data(self, repository):
         """Test get_session_overview with session and stage data."""
-        from tarsy.utils.timestamp import now_us
         from tarsy.models.constants import AlertSessionStatus, StageStatus
+        from tarsy.utils.timestamp import now_us
         
         # Create session
         session = AlertSession(
@@ -263,7 +269,11 @@ class TestHistoryRepository:
     @pytest.fixture
     def sample_llm_interaction(self):
         """Create sample LLMInteraction for testing."""
-        from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
+        from tarsy.models.unified_interactions import (
+            LLMConversation,
+            LLMMessage,
+            MessageRole,
+        )
         
         # Create conversation with proper message structure
         conversation = LLMConversation(messages=[
@@ -283,7 +293,11 @@ class TestHistoryRepository:
     @pytest.fixture
     def sample_failed_llm_interaction(self):
         """Create sample failed LLM interaction for testing."""
-        from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
+        from tarsy.models.unified_interactions import (
+            LLMConversation,
+            LLMMessage,
+            MessageRole,
+        )
         
         # Create conversation with request messages only (no assistant response since it failed)
         conversation = LLMConversation(messages=[
@@ -1087,7 +1101,10 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_get_session_details_with_mcp_selection(self, repository):
         """Test that get_session_details includes mcp_selection field."""
-        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
+        from tarsy.models.mcp_selection_models import (
+            MCPSelectionConfig,
+            MCPServerSelection,
+        )
         
         # Create session with MCP selection
         mcp_config = MCPSelectionConfig(
@@ -1149,7 +1166,10 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_get_alert_sessions_with_mcp_selection(self, repository):
         """Test that get_alert_sessions includes mcp_selection in SessionOverview."""
-        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
+        from tarsy.models.mcp_selection_models import (
+            MCPSelectionConfig,
+            MCPServerSelection,
+        )
         
         # Create sessions with and without MCP selection
         mcp_config = MCPSelectionConfig(
@@ -1204,7 +1224,7 @@ class TestHistoryRepository:
     @pytest.mark.unit
     def test_get_session_details_with_chat_fields(self, repository, sample_alert_session):
         """Test that get_session_details includes chat_id, chat_user_message_id, and full user message data for chat stages."""
-        from tarsy.models.db_models import StageExecution, ChatUserMessage
+        from tarsy.models.db_models import ChatUserMessage, StageExecution
         from tarsy.utils.timestamp import now_us
         
         # Create session
@@ -2221,8 +2241,8 @@ class TestHistoryRepositoryChatMessageCount:
     @pytest.mark.unit
     def test_get_alert_sessions_includes_chat_message_count(self, repository):
         """Test that get_alert_sessions includes chat_message_count for sessions with chats."""
-        from tarsy.models.db_models import AlertSession, Chat, ChatUserMessage
         from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.db_models import AlertSession, Chat, ChatUserMessage
         from tarsy.utils.timestamp import now_us
         
         # Create session
@@ -2274,8 +2294,8 @@ class TestHistoryRepositoryChatMessageCount:
     @pytest.mark.unit
     def test_get_alert_sessions_none_for_sessions_without_chats(self, repository):
         """Test that get_alert_sessions returns None chat_message_count for sessions without chats."""
-        from tarsy.models.db_models import AlertSession
         from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.db_models import AlertSession
         from tarsy.utils.timestamp import now_us
         
         # Create session without chat
@@ -2302,8 +2322,8 @@ class TestHistoryRepositoryChatMessageCount:
     @pytest.mark.unit
     def test_get_alert_sessions_mixed_sessions_with_and_without_chats(self, repository):
         """Test get_alert_sessions with multiple sessions, some with chats and some without."""
-        from tarsy.models.db_models import AlertSession, Chat, ChatUserMessage
         from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.db_models import AlertSession, Chat, ChatUserMessage
         from tarsy.utils.timestamp import now_us
         
         # Create first session with chat (5 messages)
@@ -2405,8 +2425,8 @@ class TestHistoryRepositoryChatMessageCount:
     @pytest.mark.unit
     def test_get_alert_sessions_chat_with_zero_messages(self, repository):
         """Test that sessions with chats but no messages return 0 for chat_message_count."""
-        from tarsy.models.db_models import AlertSession, Chat
         from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.db_models import AlertSession, Chat
         from tarsy.utils.timestamp import now_us
         
         # Create session
@@ -2447,8 +2467,8 @@ class TestHistoryRepositoryChatMessageCount:
     @pytest.mark.unit
     def test_get_session_overview_includes_chat_message_count(self, repository):
         """Test that get_session_overview includes chat_message_count for sessions with chats."""
-        from tarsy.models.db_models import AlertSession, Chat, ChatUserMessage
         from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.db_models import AlertSession, Chat, ChatUserMessage
         from tarsy.utils.timestamp import now_us
         
         # Create session
@@ -2497,8 +2517,8 @@ class TestHistoryRepositoryChatMessageCount:
     @pytest.mark.unit
     def test_get_session_overview_none_for_session_without_chat(self, repository):
         """Test that get_session_overview returns None chat_message_count for sessions without chats."""
-        from tarsy.models.db_models import AlertSession
         from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.db_models import AlertSession
         from tarsy.utils.timestamp import now_us
         
         # Create session without chat
@@ -2519,3 +2539,478 @@ class TestHistoryRepositoryChatMessageCount:
         
         assert overview is not None
         assert overview.chat_message_count is None
+
+
+class TestGetLastLLMInteractionWithConversation:
+    """Tests for get_last_llm_interaction_with_conversation method."""
+    
+    @pytest.fixture
+    def repository(self):
+        """Create repository with in-memory database."""
+        from sqlalchemy.pool import StaticPool
+        engine = create_engine(
+            "sqlite:///:memory:",
+            echo=False,
+            poolclass=StaticPool,
+            connect_args={"check_same_thread": False}
+        )
+        SQLModel.metadata.create_all(engine)
+        session = Session(engine)
+        return HistoryRepository(session)
+    
+    @pytest.fixture
+    def session_with_stages(self, repository):
+        """Create a session with stage executions for testing."""
+        from tarsy.models.constants import AlertSessionStatus, StageStatus
+        from tarsy.models.db_models import AlertSession, StageExecution
+        from tarsy.utils.timestamp import now_us
+        
+        session = AlertSession(
+            session_id="test-session",
+            alert_type="kubernetes",
+            agent_type="chain",
+            chain_id="k8s-chain",
+            status=AlertSessionStatus.COMPLETED.value,
+            alert_data={"test": "data"},
+            started_at_us=now_us()
+        )
+        repository.create_alert_session(session)
+        
+        # Create stages
+        stage1 = StageExecution(
+            execution_id="stage-1",
+            session_id="test-session",
+            stage_id="investigation",
+            stage_index=0,
+            stage_name="investigation",
+            agent="KubernetesAgent",
+            status=StageStatus.COMPLETED.value
+        )
+        stage2 = StageExecution(
+            execution_id="stage-2",
+            session_id="test-session",
+            stage_id="final_analysis",
+            stage_index=1,
+            stage_name="final_analysis",
+            agent="SummaryAgent",
+            status=StageStatus.COMPLETED.value
+        )
+        repository.create_stage_execution(stage1)
+        repository.create_stage_execution(stage2)
+        
+        return session
+    
+    @pytest.mark.unit
+    def test_returns_final_analysis_interaction_when_available(
+        self, repository, session_with_stages
+    ):
+        """Test final_analysis interaction is returned when available."""
+        # Fixture creates session and stages needed for this test
+        _ = session_with_stages
+        from tarsy.models.constants import LLMInteractionType
+        from tarsy.utils.timestamp import now_us
+        
+        base_time = now_us()
+        
+        # Create investigation interaction (earlier)
+        investigation_conv = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="Investigation system"),
+            LLMMessage(role=MessageRole.USER, content="Investigate"),
+        ])
+        investigation_interaction = LLMInteraction(
+            interaction_id="llm-1",
+            session_id="test-session",
+            stage_execution_id="stage-1",
+            provider="openai",
+            model_name="gpt-4",
+            success=True,
+            timestamp_us=base_time,
+            interaction_type=LLMInteractionType.INVESTIGATION.value,
+            conversation=investigation_conv
+        )
+        repository.create_llm_interaction(investigation_interaction)
+        
+        # Create final_analysis interaction (later)
+        final_conv = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="Final analysis system"),
+            LLMMessage(role=MessageRole.USER, content="Analyze"),
+            LLMMessage(role=MessageRole.ASSISTANT, content="Final result"),
+        ])
+        final_interaction = LLMInteraction(
+            interaction_id="llm-2",
+            session_id="test-session",
+            stage_execution_id="stage-2",
+            provider="openai",
+            model_name="gpt-4",
+            success=True,
+            timestamp_us=base_time + 1000000,
+            interaction_type=LLMInteractionType.FINAL_ANALYSIS.value,
+            conversation=final_conv
+        )
+        repository.create_llm_interaction(final_interaction)
+        
+        # Act
+        result = repository.get_last_llm_interaction_with_conversation(
+            session_id="test-session",
+            prefer_final_analysis=True
+        )
+        
+        # Assert
+        assert result is not None
+        assert result.interaction_id == "llm-2"
+        assert result.interaction_type == LLMInteractionType.FINAL_ANALYSIS.value
+        assert result.conversation is not None
+        assert len(result.conversation.messages) == 3
+    
+    @pytest.mark.unit
+    def test_falls_back_to_last_interaction_when_no_final_analysis(
+        self, repository, session_with_stages
+    ):
+        """Test fallback to last interaction when no final_analysis exists."""
+        # Fixture creates session and stages needed for this test
+        _ = session_with_stages
+        from tarsy.models.constants import LLMInteractionType
+        from tarsy.utils.timestamp import now_us
+        
+        base_time = now_us()
+        
+        # Create only investigation interactions (no final_analysis)
+        conv1 = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="System 1"),
+        ])
+        interaction1 = LLMInteraction(
+            interaction_id="llm-1",
+            session_id="test-session",
+            stage_execution_id="stage-1",
+            provider="openai",
+            model_name="gpt-4",
+            success=True,
+            timestamp_us=base_time,
+            interaction_type=LLMInteractionType.INVESTIGATION.value,
+            conversation=conv1
+        )
+        repository.create_llm_interaction(interaction1)
+        
+        conv2 = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="System 2"),
+            LLMMessage(role=MessageRole.ASSISTANT, content="Later result"),
+        ])
+        interaction2 = LLMInteraction(
+            interaction_id="llm-2",
+            session_id="test-session",
+            stage_execution_id="stage-1",
+            provider="openai",
+            model_name="gpt-4",
+            success=True,
+            timestamp_us=base_time + 2000000,  # Later
+            interaction_type=LLMInteractionType.INVESTIGATION.value,
+            conversation=conv2
+        )
+        repository.create_llm_interaction(interaction2)
+        
+        # Act
+        result = repository.get_last_llm_interaction_with_conversation(
+            session_id="test-session",
+            prefer_final_analysis=True
+        )
+        
+        # Assert - should return the later one
+        assert result is not None
+        assert result.interaction_id == "llm-2"
+        assert result.interaction_type == LLMInteractionType.INVESTIGATION.value
+    
+    @pytest.mark.unit
+    def test_returns_last_when_prefer_final_analysis_false(
+        self, repository, session_with_stages
+    ):
+        """Test last interaction returned when prefer_final_analysis=False."""
+        # Fixture creates session and stages needed for this test
+        _ = session_with_stages
+        from tarsy.models.constants import LLMInteractionType
+        from tarsy.utils.timestamp import now_us
+        
+        base_time = now_us()
+        
+        # Create final_analysis (earlier)
+        final_conv = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="Final"),
+        ])
+        final_interaction = LLMInteraction(
+            interaction_id="llm-1",
+            session_id="test-session",
+            stage_execution_id="stage-2",
+            provider="openai",
+            model_name="gpt-4",
+            success=True,
+            timestamp_us=base_time,
+            interaction_type=LLMInteractionType.FINAL_ANALYSIS.value,
+            conversation=final_conv
+        )
+        repository.create_llm_interaction(final_interaction)
+        
+        # Create investigation (later)
+        inv_conv = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="Investigation"),
+        ])
+        inv_interaction = LLMInteraction(
+            interaction_id="llm-2",
+            session_id="test-session",
+            stage_execution_id="stage-1",
+            provider="openai",
+            model_name="gpt-4",
+            success=True,
+            timestamp_us=base_time + 1000000,
+            interaction_type=LLMInteractionType.INVESTIGATION.value,
+            conversation=inv_conv
+        )
+        repository.create_llm_interaction(inv_interaction)
+        
+        # Act - with prefer_final_analysis=False
+        result = repository.get_last_llm_interaction_with_conversation(
+            session_id="test-session",
+            prefer_final_analysis=False
+        )
+        
+        # Assert - should return the later one (investigation)
+        assert result is not None
+        assert result.interaction_id == "llm-2"
+        assert result.interaction_type == LLMInteractionType.INVESTIGATION.value
+    
+    @pytest.mark.unit
+    def test_returns_none_when_no_interactions(self, repository, session_with_stages):
+        """Test that None is returned when no LLM interactions exist."""
+        # Fixture creates session and stages needed for this test
+        _ = session_with_stages
+        result = repository.get_last_llm_interaction_with_conversation(
+            session_id="test-session",
+            prefer_final_analysis=True
+        )
+        
+        assert result is None
+    
+    @pytest.mark.unit
+    def test_filters_by_chat_id_when_provided(self, repository, session_with_stages):
+        """Test that chat_id filters to only chat stage interactions."""
+        # Fixture creates session and stages needed for this test
+        _ = session_with_stages
+        from tarsy.models.constants import LLMInteractionType, StageStatus
+        from tarsy.models.db_models import Chat, StageExecution
+        from tarsy.utils.timestamp import now_us
+        
+        base_time = now_us()
+        
+        # Create chat
+        chat = Chat(
+            chat_id="chat-1",
+            session_id="test-session",
+            created_at_us=base_time,
+            created_by="test-user",
+            conversation_history="[]",
+            chain_id="k8s-chain",
+            context_captured_at_us=base_time
+        )
+        repository.session.add(chat)
+        repository.session.commit()
+        
+        # Create chat stage
+        chat_stage = StageExecution(
+            execution_id="chat-stage-1",
+            session_id="test-session",
+            stage_id="chat_response",
+            stage_index=2,
+            stage_name="chat_response",
+            agent="ChatAgent",
+            status=StageStatus.COMPLETED.value,
+            chat_id="chat-1"
+        )
+        repository.create_stage_execution(chat_stage)
+        
+        # Create session interaction (not part of chat)
+        session_conv = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="Session system"),
+        ])
+        session_interaction = LLMInteraction(
+            interaction_id="llm-session",
+            session_id="test-session",
+            stage_execution_id="stage-1",
+            provider="openai",
+            model_name="gpt-4",
+            success=True,
+            timestamp_us=base_time,
+            interaction_type=LLMInteractionType.INVESTIGATION.value,
+            conversation=session_conv
+        )
+        repository.create_llm_interaction(session_interaction)
+        
+        # Create chat interaction
+        chat_conv = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="Chat system"),
+            LLMMessage(role=MessageRole.USER, content="User question"),
+            LLMMessage(role=MessageRole.ASSISTANT, content="Chat answer"),
+        ])
+        chat_interaction = LLMInteraction(
+            interaction_id="llm-chat",
+            session_id="test-session",
+            stage_execution_id="chat-stage-1",
+            provider="openai",
+            model_name="gpt-4",
+            success=True,
+            timestamp_us=base_time + 1000000,
+            interaction_type=LLMInteractionType.FINAL_ANALYSIS.value,
+            conversation=chat_conv
+        )
+        repository.create_llm_interaction(chat_interaction)
+        
+        # Act - get chat interaction only
+        result = repository.get_last_llm_interaction_with_conversation(
+            session_id="test-session",
+            prefer_final_analysis=True,
+            chat_id="chat-1"
+        )
+        
+        # Assert
+        assert result is not None
+        assert result.interaction_id == "llm-chat"
+        assert len(result.conversation.messages) == 3
+    
+    @pytest.mark.unit
+    def test_excludes_chat_stages_from_session_conversation(
+        self, repository, session_with_stages
+    ):
+        """Test chat stage interactions excluded from session conversation."""
+        # Fixture creates session and stages needed for this test
+        _ = session_with_stages
+        from tarsy.models.constants import LLMInteractionType, StageStatus
+        from tarsy.models.db_models import Chat, StageExecution
+        from tarsy.utils.timestamp import now_us
+        
+        base_time = now_us()
+        
+        # Create chat
+        chat = Chat(
+            chat_id="chat-exclude",
+            session_id="test-session",
+            created_at_us=base_time,
+            created_by="test-user",
+            conversation_history="[]",
+            chain_id="k8s-chain",
+            context_captured_at_us=base_time
+        )
+        repository.session.add(chat)
+        repository.session.commit()
+        
+        # Create chat stage
+        chat_stage = StageExecution(
+            execution_id="chat-stage-exclude",
+            session_id="test-session",
+            stage_id="chat_response",
+            stage_index=2,
+            stage_name="chat_response",
+            agent="ChatAgent",
+            status=StageStatus.COMPLETED.value,
+            chat_id="chat-exclude"
+        )
+        repository.create_stage_execution(chat_stage)
+        
+        # Create session interaction (earlier)
+        session_conv = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="Session content"),
+        ])
+        session_interaction = LLMInteraction(
+            interaction_id="llm-session-2",
+            session_id="test-session",
+            stage_execution_id="stage-1",
+            provider="openai",
+            model_name="gpt-4",
+            success=True,
+            timestamp_us=base_time,
+            interaction_type=LLMInteractionType.INVESTIGATION.value,
+            conversation=session_conv
+        )
+        repository.create_llm_interaction(session_interaction)
+        
+        # Create chat interaction (later - but should be excluded)
+        chat_conv = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="Chat content"),
+        ])
+        chat_interaction = LLMInteraction(
+            interaction_id="llm-chat-2",
+            session_id="test-session",
+            stage_execution_id="chat-stage-exclude",
+            provider="openai",
+            model_name="gpt-4",
+            success=True,
+            timestamp_us=base_time + 5000000,  # Later timestamp
+            interaction_type=LLMInteractionType.FINAL_ANALYSIS.value,
+            conversation=chat_conv
+        )
+        repository.create_llm_interaction(chat_interaction)
+        
+        # Act - get session conversation (no chat_id)
+        result = repository.get_last_llm_interaction_with_conversation(
+            session_id="test-session",
+            prefer_final_analysis=True,
+            chat_id=None
+        )
+        
+        # Assert - should return session interaction, not chat interaction
+        assert result is not None
+        assert result.interaction_id == "llm-session-2"
+        assert "Session content" in result.conversation.messages[0].content
+    
+    @pytest.mark.unit
+    def test_returns_latest_final_analysis_when_multiple_exist(
+        self, repository, session_with_stages
+    ):
+        """Test that the latest final_analysis is returned when multiple exist."""
+        # Use session_with_stages fixture to ensure stages exist
+        _ = session_with_stages
+        from tarsy.models.constants import LLMInteractionType
+        from tarsy.utils.timestamp import now_us
+        
+        base_time = now_us()
+        
+        # Create first final_analysis
+        conv1 = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="First final"),
+        ])
+        interaction1 = LLMInteraction(
+            interaction_id="llm-final-1",
+            session_id="test-session",
+            stage_execution_id="stage-2",
+            provider="openai",
+            model_name="gpt-4",
+            success=True,
+            timestamp_us=base_time,
+            interaction_type=LLMInteractionType.FINAL_ANALYSIS.value,
+            conversation=conv1
+        )
+        repository.create_llm_interaction(interaction1)
+        
+        # Create second final_analysis (later)
+        conv2 = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="Second final - latest"),
+        ])
+        interaction2 = LLMInteraction(
+            interaction_id="llm-final-2",
+            session_id="test-session",
+            stage_execution_id="stage-2",
+            provider="openai",
+            model_name="gpt-4",
+            success=True,
+            timestamp_us=base_time + 3000000,
+            interaction_type=LLMInteractionType.FINAL_ANALYSIS.value,
+            conversation=conv2
+        )
+        repository.create_llm_interaction(interaction2)
+        
+        # Act
+        result = repository.get_last_llm_interaction_with_conversation(
+            session_id="test-session",
+            prefer_final_analysis=True
+        )
+        
+        # Assert
+        assert result is not None
+        assert result.interaction_id == "llm-final-2"
+        assert "latest" in result.conversation.messages[0].content
