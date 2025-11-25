@@ -1122,7 +1122,20 @@ EXPECTED_FINAL_ANALYSIS_LLM_ONLY = {
             }
         ]
     },
-    'chat_conversation': None
+    'chat_conversation': None,
+    'alert_data': {
+        'annotations': {
+            'finalizers': 'kubernetes.io/pv-protection'
+        },
+        'cluster': 'test-cluster',
+        'contact': '__MASKED_EMAIL__',
+        'description': 'Namespace stuck in Terminating state',
+        'labels': {
+            'env': 'test', 
+            'team': 'platform'
+        },
+        'namespace': 'test-namespace'
+    }
 }
 
 EXPECTED_FINAL_ANALYSIS_WITH_CHAT = {
@@ -1180,6 +1193,19 @@ EXPECTED_FINAL_ANALYSIS_WITH_CHAT = {
                 'content': EXPECTED_CHAT_MESSAGE_2_CONVERSATION['messages'][4]['content']
             }
         ]
+    },
+    'alert_data': {
+        'annotations': {
+            'finalizers': 'kubernetes.io/pv-protection'
+        },
+        'cluster': 'test-cluster',
+        'contact': '__MASKED_EMAIL__',
+        'description': 'Namespace stuck in Terminating state',
+        'labels': {
+            'env': 'test', 
+            'team': 'platform'
+        },
+        'namespace': 'test-namespace'
     }
 }
 

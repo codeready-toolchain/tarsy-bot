@@ -427,3 +427,6 @@ class FinalAnalysisResponse(BaseModel):
         default=None,
         description="LLM conversation history from the last chat exchange, if chat exists (optional, requested via query param)"
     )
+    alert_data: dict = Field(
+        description="The data of the alert that triggered the analysis"
+    )

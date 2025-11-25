@@ -1150,7 +1150,7 @@ class TestHistoryControllerEndpoints:
                 status=status.value,
                 started_at_us=now_us() - 300000000,
                 completed_at_us=now_us() if status == AlertSessionStatus.COMPLETED else None,
-                alert_data={},
+                alert_data={"message": "the alert"},
                 chain_id="test-chain",
                 final_analysis=expected_analysis
             )
@@ -1172,10 +1172,12 @@ class TestHistoryControllerEndpoints:
             assert "final_analysis" in data
             assert "session_id" in data
             assert "status" in data
+            assert "alert_data" in data
 
             assert data["session_id"] == session_id
             assert data["status"] == status.value
             assert data["final_analysis"] == expected_analysis
+            assert data["alert_data"] == {"message": "the alert"}
 
             if expected_analysis and "Analysis Results" in expected_analysis:
                 # Verify content for the detailed analysis case

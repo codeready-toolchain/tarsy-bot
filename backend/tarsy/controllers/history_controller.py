@@ -355,7 +355,8 @@ async def get_session_final_analysis(
             session_id=session_id,
             status=AlertSessionStatus(session.status),
             llm_conversation=llm_conversation,
-            chat_conversation=chat_conversation
+            chat_conversation=chat_conversation,
+            alert_data=session.alert_data
         )
         
     except HTTPException:
