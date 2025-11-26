@@ -10,6 +10,7 @@ from typing import Dict, List, Optional, Union
 from collections import defaultdict
 
 from sqlmodel import Session, asc, desc, func, select, and_, or_, case
+from sqlalchemy.exc import IntegrityError
 
 from tarsy.models.constants import AlertSessionStatus, StageStatus
 from tarsy.models.db_models import AlertSession, StageExecution, Chat, ChatUserMessage
@@ -68,6 +69,27 @@ class HistoryRepository:
                 return existing_session
             
             return self.alert_session_repo.create(alert_session)
+        except IntegrityError as e:
+            # Race condition: another thread created the session between our check and insert
+            # Rollback the failed transaction and re-check for the session
+            self.session.rollback()
+            logger.warning(
+                f"IntegrityError creating session {alert_session.session_id} (likely race condition), "
+                f"re-checking for existing session: {str(e)}"
+            )
+            
+            # Re-query to get the session that was created by another thread
+            existing_session = self.session.exec(
+                select(AlertSession).where(AlertSession.session_id == alert_session.session_id)
+            ).first()
+            
+            if existing_session:
+                logger.info(f"Found existing session {alert_session.session_id} after race condition")
+                return existing_session
+            
+            # If still not found, something else went wrong
+            logger.error(f"Session {alert_session.session_id} not found after IntegrityError - unexpected state")
+            return None
         except Exception as e:
             logger.error(f"Failed to create alert session {alert_session.session_id}: {str(e)}")
             return None
