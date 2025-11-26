@@ -1519,6 +1519,193 @@ class TestParameterTypeConversion:
         assert isinstance(result["count"], int)
 
 
+@pytest.mark.unit
+class TestFoundSectionsDiagnostics:
+    """Test found_sections field for malformed response diagnostics."""
+    
+    def test_found_sections_populated_for_valid_action(self):
+        """Test found_sections correctly tracks detected sections for valid action."""
+        response_text = """Thought: I need to check the pods
+Action: kubectl.get_pods
+Action Input: namespace: default"""
+        
+        result = ReActParser.parse_response(response_text)
+        
+        assert result.response_type == ResponseType.THOUGHT_ACTION
+        assert result.found_sections['thought'] is True
+        assert result.found_sections['action'] is True
+        assert result.found_sections['action_input'] is True
+        assert result.found_sections['final_answer'] is False
+    
+    def test_found_sections_populated_for_final_answer(self):
+        """Test found_sections correctly tracks detected sections for final answer."""
+        response_text = """Thought: Analysis complete
+Final Answer: The issue has been resolved"""
+        
+        result = ReActParser.parse_response(response_text)
+        
+        assert result.response_type == ResponseType.FINAL_ANSWER
+        assert result.found_sections['thought'] is True
+        assert result.found_sections['action'] is False
+        assert result.found_sections['action_input'] is False
+        assert result.found_sections['final_answer'] is True
+    
+    def test_found_sections_populated_for_malformed_thought_only(self):
+        """Test found_sections tracks what was detected in malformed response."""
+        response_text = """Thought: I will check the pods now"""
+        
+        result = ReActParser.parse_response(response_text)
+        
+        assert result.response_type == ResponseType.MALFORMED
+        assert result.found_sections['thought'] is True
+        assert result.found_sections['action'] is False
+        assert result.found_sections['action_input'] is False
+        assert result.found_sections['final_answer'] is False
+    
+    def test_found_sections_populated_for_malformed_action_without_input(self):
+        """Test found_sections for malformed response with action but no input."""
+        response_text = """Thought: I need to check
+Action: kubectl.get_pods"""
+        
+        result = ReActParser.parse_response(response_text)
+        
+        assert result.response_type == ResponseType.MALFORMED
+        assert result.found_sections['thought'] is True
+        assert result.found_sections['action'] is True
+        assert result.found_sections['action_input'] is False
+        assert result.found_sections['final_answer'] is False
+    
+    def test_found_sections_empty_for_empty_response(self):
+        """Test found_sections is empty for empty response."""
+        result = ReActParser.parse_response("")
+        
+        assert result.response_type == ResponseType.MALFORMED
+        assert result.found_sections == {}
+    
+    def test_found_sections_populated_for_no_sections_detected(self):
+        """Test found_sections when no ReAct sections are found."""
+        response_text = "Just some random text without any proper sections"
+        
+        result = ReActParser.parse_response(response_text)
+        
+        assert result.response_type == ResponseType.MALFORMED
+        assert result.found_sections['thought'] is False
+        assert result.found_sections['action'] is False
+        assert result.found_sections['action_input'] is False
+        assert result.found_sections['final_answer'] is False
+
+
+@pytest.mark.unit  
+class TestGetFormatErrorFeedback:
+    """Test get_format_error_feedback() method for specific error messages."""
+    
+    def test_error_feedback_action_without_input(self):
+        """Test specific error for action without action input."""
+        response = ReActResponse(
+            response_type=ResponseType.MALFORMED,
+            found_sections={
+                'thought': True,
+                'action': True,
+                'action_input': False,
+                'final_answer': False
+            }
+        )
+        
+        feedback = ReActParser.get_format_error_feedback(response)
+        
+        assert 'FORMAT ERROR' in feedback
+        assert '"Action:"' in feedback
+        assert '"Action Input:"' in feedback
+        assert 'missing' in feedback.lower()
+    
+    def test_error_feedback_input_without_action(self):
+        """Test specific error for action input without action."""
+        response = ReActResponse(
+            response_type=ResponseType.MALFORMED,
+            found_sections={
+                'thought': True,
+                'action': False,
+                'action_input': True,
+                'final_answer': False
+            }
+        )
+        
+        feedback = ReActParser.get_format_error_feedback(response)
+        
+        assert 'FORMAT ERROR' in feedback
+        assert '"Action Input:"' in feedback
+        assert '"Action:"' in feedback
+        assert 'missing' in feedback.lower()
+    
+    def test_error_feedback_thought_only(self):
+        """Test specific error for thought-only response."""
+        response = ReActResponse(
+            response_type=ResponseType.MALFORMED,
+            found_sections={
+                'thought': True,
+                'action': False,
+                'action_input': False,
+                'final_answer': False
+            }
+        )
+        
+        feedback = ReActParser.get_format_error_feedback(response)
+        
+        assert 'FORMAT ERROR' in feedback
+        assert '"Thought:"' in feedback
+        assert '"Action:"' in feedback or '"Final Answer:"' in feedback
+        assert 'MUST' in feedback
+    
+    def test_error_feedback_no_sections_detected(self):
+        """Test specific error when no sections are detected."""
+        response = ReActResponse(
+            response_type=ResponseType.MALFORMED,
+            found_sections={
+                'thought': False,
+                'action': False,
+                'action_input': False,
+                'final_answer': False
+            }
+        )
+        
+        feedback = ReActParser.get_format_error_feedback(response)
+        
+        assert 'FORMAT ERROR' in feedback
+        assert 'Could not detect' in feedback
+    
+    def test_error_feedback_includes_format_reminder(self):
+        """Test that error feedback includes the format reminder."""
+        response = ReActResponse(
+            response_type=ResponseType.MALFORMED,
+            found_sections={
+                'thought': True,
+                'action': False,
+                'action_input': False,
+                'final_answer': False
+            }
+        )
+        
+        feedback = ReActParser.get_format_error_feedback(response)
+        
+        # Should include the format reminder content
+        assert 'Thought: [your reasoning]' in feedback
+        assert 'Action: [tool name]' in feedback
+        assert 'Action Input:' in feedback
+        assert 'Final Answer:' in feedback
+    
+    def test_error_feedback_empty_found_sections(self):
+        """Test error feedback when found_sections is empty (edge case)."""
+        response = ReActResponse(
+            response_type=ResponseType.MALFORMED,
+            found_sections={}
+        )
+        
+        feedback = ReActParser.get_format_error_feedback(response)
+        
+        # Should handle gracefully and produce some feedback
+        assert 'FORMAT ERROR' in feedback
+
+
 # NOTE: Mid-line action detection tests have been moved to test_react_parser_matrix.py
 # for better documentation and explicit INPUT → OUTPUT mapping.
 # See PARSER_TEST_MATRIX.md for the complete test matrix.

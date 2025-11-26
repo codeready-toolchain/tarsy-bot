@@ -262,6 +262,63 @@ class TestSimpleReActController:
         
         # Verify tool execution was attempted
         mock_agent.execute_mcp_tools.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_execute_analysis_loop_malformed_response_kept_with_specific_feedback(
+        self, controller, sample_context, mock_agent, mock_llm_client
+    ):
+        """Test that malformed responses are kept in context with specific error feedback."""
+        mock_agent.max_iterations = 3
+        
+        # Mock LLM responses: first malformed (thought only), then valid
+        react_responses = [
+            "Thought: I need to check the pods but I forgot the format",  # Malformed - no Action or Final Answer
+            "Thought: Let me fix my format\nFinal Answer: Analysis complete"  # Valid
+        ]
+        
+        call_count = 0
+        conversations_seen = []
+        
+        async def mock_generate_response_track_conversation(conversation, session_id, stage_execution_id=None, **kwargs):
+            nonlocal call_count
+            # Track the conversation to verify malformed message is kept
+            conversations_seen.append([m.content for m in conversation.messages])
+            
+            updated_conversation = LLMConversation(messages=conversation.messages.copy())
+            response = react_responses[call_count] if call_count < len(react_responses) else react_responses[-1]
+            updated_conversation.append_assistant_message(response)
+            call_count += 1
+            return updated_conversation
+        
+        mock_llm_client.generate_response.side_effect = mock_generate_response_track_conversation
+        
+        result = await controller.execute_analysis_loop(sample_context)
+        
+        # Should complete with final answer
+        assert "Final Answer: Analysis complete" in result
+        
+        # Verify two LLM calls (first malformed, second valid)
+        assert mock_llm_client.generate_response.call_count == 2
+        
+        # Verify second call's conversation contains:
+        # 1. The malformed assistant message (not deleted)
+        # 2. Error feedback as observation
+        if len(conversations_seen) >= 2:
+            second_call_messages = conversations_seen[1]
+            
+            # The malformed message should be present (assistant message kept)
+            malformed_present = any(
+                "I need to check the pods but I forgot the format" in msg 
+                for msg in second_call_messages
+            )
+            assert malformed_present, "Malformed assistant message should be kept in conversation"
+            
+            # Error feedback should be present (contains FORMAT ERROR)
+            feedback_present = any(
+                "FORMAT ERROR" in msg 
+                for msg in second_call_messages
+            )
+            assert feedback_present, "Specific error feedback should be added to conversation"
 
 
 @pytest.mark.unit
