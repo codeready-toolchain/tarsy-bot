@@ -59,8 +59,8 @@ class TestFinalAnswerDetection:
         
         assert llm_client._contains_final_answer(conversation) is False
 
-    def test_last_message_is_user_not_assistant(self, llm_client):
-        """Test returns False when last message is from user, not assistant."""
+    def test_no_final_answer_with_user_observation_after(self, llm_client):
+        """Test returns False when assistant message lacks Final Answer (with user message after)."""
         conversation = LLMConversation(messages=[
             LLMMessage(role=MessageRole.SYSTEM, content="System prompt"),
             LLMMessage(role=MessageRole.USER, content="Question"),
@@ -68,6 +68,7 @@ class TestFinalAnswerDetection:
             LLMMessage(role=MessageRole.USER, content="Observation: Data collected")
         ])
         
+        # Returns False because the latest assistant message doesn't have Final Answer
         assert llm_client._contains_final_answer(conversation) is False
 
     def test_empty_conversation(self, llm_client):
@@ -78,8 +79,8 @@ class TestFinalAnswerDetection:
         
         assert llm_client._contains_final_answer(conversation) is False
 
-    def test_final_answer_in_middle_message_not_detected(self, llm_client):
-        """Test only checks LAST message, ignores earlier ones."""
+    def test_final_answer_in_earlier_assistant_message_not_detected(self, llm_client):
+        """Test only checks the LATEST assistant message, ignores earlier ones."""
         conversation = LLMConversation(messages=[
             LLMMessage(role=MessageRole.SYSTEM, content="System prompt"),
             LLMMessage(role=MessageRole.USER, content="Question"),
@@ -88,7 +89,7 @@ class TestFinalAnswerDetection:
             LLMMessage(role=MessageRole.ASSISTANT, content="Thought: Continuing investigation")
         ])
         
-        # Should return False because last message doesn't have Final Answer
+        # Should return False because the LATEST assistant message doesn't have Final Answer
         assert llm_client._contains_final_answer(conversation) is False
 
     def test_case_sensitive_final_answer(self, llm_client):
@@ -102,3 +103,19 @@ class TestFinalAnswerDetection:
         # Current implementation is case-sensitive, expects "Final Answer:"
         assert llm_client._contains_final_answer(conversation) is False
 
+    def test_final_answer_detected_with_metadata_observation_after(self, llm_client):
+        """Test that Final Answer is detected when metadata observation follows assistant message.
+        
+        When response metadata is injected as a user observation after the assistant message,
+        _contains_final_answer should still find the Final Answer in the assistant message.
+        """
+        conversation = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="System prompt"),
+            LLMMessage(role=MessageRole.USER, content="Question"),
+            LLMMessage(role=MessageRole.ASSISTANT, content="Thought: Analysis complete.\n\nFinal Answer: Issue resolved."),
+            # Metadata observation injected after assistant response
+            LLMMessage(role=MessageRole.USER, content="[Response Metadata]\n```json\n{\"grounding_metadata\": {}}\n```")
+        ])
+        
+        # Should return True because the latest ASSISTANT message has Final Answer
+        assert llm_client._contains_final_answer(conversation) is True
