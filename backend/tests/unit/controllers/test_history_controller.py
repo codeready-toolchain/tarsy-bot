@@ -1132,15 +1132,19 @@ class TestHistoryControllerEndpoints:
         from tarsy.models.db_models import AlertSession
         
         test_cases = [
-            ("pending", AlertSessionStatus.PENDING, None),
-            ("failed", AlertSessionStatus.FAILED, None),
-            ("cancelled", AlertSessionStatus.CANCELLED, None),
-            ("completed", AlertSessionStatus.COMPLETED, "Analysis complete"),
-            ("completed-long", AlertSessionStatus.COMPLETED, "# Analysis Results\n\nThe namespace termination issue has been resolved.\n\n## Actions Taken\n- Removed stuck finalizers\n- Verified namespace cleanup\n\n## Recommendations\n- Monitor for similar issues"),
-            ("in_progress", AlertSessionStatus.IN_PROGRESS, "")
+            # (session_prefix, status, final_analysis, final_analysis_summary)
+            ("pending", AlertSessionStatus.PENDING, None, None),
+            ("failed", AlertSessionStatus.FAILED, None, None),
+            ("cancelled", AlertSessionStatus.CANCELLED, None, None),
+            ("completed", AlertSessionStatus.COMPLETED, "Analysis complete", "Issue resolved automatically"),
+            ("completed-long", AlertSessionStatus.COMPLETED, 
+            "# Analysis Results\n\nThe namespace termination issue has been resolved.\n\n## Actions Taken\n- Removed stuck finalizers\n- Verified namespace cleanup\n\n## Recommendations\n- Monitor for similar issues",
+            "Namespace finalizers removed, termination completed successfully"),
+            ("completed-no-summary", AlertSessionStatus.COMPLETED, "Analysis done", None),  # Analysis without summary
+            ("in_progress", AlertSessionStatus.IN_PROGRESS, "", None)
         ]
         
-        for session_suffix, status, expected_analysis in test_cases:
+        for session_suffix, status, expected_analysis, expected_analysis_summary in test_cases:
             session_id = f"test-session-{session_suffix}"
             
             mock_session = AlertSession(
@@ -1152,7 +1156,8 @@ class TestHistoryControllerEndpoints:
                 completed_at_us=now_us() if status == AlertSessionStatus.COMPLETED else None,
                 alert_data={"message": "the alert"},
                 chain_id="test-chain",
-                final_analysis=expected_analysis
+                final_analysis=expected_analysis,
+                final_analysis_summary=expected_analysis_summary
             )
             
             mock_history_service.get_session.return_value = mock_session
@@ -1170,6 +1175,7 @@ class TestHistoryControllerEndpoints:
             
             # Verify response structure matches FinalAnalysisResponse
             assert "final_analysis" in data
+            assert "final_analysis_summary" in data
             assert "session_id" in data
             assert "status" in data
             assert "alert_data" in data
@@ -1177,6 +1183,7 @@ class TestHistoryControllerEndpoints:
             assert data["session_id"] == session_id
             assert data["status"] == status.value
             assert data["final_analysis"] == expected_analysis
+            assert data["final_analysis_summary"] == expected_analysis_summary
             assert data["alert_data"] == {"message": "the alert"}
 
             if expected_analysis and "Analysis Results" in expected_analysis:
@@ -1184,6 +1191,10 @@ class TestHistoryControllerEndpoints:
                 assert "Analysis Results" in data["final_analysis"]
                 assert "Actions Taken" in data["final_analysis"]
                 assert "Recommendations" in data["final_analysis"]
+
+                if expected_analysis_summary:
+                    assert len(expected_analysis_summary) < len(expected_analysis)
+                    assert "finalizers" in expected_analysis_summary.lower()
             
             # Verify service was called correctly
             mock_history_service.get_session.assert_called_once_with(session_id)
@@ -1210,7 +1221,8 @@ class TestHistoryControllerEndpoints:
             completed_at_us=now_us(),
             alert_data={},
             chain_id="test-chain",
-            final_analysis="# Analysis\n\nIssue resolved."
+            final_analysis="# Analysis\n\nIssue resolved.",
+            final_analysis_summary="Issue resolved successfully"
         )
         
         # Create mock conversation history
@@ -1249,6 +1261,7 @@ class TestHistoryControllerEndpoints:
         assert data["session_id"] == session_id
         assert data["status"] == "completed"
         assert data["final_analysis"] == "# Analysis\n\nIssue resolved."
+        assert data["final_analysis_summary"] == "Issue resolved successfully"
         
         # Verify conversation is included
         assert "llm_conversation" in data
@@ -1287,7 +1300,8 @@ class TestHistoryControllerEndpoints:
             completed_at_us=now_us(),
             alert_data={},
             chain_id="test-chain",
-            final_analysis="Analysis complete"
+            final_analysis="Analysis complete",
+            final_analysis_summary="Analysis complete successfully"
         )
         
         # Create mock session conversation
@@ -1370,7 +1384,8 @@ class TestHistoryControllerEndpoints:
             completed_at_us=now_us(),
             alert_data={},
             chain_id="test-chain",
-            final_analysis="Simple analysis"
+            final_analysis="Simple analysis",
+            final_analysis_summary="Simple analysis successfully"
         )
         
         mock_history_service.get_session.return_value = mock_session
@@ -1389,6 +1404,7 @@ class TestHistoryControllerEndpoints:
         # Verify basic fields
         assert data["session_id"] == session_id
         assert data["final_analysis"] == "Simple analysis"
+        assert data["final_analysis_summary"] == "Simple analysis successfully"
         
         # Verify conversations are null (not requested)
         assert data["llm_conversation"] is None
@@ -1415,7 +1431,8 @@ class TestHistoryControllerEndpoints:
             completed_at_us=now_us(),
             alert_data={},
             chain_id="test-chain",
-            final_analysis="Analysis"
+            final_analysis="Analysis",
+            final_analysis_summary="Analysis successfully"
         )
         
         session_conversation = LLMConversationHistory(
@@ -1525,6 +1542,7 @@ class TestHistoryControllerEndpoints:
         assert "detail" in error_data
         assert "Failed to retrieve final analysis" in error_data["detail"]
         assert "Unexpected error occurred" in error_data["detail"]
+
 
 class TestHistoryControllerValidation:
     """Test suite for request validation in HistoryController."""

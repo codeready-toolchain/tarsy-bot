@@ -1412,7 +1412,7 @@ class DetailedSession(BaseModel):
 **Core Endpoints**:
 - **`GET /api/v1/history/sessions`** - Paginated session list with filtering
 - **`GET /api/v1/history/sessions/{id}`** - Detailed session with complete timeline  
-- **`GET /api/v1/history/sessions/{id}/final-analysis`** - Get final analysis content with optional conversation history
+- **`GET /api/v1/history/sessions/{id}/final-analysis`** - Get final analysis content and executive summary with optional conversation history
   - Query params: `include_conversation=true` (LLM conversation), `include_chat_conversation=true` (chat conversation)
   - Conversation includes: model name, provider, timestamp, token usage, and flat message list
 - **`GET /api/v1/history/active-sessions`** - Currently processing sessions

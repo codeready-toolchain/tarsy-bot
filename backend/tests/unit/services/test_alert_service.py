@@ -307,6 +307,10 @@ class TestAlertProcessing:
             result_summary="Test analysis result",
             final_analysis="Test analysis result"
         )
+
+        mock_final_analysis_summarizer = AsyncMock()
+        mock_final_analysis_summarizer.generate_executive_summary.return_value = "Test analysis summary"
+        service.final_analysis_summarizer = mock_final_analysis_summarizer
         
         # Set up the service with our mocked dependencies
         service.chain_registry = dependencies['chain_registry']
@@ -566,6 +570,7 @@ class TestHistorySessionManagement:
             status="in_progress",
             error_message=None,
             final_analysis=None,
+            final_analysis_summary=None,
             pause_metadata=None
         )
     
@@ -589,6 +594,7 @@ class TestHistorySessionManagement:
             status="completed",
             error_message=None,
             final_analysis=None,
+            final_analysis_summary=None,
             pause_metadata=None
         )
     
@@ -604,6 +610,24 @@ class TestHistorySessionManagement:
             status="completed",
             error_message=None,
             final_analysis=analysis,
+            final_analysis_summary=None,
+            pause_metadata=None
+        )
+
+    def test_update_session_completed_with_final_analysis_summary(self, alert_service_with_history):
+        """Test marking session as completed with final analysis summary."""
+        service = alert_service_with_history
+        analysis = "# Alert Analysis\n\nSuccessfully resolved the issue."
+        summary = "Brief summary of the analysis"
+        
+        service._update_session_status("session_123", "completed", final_analysis=analysis, final_analysis_summary=summary)
+        
+        service.history_service.update_session_status.assert_called_once_with(
+            session_id="session_123",
+            status="completed",
+            error_message=None,
+            final_analysis=analysis,
+            final_analysis_summary=summary,
             pause_metadata=None
         )
     

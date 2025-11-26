@@ -1098,6 +1098,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}"""
 # These are compared as-is after normalizing timestamps and session_id
 EXPECTED_FINAL_ANALYSIS_LLM_ONLY = {
     'final_analysis': '# Alert Analysis Report\n\n**Alert Type:** test-kubernetes\n**Processing Chain:** kubernetes-namespace-terminating-chain\n**Stages:** 3\n**Environment:** production\n**Severity:** warning\n**Timestamp:** {TIMESTAMP}\n\n## Analysis\n\nBased on previous stages, the namespace is stuck due to finalizers.\n\n---\n*Processed through 3 stages*',
+    'final_analysis_summary': 'The namespace stuck-namespace is in Terminating state due to finalizers blocking deletion.',
     'session_id': '{SESSION_ID}',
     'status': 'completed',
     'llm_conversation': {
@@ -1140,6 +1141,7 @@ EXPECTED_FINAL_ANALYSIS_LLM_ONLY = {
 
 EXPECTED_FINAL_ANALYSIS_WITH_CHAT = {
     'final_analysis': '# Alert Analysis Report\n\n**Alert Type:** test-kubernetes\n**Processing Chain:** kubernetes-namespace-terminating-chain\n**Stages:** 3\n**Environment:** production\n**Severity:** warning\n**Timestamp:** {TIMESTAMP}\n\n## Analysis\n\nBased on previous stages, the namespace is stuck due to finalizers.\n\n---\n*Processed through 3 stages*',
+    'final_analysis_summary': 'The namespace stuck-namespace is in Terminating state due to finalizers blocking deletion.',
     'session_id': '{SESSION_ID}',
     'status': 'completed',
     'llm_conversation': {

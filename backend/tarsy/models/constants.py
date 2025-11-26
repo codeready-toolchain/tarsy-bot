@@ -102,10 +102,12 @@ class LLMInteractionType(str, Enum):
     - INVESTIGATION: ReAct investigation/reasoning iterations (thought/action/observation loops)
     - SUMMARIZATION: MCP result summarization calls (reduce large tool outputs)
     - FINAL_ANALYSIS: Stage conclusion with "Final Answer:" (any stage, any strategy)
+    - FINAL_ANALYSIS_SUMMARY: Final analysis summarization for external notifications (Slack)
     """
     INVESTIGATION = "investigation"
     SUMMARIZATION = "summarization"
     FINAL_ANALYSIS = "final_analysis"
+    FINAL_ANALYSIS_SUMMARY = "final_analysis_summary"
 
 
 # Interaction types that should be included in chat context
@@ -115,6 +117,7 @@ CHAT_CONTEXT_INTERACTION_TYPES: frozenset[str] = frozenset({
     LLMInteractionType.INVESTIGATION.value,
     LLMInteractionType.FINAL_ANALYSIS.value,
     # SUMMARIZATION is excluded - it's internal tool result processing, not investigation context
+    # FINAL_ANALYSIS_SUMMARY excluded - it's post-processing for notifications, not investigation context
 })
 
 

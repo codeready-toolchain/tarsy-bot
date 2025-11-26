@@ -96,6 +96,11 @@ class AlertSession(SQLModel, table=True):
         default=None,
         description="Final formatted analysis result if processing completed successfully"
     )
+
+    final_analysis_summary: Optional[str] = Field(
+        default=None,
+        description="Summary of the final analysis for external notifications (e.g., Slack)"
+    )
     
     session_metadata: Optional[dict] = Field(
         default=None,

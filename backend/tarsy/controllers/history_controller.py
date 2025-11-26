@@ -272,14 +272,14 @@ async def get_session_summary(
     },
     summary="Get Session Final Analysis",
     description="""
-    Retrieve the final analysis content for an alert processing session.
+    Retrieve the final analysis content and executive summary for an alert processing session.
     
     **Response behavior:**
-    - Returns session status and final_analysis field (null if not available)
-    - Completed sessions with analysis: final_analysis contains markdown content
-    - Completed sessions without analysis: final_analysis is null
-    - Non-completed sessions (pending, in_progress, etc.): final_analysis is null
-    - Failed/cancelled sessions: final_analysis is null
+    - Returns session status, final_analysis field (null if not available), and final_analysis_summary field (null if not available)
+    - Completed sessions with analysis: final_analysis and final_analysis_summary contain markdown content
+    - Completed sessions without analysis: final_analysis and final_analysis_summary are null
+    - Non-completed sessions (pending, in_progress, etc.): final_analysis and final_analysis_summary are null
+    - Failed/cancelled sessions: final_analysis and final_analysis_summary are null
     
     **Optional conversation history:**
     - Use `include_conversation=true` to include the LLM conversation history
@@ -289,6 +289,7 @@ async def get_session_summary(
     
     **Response includes:**
     - Final analysis content in markdown format (or null)
+    - Executive summary of the final analysis for external notifications (e.g., Slack) in markdown format (or null)
     - Current session status
     - Optional: LLM conversation history with metadata
     - Optional: Chat LLM conversation history (if chat exists)
@@ -317,8 +318,8 @@ async def get_session_final_analysis(
         history_service: Injected history service
         
     Returns:
-        FinalAnalysisResponse containing the analysis content (or null), session status,
-        and optionally the LLM conversation history
+        FinalAnalysisResponse containing the analysis content (or null), executive summary (or null), 
+        session status, and optionally the LLM conversation history
         
     Raises:
         HTTPException: 404 if session not found, 500 for internal errors
@@ -352,6 +353,7 @@ async def get_session_final_analysis(
         # Return response with current status, final_analysis, and optional conversations
         return FinalAnalysisResponse(
             final_analysis=session.final_analysis,  # Will be None if not available
+            final_analysis_summary=session.final_analysis_summary,  # Will be None if not available
             session_id=session_id,
             status=AlertSessionStatus(session.status),
             llm_conversation=llm_conversation,
@@ -662,6 +664,5 @@ async def resume_session(
         "message": "Session resume initiated",
         "status": "resuming"
     }
-
 
 # Note: Exception handlers should be registered at the app level in main.py 

@@ -204,23 +204,27 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
                 "response_content": """Based on previous stages, the namespace is stuck due to finalizers.""",
                 "input_tokens": 420, "output_tokens": 180, "total_tokens": 600
                },
-            10: { # Chat - First ReAct iteration
+            10: { # Summary generation after analysis completes
+                "response_content": """The namespace stuck-namespace is in Terminating state due to finalizers blocking deletion.""",
+                "input_tokens": 100, "output_tokens": 50, "total_tokens": 150
+            },
+            11: { # Chat - First ReAct iteration
                 "response_content": """Thought: The user wants to see the pods in stuck-namespace. I'll use kubectl_get to list them.
 Action: kubernetes-server.kubectl_get
 Action Input: {"resource": "pods", "namespace": "stuck-namespace"}""",
                 "input_tokens": 150, "output_tokens": 60, "total_tokens": 210
                },
-            11: { # Chat Message 1 - Final answer
+            12: { # Chat Message 1 - Final answer
                 "response_content": """Final Answer: I checked the pods in stuck-namespace and found no pods are currently running. This is consistent with the namespace being stuck in Terminating state - all pods have likely been deleted already, but the namespace can't complete deletion due to the finalizers mentioned in the original investigation.""",
                 "input_tokens": 180, "output_tokens": 90, "total_tokens": 270
                },
-            12: { # Chat Message 2 - ReAct iteration (check namespace status again)
+            13: { # Chat Message 2 - ReAct iteration (check namespace status again)
                 "response_content": """Thought: The user wants to know if the namespace still exists. Let me check its current status.
 Action: kubernetes-server.kubectl_get
 Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
                 "input_tokens": 200, "output_tokens": 70, "total_tokens": 270
                },
-            13: { # Chat Message 2 - Final answer
+            14: { # Chat Message 2 - Final answer
                 "response_content": """Final Answer: Yes, the namespace still exists and remains in Terminating state. Based on the investigation history, the namespace is blocked by finalizers (kubernetes.io/pvc-protection). To resolve this, you would need to manually remove the finalizers using kubectl patch or edit the namespace resource directly.""",
                 "input_tokens": 220, "output_tokens": 95, "total_tokens": 315
                },

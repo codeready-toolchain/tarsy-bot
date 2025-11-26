@@ -608,6 +608,10 @@ class TestAlertServiceHistoryIntegration:
         """Create AlertService with history integration."""
         # Create AlertService directly with mock settings
         service = AlertService(mock_settings)
+
+        mock_summary = AsyncMock()
+        mock_summary.generate_executive_summary.return_value = "Test analysis"
+        service.final_analysis_summarizer = mock_summary
         
         # Mock LLM manager to appear available
         service.llm_manager.is_available = Mock(return_value=True)
@@ -965,19 +969,20 @@ class TestHistoryAPIIntegration:
         
         # Define test scenarios similar to unit test pattern
         test_scenarios = [
-            # (session_suffix, status, final_analysis)
-            ("with-content", AlertSessionStatus.COMPLETED, "# Dummy Analysis Content"),
-            ("no-content", AlertSessionStatus.IN_PROGRESS, None),
-            ("failed-no-analysis", AlertSessionStatus.FAILED, None),
-            ("pending-no-analysis", AlertSessionStatus.PENDING, None),
-            ("completed-empty-analysis", AlertSessionStatus.COMPLETED, ""),
+            # (session_suffix, status, final_analysis, final_analysis_summary)
+            ("with-content", AlertSessionStatus.COMPLETED, "# Dummy Analysis Content", "Issue resolved successfully"),
+            ("no-content", AlertSessionStatus.IN_PROGRESS, None, None),
+            ("failed-no-analysis", AlertSessionStatus.FAILED, None, None),
+            ("pending-no-analysis", AlertSessionStatus.PENDING, None, None),
+            ("completed-empty-analysis", AlertSessionStatus.COMPLETED, "", None),
+            ("completed-no-summary", AlertSessionStatus.COMPLETED, "Analysis without summary", None),
             ("completed-detailed-analysis", AlertSessionStatus.COMPLETED, 
-             "# Security Incident Analysis\n\n## Threat Assessment\nPotential data breach detected.\n\n## Immediate Actions\n1. Isolated affected systems\n2. Initiated incident response protocol\n3. Notified security team\n\n## Next Steps\n- Full forensic analysis\n- Review access logs\n- Update security policies"),
+            "# Security Incident Analysis\n\n## Threat Assessment\nPotential data breach detected.\n\n## Immediate Actions\n1. Isolated affected systems\n2. Initiated incident response protocol\n3. Notified security team\n\n## Next Steps\n- Full forensic analysis\n- Review access logs\n- Update security policies",
+            "Security breach: systems isolated, incident response active, forensic analysis pending"),
         ]
-        
         from tarsy.controllers.history_controller import get_history_service
         
-        for session_suffix, status, final_analysis in test_scenarios:
+        for session_suffix, status, final_analysis, final_analysis_summary in test_scenarios:
             session_id = f"integration-session-{session_suffix}"
             
             # Create test session with consistent alert_type and agent_type
@@ -990,7 +995,8 @@ class TestHistoryAPIIntegration:
                 completed_at_us=now_us() - 60000000 if status in [AlertSessionStatus.COMPLETED, AlertSessionStatus.FAILED] else None,
                 alert_data={"test": "data", "environment": "integration"},
                 chain_id=f"integration-chain-{session_suffix}",
-                final_analysis=final_analysis
+                final_analysis=final_analysis,
+                final_analysis_summary=final_analysis_summary
             )
             
             # Mock the get_session method
@@ -1009,6 +1015,7 @@ class TestHistoryAPIIntegration:
                 
                 # Verify response structure
                 assert "final_analysis" in data
+                assert "final_analysis_summary" in data
                 assert "session_id" in data
                 assert "status" in data
                 
@@ -1016,7 +1023,8 @@ class TestHistoryAPIIntegration:
                 assert data["session_id"] == session_id
                 assert data["status"] == status.value
                 assert data["final_analysis"] == final_analysis
-                
+                assert data["final_analysis_summary"] == final_analysis_summary
+
                 # Verify specific content for detailed analysis
                 if final_analysis and "Security Incident Analysis" in final_analysis:
                     assert "Threat Assessment" in data["final_analysis"]
@@ -1074,6 +1082,7 @@ class TestHistoryAPIIntegration:
                 # Clean up for next iteration
                 app.dependency_overrides.clear()
                 mock_history_service_for_api.reset_mock()
+
 
 @pytest.mark.integration
 class TestDuplicatePreventionIntegration:

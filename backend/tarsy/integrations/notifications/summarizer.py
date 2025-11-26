@@ -1,0 +1,109 @@
+"""
+Executive Summary Agent for generating concise final analysis summary for external notifications.
+
+This lightweight agent creates AI-powered summaries after chain completion,
+specifically for Slack notifications and other external integrations.
+"""
+
+from typing import Optional, TYPE_CHECKING
+
+from tarsy.models.constants import LLMInteractionType
+from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
+from tarsy.utils.logger import get_module_logger
+from tarsy.agents.prompts.builders import PromptBuilder
+
+
+if TYPE_CHECKING:
+    from tarsy.integrations.llm.client import LLMClient
+
+logger = get_module_logger(__name__)
+
+
+class ExecutiveSummaryAgent:
+    """
+    Lightweight agent for generating concise final analysis executive summaries of completed alert investigations.
+    
+    This agent uses LLM to create final analysis executive summaries
+    suitable for external notifications (Slack, etc.).
+    """
+    
+    def __init__(self, llm_client: 'LLMClient'):
+        """
+        Initialize summarizer with LLM client and prompt builder.
+        
+        Args:
+            llm_client: The LLM client (actually LLMManager) to use for summarization
+        """
+        self.llm_client = llm_client
+        self.prompt_builder = PromptBuilder()
+    
+    async def generate_executive_summary(
+        self,
+        content: str,
+        session_id: str,
+        stage_execution_id: Optional[str] = None,
+        max_tokens: int = 150
+    ) -> Optional[str]:
+        """
+        Generate a concise final analysis executive summary of the content.
+        
+        This final analysis executive summary is optimized for external notifications (Slack, etc.) where
+        brevity is crucial.
+        
+        Args:
+            content: The content to generate an executive summary
+            session_id: Session ID for tracking
+            stage_execution_id: Optional stage execution ID (typically None for post-chain)
+            max_tokens: Maximum tokens for final analysis executive summary (default: 150)
+            
+        Returns:
+            Concise final analysis executive summary string, or None if generation fails
+            
+        Raises:
+            Exception: If summarization fails critically
+        """
+        if not content:
+            raise ValueError("Cannot generate executive summary: content is required and cannot be empty")
+        
+        try:
+            # Build summarization prompt using the existing builder
+            summary_prompt = self.prompt_builder.build_final_analysis_summary_prompt(content)
+            # Create user message with the prompt
+            user_message = LLMMessage(
+                role=MessageRole.USER,
+                content=summary_prompt
+            )
+            
+            # Create system message with the system prompt
+            system_content = self.prompt_builder.build_final_analysis_summary_system_prompt()
+            system_message = LLMMessage(
+                role=MessageRole.SYSTEM,
+                content=system_content
+            )
+            
+            # Create conversation with both messages
+            conversation = LLMConversation(messages=[system_message, user_message])
+            
+            # Generate summary using LLM client with RESULT_SUMMARY interaction type
+            response_conversation = await self.llm_client.generate_response(
+                conversation=conversation,
+                session_id=session_id,
+                stage_execution_id=stage_execution_id,
+                max_tokens=max_tokens,
+                interaction_type=LLMInteractionType.FINAL_ANALYSIS_SUMMARY.value  # Type dedicated to Final Analysis Summaries only
+            )
+            
+            # Extract summary from response
+            assistant_message = response_conversation.get_latest_assistant_message()
+            if not assistant_message:
+                logger.error("No assistant response received for executive summary generation")
+                return None
+            
+            executive_summary = assistant_message.content.strip()
+
+            logger.info(f"Generated executive summary for session {session_id}: {executive_summary[:100]}...")
+            return executive_summary
+            
+        except Exception as e:
+            logger.error(f"Failed to generate result summary for session {session_id}: {e}")
+            return None

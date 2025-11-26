@@ -32,6 +32,7 @@ from tarsy.services.runbook_service import RunbookService
 from tarsy.utils.logger import get_module_logger
 from tarsy.agents.exceptions import SessionPaused
 from tarsy.models.pause_metadata import PauseMetadata, PauseReason
+from tarsy.integrations.notifications.summarizer import ExecutiveSummaryAgent
 
 logger = get_module_logger(__name__)
 
@@ -98,6 +99,9 @@ class AlertService:
         
         # Reference to MCP health monitor (set during startup in main.py)
         self.mcp_health_monitor = None
+
+        # Initialize final analysis summary agent
+        self.final_analysis_summarizer = None
         
         logger.info(f"AlertService initialized with agent delegation support "
                    f"({len(self.parsed_config.agents)} configured agents, "
@@ -227,6 +231,11 @@ class AlertService:
                 llm_client=self.llm_manager,
                 mcp_registry=self.mcp_server_registry,
                 agent_configs=self.parsed_config.agents,
+            )
+
+            # Initialize final result summarizer with LLM manager
+            self.final_analysis_summarizer = ExecutiveSummaryAgent(
+                llm_client=self.llm_manager,
             )
 
             logger.info("AlertService initialized successfully")
@@ -366,13 +375,23 @@ class AlertService:
                     chain_result.timestamp_us
                 )
                 
+                # TODO: Only generate summary when Slack integration is enabled (avoid unnecessary LLM calls)
+                final_result_summary = await self.final_analysis_summarizer.generate_executive_summary(
+                    content=analysis,
+                    session_id=chain_context.session_id
+                )
+
                 # Mark history session as completed successfully
-                self._update_session_status(chain_context.session_id, AlertSessionStatus.COMPLETED.value, final_analysis=final_result)
+                self._update_session_status(
+                    chain_context.session_id, 
+                    AlertSessionStatus.COMPLETED.value,
+                    final_analysis=final_result,
+                    final_analysis_summary=final_result_summary
+                )
                 
                 # Publish session.completed event
                 from tarsy.services.events.event_helpers import publish_session_completed
                 await publish_session_completed(chain_context.session_id)
-                
                 return final_result
             elif chain_result.status == ChainStatus.PAUSED:
                 # Session was paused - this is not an error condition
@@ -1055,6 +1074,7 @@ class AlertService:
         status: str,
         error_message: Optional[str] = None,
         final_analysis: Optional[str] = None,
+        final_analysis_summary: Optional[str] = None,
         pause_metadata: Optional[dict] = None
     ):
         """
@@ -1076,6 +1096,7 @@ class AlertService:
                 status=status,
                 error_message=error_message,
                 final_analysis=final_analysis,
+                final_analysis_summary=final_analysis_summary,
                 pause_metadata=pause_metadata
             )
             
@@ -1366,7 +1387,7 @@ class AlertService:
             
         except Exception as e:
             logger.warning(f"Failed to update stage execution as started: {str(e)}")
-    
+
     async def close(self):
         """
         Clean up resources.

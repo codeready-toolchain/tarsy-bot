@@ -294,6 +294,7 @@ class HistoryService:
         status: str,
         error_message: Optional[str] = None,
         final_analysis: Optional[str] = None,
+        final_analysis_summary: Optional[str] = None,
         pause_metadata: Optional[dict] = None
     ) -> bool:
         """
@@ -327,6 +328,8 @@ class HistoryService:
                     session.error_message = error_message
                 if final_analysis:
                     session.final_analysis = final_analysis
+                if final_analysis_summary:
+                    session.final_analysis_summary = final_analysis_summary
                 # Set pause_metadata when transitioning to PAUSED, clear it otherwise
                 if status == AlertSessionStatus.PAUSED.value:
                     session.pause_metadata = pause_metadata

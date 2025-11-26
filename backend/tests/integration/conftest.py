@@ -869,6 +869,11 @@ async def alert_service(ensure_integration_test_isolation, mock_settings, mock_r
     # Initialize the service (this creates the real agent_factory)
     await service.initialize()
     
+    # Mock final_analysis_summary to avoid needing real LLM
+    mock_summary = Mock()
+    mock_summary.generate_executive_summary = AsyncMock(return_value="Test analysis summary")
+    service.final_analysis_summarizer = mock_summary
+    
     # Replace the agent_factory with our mock AFTER initialization
     service.agent_factory = mock_agent_factory
     
@@ -903,6 +908,11 @@ def alert_service_with_mocks(
     mock_factory = Mock(spec=MCPClientFactory)
     mock_factory.create_client = AsyncMock(return_value=mock_mcp_client)
     service.mcp_client_factory = mock_factory
+    
+    # Mock final_analysis_summary
+    mock_summary = Mock()
+    mock_summary.generate_executive_summary = AsyncMock(return_value="Test analysis summary")
+    service.final_analysis_summarizer = mock_summary
     
     # Create mock history service for proper testing
     mock_history_service = Mock(spec=HistoryService)
