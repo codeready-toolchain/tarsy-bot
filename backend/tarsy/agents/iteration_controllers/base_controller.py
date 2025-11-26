@@ -298,17 +298,12 @@ class ReactController(IterationController):
                             
                     # 8. Handle malformed response
                     else:
-                        self.logger.warning("ReAct response is malformed - removing it and sending format correction")
+                        self.logger.warning("ReAct response is malformed - keeping it and sending specific error feedback")
                         
-                        # Remove the malformed assistant message from conversation
-                        # This prevents the LLM from seeing its own malformed output
-                        if conversation_result.messages and conversation_result.messages[-1].role == MessageRole.ASSISTANT:
-                            conversation_result.messages.pop()
-                            self.logger.debug("Removed malformed assistant message from conversation")
-                        
-                        # Add brief format correction reminder as user message
-                        format_reminder = ReActParser.get_format_correction_reminder()
-                        conversation_result.append_observation(format_reminder)
+                        # Keep the malformed message in context so LLM can see what it produced
+                        # Generate specific feedback about what was missing/wrong
+                        error_feedback = ReActParser.get_format_error_feedback(parsed_response)
+                        conversation_result.append_observation(error_feedback)
                     
                     return conversation_result
                 

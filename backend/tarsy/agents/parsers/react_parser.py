@@ -68,6 +68,12 @@ class ReActResponse(BaseModel):
     # For UNKNOWN_TOOL responses
     error_message: Optional[str] = None
     
+    # For diagnostics (especially MALFORMED responses)
+    found_sections: Dict[str, bool] = Field(
+        default_factory=dict,
+        description="Which sections were found during parsing (for error diagnostics)"
+    )
+    
     @property
     def is_final_answer(self) -> bool:
         """Check if this is a final answer response."""
@@ -107,12 +113,25 @@ class ReActParser:
             ReActResponse with automatic validation and type checking.
             For malformed inputs, returns ReActResponse with ResponseType.MALFORMED
             instead of raising exceptions, providing consistent error handling.
+            All responses include found_sections for diagnostics.
         """
         if not response or not isinstance(response, str):
-            return ReActResponse(response_type=ResponseType.MALFORMED, thought=None)
+            return ReActResponse(
+                response_type=ResponseType.MALFORMED,
+                thought=None,
+                found_sections={}
+            )
         
         # Parse sections using existing logic from builders.py
         sections = ReActParser._extract_sections(response)
+        
+        # Build found_sections for diagnostics (tracks what was detected)
+        found_sections = {
+            'thought': sections.get('thought') is not None,
+            'action': sections.get('action') is not None,
+            'action_input': sections.get('action_input') is not None,
+            'final_answer': sections.get('final_answer') is not None,
+        }
         
         # Check for action first (with or without thought - LLMs sometimes skip thought)
         action = sections.get('action')
@@ -128,7 +147,8 @@ class ReActParser:
                     thought=sections.get('thought'),  # Optional - might be None
                     action=action,
                     action_input=action_input,
-                    tool_call=tool_call
+                    tool_call=tool_call,
+                    found_sections=found_sections
                 )
             except UnknownToolError as e:
                 # Tool name doesn't match expected format - return unknown tool response
@@ -138,23 +158,33 @@ class ReActParser:
                     thought=sections.get('thought'),
                     action=action,
                     action_input=action_input,
-                    error_message=str(e)
+                    error_message=str(e),
+                    found_sections=found_sections
                 )
             except (ValueError, ValidationError) as e:
                 # Log the error and return malformed response
                 logger.error(f"Invalid action format: {str(e)}")
-                return ReActResponse(response_type=ResponseType.MALFORMED, thought=None)
+                return ReActResponse(
+                    response_type=ResponseType.MALFORMED,
+                    thought=sections.get('thought'),
+                    found_sections=found_sections
+                )
         
         # Check for final answer (only if no valid action was found)
         if sections.get('final_answer'):
             return ReActResponse(
                 response_type=ResponseType.FINAL_ANSWER,
                 thought=sections.get('thought'),
-                final_answer=sections['final_answer']
+                final_answer=sections['final_answer'],
+                found_sections=found_sections
             )
         
-        # Malformed response
-        return ReActResponse(response_type=ResponseType.MALFORMED, thought=None)
+        # Malformed response - include what was found for diagnostics
+        return ReActResponse(
+            response_type=ResponseType.MALFORMED,
+            thought=sections.get('thought'),
+            found_sections=found_sections
+        )
     
     @staticmethod
     def _extract_sections(response: str) -> Dict[str, Optional[str]]:
@@ -704,11 +734,10 @@ class ReActParser:
     @staticmethod
     def get_format_correction_reminder() -> str:
         """
-        Get brief format reminder when LLM generates malformed response.
+        Get brief format reminder for ReAct structure.
         
-        This reminder is appended to the user message AFTER removing the malformed assistant response.
-        Since the LLM won't see its malformed response, we don't mention any "error" - we just
-        emphasize the critical format rules as if this is the first time seeing the request.
+        This is used as part of error feedback when the LLM generates a malformed response.
+        The malformed response is kept in context so the LLM can see what it produced.
         """
         return """
 IMPORTANT: Please follow the exact ReAct format:
@@ -716,6 +745,7 @@ IMPORTANT: Please follow the exact ReAct format:
 1. Use colons: "Thought:", "Action:", "Action Input:", "Final Answer:"
 2. Start each section on a NEW LINE (never continue on same line as previous text)
 3. Stop after Action Input - the system provides Observations
+4. Your response MUST include EITHER tool calling (Action + Action Input) OR Final Answer
 
 Required structure for investigation:
 Thought: [your reasoning]
@@ -730,6 +760,67 @@ Action Input:
 Required structure for conclusion:
 Thought: [final reasoning]
 Final Answer: [complete analysis]"""
+    
+    @staticmethod
+    def get_format_error_feedback(parsed_response: 'ReActResponse') -> str:
+        """
+        Generate specific error feedback based on what sections were found/missing.
+        
+        This provides targeted feedback to help the LLM understand exactly what
+        went wrong, rather than showing a generic format reminder. The malformed
+        response remains in context so the LLM can see what it produced.
+        
+        Args:
+            parsed_response: The ReActResponse with found_sections diagnostics
+            
+        Returns:
+            Specific error feedback + format reminder
+        """
+        found = parsed_response.found_sections
+        
+        # Build specific error message based on what was detected
+        has_thought = found.get('thought', False)
+        has_action = found.get('action', False)
+        has_action_input = found.get('action_input', False)
+        has_final_answer = found.get('final_answer', False)
+        
+        # Determine the specific problem
+        if has_action and not has_action_input:
+            specific_error = (
+                "FORMAT ERROR: Your response has \"Action:\" but is missing \"Action Input:\".\n"
+                "Every \"Action:\" MUST be followed by \"Action Input:\" (even if empty for no-parameter tools)."
+            )
+        elif has_action_input and not has_action:
+            specific_error = (
+                "FORMAT ERROR: Your response has \"Action Input:\" but is missing \"Action:\".\n"
+                "\"Action Input:\" must be preceded by \"Action:\" specifying which tool to call."
+            )
+        elif has_thought and not has_action and not has_final_answer:
+            specific_error = (
+                "FORMAT ERROR: Your response only contains \"Thought:\".\n"
+                "After reasoning, you MUST either:\n"
+                "- Call a tool with \"Action:\" + \"Action Input:\", OR\n"
+                "- Conclude with \"Final Answer:\""
+            )
+        elif not has_thought and not has_action and not has_final_answer:
+            specific_error = (
+                "FORMAT ERROR: Could not detect any ReAct sections in your response.\n"
+                "Your response must use the exact format: \"Thought:\", \"Action:\", \"Action Input:\", or \"Final Answer:\""
+            )
+        else:
+            # Generic fallback for edge cases
+            found_list = [k for k, v in found.items() if v]
+            missing_list = [k for k, v in found.items() if not v]
+            specific_error = (
+                f"FORMAT ERROR: Incomplete ReAct format.\n"
+                f"Found: {', '.join(found_list) if found_list else 'none'}\n"
+                f"Missing: {', '.join(missing_list) if missing_list else 'none'}"
+            )
+        
+        # Append the format reminder
+        format_reminder = ReActParser.get_format_correction_reminder()
+        
+        return f"{specific_error}\n{format_reminder}"
     
     @staticmethod
     def format_unknown_tool_error(error_message: str, available_tools: list) -> str:
