@@ -292,7 +292,7 @@ class TestLLMClientInitialization:
         with patch('tarsy.integrations.llm.client.ChatOpenAI') as mock_openai:
             mock_openai.return_value = Mock()
             
-            client = LLMClient("openai", config)
+            _client = LLMClient("openai", config)
             
             # Temperature should NOT be in the call - model uses its own default
             mock_openai.assert_called_once_with(
@@ -315,7 +315,7 @@ class TestLLMClientInitialization:
         with patch('tarsy.integrations.llm.client.ChatOpenAI') as mock_openai:
             mock_openai.return_value = Mock()
             
-            client = LLMClient("openai", config)
+            _client = LLMClient("openai", config)
             
             # Temperature SHOULD be in the call when explicitly set
             mock_openai.assert_called_once_with(
@@ -778,7 +778,7 @@ class TestLLMClientSSLAndBaseURL:
         )
         
         with patch('tarsy.integrations.llm.client.ChatOpenAI') as mock_openai:
-            client = LLMClient("openai", config)
+            _client = LLMClient("openai", config)
             
             # Verify base_url was passed to ChatOpenAI
             call_args = mock_openai.call_args[1]
@@ -794,7 +794,7 @@ class TestLLMClientSSLAndBaseURL:
         )
         
         with patch('tarsy.integrations.llm.client.ChatGoogleGenerativeAI') as mock_google:
-            client = LLMClient("google", config)
+            _client = LLMClient("google", config)
             
             # Verify base_url was not passed to Google client
             call_args = mock_google.call_args[1]
@@ -1504,7 +1504,7 @@ class TestLLMManager:
         mock_settings.llm_provider = "google-default"
         
         # Act
-        result = llm_manager.get_max_tool_result_tokens()
+        _result = llm_manager.get_max_tool_result_tokens()
         
         # Assert - should use google-default client's limit
         google_client = llm_manager.get_client("google-default")

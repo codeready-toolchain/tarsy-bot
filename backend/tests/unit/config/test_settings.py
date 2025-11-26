@@ -353,7 +353,6 @@ class TestBuiltinLLMProvidersConfiguration:
         from tarsy.config.builtin_config import BUILTIN_LLM_PROVIDERS
         
         required_fields = {"type", "model", "api_key_env"}
-        optional_fields = {"base_url", "verify_ssl", "max_tool_result_tokens", "temperature"}
         
         for provider_name, config in BUILTIN_LLM_PROVIDERS.items():
             # Check all required fields are present

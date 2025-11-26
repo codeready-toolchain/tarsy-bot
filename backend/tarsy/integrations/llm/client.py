@@ -93,7 +93,7 @@ def _create_openai_client(temp, api_key, model, disable_ssl_verification=False, 
     
     return ChatOpenAI(**client_kwargs)
 
-def _create_google_client(temp, api_key, model, disable_ssl_verification=False, base_url=None):
+def _create_google_client(temp, api_key, model, _disable_ssl_verification=False, _base_url=None):
     """Create ChatGoogleGenerativeAI client."""
     client_kwargs = {
         "model": model, 
@@ -107,7 +107,7 @@ def _create_google_client(temp, api_key, model, disable_ssl_verification=False, 
     # Note: ChatGoogleGenerativeAI may not support custom base_url or HTTP clients
     return ChatGoogleGenerativeAI(**client_kwargs)
 
-def _create_xai_client(temp, api_key, model, disable_ssl_verification=False, base_url=None):
+def _create_xai_client(temp, api_key, model, _disable_ssl_verification=False, base_url=None):
     """Create ChatXAI client."""
     client_kwargs = {
         "model": model, 
@@ -123,7 +123,7 @@ def _create_xai_client(temp, api_key, model, disable_ssl_verification=False, bas
     # Note: ChatXAI may not support custom HTTP clients - would need to verify
     return ChatXAI(**client_kwargs)
 
-def _create_anthropic_client(temp, api_key, model, disable_ssl_verification=False, base_url=None):
+def _create_anthropic_client(temp, api_key, model, _disable_ssl_verification=False, base_url=None):
     """Create ChatAnthropic client."""
     client_kwargs = {
         "model": model, 
@@ -139,7 +139,7 @@ def _create_anthropic_client(temp, api_key, model, disable_ssl_verification=Fals
     # Note: ChatAnthropic may not support custom HTTP clients - would need to verify  
     return ChatAnthropic(**client_kwargs)
 
-def _create_vertexai_client(temp, api_key, model, disable_ssl_verification=False, base_url=None):
+def _create_vertexai_client(temp, api_key, model, _disable_ssl_verification=False, _base_url=None):
     """Create ChatAnthropicVertex client for Claude models on Vertex AI.
     
     Authentication via GOOGLE_APPLICATION_CREDENTIALS env var pointing to service account JSON.
