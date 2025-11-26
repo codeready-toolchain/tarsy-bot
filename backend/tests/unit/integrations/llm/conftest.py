@@ -11,9 +11,15 @@ from typing import Optional
 class MockChunk:
     """Mock chunk that supports LangChain-style aggregation with + operator."""
 
-    def __init__(self, content: str, usage_metadata: Optional[dict] = None):
+    def __init__(
+        self, 
+        content: str, 
+        usage_metadata: Optional[dict] = None,
+        response_metadata: Optional[dict] = None
+    ):
         self.content = content
         self.usage_metadata = usage_metadata
+        self.response_metadata = response_metadata
 
     def __add__(self, other):
         """Support chunk aggregation like LangChain does."""
@@ -21,9 +27,10 @@ class MockChunk:
             return NotImplemented
         # Aggregate content and usage_metadata
         new_content = self.content + other.content
-        # For usage metadata, the last one wins (simulating LangChain behavior)
+        # For usage metadata and response metadata, the last one wins (simulating LangChain behavior)
         new_usage = other.usage_metadata or self.usage_metadata
-        return MockChunk(new_content, new_usage)
+        new_response = other.response_metadata or self.response_metadata
+        return MockChunk(new_content, new_usage, new_response)
 
     def __radd__(self, other):
         """Support reverse addition."""
@@ -32,22 +39,35 @@ class MockChunk:
         return self.__add__(other)
 
 
-async def create_mock_stream(content: str, usage_metadata: Optional[dict] = None):
+async def create_mock_stream(
+    content: str, 
+    usage_metadata: Optional[dict] = None,
+    response_metadata: Optional[dict] = None
+):
     """
     Create an async generator that yields mock chunks.
 
     Args:
         content: The content to stream, yielded character by character
         usage_metadata: Optional usage metadata to attach to the final chunk
+        response_metadata: Optional response metadata to attach to the final chunk
     """
     # Simulate streaming by yielding content in chunks
     for i, char in enumerate(content):
-        # Add usage_metadata only to the final chunk (simulates OpenAI stream_usage=True)
+        # Add metadata only to the final chunk (simulates LLM streaming behavior)
         is_final = i == len(content) - 1
-        yield MockChunk(char, usage_metadata=usage_metadata if is_final else None)
+        yield MockChunk(
+            char, 
+            usage_metadata=usage_metadata if is_final else None,
+            response_metadata=response_metadata if is_final else None
+        )
 
 
-def create_stream_side_effect(content: str, usage_metadata: Optional[dict] = None):
+def create_stream_side_effect(
+    content: str, 
+    usage_metadata: Optional[dict] = None,
+    response_metadata: Optional[dict] = None
+):
     """
     Create a side_effect function that returns a mock stream.
 
@@ -58,6 +78,7 @@ def create_stream_side_effect(content: str, usage_metadata: Optional[dict] = Non
     Args:
         content: The content to stream
         usage_metadata: Optional usage metadata for the final chunk
+        response_metadata: Optional response metadata for the final chunk
 
     Returns:
         A function that accepts any args/kwargs and returns an async generator
@@ -65,7 +86,7 @@ def create_stream_side_effect(content: str, usage_metadata: Optional[dict] = Non
 
     def side_effect(*_args, **_kwargs):
         """Accept and ignore any arguments to match astream signature."""
-        return create_mock_stream(content, usage_metadata)
+        return create_mock_stream(content, usage_metadata, response_metadata)
 
     return side_effect
 

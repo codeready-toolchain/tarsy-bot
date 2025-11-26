@@ -20,6 +20,7 @@ tool combination. The NEW SDK types (google.genai.types) are required.
 
 import asyncio
 import httpx
+import json
 import pprint
 import traceback
 import urllib3
@@ -780,32 +781,36 @@ class LLMClient:
     
     def _contains_final_answer(self, conversation: LLMConversation) -> bool:
         """
-        Check if the LAST message is from assistant and contains 'Final Answer:'.
+        Check if the latest assistant message contains 'Final Answer:'.
         
         Uses the centralized ReAct parser to determine if the response contains
         a final answer, ensuring consistency across the codebase.
+        
+        Note: This method finds the last ASSISTANT message, not the absolute last
+        message. This is important because metadata observations may be appended
+        after assistant messages.
         
         Args:
             conversation: The conversation to check
             
         Returns:
-            True if last message is assistant with "Final Answer:", False otherwise
+            True if latest assistant message contains "Final Answer:", False otherwise
         """
         if not conversation.messages:
             return False
         
-        # Check LAST message only
-        last_msg = conversation.messages[-1]
+        # Find the last assistant message (not absolute last message)
+        # This handles cases where metadata observations are appended after assistant response
+        last_assistant_msg = conversation.get_latest_assistant_message()
         
-        # Must be from assistant
-        if last_msg.role != MessageRole.ASSISTANT:
+        if last_assistant_msg is None:
             return False
         
         # Use the centralized ReAct parser to determine if this is a final answer
         # This ensures all Final Answer detection logic is in one place
         from tarsy.agents.parsers.react_parser import ReActParser
         
-        parsed = ReActParser.parse_response(last_msg.content)
+        parsed = ReActParser.parse_response(last_assistant_msg.content)
         return parsed.is_final_answer
     
     def get_max_tool_result_tokens(self) -> int:
@@ -951,6 +956,37 @@ class LLMClient:
         """
         # Add assistant response to conversation
         conversation.append_assistant_message(accumulated_content)
+        
+        # Inject response metadata as observation if it contains valuable tool usage info
+        # This ensures LLM has context about native tool usage (Google Search, etc.)
+        # in subsequent iterations - without this, search results would be "lost"
+        #
+        # Only inject metadata containing these keys (indicates actual tool usage):
+        # - grounding_metadata: Google Search queries/results, URL context
+        # - parts: Code execution results (Python code blocks, outputs)
+        #
+        # Skip metadata that only contains generic fields like:
+        # - safety_ratings, model_provider, finish_reason, usage_metadata
+        metadata = ctx.interaction.response_metadata
+        if metadata and isinstance(metadata, dict):
+            valuable_keys = {'grounding_metadata', 'parts'}
+            
+            # Check if any valuable keys are present with non-empty content
+            has_valuable_content = any(
+                key in metadata and metadata[key]  # Key exists and has truthy value
+                for key in valuable_keys
+            )
+            
+            if has_valuable_content:
+                # Filter to only include valuable metadata for cleaner context
+                filtered_metadata = {k: v for k, v in metadata.items() if k in valuable_keys and v}
+                metadata_json = json.dumps(filtered_metadata, indent=2, default=str)
+                metadata_observation = (
+                    "[Response Metadata]\n"
+                    "The following metadata was captured from this LLM response:\n"
+                    f"```json\n{metadata_json}\n```"
+                )
+                conversation.append_observation(metadata_observation)
         
         # Update the interaction with conversation data
         ctx.interaction.conversation = conversation
