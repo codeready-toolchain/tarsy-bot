@@ -165,9 +165,9 @@ class TestLLMClientInitialization:
             
             assert client.provider_name == "openai"
             assert client.available == True
+            # Temperature not set - uses model's default
             mock_openai.assert_called_once_with(
                 model="gpt-4",
-                temperature=0.7,
                 api_key="test-api-key",
                 stream_usage=True
             )
@@ -183,9 +183,9 @@ class TestLLMClientInitialization:
             
             assert client.provider_name == "google"
             assert client.available == True
+            # Temperature not set - uses model's default
             mock_google.assert_called_once_with(
                 model="gpt-4",
-                temperature=0.7,
                 google_api_key="test-api-key"
             )
     
@@ -200,10 +200,10 @@ class TestLLMClientInitialization:
             
             assert client.provider_name == "xai"
             assert client.available == True
+            # Temperature not set - uses model's default
             mock_xai.assert_called_once_with(
                 model="gpt-4",
-                api_key="test-api-key",
-                temperature=0.7
+                api_key="test-api-key"
             )
     
     def test_initialization_anthropic_success(self, mock_config):
@@ -217,10 +217,10 @@ class TestLLMClientInitialization:
             
             assert client.provider_name == "anthropic"
             assert client.available == True
+            # Temperature not set - uses model's default
             mock_anthropic.assert_called_once_with(
                 model="gpt-4",
-                api_key="test-api-key",
-                temperature=0.7
+                api_key="test-api-key"
             )
     
     def test_initialization_vertexai_success_with_location(self, mock_config):
@@ -238,11 +238,11 @@ class TestLLMClientInitialization:
             
             assert client.provider_name == "vertexai"
             assert client.available == True
+            # Temperature not set - uses model's default
             mock_vertexai.assert_called_once_with(
                 model_name="claude-sonnet-4-5@20250929",
                 project="my-project",
-                location="us-east5",
-                temperature=0.7
+                location="us-east5"
             )
     
     def test_initialization_vertexai_success_default_location(self, mock_config):
@@ -260,11 +260,11 @@ class TestLLMClientInitialization:
             
             assert client.provider_name == "vertexai"
             assert client.available == True
+            # Temperature not set - uses model's default
             mock_vertexai.assert_called_once_with(
                 model_name="claude-sonnet-4-5@20250929",
                 project="my-project",
-                location="us-east5",  # Default location
-                temperature=0.7
+                location="us-east5"  # Default location
             )
     
     def test_initialization_unknown_provider(self):
@@ -279,14 +279,14 @@ class TestLLMClientInitialization:
             )
     
     def test_initialization_with_defaults(self):
-        """Test initialization with minimal config uses BaseModel defaults."""
-        # Create config with only required fields to test BaseModel defaults
+        """Test initialization with minimal config uses model defaults (no temperature set)."""
+        # Create config with only required fields - temperature defaults to None
         config = LLMProviderConfig(
             type="openai",
             model="gpt-4", 
             api_key_env="OPENAI_API_KEY",
             api_key="test-key"
-            # Uses BaseModel defaults: temperature=0.1
+            # temperature not set - uses model's default
         )
         
         with patch('tarsy.integrations.llm.client.ChatOpenAI') as mock_openai:
@@ -294,11 +294,35 @@ class TestLLMClientInitialization:
             
             client = LLMClient("openai", config)
             
+            # Temperature should NOT be in the call - model uses its own default
             mock_openai.assert_called_once_with(
-                model="gpt-4",  # model from config
-                temperature=0.1,     # BaseModel default temperature
+                model="gpt-4",
                 api_key="test-key",
-                stream_usage=True    # Enabled for token tracking
+                stream_usage=True
+            )
+    
+    def test_initialization_with_explicit_temperature(self):
+        """Test initialization with explicit temperature passes it to provider."""
+        # Create config with explicit temperature
+        config = LLMProviderConfig(
+            type="openai",
+            model="gpt-4", 
+            api_key_env="OPENAI_API_KEY",
+            api_key="test-key",
+            temperature=0.5  # Explicitly set
+        )
+        
+        with patch('tarsy.integrations.llm.client.ChatOpenAI') as mock_openai:
+            mock_openai.return_value = Mock()
+            
+            client = LLMClient("openai", config)
+            
+            # Temperature SHOULD be in the call when explicitly set
+            mock_openai.assert_called_once_with(
+                model="gpt-4",
+                temperature=0.5,
+                api_key="test-key",
+                stream_usage=True
             )
     
     def test_initialization_handles_langchain_error(self, mock_config):

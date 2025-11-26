@@ -59,11 +59,11 @@ class LLMProviderConfig(BaseModel):
         default=None,
         description="Custom base URL for the provider API"
     )
-    temperature: float = Field(
-        default=0.1,
+    temperature: Optional[float] = Field(
+        default=None,
         ge=0.0,
         le=2.0,
-        description="Temperature for response generation (0.0-2.0)"
+        description="Temperature for response generation (0.0-2.0). If not set, uses model's default."
     )
     verify_ssl: bool = Field(
         default=True,

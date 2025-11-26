@@ -107,7 +107,7 @@ def create_test_config(provider_type: str = "openai", **overrides):
         "type": provider_type,
         "model": "gpt-4",
         "api_key_env": "OPENAI_API_KEY",
-        "temperature": 0.7,
+        # temperature not set by default - uses model's default
         "api_key": "test-api-key",
         # native_tools not set by default, uses secure defaults (code_execution disabled, others enabled)
     }
