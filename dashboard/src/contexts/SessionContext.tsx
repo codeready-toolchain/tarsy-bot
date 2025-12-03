@@ -159,17 +159,19 @@ export function SessionProvider({ children }: SessionProviderProps) {
         // Only update if stages have actually changed
         const stagesChanged = JSON.stringify(prevSession.stages) !== JSON.stringify(sessionData.stages);
         const analysisChanged = prevSession.final_analysis !== sessionData.final_analysis;
+        const summaryChanged = prevSession.final_analysis_summary !== sessionData.final_analysis_summary;
         const statusChanged = prevSession.status !== sessionData.status;
         const pauseMetadataChanged = JSON.stringify(prevSession.pause_metadata) !== JSON.stringify(sessionData.pause_metadata);
         
-        if (!stagesChanged && !analysisChanged && !statusChanged && !pauseMetadataChanged) {
+        if (!stagesChanged && !analysisChanged && !summaryChanged && !statusChanged && !pauseMetadataChanged) {
           console.log('📊 [SessionContext] No stage changes detected, skipping update');
           return prevSession;
         }
         
         console.log('📊 [SessionContext] Updating session stages and analysis:', { 
           stagesChanged, 
-          analysisChanged, 
+          analysisChanged,
+          summaryChanged,
           statusChanged,
           pauseMetadataChanged 
         });
@@ -177,6 +179,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
           ...prevSession,
           stages: sessionData.stages,
           final_analysis: sessionData.final_analysis,
+          final_analysis_summary: sessionData.final_analysis_summary,
           status: sessionData.status as typeof prevSession.status,
           error_message: sessionData.error_message,
           pause_metadata: sessionData.pause_metadata,

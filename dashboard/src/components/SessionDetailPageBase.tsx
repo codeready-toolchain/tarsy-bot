@@ -169,7 +169,7 @@ function SessionDetailPageBase({
   const disableTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasPerformedInitialScrollRef = useRef<boolean>(false);
   
-  // Reset initial scroll flag when sessionId changes
+  // Reset scroll flags when sessionId changes
   useEffect(() => {
     hasPerformedInitialScrollRef.current = false;
   }, [sessionId]);
@@ -248,23 +248,23 @@ function SessionDetailPageBase({
   }, [sendingMessage, chatStageInProgress, activeExecutionId, autoScrollEnabled]);
   
   // Perform initial scroll to bottom for active sessions
+  // Always scroll to bottom when opening an active session, regardless of autoScrollEnabled state
   useEffect(() => {
     if (
       session &&
       !loading &&
       !hasPerformedInitialScrollRef.current &&
-      autoScrollEnabled &&
       isActiveSessionStatus(session.status)
     ) {
       // Wait for content to render, then scroll to bottom
       const scrollTimer = setTimeout(() => {
         window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' });
         hasPerformedInitialScrollRef.current = true;
-      }, 300); // Small delay to ensure content is rendered
+      }, 500); // Increased delay to ensure content is fully rendered
       
       return () => clearTimeout(scrollTimer);
     }
-  }, [session, loading, autoScrollEnabled]);
+  }, [session, loading]);
   
   // Cleanup timeout on unmount
   useEffect(() => {
