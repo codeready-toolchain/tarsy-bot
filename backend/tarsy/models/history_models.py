@@ -373,6 +373,9 @@ class DetailedSession(BaseModel):
     # Complete stage executions with all their interactions
     stages: List[DetailedStage] = Field(default_factory=list)  # Each stage contains its full interaction timeline
     
+    # Session-level interactions (not associated with any specific stage)
+    session_level_interactions: List[Union[LLMTimelineEvent, MCPTimelineEvent]] = Field(default_factory=list)
+    
     # Calculated properties
     @computed_field
     @property

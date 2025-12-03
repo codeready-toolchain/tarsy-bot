@@ -787,6 +787,242 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
           );
         })}
 
+        {/* Session-Level Interactions Section */}
+        {chainExecution.session_level_interactions && chainExecution.session_level_interactions.length > 0 && (
+          <Box sx={{ mt: 3, pt: 3, borderTop: '2px solid', borderColor: 'divider' }}>
+            <Typography 
+              variant="h6" 
+              sx={{ 
+                mb: 2, 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: 1,
+                color: 'info.main'
+              }}
+            >
+              <Settings sx={{ fontSize: 24 }} />
+              Session-Level Interactions
+              <Chip 
+                label={chainExecution.session_level_interactions.length}
+                size="small"
+                color="info"
+                sx={{ ml: 1 }}
+              />
+            </Typography>
+            
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              These interactions are not associated with any specific stage (e.g., executive summary generation).
+            </Typography>
+
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {chainExecution.session_level_interactions.map((interaction: TimelineItem, index: number) => {
+                const itemKey = interaction.event_id || `session-interaction-${index}`;
+                const isDetailsExpanded = expandedInteractionDetails[itemKey];
+                const typeStyle = getInteractionTypeStyle(interaction);
+                
+                return (
+                  <Card
+                    key={itemKey}
+                    elevation={2}
+                    sx={{ 
+                      bgcolor: 'background.paper',
+                      borderRadius: 2,
+                      overflow: 'hidden',
+                      transition: 'all 0.2s ease-in-out',
+                      border: (() => {
+                        if (typeStyle) return typeStyle.borderColor;
+                        if (interaction.type === 'mcp') return '2px solid #ce93d8';
+                        return '2px solid rgba(33, 150, 243, 0.5)'; // info color
+                      })(),
+                      '&:hover': {
+                        elevation: 4,
+                        transform: 'translateY(-1px)',
+                        border: (() => {
+                          if (typeStyle) return typeStyle.hoverBorderColor;
+                          if (interaction.type === 'mcp') return '2px solid #ba68c8';
+                          return '2px solid rgba(33, 150, 243, 0.8)'; // info color
+                        })()
+                      }
+                    }}
+                  >
+                    <CardHeader
+                      avatar={
+                        <Avatar
+                          sx={{
+                            bgcolor: `${getInteractionColor(interaction.type)}.main`,
+                            color: 'white',
+                            width: 40,
+                            height: 40
+                          }}
+                        >
+                          {getInteractionIcon(interaction.type)}
+                        </Avatar>
+                      }
+                      title={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
+                            {interaction.step_description}
+                          </Typography>
+                          
+                          {/* Show interaction type for LLM interactions */}
+                          {(() => {
+                            const typeStyleInner = getInteractionTypeStyle(interaction);
+                            return typeStyleInner && (
+                              <Chip 
+                                label={typeStyleInner.label}
+                                size="small"
+                                color={typeStyleInner.color}
+                                sx={{ fontSize: '0.7rem', height: 22, fontWeight: 600 }}
+                              />
+                            );
+                          })()}
+                          
+                          {interaction.duration_ms && (
+                            <Chip 
+                              label={formatDurationMs(interaction.duration_ms)} 
+                              size="small" 
+                              variant="filled"
+                              color={getInteractionColor(interaction.type)}
+                              sx={{ fontSize: '0.75rem', height: 24 }}
+                            />
+                          )}
+                        </Box>
+                      }
+                      subheader={
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                          <Typography variant="body2" color="text.secondary">
+                            {formatTimestamp(interaction.timestamp_us, 'short')}
+                          </Typography>
+                          <Typography variant="body2" sx={{ color: `${getInteractionColor(interaction.type)}.main`, fontWeight: 500 }}>
+                            • {interaction.type.toUpperCase()}
+                          </Typography>
+                          <Chip 
+                            label="Session Level"
+                            size="small"
+                            color="info"
+                            variant="outlined"
+                            sx={{ fontSize: '0.65rem', height: 20 }}
+                          />
+                        </Box>
+                      }
+                      action={null}
+                      sx={{ 
+                        pb: interaction.details && !isDetailsExpanded ? 2 : 1,
+                        bgcolor: (theme) => alpha(theme.palette.info.main, 0.05)
+                      }}
+                    />
+                        
+                    
+                    {/* Expandable interaction details */}
+                    {interaction.details && (
+                      <CardContent sx={{ 
+                        pt: 2,
+                        bgcolor: 'background.paper'
+                      }}>
+                        {/* Show LLM preview when not expanded */}
+                        {interaction.type === 'llm' && !isDetailsExpanded && (
+                          <LLMInteractionPreview 
+                            interaction={interaction.details as LLMInteraction}
+                            showFullPreview={true}
+                          />
+                        )}
+                        
+                        {/* Show MCP preview when not expanded */}
+                        {interaction.type === 'mcp' && !isDetailsExpanded && (
+                          <MCPInteractionPreview 
+                            interaction={interaction.details as MCPInteraction}
+                            showFullPreview={true}
+                          />
+                        )}
+                        
+                        {/* Expand/Collapse button */}
+                        <Box sx={{ 
+                          display: 'flex', 
+                          justifyContent: 'center', 
+                          mt: 2,
+                          mb: 1
+                        }}>
+                          <Box 
+                            onClick={() => toggleInteractionDetails(itemKey)}
+                            sx={{ 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              gap: 0.5,
+                              cursor: 'pointer',
+                              py: 0.75,
+                              px: 1.5,
+                              borderRadius: 1,
+                              bgcolor: interaction.type === 'llm' 
+                                ? 'rgba(25, 118, 210, 0.04)' 
+                                : interaction.type === 'mcp'
+                                ? 'rgba(156, 39, 176, 0.04)'
+                                : 'rgba(33, 150, 243, 0.04)',
+                              border: interaction.type === 'llm' 
+                                ? '1px solid rgba(25, 118, 210, 0.12)' 
+                                : interaction.type === 'mcp'
+                                ? '1px solid rgba(156, 39, 176, 0.12)'
+                                : '1px solid rgba(33, 150, 243, 0.12)',
+                              '&:hover': { 
+                                bgcolor: interaction.type === 'llm' 
+                                  ? 'rgba(25, 118, 210, 0.08)' 
+                                  : interaction.type === 'mcp'
+                                  ? 'rgba(156, 39, 176, 0.08)'
+                                  : 'rgba(33, 150, 243, 0.08)',
+                                border: interaction.type === 'llm' 
+                                  ? '1px solid rgba(25, 118, 210, 0.2)' 
+                                  : interaction.type === 'mcp'
+                                  ? '1px solid rgba(156, 39, 176, 0.2)'
+                                  : '1px solid rgba(33, 150, 243, 0.2)',
+                                '& .expand-text': {
+                                  textDecoration: 'underline'
+                                }
+                              },
+                              transition: 'all 0.2s ease-in-out'
+                            }}
+                          >
+                            <Typography 
+                              className="expand-text"
+                              variant="body2" 
+                              sx={{ 
+                                color: interaction.type === 'llm' 
+                                  ? '#1976d2' 
+                                  : interaction.type === 'mcp'
+                                  ? '#9c27b0'
+                                  : '#2196f3',
+                                fontWeight: 500,
+                                fontSize: '0.875rem'
+                              }}
+                            >
+                              {isDetailsExpanded ? 'Show Less' : 'Show Full Details'}
+                            </Typography>
+                            <Box sx={{ 
+                              color: interaction.type === 'llm' 
+                                ? '#1976d2' 
+                                : interaction.type === 'mcp'
+                                ? '#9c27b0'
+                                : '#2196f3',
+                              display: 'flex',
+                              alignItems: 'center'
+                            }}>
+                              {isDetailsExpanded ? <ExpandLess /> : <ExpandMore />}
+                            </Box>
+                          </Box>
+                        </Box>
+                        
+                        {/* Full interaction details when expanded */}
+                        <InteractionDetails
+                          type={interaction.type as 'llm' | 'mcp' | 'system'}
+                          details={interaction.details}
+                          expanded={isDetailsExpanded}
+                        />
+                      </CardContent>
+                    )}
+                  </Card>
+                );
+              })}
+            </Box>
+          </Box>
+        )}
 
       </Box>
 

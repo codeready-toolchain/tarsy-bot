@@ -42,6 +42,10 @@ export interface Session {
   session_output_tokens: number | null;  
   session_total_tokens: number | null;
   
+  // Final analysis and summary
+  final_analysis?: string | null;
+  final_analysis_summary?: string | null;
+  
   chat_message_count?: number; // Number of user messages in follow-up chat (if chat exists)
 }
 
@@ -100,6 +104,7 @@ export interface DetailedSession extends Session {
   // Full session details
   alert_data: AlertData;
   final_analysis: string | null;
+  final_analysis_summary: string | null;
   session_metadata: { [key: string]: any } | null;
   
   // Chain execution details (moved to top level)
@@ -604,6 +609,7 @@ export interface ChainExecution {
   current_stage_index: number | null;
   current_stage_id: string | null;
   stages: StageExecution[];
+  session_level_interactions?: TimelineItem[];
 }
 
 export interface ChainTimelineProps {
