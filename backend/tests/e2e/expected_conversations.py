@@ -268,6 +268,23 @@ EXPECTED_STAGES = {
 }
 
 """
+Expected session-level interactions (not associated with any stage).
+
+These interactions occur after all stages complete, such as the executive summary
+generated for dashboard display and external notifications.
+
+Format is the same as stage interactions above.
+"""
+EXPECTED_SESSION_LEVEL_INTERACTIONS = {
+    'llm_count': 1,  # Executive summary
+    'mcp_count': 0,  # No MCP interactions at session level
+    'interactions': [
+        # LLM 1 - Executive summary generation (final_analysis_summary type)
+        {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 100, 'output_tokens': 50, 'total_tokens': 150, 'interaction_type': 'final_analysis_summary'}
+    ]
+}
+
+"""
 Expected conversation structures for E2E tests.
 
 This module contains the expected LLM conversation message structures
@@ -285,6 +302,35 @@ Format:
     ]
 }
 """
+
+# Expected conversation for session-level executive summary
+EXPECTED_EXECUTIVE_SUMMARY_CONVERSATION = {
+    "messages": [
+        {
+            "role": "system",
+            "content": "You are an expert Site Reliability Engineer assistant that creates concise 1-4 line executive summaries of incident analyses for alert notifications. Focus on clarity, brevity, and actionable information."
+        },
+        {
+            "role": "user",
+            "content": """Generate a 1-4 line executive summary of this incident analysis.
+
+CRITICAL RULES:
+- Only summarize what is EXPLICITLY stated in the analysis
+- Do NOT infer future actions or recommendations not mentioned
+- Do NOT add your own conclusions
+- Focus on: what happened, current status, and ONLY stated next steps
+
+Analysis to summarize:
+Based on previous stages, the namespace is stuck due to finalizers.
+
+Executive Summary (1-4 lines, facts only):"""
+        },
+        {
+            "role": "assistant",
+            "content": "The namespace stuck-namespace is in Terminating state due to finalizers blocking deletion."
+        }
+    ]
+}
 
 # Expected conversation structures for multi-stage chains
 EXPECTED_DATA_COLLECTION_CONVERSATION = {

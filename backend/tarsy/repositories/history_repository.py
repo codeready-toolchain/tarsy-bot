@@ -806,6 +806,16 @@ class HistoryRepository:
                 if stage.stage_total_tokens:
                     session_total_tokens += stage.stage_total_tokens
             
+            # Add session-level interaction tokens (e.g., executive summary)
+            for interaction in session_level_interactions:
+                if interaction.type == "llm" and interaction.details:
+                    if interaction.details.input_tokens:
+                        session_input_tokens += interaction.details.input_tokens
+                    if interaction.details.output_tokens:
+                        session_output_tokens += interaction.details.output_tokens
+                    if interaction.details.total_tokens:
+                        session_total_tokens += interaction.details.total_tokens
+            
             # Use None instead of 0 for cleaner display
             session_input_tokens = session_input_tokens if session_input_tokens > 0 else None
             session_output_tokens = session_output_tokens if session_output_tokens > 0 else None  

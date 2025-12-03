@@ -1192,6 +1192,71 @@ class TestHistoryRepository:
         assert "Test issue detected" in result.final_analysis_summary
     
     @pytest.mark.unit
+    def test_get_session_details_extracts_session_level_interactions(self, repository, sample_alert_session):
+        """Test that interactions without stage_execution_id are extracted as session-level interactions."""
+        from tarsy.models.constants import LLMInteractionType
+        
+        repository.create_alert_session(sample_alert_session)
+        
+        base_time = datetime.now(timezone.utc)
+        
+        # Create session-level interactions (no stage_execution_id)
+        llm_interaction = LLMInteraction(
+            session_id=sample_alert_session.session_id,
+            model_name="gpt-4",
+            conversation=LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="Summarize"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Summary")
+            ]),
+            timestamp_us=int(base_time.timestamp() * 1_000_000),
+            stage_execution_id=None,
+            interaction_type=LLMInteractionType.FINAL_ANALYSIS_SUMMARY
+        )
+        
+        mcp_interaction = MCPInteraction(
+            communication_id="mcp-1",
+            session_id=sample_alert_session.session_id,
+            server_name="slack-server",
+            communication_type="tool_call",
+            tool_name="post_message",
+            timestamp_us=int((base_time + timedelta(seconds=5)).timestamp() * 1_000_000),
+            step_description="Send notification",
+            success=True,
+            stage_execution_id=None
+        )
+        
+        repository.create_llm_interaction(llm_interaction)
+        repository.create_mcp_communication(mcp_interaction)
+        
+        # Get session details
+        result = repository.get_session_details(sample_alert_session.session_id)
+        
+        assert result is not None
+        assert result.session_level_interactions is not None
+        assert len(result.session_level_interactions) == 2
+        
+        # Verify both types are included
+        types = [i.type for i in result.session_level_interactions]
+        assert "llm" in types
+        assert "mcp" in types
+        
+        # Verify chronological sorting
+        timestamps = [i.timestamp_us for i in result.session_level_interactions]
+        assert timestamps == sorted(timestamps)
+    
+    @pytest.mark.unit
+    def test_get_session_details_empty_session_level_interactions_for_backward_compat(self, repository, sample_alert_session):
+        """Test that sessions without session-level interactions return empty list."""
+        repository.create_alert_session(sample_alert_session)
+        
+        result = repository.get_session_details(sample_alert_session.session_id)
+        
+        assert result is not None
+        assert result.session_level_interactions is not None
+        assert isinstance(result.session_level_interactions, list)
+        assert len(result.session_level_interactions) == 0
+    
+    @pytest.mark.unit
     def test_get_alert_sessions_with_mcp_selection(self, repository):
         """Test that get_alert_sessions includes mcp_selection in SessionOverview."""
         from tarsy.models.mcp_selection_models import (

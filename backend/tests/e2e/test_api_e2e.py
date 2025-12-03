@@ -28,6 +28,8 @@ from .expected_conversations import (
     EXPECTED_CHAT_MESSAGE_1_CONVERSATION,
     EXPECTED_CHAT_MESSAGE_2_CONVERSATION,
     EXPECTED_DATA_COLLECTION_CONVERSATION,
+    EXPECTED_EXECUTIVE_SUMMARY_CONVERSATION,
+    EXPECTED_SESSION_LEVEL_INTERACTIONS,
     EXPECTED_STAGES,
     EXPECTED_VERIFICATION_CONVERSATION,
 )
@@ -527,6 +529,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
                     await self._verify_session_metadata(
                         detail_data, e2e_realistic_kubernetes_alert
                     )
+                    await self._verify_session_level_interactions(detail_data)
                     await self._verify_stage_structure(stages)
                     await self._verify_complete_interaction_flow(stages)
 
@@ -582,11 +585,11 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             processing_duration_ms < 10000
         ), f"Processing took too long: {processing_duration_ms}ms (should be <10s with mocked calls)"
 
-        # Verify session-level token usage totals (sum of all stages)
-        # Expected totals: data-collection(1260+460=1720) + verification(470+180=650) + analysis(420+180=600)
-        expected_session_input_tokens = 2150  # 1260 + 470 + 420
-        expected_session_output_tokens = 820   # 460 + 180 + 180  
-        expected_session_total_tokens = 2970   # 1720 + 650 + 600
+        # Verify session-level token usage totals (sum of all stages + session-level interactions)
+        # Expected totals: data-collection(1260+460=1720) + verification(470+180=650) + analysis(420+180=600) + executive-summary(100+50=150)
+        expected_session_input_tokens = 2250  # 1260 + 470 + 420 + 100 (executive summary)
+        expected_session_output_tokens = 870   # 460 + 180 + 180 + 50 (executive summary)
+        expected_session_total_tokens = 3120   # 1720 + 650 + 600 + 150 (executive summary)
         
         actual_session_input_tokens = session_data.get("session_input_tokens")
         actual_session_output_tokens = session_data.get("session_output_tokens")
@@ -604,6 +607,188 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
 
         print(
             f"    ✅ Session metadata verified (chain: {session_data['chain_id']}, duration: {processing_duration_ms:.1f}ms)"
+        )
+
+    def _verify_interactions(
+        self,
+        interactions: list,
+        expected_spec: dict,
+        context_label: str,
+        expected_conversation: dict = None
+    ) -> tuple[int, int, int]:
+        """
+        Verify a list of interactions (LLM and MCP) against expected specification.
+        
+        This is a common helper used for both stage-level and session-level interaction verification.
+        
+        Args:
+            interactions: List of actual interactions to verify
+            expected_spec: Expected interaction specification with 'interactions' list
+            context_label: Label for error messages (e.g., "Session-level" or "Stage 'data-collection'")
+            expected_conversation: Expected conversation dict for conversation_index lookups (optional)
+        
+        Returns:
+            Tuple of (input_tokens, output_tokens, total_tokens) accumulated from LLM interactions
+        """
+        # Track token totals
+        expected_input_tokens = 0
+        expected_output_tokens = 0
+        expected_total_tokens = 0
+        
+        for i, expected_interaction in enumerate(expected_spec["interactions"]):
+            actual_interaction = interactions[i]
+            interaction_type = expected_interaction["type"]
+            
+            # Verify the type matches
+            assert actual_interaction["type"] == interaction_type, (
+                f"{context_label} interaction {i+1} type mismatch: expected {interaction_type}, "
+                f"got {actual_interaction['type']}"
+            )
+            
+            # Verify basic interaction structure
+            assert "details" in actual_interaction, (
+                f"{context_label} interaction {i+1} missing details"
+            )
+            details = actual_interaction["details"]
+            assert details["success"] == expected_interaction["success"], (
+                f"{context_label} interaction {i+1} success mismatch"
+            )
+            
+            if interaction_type == "llm":
+                # Verify the actual conversation matches the expected conversation
+                actual_conversation = details["conversation"]
+                actual_messages = actual_conversation["messages"]
+                
+                if "conversation_index" in expected_interaction:
+                    # Use conversation_index to slice from the expected conversation
+                    assert expected_conversation is not None, (
+                        f"{context_label} interaction {i+1} has conversation_index but no expected_conversation provided"
+                    )
+                    expected_conversation_index = expected_interaction["conversation_index"]
+                    assert_conversation_messages(
+                        expected_conversation, actual_messages, expected_conversation_index
+                    )
+                elif "conversation" in expected_interaction:
+                    # Use the provided conversation directly
+                    expected_conversation_for_interaction = expected_interaction["conversation"]
+                    expected_message_count = len(expected_conversation_for_interaction["messages"])
+                    assert_conversation_messages(
+                        expected_conversation_for_interaction, actual_messages, expected_message_count
+                    )
+                else:
+                    raise AssertionError(
+                        f"{context_label} interaction {i+1} missing both 'conversation_index' and 'conversation' fields"
+                    )
+                
+                # Verify interaction_type
+                if "interaction_type" in expected_interaction:
+                    assert details.get("interaction_type") == expected_interaction["interaction_type"], (
+                        f"{context_label} interaction {i+1} interaction_type mismatch: "
+                        f"expected '{expected_interaction['interaction_type']}', "
+                        f"got '{details.get('interaction_type')}'"
+                    )
+                
+                # Verify token usage
+                if "input_tokens" in expected_interaction:
+                    assert details["input_tokens"] == expected_interaction["input_tokens"], (
+                        f"{context_label} interaction {i+1} input_tokens mismatch: "
+                        f"expected {expected_interaction['input_tokens']}, got {details['input_tokens']}"
+                    )
+                    assert details["output_tokens"] == expected_interaction["output_tokens"], (
+                        f"{context_label} interaction {i+1} output_tokens mismatch: "
+                        f"expected {expected_interaction['output_tokens']}, got {details['output_tokens']}"
+                    )
+                    assert details["total_tokens"] == expected_interaction["total_tokens"], (
+                        f"{context_label} interaction {i+1} total_tokens mismatch: "
+                        f"expected {expected_interaction['total_tokens']}, got {details['total_tokens']}"
+                    )
+                    
+                    # Accumulate token totals
+                    expected_input_tokens += expected_interaction["input_tokens"]
+                    expected_output_tokens += expected_interaction["output_tokens"]
+                    expected_total_tokens += expected_interaction["total_tokens"]
+                    
+            elif interaction_type == "mcp":
+                assert details["communication_type"] == expected_interaction["communication_type"], (
+                    f"{context_label} interaction {i+1} communication_type mismatch"
+                )
+                assert details["server_name"] == expected_interaction["server_name"], (
+                    f"{context_label} interaction {i+1} server_name mismatch"
+                )
+                
+                # Verify tool name for tool_call interactions
+                if expected_interaction["communication_type"] == "tool_call":
+                    assert details["tool_name"] == expected_interaction["tool_name"], (
+                        f"{context_label} interaction {i+1} tool_name mismatch"
+                    )
+                    
+                    # Verify error message for failed interactions
+                    if not expected_interaction["success"]:
+                        expected_error_message = expected_interaction.get("error_message")
+                        actual_error_message = details.get("error_message")
+                        assert expected_error_message is not None, (
+                            f"{context_label} interaction {i+1} expected error but no expected_error_message defined"
+                        )
+                        assert actual_error_message is not None, (
+                            f"{context_label} interaction {i+1} expected error but no error_message in API response"
+                        )
+                        assert actual_error_message == expected_error_message, (
+                            f"{context_label} interaction {i+1} error_message mismatch: "
+                            f"expected '{expected_error_message}', got '{actual_error_message}'"
+                        )
+                        print(f"    ✅ MCP Error message verified: {actual_error_message[:80]}...")
+                
+                # Verify tool_list has available_tools
+                elif expected_interaction["communication_type"] == "tool_list":
+                    assert "available_tools" in details, (
+                        f"{context_label} interaction {i+1} tool_list missing available_tools"
+                    )
+                    assert len(details["available_tools"]) > 0, (
+                        f"{context_label} interaction {i+1} tool_list has no available_tools"
+                    )
+        
+        return expected_input_tokens, expected_output_tokens, expected_total_tokens
+
+    async def _verify_session_level_interactions(self, session_data):
+        """Verify session-level interactions using common verification helper."""
+        print("  📝 Verifying session-level interactions...")
+        
+        session_level_interactions = session_data.get("session_level_interactions", [])
+        expected = EXPECTED_SESSION_LEVEL_INTERACTIONS
+        
+        # Verify interaction counts
+        llm_interactions = [i for i in session_level_interactions if i.get("type") == "llm"]
+        mcp_interactions = [i for i in session_level_interactions if i.get("type") == "mcp"]
+        
+        assert len(llm_interactions) == expected["llm_count"], (
+            f"Session-level: Expected {expected['llm_count']} LLM interactions, got {len(llm_interactions)}"
+        )
+        assert len(mcp_interactions) == expected["mcp_count"], (
+            f"Session-level: Expected {expected['mcp_count']} MCP interactions, got {len(mcp_interactions)}"
+        )
+        
+        # Verify complete interaction flow in chronological order
+        assert len(session_level_interactions) == len(expected["interactions"]), (
+            f"Session-level interaction count mismatch: expected {len(expected['interactions'])}, "
+            f"got {len(session_level_interactions)}"
+        )
+        
+        # Verify interactions using common helper
+        _, _, expected_total_tokens = self._verify_interactions(
+            interactions=session_level_interactions,
+            expected_spec=expected,
+            context_label="Session-level",
+            expected_conversation=EXPECTED_EXECUTIVE_SUMMARY_CONVERSATION
+        )
+        
+        logger.info(
+            "Session-level: Complete interaction flow verified (%d LLM, %d MCP, %d total tokens)",
+            len(llm_interactions), len(mcp_interactions), expected_total_tokens
+        )
+        
+        print(
+            f"    ✅ Session-level interactions verified ({len(llm_interactions)} LLM, "
+            f"{len(mcp_interactions)} MCP, {expected_total_tokens} tokens)"
         )
 
     async def _verify_stage_structure(self, stages):
@@ -694,107 +879,13 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             len(chronological_interactions) == len(expected_stage["interactions"])
         ), f"Stage '{stage_name}' chronological interaction count mismatch: expected {len(expected_stage['interactions'])}, got {len(chronological_interactions)}"
 
-        # Track token totals for the stage
-        expected_input_tokens = 0
-        expected_output_tokens = 0
-        expected_total_tokens = 0
-
-        for i, expected_interaction in enumerate(expected_stage["interactions"]):
-            actual_interaction = chronological_interactions[i]
-            interaction_type = expected_interaction["type"]
-
-            # Verify the type matches
-            assert (
-                actual_interaction["type"] == interaction_type
-            ), f"Stage '{stage_name}' interaction {i+1} type mismatch: expected {interaction_type}, got {actual_interaction['type']}"
-
-            # Verify basic interaction structure
-            assert (
-                "details" in actual_interaction
-            ), f"Stage '{stage_name}' interaction {i+1} missing details"
-            details = actual_interaction["details"]
-            assert (
-                details["success"] == expected_interaction["success"]
-            ), f"Stage '{stage_name}' interaction {i+1} success mismatch"
-
-            if interaction_type == "llm":
-                # Verify the actual conversation matches the expected conversation
-                actual_conversation = details["conversation"]
-                actual_messages = actual_conversation["messages"]
-                
-                if "conversation_index" in expected_interaction:
-                    # Use conversation_index to slice from the expected conversation
-                    expected_conversation_index = expected_interaction["conversation_index"]
-                    assert_conversation_messages(
-                        expected_conversation, actual_messages, expected_conversation_index
-                    )
-                elif "conversation" in expected_interaction:
-                    # Use the provided conversation directly (e.g., for summarization)
-                    expected_conversation_for_interaction = expected_interaction["conversation"]
-                    expected_message_count = len(expected_conversation_for_interaction["messages"])
-                    assert_conversation_messages(
-                        expected_conversation_for_interaction, actual_messages, expected_message_count
-                    )
-                else:
-                    raise AssertionError(f"Stage '{stage_name}' interaction {i+1} missing both 'conversation_index' and 'conversation' fields")
-                
-                # Verify interaction_type
-                if "interaction_type" in expected_interaction:
-                    assert (
-                        details.get("interaction_type") == expected_interaction["interaction_type"]
-                    ), f"Stage '{stage_name}' interaction {i+1} interaction_type mismatch: expected '{expected_interaction['interaction_type']}', got '{details.get('interaction_type')}'"
-                
-                # Verify token usage
-                if "input_tokens" in expected_interaction:
-                    assert (
-                        details["input_tokens"] == expected_interaction["input_tokens"]
-                    ), f"Stage '{stage_name}' interaction {i+1} input_tokens mismatch: expected {expected_interaction['input_tokens']}, got {details['input_tokens']}"
-                    assert (
-                        details["output_tokens"] == expected_interaction["output_tokens"]
-                    ), f"Stage '{stage_name}' interaction {i+1} output_tokens mismatch: expected {expected_interaction['output_tokens']}, got {details['output_tokens']}"
-                    assert (
-                        details["total_tokens"] == expected_interaction["total_tokens"]
-                    ), f"Stage '{stage_name}' interaction {i+1} total_tokens mismatch: expected {expected_interaction['total_tokens']}, got {details['total_tokens']}"
-                    
-                    # Accumulate token totals for stage validation
-                    expected_input_tokens += expected_interaction["input_tokens"]
-                    expected_output_tokens += expected_interaction["output_tokens"]
-                    expected_total_tokens += expected_interaction["total_tokens"]
-            elif interaction_type == "mcp":
-                assert (
-                    details["communication_type"]
-                    == expected_interaction["communication_type"]
-                ), f"Stage '{stage_name}' interaction {i+1} communication_type mismatch"
-
-                assert (
-                    details["server_name"] == expected_interaction["server_name"]
-                ), f"Stage '{stage_name}' interaction {i+1} server_name mismatch"
-
-                # Verify tool name for tool_call interactions
-                if expected_interaction["communication_type"] == "tool_call":
-                    assert (
-                        details["tool_name"] == expected_interaction["tool_name"]
-                    ), f"Stage '{stage_name}' interaction {i+1} tool_name mismatch"
-                    
-                    # Verify error message for failed interactions
-                    if not expected_interaction["success"]:
-                        expected_error_message = expected_interaction.get("error_message")
-                        actual_error_message = details.get("error_message")
-                        assert expected_error_message is not None, f"Stage '{stage_name}' interaction {i+1} expected error but no expected_error_message defined"
-                        assert actual_error_message is not None, f"Stage '{stage_name}' interaction {i+1} expected error but no error_message in API response"
-                        assert (
-                            actual_error_message == expected_error_message
-                        ), f"Stage '{stage_name}' interaction {i+1} error_message mismatch: expected '{expected_error_message}', got '{actual_error_message}'"
-                        print(f"    ✅ MCP Error message verified: {actual_error_message[:80]}...")
-
-                # Verify tool_list has available_tools
-                elif expected_interaction["communication_type"] == "tool_list":
-                    assert (
-                        "available_tools" in details
-                    ), f"Stage '{stage_name}' interaction {i+1} tool_list missing available_tools"
-                    assert (
-                        len(details["available_tools"]) > 0
-                    ), f"Stage '{stage_name}' interaction {i+1} tool_list has no available_tools"
+        # Verify interactions using common helper
+        expected_input_tokens, expected_output_tokens, expected_total_tokens = self._verify_interactions(
+            interactions=chronological_interactions,
+            expected_spec=expected_stage,
+            context_label=f"Stage '{stage_name}'",
+            expected_conversation=expected_conversation
+        )
 
         # Validate stage-level token totals
         actual_stage_input_tokens = actual_stage.get("stage_input_tokens")
