@@ -375,7 +375,7 @@ class AlertService:
                     chain_result.timestamp_us
                 )
                 
-                # TODO: Only generate summary when Slack integration is enabled (avoid unnecessary LLM calls)
+                # Generate executive summary for dashboard display and external notifications
                 final_result_summary = await self.final_analysis_summarizer.generate_executive_summary(
                     content=analysis,
                     session_id=chain_context.session_id

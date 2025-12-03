@@ -289,7 +289,7 @@ async def get_session_summary(
     
     **Response includes:**
     - Final analysis content in markdown format (or null)
-    - Executive summary of the final analysis for external notifications (e.g., Slack) in markdown format (or null)
+    - Executive summary of the final analysis, displayed in dashboard and used in external notifications (e.g., Slack), in markdown format (or null)
     - Current session status
     - Optional: LLM conversation history with metadata
     - Optional: Chat LLM conversation history (if chat exists)

@@ -99,7 +99,7 @@ class AlertSession(SQLModel, table=True):
 
     final_analysis_summary: Optional[str] = Field(
         default=None,
-        description="Summary of the final analysis for external notifications (e.g., Slack)"
+        description="Executive summary of the final analysis, displayed in dashboard and used in external notifications (e.g., Slack)"
     )
     
     session_metadata: Optional[dict] = Field(

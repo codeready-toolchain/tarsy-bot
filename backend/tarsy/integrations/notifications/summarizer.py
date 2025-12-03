@@ -1,8 +1,8 @@
 """
-Executive Summary Agent for generating concise final analysis summary for external notifications.
+Executive Summary Agent for generating concise final analysis summaries.
 
 This lightweight agent creates AI-powered summaries after chain completion,
-specifically for Slack notifications and other external integrations.
+displayed in the dashboard reasoning view and used in external notifications (Slack, etc.).
 """
 
 from typing import Optional, TYPE_CHECKING
@@ -21,10 +21,10 @@ logger = get_module_logger(__name__)
 
 class ExecutiveSummaryAgent:
     """
-    Lightweight agent for generating concise final analysis executive summaries of completed alert investigations.
+    Lightweight agent for generating concise executive summaries of completed alert investigations.
     
-    This agent uses LLM to create final analysis executive summaries
-    suitable for external notifications (Slack, etc.).
+    This agent uses LLM to create executive summaries displayed in the dashboard
+    and used in external notifications (Slack, etc.).
     """
     
     def __init__(self, llm_client: 'LLMClient'):
@@ -45,19 +45,19 @@ class ExecutiveSummaryAgent:
         max_tokens: int = 150
     ) -> Optional[str]:
         """
-        Generate a concise final analysis executive summary of the content.
+        Generate a concise executive summary of the content.
         
-        This final analysis executive summary is optimized for external notifications (Slack, etc.) where
-        brevity is crucial.
+        This executive summary is displayed in the dashboard reasoning view
+        and used in external notifications (Slack, etc.) where brevity is crucial.
         
         Args:
             content: The content to generate an executive summary
             session_id: Session ID for tracking
             stage_execution_id: Optional stage execution ID (typically None for post-chain)
-            max_tokens: Maximum tokens for final analysis executive summary (default: 150)
+            max_tokens: Maximum tokens for executive summary (default: 150)
             
         Returns:
-            Concise final analysis executive summary string, or None if generation fails
+            Concise executive summary string, or None if generation fails
             
         Raises:
             ValueError: If content is empty or None
