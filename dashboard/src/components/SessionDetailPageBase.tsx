@@ -40,7 +40,6 @@ import { isActiveSessionStatus, isTerminalSessionStatus, SESSION_STATUS } from '
 // Lazy load shared components
 const SessionHeader = lazy(() => import('./SessionHeader'));
 const OriginalAlertCard = lazy(() => import('./OriginalAlertCard'));
-const ExecutiveSummaryCard = lazy(() => import('./ExecutiveSummaryCard'));
 const FinalAnalysisCard = lazy(() => import('./FinalAnalysisCard'));
 
 // Loading skeletons for different sections
@@ -165,8 +164,7 @@ function SessionDetailPageBase({
   const [isBottomResuming, setIsBottomResuming] = useState(false);
   const [bottomResumeError, setBottomResumeError] = useState<string | null>(null);
   
-  // Refs for scrolling to summary and analysis
-  const executiveSummaryRef = useRef<HTMLDivElement>(null);
+  // Ref for Final Analysis Card (includes summary + analysis)
   const finalAnalysisRef = useRef<HTMLDivElement>(null);
   const disableTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasPerformedInitialScrollRef = useRef<boolean>(false);
@@ -680,13 +678,12 @@ function SessionDetailPageBase({
                     // Increment counter to force Final Analysis expansion
                     setExpandCounter(prev => prev + 1);
                     
-                    // Scroll to Summary (if available) or Final Analysis with offset for header
+                    // Scroll to Final Analysis Card (contains both summary and analysis)
                     // Wait for expansion animation (400ms) + buffer (100ms)
                     setTimeout(() => {
-                      const targetRef = session.final_analysis_summary ? executiveSummaryRef : finalAnalysisRef;
-                      if (targetRef.current) {
+                      if (finalAnalysisRef.current) {
                         const yOffset = -20; // Offset for better visual positioning
-                        const y = targetRef.current.getBoundingClientRect().top + window.pageYOffset + yOffset;
+                        const y = finalAnalysisRef.current.getBoundingClientRect().top + window.pageYOffset + yOffset;
                         window.scrollTo({ top: y, behavior: 'smooth' });
                       }
                     }, 500);
@@ -758,24 +755,15 @@ function SessionDetailPageBase({
               </Box>
             )}
 
-            {/* Executive Summary - Compact summary shown before full analysis */}
-            {session.final_analysis_summary && (
-              <Suspense fallback={<Skeleton variant="rectangular" height={120} />}>
-                <ExecutiveSummaryCard 
-                  ref={executiveSummaryRef}
-                  summary={session.final_analysis_summary}
-                  sessionStatus={session.status}
-                />
-              </Suspense>
-            )}
-
-            {/* Final AI Analysis - Lazy loaded */}
+            {/* Final AI Analysis - Unified card with summary and detailed analysis */}
+            {/* Executive summary shown at top (always visible), full analysis collapsible below */}
             {/* Auto-collapses when Jump to Chat is clicked (via collapseCounter) */}
             {/* Auto-expands when Jump to Final Analysis is clicked (via expandCounter) */}
             <Suspense fallback={<Skeleton variant="rectangular" height={200} />}>
               <FinalAnalysisCard 
                 ref={finalAnalysisRef}
                 analysis={session.final_analysis}
+                summary={session.final_analysis_summary}
                 sessionStatus={session.status}
                 errorMessage={session.error_message}
                 collapseCounter={collapseCounter}

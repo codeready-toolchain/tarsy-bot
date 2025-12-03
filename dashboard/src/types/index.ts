@@ -431,6 +431,7 @@ export interface OriginalAlertCardProps {
 // Phase 3: Final analysis card props
 export interface FinalAnalysisCardProps {
   analysis: string | null;
+  summary?: string | null; // Executive summary displayed at top
   sessionStatus: Session['status'];
   errorMessage?: string | null;
   collapseCounter?: number; // Counter to force collapse (increments trigger collapse)

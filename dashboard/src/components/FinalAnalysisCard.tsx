@@ -65,9 +65,10 @@ Please review the session details or contact support if this is unexpected.`;
 /**
  * FinalAnalysisCard component - Phase 3
  * Renders AI analysis markdown content with expand/collapse functionality and copy-to-clipboard feature
+ * Includes optional executive summary at the top (always visible)
  * Optimized for live updates
  */
-const FinalAnalysisCard = forwardRef<HTMLDivElement, FinalAnalysisCardProps>(({ analysis, sessionStatus, errorMessage, collapseCounter = 0, expandCounter = 0 }, ref) => {
+const FinalAnalysisCard = forwardRef<HTMLDivElement, FinalAnalysisCardProps>(({ analysis, summary, sessionStatus, errorMessage, collapseCounter = 0, expandCounter = 0 }, ref) => {
   const [analysisExpanded, setAnalysisExpanded] = useState<boolean>(false);
   const [copySuccess, setCopySuccess] = useState<boolean>(false);
   const [prevAnalysis, setPrevAnalysis] = useState<string | null>(null);
@@ -259,24 +260,152 @@ const FinalAnalysisCard = forwardRef<HTMLDivElement, FinalAnalysisCardProps>(({ 
           </Box>
         </Box>
 
-        {/* Collapsible Content */}
-        <Collapse in={analysisExpanded} timeout={400}>
-          {/* AI-Generated Content Warning - only show for real analysis */}
-          {!isFakeAnalysis && (
-            <Alert 
-              severity="info" 
-              icon={<AutoAwesome />}
-              sx={{ mb: 2 }}
-            >
-              <Box>
-                <Typography variant="body1" sx={{ fontWeight: 600, mb: 0.5, fontSize: '1rem' }}>
-                  AI-Generated Content
-                </Typography>
-                <Typography variant="body1" sx={{ fontSize: '0.95rem' }}>
-                  Always review AI generated content prior to use.
+        {/* AI-Generated Content Warning - always visible when we have real analysis */}
+        {!isFakeAnalysis && (summary || displayAnalysis) && (
+          <Alert 
+            severity="info" 
+            icon={<AutoAwesome />}
+            sx={{ 
+              mt: 2,
+              bgcolor: (theme) => alpha(theme.palette.info.main, 0.04),
+              border: '1px solid',
+              borderColor: (theme) => alpha(theme.palette.info.main, 0.2),
+              '& .MuiAlert-icon': {
+                color: 'info.main'
+              }
+            }}
+          >
+            <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.75 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                AI-Generated Content
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Always review AI generated content prior to use.
+              </Typography>
+            </Box>
+          </Alert>
+        )}
+
+        {/* Executive Summary - Always visible when available */}
+        {summary && (
+          <Box sx={{ mt: 2 }}>
+            <Box sx={{
+              bgcolor: (theme) => alpha(theme.palette.success.main, 0.04),
+              border: '1px solid',
+              borderColor: (theme) => alpha(theme.palette.success.main, 0.25),
+              borderRadius: 2,
+              p: 2.5,
+              position: 'relative',
+              overflow: 'hidden',
+              // Subtle gradient accent on the left edge
+              '&::before': {
+                content: '""',
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: 4,
+                bgcolor: 'success.main',
+                borderRadius: '4px 0 0 4px'
+              }
+            }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                <AutoAwesome sx={{ color: 'success.main', fontSize: 20 }} />
+                <Typography 
+                  variant="subtitle2" 
+                  sx={{ 
+                    fontWeight: 700,
+                    color: 'success.main',
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.5,
+                    fontSize: '0.8rem'
+                  }}
+                >
+                  Executive Summary
                 </Typography>
               </Box>
-            </Alert>
+              <Box sx={{
+                // Ensure markdown content renders inline properly
+                '& p': {
+                  margin: 0,
+                  marginBottom: 1,
+                  lineHeight: 1.7,
+                  fontSize: '0.95rem',
+                  color: 'text.primary',
+                  '&:last-child': { marginBottom: 0 }
+                },
+                '& strong': {
+                  fontWeight: 'bold'
+                },
+                '& em': {
+                  fontStyle: 'italic'
+                },
+                // Inline code styling - using native CSS for proper inline behavior
+                '& code': {
+                  fontFamily: '"JetBrains Mono", "Fira Code", "SF Mono", Consolas, monospace',
+                  fontSize: '0.875em',
+                  backgroundColor: (theme) => alpha(theme.palette.grey[900], 0.08),
+                  color: 'error.main',
+                  padding: '1px 6px',
+                  borderRadius: '4px',
+                  border: '1px solid',
+                  borderColor: (theme) => alpha(theme.palette.grey[900], 0.12),
+                  whiteSpace: 'nowrap',
+                  verticalAlign: 'baseline'
+                },
+                // Block code
+                '& pre': {
+                  display: 'block',
+                  fontFamily: '"JetBrains Mono", "Fira Code", "SF Mono", Consolas, monospace',
+                  fontSize: '0.875em',
+                  backgroundColor: (theme) => alpha(theme.palette.grey[900], 0.06),
+                  padding: 1.5,
+                  borderRadius: 1,
+                  overflowX: 'auto',
+                  margin: '8px 0',
+                  '& code': {
+                    backgroundColor: 'transparent',
+                    border: 'none',
+                    padding: 0,
+                    whiteSpace: 'pre'
+                  }
+                }
+              }}>
+                <ReactMarkdown>
+                  {summary}
+                </ReactMarkdown>
+              </Box>
+            </Box>
+          </Box>
+        )}
+
+        {/* Collapsible Content - Full Detailed Analysis */}
+        <Collapse in={analysisExpanded} timeout={400}>
+          {/* Section header divider when summary exists */}
+          {summary && displayAnalysis && (
+            <Box sx={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: 2, 
+              mt: 3,
+              mb: 2,
+              color: 'text.secondary'
+            }}>
+              <Box sx={{ flex: 1, height: '1px', bgcolor: 'divider' }} />
+              <Typography 
+                variant="caption" 
+                sx={{ 
+                  fontSize: '0.75rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: 1,
+                  fontWeight: 600,
+                  color: 'text.disabled'
+                }}
+              >
+                Full Detailed Analysis
+              </Typography>
+              <Box sx={{ flex: 1, height: '1px', bgcolor: 'divider' }} />
+            </Box>
           )}
           
           {/* Status indicator for fake analysis */}
