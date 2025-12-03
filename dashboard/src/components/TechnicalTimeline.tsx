@@ -62,7 +62,8 @@ function TechnicalTimeline({
     chain_definition: session.chain_definition,
     current_stage_index: session.current_stage_index ?? 0,
     current_stage_id: session.current_stage_id,
-    stages: session.stages
+    stages: session.stages,
+    session_level_interactions: session.session_level_interactions
   };
 
   return (

@@ -33,6 +33,13 @@ const getInteractionTypeStyle = (interactionType: string) => {
         bgColor: 'rgba(46, 125, 50, 0.08)',
         borderColor: 'rgba(46, 125, 50, 0.4)'
       };
+    case 'final_analysis_summary':
+      return {
+        label: 'Executive Summary',
+        color: 'info' as const,
+        bgColor: 'rgba(2, 136, 209, 0.08)',
+        borderColor: 'rgba(2, 136, 209, 0.4)'
+      };
     default:
       return {
         label: 'LLM',

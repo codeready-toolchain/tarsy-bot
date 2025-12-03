@@ -107,6 +107,13 @@ const getInteractionTypeStyle = (interaction: TimelineItem) => {
         borderColor: '2px solid rgba(46, 125, 50, 0.5)',
         hoverBorderColor: '2px solid rgba(46, 125, 50, 0.8)'
       };
+    case 'final_analysis_summary':
+      return {
+        label: 'Executive Summary',
+        color: 'info' as const,
+        borderColor: '2px solid rgba(2, 136, 209, 0.5)',
+        hoverBorderColor: '2px solid rgba(2, 136, 209, 0.8)'
+      };
     case 'investigation':
     default:
       return {

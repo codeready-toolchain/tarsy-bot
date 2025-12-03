@@ -118,6 +118,9 @@ export interface DetailedSession extends Session {
   
   // Stage executions with all their interactions
   stages: StageExecution[];
+  
+  // Session-level interactions (not associated with any specific stage)
+  session_level_interactions?: TimelineItem[];
 }
 
 // Flexible alert data structure supporting any fields
