@@ -555,6 +555,9 @@ CRITICAL RULES:
 - Focus on: what happened, current status, and ONLY stated next steps
 
 Analysis to summarize:
+
+=================================================================================
 {final_analysis}
+=================================================================================
 
 Executive Summary (1-4 lines, facts only):"""

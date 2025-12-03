@@ -321,7 +321,10 @@ CRITICAL RULES:
 - Focus on: what happened, current status, and ONLY stated next steps
 
 Analysis to summarize:
+
+=================================================================================
 Based on previous stages, the namespace is stuck due to finalizers.
+=================================================================================
 
 Executive Summary (1-4 lines, facts only):"""
         },
