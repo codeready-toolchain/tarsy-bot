@@ -147,7 +147,7 @@ dev: check-venv ## Start development server with auto-reload
 .PHONY: dev-debug
 dev-debug: check-venv ## Start development server with debug logging
 	@echo "$(GREEN)Starting development server (debug mode)...$(NC)"
-	.venv/bin/uvicorn tarsy.main:app --reload --port 8000 --log-config uvicorn_logging_config.json --log-level debug
+	LOG_LEVEL=DEBUG .venv/bin/uvicorn tarsy.main:app --reload --port 8000 --log-config uvicorn_logging_config.json --log-level debug
 
 .PHONY: run
 run: check-venv ## Start development server with manual venv activation
