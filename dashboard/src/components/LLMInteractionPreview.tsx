@@ -228,6 +228,25 @@ function LLMInteractionPreview({
           sx={{ fontWeight: 600, fontSize: '0.7rem' }}
         />
         
+        {/* Model Name */}
+        <Chip 
+          label={interaction.model_name} 
+          size="small" 
+          variant="outlined"
+          sx={{ fontSize: '0.7rem' }}
+        />
+        
+        {/* Temperature - always show, display "default" if not configured */}
+        <Chip 
+          label={interaction.temperature !== undefined && interaction.temperature !== null 
+            ? `T: ${interaction.temperature}` 
+            : 'T: default'
+          } 
+          size="small" 
+          variant="outlined"
+          sx={{ fontSize: '0.7rem', opacity: (interaction.temperature !== undefined && interaction.temperature !== null) ? 1 : 0.7 }}
+        />
+        
         {/* Native Tools Display - Compact */}
         {(interaction.native_tools_config || interaction.response_metadata) && (
           <NativeToolsDisplay

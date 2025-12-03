@@ -256,11 +256,13 @@ function InteractionDetails({
           <Typography variant="body2" color="text.secondary">
             <strong>Model:</strong> {llmDetails.model_name}
           </Typography>
-          {llmDetails.temperature !== undefined && (
-            <Typography variant="body2" color="text.secondary">
-              <strong>Temperature:</strong> {llmDetails.temperature}
-            </Typography>
-          )}
+          <Typography variant="body2" color="text.secondary">
+            <strong>Temperature:</strong> {
+              llmDetails.temperature !== undefined && llmDetails.temperature !== null 
+                ? llmDetails.temperature 
+                : 'default'
+            }
+          </Typography>
         </Stack>
         
         {/* EP-0009: Compact token usage display for space efficiency */}

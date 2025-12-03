@@ -134,7 +134,11 @@ function SimpleTimeline({ timelineItems }: SimpleTimelineProps) {
                   {item.details && (
                     <Typography variant="body2" color="text.secondary" component="div" sx={{ mt: 0.5, fontStyle: 'italic' }}>
                       {item.type === 'llm' && 'details' in item.details && 
-                        `Model: ${(item.details as any).model_name || 'Unknown'}`
+                        `Model: ${(item.details as any).model_name || 'Unknown'} • Temperature: ${
+                          (item.details as any).temperature !== undefined && (item.details as any).temperature !== null 
+                            ? (item.details as any).temperature 
+                            : 'default'
+                        }`
                       }
                       {item.type === 'mcp' && 'details' in item.details && 
                         `Tool: ${(item.details as any).tool_name || 'Unknown'}`
