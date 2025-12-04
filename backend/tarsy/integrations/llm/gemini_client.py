@@ -333,8 +333,9 @@ class GeminiNativeThinkingClient:
                 )
                 
                 # Build generation config
+                # temperature=None lets the model use its default (varies by model)
                 gen_config = google_genai_types.GenerateContentConfig(
-                    temperature=self.temperature if self.temperature is not None else 1.0,
+                    temperature=self.temperature,
                     max_output_tokens=max_tokens,
                     thinking_config=thinking_config,
                     tools=tools if tools else None,
