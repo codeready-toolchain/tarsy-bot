@@ -6,7 +6,7 @@ import { parseReActMessage } from './reactParser';
 import { STAGE_STATUS, type StageStatus, type SessionStatus } from './statusConstants';
 
 export interface ConversationStepData {
-  type: 'thought' | 'action' | 'analysis' | 'summarization' | 'error';
+  type: 'thought' | 'action' | 'analysis' | 'summarization' | 'error' | 'native_thinking';
   content: string;
   actionName?: string;
   actionInput?: string;
@@ -261,6 +261,28 @@ export function parseStageConversation(stage: StageExecution): StageConversation
       continue;
     }
 
+    // Check for native thinking content (Gemini 3.0+ native thinking mode)
+    // This is separate from ReAct thoughts - it's the model's internal reasoning
+    const thinkingContent = interaction.details?.thinking_content;
+    if (thinkingContent) {
+      const nativeThinkingStep: ConversationStepData = {
+        type: 'native_thinking',
+        content: thinkingContent,
+        timestamp_us: timestamp,
+        success: true
+      };
+      
+      // Check if this native thinking is a duplicate
+      const isDuplicate = stageSeenSteps.some(seenStep => 
+        seenStep.type === 'native_thinking' && areStepsSimilar(nativeThinkingStep, seenStep)
+      );
+      
+      if (!isDuplicate) {
+        steps.push(nativeThinkingStep);
+        stageSeenSteps.push(nativeThinkingStep);
+      }
+    }
+
     const messages = getMessages(interaction.details ?? interaction);
     
     // Process assistant messages (thoughts, actions, analysis) 
@@ -447,6 +469,7 @@ export function getConversationStats(parsedSession: ParsedSession): {
   analysisCount: number;
   errorsCount: number;
   successfulActions: number;
+  nativeThinkingCount: number;
 } {
   let totalSteps = 0;
   let thoughtsCount = 0;
@@ -454,6 +477,7 @@ export function getConversationStats(parsedSession: ParsedSession): {
   let analysisCount = 0;
   let errorsCount = 0;
   let successfulActions = 0;
+  let nativeThinkingCount = 0;
 
   for (const stage of parsedSession.stages) {
     totalSteps += stage.steps.length;
@@ -462,6 +486,9 @@ export function getConversationStats(parsedSession: ParsedSession): {
       switch (step.type) {
         case 'thought':
           thoughtsCount++;
+          break;
+        case 'native_thinking':
+          nativeThinkingCount++;
           break;
         case 'action':
           actionsCount++;
@@ -485,6 +512,7 @@ export function getConversationStats(parsedSession: ParsedSession): {
     actionsCount,
     analysisCount,
     errorsCount,
-    successfulActions
+    successfulActions,
+    nativeThinkingCount
   };
 }

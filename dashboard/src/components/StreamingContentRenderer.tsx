@@ -13,7 +13,7 @@ import {
  * Used by both ConversationTimeline and ChatMessageList
  */
 export interface StreamingItem {
-  type: 'thought' | 'final_answer' | 'summarization' | 'tool_call' | 'user_message';
+  type: 'thought' | 'final_answer' | 'summarization' | 'tool_call' | 'user_message' | 'native_thinking';
   content?: string;
   stage_execution_id?: string;
   mcp_event_id?: string;
@@ -88,6 +88,76 @@ const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) 
             )
           )}
         </TypewriterText>
+      </Box>
+    );
+  }
+
+  // Render native thinking (Gemini 3.0+ native thinking mode)
+  if (item.type === 'native_thinking') {
+    const hasMarkdown = hasMarkdownSyntax(item.content || '');
+    
+    return (
+      <Box sx={{ mb: 1.5, display: 'flex', gap: 1.5 }}>
+        <Typography 
+          variant="body2" 
+          sx={{ 
+            fontSize: '1.1rem', 
+            lineHeight: 1,
+            flexShrink: 0,
+            mt: 0.25
+          }}
+        >
+          🧠
+        </Typography>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: 0.5,
+              fontSize: '0.65rem',
+              color: 'info.main',
+              display: 'block',
+              mb: 0.5
+            }}
+          >
+            Native Thinking
+          </Typography>
+          <TypewriterText text={item.content || ''} speed={15}>
+            {(displayText) => (
+              hasMarkdown ? (
+                <Box sx={{ 
+                  '& p, & li': { 
+                    color: 'text.secondary',
+                    fontStyle: 'italic'
+                  }
+                }}>
+                  <ReactMarkdown
+                    components={thoughtMarkdownComponents}
+                    skipHtml
+                  >
+                    {displayText}
+                  </ReactMarkdown>
+                </Box>
+              ) : (
+                <Typography 
+                  variant="body1" 
+                  sx={{ 
+                    whiteSpace: 'pre-wrap', 
+                    wordBreak: 'break-word',
+                    lineHeight: 1.7,
+                    fontSize: '1rem',
+                    color: 'text.secondary',
+                    fontStyle: 'italic'
+                  }}
+                >
+                  {displayText}
+                </Typography>
+              )
+            )}
+          </TypewriterText>
+        </Box>
       </Box>
     );
   }

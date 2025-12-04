@@ -132,7 +132,7 @@ def _create_google_client(temp, api_key, model, disable_ssl_verification=False, 
     """Create ChatGoogleGenerativeAI client."""
     client_kwargs = {
         "model": model, 
-        "temperature": temp, 
+        "temperature": temp if temp is not None else 1.0,  # Default to 1.0 if not specified
         "google_api_key": api_key
     }
     # Note: ChatGoogleGenerativeAI may not support custom base_url or HTTP clients
@@ -253,7 +253,9 @@ class LLMClient:
                 logger.error(f"Unknown LLM provider type: {provider_type.value} for provider: {self.provider_name}")
                 self.available = False
         except Exception as e:
+            import traceback
             logger.error(f"Failed to initialize {self.provider_name}: {str(e)}")
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             self.available = False
 
     def _initialize_native_tools(self):
@@ -389,15 +391,15 @@ class LLMClient:
         
         return overridden_tools
 
-    def _convert_mcp_tools_to_gemini_functions(
+    def _convert_mcp_tools_for_binding(
         self,
         available_tools: List[ToolWithServer]
-    ) -> List[google_genai_types.FunctionDeclaration]:
+    ) -> List[Dict[str, Any]]:
         """
-        Convert MCP tools to Gemini native function declarations.
+        Convert MCP tools to format compatible with LangChain's .bind(tools=...).
         
-        This enables native function calling for MCP tools when using
-        the NATIVE_THINKING iteration strategy with Gemini models.
+        Uses OpenAI-style format which is then processed by our Gemini patch
+        to handle JSON Schema type conversion (object → OBJECT).
         
         Function names use double underscore separator (server__tool_name) to
         avoid conflicts with dots in tool names while remaining valid identifiers.
@@ -406,9 +408,9 @@ class LLMClient:
             available_tools: List of MCP tools with server context
             
         Returns:
-            List of Gemini FunctionDeclaration objects
+            List of tool definitions in OpenAI-style dict format
         """
-        functions = []
+        tools = []
         
         for tool_with_server in available_tools:
             try:
@@ -419,22 +421,26 @@ class LLMClient:
                 # Get the input schema, defaulting to empty object if not specified
                 input_schema = tool_with_server.tool.inputSchema or {"type": "object", "properties": {}}
                 
-                # Create function declaration
-                func_decl = google_genai_types.FunctionDeclaration(
-                    name=func_name,
-                    description=tool_with_server.tool.description or f"Tool {tool_with_server.tool.name} from {tool_with_server.server}",
-                    parameters=input_schema
-                )
-                functions.append(func_decl)
+                # Create tool definition in OpenAI-style format
+                # Our Gemini patch converts JSON Schema types (object → OBJECT) during binding
+                tool_def = {
+                    "type": "function",
+                    "function": {
+                        "name": func_name,
+                        "description": tool_with_server.tool.description or f"Tool {tool_with_server.tool.name} from {tool_with_server.server}",
+                        "parameters": input_schema
+                    }
+                }
+                tools.append(tool_def)
                 
-                logger.debug(f"Converted MCP tool to Gemini function: {func_name}")
+                logger.debug(f"Converted MCP tool for binding: {func_name}")
                 
             except Exception as e:
                 logger.warning(f"Failed to convert MCP tool {tool_with_server.server}.{tool_with_server.tool.name}: {e}")
                 continue
         
-        logger.info(f"Converted {len(functions)} MCP tools to Gemini function declarations")
-        return functions
+        logger.info(f"Converted {len(tools)} MCP tools for binding")
+        return tools
 
     def _parse_gemini_function_name(self, func_name: str) -> tuple[str, str]:
         """
@@ -883,6 +889,85 @@ class LLMClient:
                         
                         raise Exception(enhanced_message) from e
     
+    def _convert_mcp_tools_to_native_functions(
+        self,
+        mcp_tools: List[ToolWithServer]
+    ) -> List[google_genai_types.FunctionDeclaration]:
+        """
+        Convert MCP tools to native Google FunctionDeclaration format.
+        
+        Used by generate_response_with_native_thinking() which bypasses LangChain
+        and uses the native Google SDK directly.
+        
+        Args:
+            mcp_tools: List of MCP tools with server context
+            
+        Returns:
+            List of native Google FunctionDeclaration objects
+        """
+        functions = []
+        
+        for tool_with_server in mcp_tools:
+            try:
+                # Use server__tool_name as function name (double underscore separator)
+                func_name = f"{tool_with_server.server}__{tool_with_server.tool.name}"
+                
+                # Get the input schema, defaulting to empty object if not specified
+                input_schema = tool_with_server.tool.inputSchema or {"type": "object", "properties": {}}
+                
+                # Create native Google FunctionDeclaration
+                # Note: parameters_json_schema accepts standard JSON Schema format
+                func_decl = google_genai_types.FunctionDeclaration(
+                    name=func_name,
+                    description=tool_with_server.tool.description or f"Tool {tool_with_server.tool.name} from {tool_with_server.server}",
+                    parameters_json_schema=input_schema
+                )
+                functions.append(func_decl)
+                
+                logger.debug(f"Converted MCP tool to native function: {func_name}")
+                
+            except Exception as e:
+                logger.warning(f"Failed to convert MCP tool {tool_with_server.server}.{tool_with_server.tool.name}: {e}")
+                continue
+        
+        logger.info(f"Converted {len(functions)} MCP tools to native Google functions")
+        return functions
+
+    def _convert_conversation_to_native_format(
+        self,
+        conversation: LLMConversation
+    ) -> List[google_genai_types.Content]:
+        """
+        Convert LLMConversation to native Google Content format.
+        
+        Args:
+            conversation: The LLMConversation to convert
+            
+        Returns:
+            List of native Google Content objects
+        """
+        contents = []
+        
+        for msg in conversation.messages:
+            # Map roles: system messages become user role with [System] prefix
+            if msg.role == MessageRole.SYSTEM:
+                contents.append(google_genai_types.Content(
+                    role="user",
+                    parts=[google_genai_types.Part(text=f"[System Instructions]\n{msg.content}")]
+                ))
+            elif msg.role == MessageRole.USER:
+                contents.append(google_genai_types.Content(
+                    role="user",
+                    parts=[google_genai_types.Part(text=msg.content)]
+                ))
+            elif msg.role == MessageRole.ASSISTANT:
+                contents.append(google_genai_types.Content(
+                    role="model",
+                    parts=[google_genai_types.Part(text=msg.content)]
+                ))
+        
+        return contents
+
     async def generate_response_with_native_thinking(
         self,
         conversation: LLMConversation,
@@ -898,11 +983,12 @@ class LLMClient:
         """
         Generate response using Gemini's native thinking and function calling.
         
-        This method is specifically for the NATIVE_THINKING iteration strategy,
-        eliminating text-based ReAct parsing in favor of structured responses.
+        This method uses the native Google SDK directly (not LangChain) to get
+        full access to thinking content and native function calling.
         
         Key features:
-        - Uses Gemini's thinkingLevel parameter for reasoning depth control
+        - Uses Google's native SDK for full thinking content access
+        - Uses ThinkingConfig with include_thoughts=True to get reasoning
         - Binds MCP tools as native function declarations
         - Extracts structured tool_calls from response (no text parsing)
         - Preserves thought_signature for multi-turn reasoning continuity
@@ -926,6 +1012,8 @@ class LLMClient:
             ValueError: If provider is not Google/Gemini
             Exception: On LLM communication failures
         """
+        from google import genai
+        
         # Validate provider is Google/Gemini
         if self.config.type != LLMProviderType.GOOGLE:
             raise ValueError(
@@ -942,177 +1030,161 @@ class LLMClient:
         logger.info(f"[{request_id}] Starting native thinking generation for {session_id}")
         logger.debug(f"[{request_id}] Thinking level: {thinking_level}, MCP tools: {len(mcp_tools)}")
         
-        # Convert conversation to LangChain format
-        langchain_messages = self._convert_conversation_to_langchain(conversation)
+        # Prepare request data for typed context (ensure JSON serializable)
+        request_data = {
+            'messages': [msg.model_dump() for msg in conversation.messages],
+            'model': self.model,
+            'provider': self.provider_name,
+            'temperature': self.temperature,
+            'thinking_level': thinking_level,
+            'mcp_tools_count': len(mcp_tools)
+        }
         
-        # Apply native tools override if provided
-        if native_tools_override and self.config.type == LLMProviderType.GOOGLE:
-            active_native_tools = self._apply_native_tools_override(native_tools_override)
-        else:
-            active_native_tools = self.native_tools.copy()
+        # Determine which native tools to enable (using config directly, not LangChain tools)
+        # Start with provider defaults from config
+        google_search_enabled = self.config.get_native_tool_status(GoogleNativeTool.GOOGLE_SEARCH.value)
+        code_execution_enabled = self.config.get_native_tool_status(GoogleNativeTool.CODE_EXECUTION.value)
+        url_context_enabled = self.config.get_native_tool_status(GoogleNativeTool.URL_CONTEXT.value)
+        
+        # Apply session-level override if provided (tri-state: None=use default, True=enable, False=disable)
+        if native_tools_override is not None:
+            if native_tools_override.google_search is not None:
+                google_search_enabled = native_tools_override.google_search
+            if native_tools_override.code_execution is not None:
+                code_execution_enabled = native_tools_override.code_execution
+            if native_tools_override.url_context is not None:
+                url_context_enabled = native_tools_override.url_context
+            logger.info(f"[{request_id}] Applied session-level native tools override")
+        
+        # Capture effective config for audit trail
+        native_tools_config = {
+            GoogleNativeTool.GOOGLE_SEARCH.value: google_search_enabled,
+            GoogleNativeTool.CODE_EXECUTION.value: code_execution_enabled,
+            GoogleNativeTool.URL_CONTEXT.value: url_context_enabled
+        }
         
         # Create interaction context for audit
-        async with llm_interaction_context(session_id, stage_execution_id) as ctx:
+        async with llm_interaction_context(session_id, request_data, stage_execution_id, native_tools_config) as ctx:
             try:
-                # Convert MCP tools to Gemini function declarations
-                mcp_function_declarations = self._convert_mcp_tools_to_gemini_functions(mcp_tools)
+                # Create native Google client
+                native_client = genai.Client(api_key=self.config.api_key)
                 
-                # Build tools list combining:
-                # 1. Native Google tools (search, code_execution, url_context)
-                # 2. MCP tools as function declarations
-                all_tools = []
+                # Convert conversation to native Google format
+                contents = self._convert_conversation_to_native_format(conversation)
                 
-                # Add native Google tools
-                for tool_obj in active_native_tools.values():
-                    if tool_obj is not None:
-                        all_tools.append(tool_obj.model_dump(exclude_none=True))
+                # Convert MCP tools to native function declarations
+                mcp_functions = self._convert_mcp_tools_to_native_functions(mcp_tools)
                 
-                # Add MCP functions as a Tool with function_declarations
-                if mcp_function_declarations:
-                    mcp_tool = google_genai_types.Tool(
-                        function_declarations=mcp_function_declarations
-                    )
-                    all_tools.append(mcp_tool.model_dump(exclude_none=True))
+                # Build tools list combining MCP tools and native Google tools
+                tools = []
                 
-                # Bind tools to model
-                llm_with_tools = self.llm_client
-                if all_tools:
-                    try:
-                        llm_with_tools = self.llm_client.bind(tools=all_tools)
-                        logger.info(f"[{request_id}] Bound {len(all_tools)} tool objects ({len(mcp_function_declarations)} MCP functions)")
-                    except Exception as e:
-                        logger.error(f"[{request_id}] Failed to bind tools: {e}")
-                        raise
+                # Add MCP function declarations
+                # NOTE: Google API doesn't allow combining function calling with native tools
+                # (google_search, url_context, code_execution). If we have MCP tools, we use
+                # those exclusively. Native Google tools are only used when no MCP tools are provided.
+                if mcp_functions:
+                    tools.append(google_genai_types.Tool(function_declarations=mcp_functions))
+                    logger.info(f"[{request_id}] Bound {len(mcp_functions)} MCP tools as native functions (native Google tools disabled)")
+                else:
+                    # Only add native Google tools when no MCP function calling is needed
+                    native_tools_bound = []
+                    if google_search_enabled:
+                        tools.append(google_genai_types.Tool(google_search=google_genai_types.GoogleSearch()))
+                        native_tools_bound.append("google_search")
+                    
+                    if url_context_enabled:
+                        tools.append(google_genai_types.Tool(url_context=google_genai_types.UrlContext()))
+                        native_tools_bound.append("url_context")
+                    
+                    if code_execution_enabled:
+                        tools.append(google_genai_types.Tool(code_execution=google_genai_types.ToolCodeExecution()))
+                        native_tools_bound.append("code_execution")
+                    
+                    if native_tools_bound:
+                        logger.info(f"[{request_id}] Bound native Google tools: {native_tools_bound}")
                 
-                # Configure generation with thinking level
-                config = {}
-                if max_tokens is not None:
-                    config["max_tokens"] = max_tokens
+                # Configure thinking with include_thoughts=True to get reasoning content
+                thinking_budget = 24576 if thinking_level == "high" else 4096
+                thinking_config = google_genai_types.ThinkingConfig(
+                    thinking_budget=thinking_budget,
+                    include_thoughts=True  # This enables access to thinking content!
+                )
                 
-                # Note: thinkingLevel is passed via generation config
-                # The exact parameter name may vary by SDK version
-                # Using generation_config for extended parameters
-                generation_config = {
-                    "thinking_config": {
-                        "thinking_budget": 24576 if thinking_level == "high" else 1024
-                    }
-                }
-                
-                # Add thought signature if provided (for multi-turn continuity)
-                if thought_signature:
-                    # Thought signatures are typically passed as part of the messages
-                    # or as a special parameter depending on SDK version
-                    logger.debug(f"[{request_id}] Including thought signature for continuity")
+                # Build generation config
+                gen_config = google_genai_types.GenerateContentConfig(
+                    temperature=self.temperature if self.temperature is not None else 1.0,
+                    thinking_config=thinking_config,
+                    tools=tools if tools else None,
+                    # Disable automatic function calling - we handle it manually
+                    automatic_function_calling=google_genai_types.AutomaticFunctionCallingConfig(
+                        disable=True
+                    ) if tools else None
+                )
                 
                 # Make the API call with timeout
                 accumulated_content = ""
                 thinking_content_parts = []
                 tool_calls = []
                 new_thought_signature = None
-                response_metadata = None
+                response_metadata = {}
                 
                 async with asyncio.timeout(timeout_seconds):
-                    # Use astream for streaming response
-                    aggregate_chunk = None
+                    # Use async generate_content
+                    response = await native_client.aio.models.generate_content(
+                        model=self.model,
+                        contents=contents,
+                        config=gen_config
+                    )
                     
-                    async for chunk in llm_with_tools.astream(langchain_messages, config=config):
-                        aggregate_chunk = chunk if aggregate_chunk is None else aggregate_chunk + chunk
+                    # Process response parts
+                    if response.candidates and len(response.candidates) > 0:
+                        candidate = response.candidates[0]
                         
-                        # Extract text content
-                        token = self._extract_token_content(chunk, filter_code_execution=False)
-                        accumulated_content += token
+                        if candidate.content and candidate.content.parts:
+                            for part in candidate.content.parts:
+                                # Check if this is a thought part
+                                if hasattr(part, 'thought') and part.thought:
+                                    # This is thinking content
+                                    if hasattr(part, 'text') and part.text:
+                                        thinking_content_parts.append(part.text)
+                                        logger.debug(f"[{request_id}] Captured thinking: {part.text[:100]}...")
+                                elif hasattr(part, 'text') and part.text:
+                                    # This is regular response text
+                                    accumulated_content += part.text
+                                
+                                # Extract thought signature if present
+                                if hasattr(part, 'thought_signature') and part.thought_signature:
+                                    new_thought_signature = part.thought_signature
                     
-                    # Process the aggregated response
-                    if aggregate_chunk:
-                        # Extract response metadata
-                        if hasattr(aggregate_chunk, 'response_metadata'):
-                            response_metadata = aggregate_chunk.response_metadata
-                        
-                        # Extract thinking content from response parts
-                        if hasattr(aggregate_chunk, 'content') and isinstance(aggregate_chunk.content, list):
-                            for part in aggregate_chunk.content:
-                                if isinstance(part, dict):
-                                    # Check for thinking/reasoning parts
-                                    if 'thought' in part or 'thinking' in part:
-                                        thought_text = part.get('thought') or part.get('thinking', '')
-                                        if thought_text:
-                                            thinking_content_parts.append(thought_text)
-                                    
-                                    # Check for function calls
-                                    if 'function_call' in part:
-                                        func_call = part['function_call']
-                                        func_name = func_call.get('name', '')
-                                        func_args = func_call.get('args', {})
-                                        
-                                        try:
-                                            server, tool = self._parse_gemini_function_name(func_name)
-                                            tool_calls.append(NativeThinkingToolCall(
-                                                server=server,
-                                                tool=tool,
-                                                parameters=func_args
-                                            ))
-                                            logger.debug(f"[{request_id}] Extracted tool call: {server}.{tool}")
-                                        except ValueError as e:
-                                            logger.warning(f"[{request_id}] Failed to parse function name: {e}")
-                        
-                        # Extract tool calls from additional_kwargs (LangChain format)
-                        if hasattr(aggregate_chunk, 'additional_kwargs'):
-                            additional = aggregate_chunk.additional_kwargs
-                            
-                            # Check for function_call in additional_kwargs
-                            if 'function_call' in additional:
-                                func_call = additional['function_call']
-                                func_name = func_call.get('name', '')
-                                func_args = func_call.get('arguments', {})
+                    # Extract function calls from response
+                    if response.function_calls:
+                        for fc in response.function_calls:
+                            try:
+                                func_name = fc.name if hasattr(fc, 'name') else str(fc.function_call.name if hasattr(fc, 'function_call') else '')
+                                func_args = dict(fc.args) if hasattr(fc, 'args') else {}
                                 
-                                # Parse arguments if string
-                                if isinstance(func_args, str):
-                                    import json
-                                    try:
-                                        func_args = json.loads(func_args)
-                                    except json.JSONDecodeError:
-                                        func_args = {}
-                                
-                                try:
-                                    server, tool = self._parse_gemini_function_name(func_name)
-                                    # Avoid duplicates
-                                    if not any(tc.server == server and tc.tool == tool for tc in tool_calls):
-                                        tool_calls.append(NativeThinkingToolCall(
-                                            server=server,
-                                            tool=tool,
-                                            parameters=func_args
-                                        ))
-                                        logger.debug(f"[{request_id}] Extracted tool call from additional_kwargs: {server}.{tool}")
-                                except ValueError as e:
-                                    logger.warning(f"[{request_id}] Failed to parse function name: {e}")
-                            
-                            # Check for tool_calls array (newer format)
-                            if 'tool_calls' in additional:
-                                for tc in additional['tool_calls']:
-                                    func_name = tc.get('function', {}).get('name', '')
-                                    func_args = tc.get('function', {}).get('arguments', {})
-                                    
-                                    if isinstance(func_args, str):
-                                        import json
-                                        try:
-                                            func_args = json.loads(func_args)
-                                        except json.JSONDecodeError:
-                                            func_args = {}
-                                    
-                                    try:
-                                        server, tool = self._parse_gemini_function_name(func_name)
-                                        if not any(tc.server == server and tc.tool == tool for tc in tool_calls):
-                                            tool_calls.append(NativeThinkingToolCall(
-                                                server=server,
-                                                tool=tool,
-                                                parameters=func_args
-                                            ))
-                                    except ValueError:
-                                        pass
-                        
-                        # Extract thought signature from response metadata
-                        if response_metadata and isinstance(response_metadata, dict):
-                            new_thought_signature = response_metadata.get('thought_signature')
+                                server, tool = self._parse_gemini_function_name(func_name)
+                                tool_calls.append(NativeThinkingToolCall(
+                                    server=server,
+                                    tool=tool,
+                                    parameters=func_args
+                                ))
+                                logger.debug(f"[{request_id}] Extracted tool call: {server}.{tool}")
+                            except (ValueError, AttributeError) as e:
+                                logger.warning(f"[{request_id}] Failed to parse function call: {e}")
+                    
+                    # Build response metadata
+                    if hasattr(response, 'usage_metadata') and response.usage_metadata:
+                        usage = response.usage_metadata
+                        response_metadata = {
+                            'prompt_token_count': getattr(usage, 'prompt_token_count', None),
+                            'candidates_token_count': getattr(usage, 'candidates_token_count', None),
+                            'total_token_count': getattr(usage, 'total_token_count', None),
+                        }
+                        # Store token counts for interaction
+                        ctx.interaction.input_tokens = getattr(usage, 'prompt_token_count', None)
+                        ctx.interaction.output_tokens = getattr(usage, 'candidates_token_count', None)
+                        ctx.interaction.total_tokens = getattr(usage, 'total_token_count', None)
                 
                 # Combine thinking content
                 combined_thinking = "\n".join(thinking_content_parts) if thinking_content_parts else None
@@ -1131,15 +1203,18 @@ class LLMClient:
                 ctx.interaction.temperature = self.temperature
                 ctx.interaction.response_metadata = response_metadata
                 
+                # Store thinking content from native thinking (Gemini only)
+                if combined_thinking:
+                    ctx.interaction.thinking_content = combined_thinking
+                
                 # Set interaction type based on whether this is final
                 ctx.interaction.interaction_type = (
                     LLMInteractionType.FINAL_ANALYSIS.value if is_final 
                     else LLMInteractionType.INVESTIGATION.value
                 )
                 
-                # Store native tools config
-                native_config = {k: (v is not None) for k, v in active_native_tools.items()}
-                ctx.interaction.native_tools_config = native_config
+                # Store native tools config (none used in native thinking mode)
+                ctx.interaction.native_tools_config = native_tools_config
                 
                 await ctx.complete_success({})
                 

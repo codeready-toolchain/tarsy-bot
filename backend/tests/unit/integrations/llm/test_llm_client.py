@@ -2082,7 +2082,7 @@ class TestLLMClientChunkAggregation:
 
 @pytest.mark.unit
 class TestMCPToolConverter:
-    """Test MCP tool to Gemini function declaration conversion."""
+    """Test MCP tool conversion for LangChain binding."""
     
     @pytest.fixture
     def google_client(self):
@@ -2132,29 +2132,31 @@ class TestMCPToolConverter:
             ToolWithServer(server="shell-server", tool=tool2)
         ]
     
-    def test_convert_mcp_tools_to_gemini_functions(self, google_client, sample_mcp_tools):
-        """Test that MCP tools are converted to Gemini function declarations."""
-        functions = google_client._convert_mcp_tools_to_gemini_functions(sample_mcp_tools)
+    def test_convert_mcp_tools_for_binding(self, google_client, sample_mcp_tools):
+        """Test that MCP tools are converted to OpenAI-style format for binding."""
+        tools = google_client._convert_mcp_tools_for_binding(sample_mcp_tools)
         
-        assert len(functions) == 2
+        assert len(tools) == 2
         
-        # Check first function
-        func1 = functions[0]
-        assert func1.name == "kubernetes-server__resources_get"
-        assert func1.description == "Get Kubernetes resources"
-        # Parameters is a Schema object - check it was set
-        assert func1.parameters is not None
+        # Check first tool (OpenAI-style format)
+        tool1 = tools[0]
+        assert tool1["type"] == "function"
+        assert tool1["function"]["name"] == "kubernetes-server__resources_get"
+        assert tool1["function"]["description"] == "Get Kubernetes resources"
+        assert tool1["function"]["parameters"]["type"] == "object"
+        assert "namespace" in tool1["function"]["parameters"]["properties"]
         
-        # Check second function
-        func2 = functions[1]
-        assert func2.name == "shell-server__exec_command"
-        assert func2.description == "Execute shell command"
+        # Check second tool
+        tool2 = tools[1]
+        assert tool2["type"] == "function"
+        assert tool2["function"]["name"] == "shell-server__exec_command"
+        assert tool2["function"]["description"] == "Execute shell command"
     
     def test_convert_mcp_tools_empty_list(self, google_client):
         """Test conversion with empty tools list."""
-        functions = google_client._convert_mcp_tools_to_gemini_functions([])
+        tools = google_client._convert_mcp_tools_for_binding([])
         
-        assert functions == []
+        assert tools == []
     
     def test_convert_mcp_tools_minimal_schema(self, google_client):
         """Test conversion handles tools with minimal input schema."""
@@ -2169,10 +2171,10 @@ class TestMCPToolConverter:
         )
         
         tools = [ToolWithServer(server="test-server", tool=tool)]
-        functions = google_client._convert_mcp_tools_to_gemini_functions(tools)
+        result = google_client._convert_mcp_tools_for_binding(tools)
         
-        assert len(functions) == 1
-        assert functions[0].name == "test-server__simple_tool"
+        assert len(result) == 1
+        assert result[0]["function"]["name"] == "test-server__simple_tool"
     
     def test_parse_gemini_function_name(self, google_client):
         """Test parsing Gemini function name back to server and tool."""

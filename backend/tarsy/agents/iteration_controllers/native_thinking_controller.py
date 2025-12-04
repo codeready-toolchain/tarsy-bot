@@ -43,27 +43,36 @@ class NativeThinkingController(IterationController):
     models that support native thinking capabilities.
     """
     
-    def __init__(self, llm_client: 'LLMClient', prompt_builder: 'PromptBuilder'):
+    def __init__(self, llm_manager: 'LLMClient', prompt_builder: 'PromptBuilder'):
         """
         Initialize the native thinking controller.
         
         Args:
-            llm_client: LLM client (must be Google/Gemini provider)
+            llm_manager: LLM manager (the default client must be Google/Gemini provider)
             prompt_builder: Prompt builder for creating system/user prompts
             
         Raises:
-            ValueError: If LLM client is not Google/Gemini provider
+            ValueError: If default LLM client is not Google/Gemini provider
         """
-        self.llm_client = llm_client
+        # Note: llm_manager is actually LLMManager, not LLMClient
+        # The type hint is 'LLMClient' for compatibility with base class interface
+        self.llm_manager = llm_manager
         self.prompt_builder = prompt_builder
         self.logger = logger
         
-        # Validate provider is Google/Gemini
-        if llm_client.config.type != LLMProviderType.GOOGLE:
+        # Get the actual LLM client from the manager and validate it's Google/Gemini
+        actual_client = llm_manager.get_client()
+        if actual_client is None:
+            raise ValueError("No default LLM client available in manager")
+        
+        if actual_client.config.type != LLMProviderType.GOOGLE:
             raise ValueError(
                 f"NativeThinkingController requires Google/Gemini provider, "
-                f"got {llm_client.config.type.value}"
+                f"got {actual_client.config.type.value}"
             )
+        
+        # Store reference to the actual client for native thinking calls
+        self._google_client = actual_client
         
         logger.info("Initialized NativeThinkingController for Gemini native thinking")
     
@@ -121,9 +130,9 @@ class NativeThinkingController(IterationController):
             self.logger.info(f"Native thinking iteration {iteration + 1}/{max_iterations}")
             
             try:
-                # Call LLM with native thinking
+                # Call LLM with native thinking (using the Google client directly)
                 response = await asyncio.wait_for(
-                    self.llm_client.generate_response_with_native_thinking(
+                    self._google_client.generate_response_with_native_thinking(
                         conversation=conversation,
                         session_id=context.session_id,
                         mcp_tools=mcp_tools,
@@ -198,8 +207,10 @@ class NativeThinkingController(IterationController):
                 conversation.append_observation(f"Error: {error_msg}")
                 
             except Exception as e:
+                import traceback
                 error_msg = f"Native thinking iteration {iteration + 1} failed: {str(e)}"
                 self.logger.error(error_msg)
+                self.logger.error(f"Full traceback:\n{traceback.format_exc()}")
                 conversation.append_observation(f"Error: {error_msg}")
         
         # Max iterations reached

@@ -8,7 +8,7 @@ import { parseNativeToolsUsage } from './nativeToolsParser';
 import type { NativeToolsUsage } from '../types';
 
 export interface ChatFlowItemData {
-  type: 'thought' | 'tool_call' | 'final_answer' | 'stage_start' | 'summarization' | 'user_message' | 'native_tool_usage';
+  type: 'thought' | 'tool_call' | 'final_answer' | 'stage_start' | 'summarization' | 'user_message' | 'native_tool_usage' | 'native_thinking';
   timestamp_us: number;
   stageId?: string; // Stage execution_id - used for grouping and collapse functionality
   content?: string; // For thought/final_answer/summarization/user_message
@@ -81,12 +81,25 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
       const assistantMessages = messages.filter(msg => msg.role === 'assistant');
       const lastAssistantMessage = assistantMessages[assistantMessages.length - 1];
 
+      // Track the last timestamp used for this interaction
+      let lastTimestamp = interaction.timestamp_us;
+
+      // Check for native thinking content (Gemini 3.0+ native thinking mode)
+      // This is separate from ReAct thoughts - it's the model's internal reasoning
+      const thinkingContent = (interaction.details as any).thinking_content;
+      if (thinkingContent) {
+        chatItems.push({
+          type: 'native_thinking',
+          timestamp_us: lastTimestamp,
+          stageId,
+          content: thinkingContent
+        });
+        lastTimestamp = lastTimestamp + 1; // Ensure subsequent items come after
+      }
+
       if (!lastAssistantMessage) continue;
 
       const parsed = parseReActMessage(lastAssistantMessage.content);
-
-      // Track the last timestamp used for this interaction
-      let lastTimestamp = interaction.timestamp_us;
 
       // Extract based on interaction type
       if (interactionType === 'investigation' && parsed.thought) {
@@ -194,13 +207,15 @@ export function getChatFlowStats(chatItems: ChatFlowItemData[]): {
   toolCallsCount: number;
   finalAnswersCount: number;
   successfulToolCalls: number;
+  nativeThinkingCount: number;
 } {
   return {
     totalItems: chatItems.length,
     thoughtsCount: chatItems.filter(i => i.type === 'thought').length,
     toolCallsCount: chatItems.filter(i => i.type === 'tool_call').length,
     finalAnswersCount: chatItems.filter(i => i.type === 'final_answer').length,
-    successfulToolCalls: chatItems.filter(i => i.type === 'tool_call' && i.success).length
+    successfulToolCalls: chatItems.filter(i => i.type === 'tool_call' && i.success).length,
+    nativeThinkingCount: chatItems.filter(i => i.type === 'native_thinking').length
   };
 }
 

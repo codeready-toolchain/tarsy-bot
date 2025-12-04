@@ -159,6 +159,73 @@ function ChatFlowItem({ item, isCollapsed = false, onToggleCollapse }: ChatFlowI
     );
   }
 
+  // Render native thinking (Gemini 3.0+ native thinking mode)
+  // Distinct from ReAct thoughts - this is the model's internal reasoning process
+  if (item.type === 'native_thinking') {
+    const hasMarkdown = hasMarkdownSyntax(item.content || '');
+    
+    return (
+      <Box sx={{ mb: 1.5, display: 'flex', gap: 1.5 }}>
+        <Typography
+          variant="body2"
+          sx={{
+            fontSize: '1.1rem',
+            lineHeight: 1,
+            flexShrink: 0,
+            mt: 0.25
+          }}
+        >
+          🧠
+        </Typography>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: 0.5,
+              fontSize: '0.65rem',
+              color: 'info.main',
+              display: 'block',
+              mb: 0.5
+            }}
+          >
+            Native Thinking
+          </Typography>
+          {hasMarkdown ? (
+            <Box sx={{ 
+              '& p, & li': { 
+                color: 'text.secondary',
+                fontStyle: 'italic'
+              }
+            }}>
+              <ReactMarkdown
+                components={thoughtMarkdownComponents}
+                skipHtml
+              >
+                {item.content}
+              </ReactMarkdown>
+            </Box>
+          ) : (
+            <Typography
+              variant="body1"
+              sx={{
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                lineHeight: 1.7,
+                fontSize: '1rem',
+                color: 'text.secondary',
+                fontStyle: 'italic'
+              }}
+            >
+              {item.content}
+            </Typography>
+          )}
+        </Box>
+      </Box>
+    );
+  }
+
   // Render final answer - emphasized text with emoji and markdown support
   if (item.type === 'final_answer') {
     return (

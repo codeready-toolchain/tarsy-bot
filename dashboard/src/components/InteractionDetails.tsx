@@ -10,6 +10,7 @@ import {
   AccordionDetails
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import PsychologyIcon from '@mui/icons-material/Psychology';
 import type { LLMInteraction, MCPInteraction, SystemEvent, LLMMessage } from '../types';
 import CopyButton from './CopyButton';
 import JsonDisplay from './JsonDisplay';
@@ -203,6 +204,57 @@ function InteractionDetails({
               }}
             >
               {llmDetails.error_message || 'LLM request failed - no response received'}
+            </Typography>
+          </Box>
+        )}
+
+        {/* Native Thinking Content (Gemini 3.0+ native thinking mode) */}
+        {llmDetails.thinking_content && (
+          <Box>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <PsychologyIcon sx={{ color: 'info.main', fontSize: '1.25rem' }} />
+                <Box sx={{
+                  px: 1,
+                  py: 0.5,
+                  bgcolor: 'info.main',
+                  color: 'info.contrastText',
+                  borderRadius: 1,
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.5px'
+                }}>
+                  Native Thinking
+                </Box>
+                <Typography variant="caption" color="text.secondary">
+                  Internal reasoning from Gemini
+                </Typography>
+              </Box>
+              <CopyButton
+                text={llmDetails.thinking_content}
+                variant="icon"
+                size="small"
+                tooltip="Copy thinking content"
+              />
+            </Box>
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                whiteSpace: 'pre-wrap',
+                wordBreak: 'break-word',
+                p: 1.5,
+                bgcolor: 'rgba(33, 150, 243, 0.08)',
+                borderRadius: 1,
+                border: 1,
+                borderColor: 'info.light',
+                fontStyle: 'italic',
+                color: 'text.secondary',
+                maxHeight: 300,
+                overflow: 'auto'
+              }}
+            >
+              {llmDetails.thinking_content}
             </Typography>
           </Box>
         )}

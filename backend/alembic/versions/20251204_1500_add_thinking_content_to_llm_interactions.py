@@ -1,7 +1,7 @@
 """add_thinking_content_to_llm_interactions
 
 Revision ID: c2f1e3d4a5b6
-Revises: 01b89ac17a5e
+Revises: aedb48dd0326
 Create Date: 2025-12-04 15:00:00.000000
 
 Adds thinking_content column to llm_interactions table for storing
@@ -15,7 +15,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = 'c2f1e3d4a5b6'
-down_revision: Union[str, Sequence[str], None] = '01b89ac17a5e'
+down_revision: Union[str, Sequence[str], None] = 'aedb48dd0326'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

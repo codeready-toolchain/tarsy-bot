@@ -174,6 +174,9 @@ export interface LLMEventDetails {
   // Native tools fields (Google/Gemini only)
   native_tools_config?: NativeToolsConfig | null;
   response_metadata?: Record<string, any> | null;
+  
+  // Native thinking content (Gemini 3.0+ native thinking mode)
+  thinking_content?: string | null;
 }
 
 // Native tools usage types (parsed from response_metadata on frontend)

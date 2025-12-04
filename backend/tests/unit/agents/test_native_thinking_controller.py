@@ -67,11 +67,25 @@ class TestNativeThinkingController:
         return client
     
     @pytest.fixture
+    def mock_llm_manager_google(self, mock_llm_client_google):
+        """Create mock LLM manager that returns Google client."""
+        manager = Mock()
+        manager.get_client.return_value = mock_llm_client_google
+        return manager
+    
+    @pytest.fixture
     def mock_llm_client_non_google(self, mock_non_google_config):
         """Create mock LLM client with non-Google provider."""
         client = Mock()
         client.config = mock_non_google_config
         return client
+    
+    @pytest.fixture
+    def mock_llm_manager_non_google(self, mock_llm_client_non_google):
+        """Create mock LLM manager that returns non-Google client."""
+        manager = Mock()
+        manager.get_client.return_value = mock_llm_client_non_google
+        return manager
     
     @pytest.fixture
     def mock_prompt_builder(self):
@@ -133,37 +147,38 @@ class TestNativeThinkingController:
             agent=mock_agent
         )
     
-    def test_init_with_google_provider(self, mock_llm_client_google, mock_prompt_builder):
+    def test_init_with_google_provider(self, mock_llm_manager_google, mock_llm_client_google, mock_prompt_builder):
         """Test controller initialization with Google provider succeeds."""
-        controller = NativeThinkingController(mock_llm_client_google, mock_prompt_builder)
+        controller = NativeThinkingController(mock_llm_manager_google, mock_prompt_builder)
         
-        assert controller.llm_client == mock_llm_client_google
+        assert controller.llm_manager == mock_llm_manager_google
+        assert controller._google_client == mock_llm_client_google
         assert controller.prompt_builder == mock_prompt_builder
     
-    def test_init_with_non_google_provider_raises(self, mock_llm_client_non_google, mock_prompt_builder):
+    def test_init_with_non_google_provider_raises(self, mock_llm_manager_non_google, mock_prompt_builder):
         """Test controller initialization with non-Google provider raises ValueError."""
         with pytest.raises(ValueError, match="requires Google/Gemini provider"):
-            NativeThinkingController(mock_llm_client_non_google, mock_prompt_builder)
+            NativeThinkingController(mock_llm_manager_non_google, mock_prompt_builder)
     
-    def test_needs_mcp_tools_returns_true(self, mock_llm_client_google, mock_prompt_builder):
+    def test_needs_mcp_tools_returns_true(self, mock_llm_manager_google, mock_prompt_builder):
         """Test that controller indicates it needs MCP tools."""
-        controller = NativeThinkingController(mock_llm_client_google, mock_prompt_builder)
+        controller = NativeThinkingController(mock_llm_manager_google, mock_prompt_builder)
         
         assert controller.needs_mcp_tools() is True
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_final_answer(
-        self, mock_llm_client_google, mock_prompt_builder, sample_context
+        self, mock_llm_manager_google, mock_llm_client_google, mock_prompt_builder, sample_context
     ):
         """Test successful analysis loop with final answer."""
-        controller = NativeThinkingController(mock_llm_client_google, mock_prompt_builder)
+        controller = NativeThinkingController(mock_llm_manager_google, mock_prompt_builder)
         
         result = await controller.execute_analysis_loop(sample_context)
         
         # Should return the content from the response
         assert "Analysis complete" in result
         
-        # Verify native thinking method was called
+        # Verify native thinking method was called on the actual Google client
         mock_llm_client_google.generate_response_with_native_thinking.assert_called_once()
         
         # Verify MCP tools were passed
@@ -173,7 +188,7 @@ class TestNativeThinkingController:
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_with_tool_calls(
-        self, mock_llm_client_google, mock_prompt_builder, sample_context
+        self, mock_llm_manager_google, mock_llm_client_google, mock_prompt_builder, sample_context
     ):
         """Test analysis loop with tool calls followed by final answer."""
         from tarsy.integrations.llm.client import NativeThinkingResponse, NativeThinkingToolCall
@@ -218,13 +233,13 @@ class TestNativeThinkingController:
             side_effect=[response_with_tool, response_final]
         )
         
-        controller = NativeThinkingController(mock_llm_client_google, mock_prompt_builder)
+        controller = NativeThinkingController(mock_llm_manager_google, mock_prompt_builder)
         result = await controller.execute_analysis_loop(sample_context)
         
         # Should return final content
         assert "Root cause" in result
         
-        # Should have called LLM twice
+        # Should have called LLM twice on the actual Google client
         assert mock_llm_client_google.generate_response_with_native_thinking.call_count == 2
         
         # Should have executed tools
@@ -232,7 +247,7 @@ class TestNativeThinkingController:
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_no_agent_raises(
-        self, mock_llm_client_google, mock_prompt_builder
+        self, mock_llm_manager_google, mock_prompt_builder
     ):
         """Test that missing agent reference raises ValueError."""
         from tarsy.models.alert import ProcessingAlert
@@ -256,14 +271,14 @@ class TestNativeThinkingController:
             agent=None
         )
         
-        controller = NativeThinkingController(mock_llm_client_google, mock_prompt_builder)
+        controller = NativeThinkingController(mock_llm_manager_google, mock_prompt_builder)
         
         with pytest.raises(ValueError, match="Agent reference is required"):
             await controller.execute_analysis_loop(context)
     
-    def test_extract_final_analysis(self, mock_llm_client_google, mock_prompt_builder, sample_context):
+    def test_extract_final_analysis(self, mock_llm_manager_google, mock_prompt_builder, sample_context):
         """Test final analysis extraction returns content as-is."""
-        controller = NativeThinkingController(mock_llm_client_google, mock_prompt_builder)
+        controller = NativeThinkingController(mock_llm_manager_google, mock_prompt_builder)
         
         result = controller.extract_final_analysis(
             "Root cause: Pod crashed due to OOM.",
@@ -272,17 +287,17 @@ class TestNativeThinkingController:
         
         assert result == "Root cause: Pod crashed due to OOM."
     
-    def test_extract_final_analysis_empty(self, mock_llm_client_google, mock_prompt_builder, sample_context):
+    def test_extract_final_analysis_empty(self, mock_llm_manager_google, mock_prompt_builder, sample_context):
         """Test final analysis extraction with empty content."""
-        controller = NativeThinkingController(mock_llm_client_google, mock_prompt_builder)
+        controller = NativeThinkingController(mock_llm_manager_google, mock_prompt_builder)
         
         result = controller.extract_final_analysis("", sample_context)
         
         assert result == "No analysis generated"
     
-    def test_create_result_summary(self, mock_llm_client_google, mock_prompt_builder, sample_context):
+    def test_create_result_summary(self, mock_llm_manager_google, mock_prompt_builder, sample_context):
         """Test result summary creation."""
-        controller = NativeThinkingController(mock_llm_client_google, mock_prompt_builder)
+        controller = NativeThinkingController(mock_llm_manager_google, mock_prompt_builder)
         
         result = controller.create_result_summary(
             "Analysis content here.",
