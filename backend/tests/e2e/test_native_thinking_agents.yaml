@@ -1,0 +1,76 @@
+# Test agent configuration for native thinking E2E tests
+# This file defines agents using native-thinking strategy for Gemini models
+
+agents:
+  # Data Collection Agent using native thinking for gathering kubernetes information
+  NativeThinkingDataCollectionAgent:
+    custom_instructions: |
+      You are a Kubernetes data collection specialist using Gemini's native thinking capabilities.
+      Your role is to gather comprehensive information about problematic resources using available kubectl tools.
+      
+      Focus on:
+      - Namespace status and finalizers
+      - Pod states and termination details  
+      - Events showing errors and warnings
+      - Resource dependencies that might block cleanup
+      
+      Be thorough but efficient. Collect all relevant data before stopping.
+    mcp_servers:
+      - "kubernetes-server"  # Use built-in kubernetes server for simplicity
+      - "test-data-server"   # Custom server for additional data collection
+
+  # Analysis Agent using native thinking for root cause analysis
+  NativeThinkingAnalysisAgent:
+    custom_instructions: |
+      You are a Senior Site Reliability Engineer specializing in Kubernetes troubleshooting.
+      Using Gemini's native thinking capabilities, analyze the collected data from previous stages 
+      to identify root causes.
+      
+      Your analysis should:
+      - Synthesize information from all data collection activities
+      - Identify the specific root cause of the problem
+      - Assess the impact and urgency level
+      - Provide confidence levels for your conclusions
+      
+      Be precise and actionable in your analysis.
+    mcp_servers:
+      - "kubernetes-server"  # Use built-in kubernetes server
+    
+# MCP servers configuration for test environment
+# We use the built-in kubernetes-server for simplicity in testing
+mcp_servers:
+  test-data-server:
+    server_id: "test-data-server"
+    server_type: "custom"
+    enabled: true
+    transport:
+      type: "stdio"
+      command: "echo"
+      args: ["test-data-server-ready"]
+    instructions: "Simple data collection server for testing - provides system information gathering tools"
+    data_masking:
+      enabled: false
+    summarization:
+      enabled: true
+      size_threshold_tokens: 100    # Low threshold to trigger summarization in tests
+      summary_max_token_limit: 50  # Reasonable limit for test summaries
+
+# Agent chains configuration - native thinking variant
+agent_chains:
+  # Test chain for namespace terminating scenario using native thinking
+  native-thinking-kubernetes-chain:
+    alert_types:
+      - "test-native-thinking"
+      - "test-NativeThinkingKubernetes"
+    stages:
+      - name: "data-collection"
+        agent: "NativeThinkingDataCollectionAgent"
+        iteration_strategy: "native-thinking"   # Native thinking for data collection
+      - name: "verification"
+        agent: "KubernetesAgent"                 # Built-in agent also with native thinking
+        iteration_strategy: "native-thinking"
+      - name: "analysis"  
+        agent: "NativeThinkingAnalysisAgent"
+        iteration_strategy: "native-thinking"   # Native thinking for final analysis
+    description: "Multi-stage chain using native thinking: data collection → verification → final analysis"
+

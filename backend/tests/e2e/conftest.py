@@ -14,7 +14,7 @@ import tempfile
 import uuid
 from contextlib import suppress
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from unittest.mock import patch
 
 import pytest
@@ -453,3 +453,305 @@ async def create_mock_stream(content: str, usage_metadata: Optional[dict] = None
         # Add usage_metadata only to the final chunk
         is_final = (i == len(content) - 1)
         yield MockChunk(char, usage_metadata=usage_metadata if is_final else None)
+
+
+# =============================================================================
+# Native Thinking Mock Helpers (for Gemini SDK tests)
+# =============================================================================
+
+
+class MockUsageMetadata:
+    """Mock usage metadata for Gemini API responses."""
+    
+    def __init__(self, prompt_token_count: int, candidates_token_count: int, total_token_count: int):
+        self.prompt_token_count = prompt_token_count
+        self.candidates_token_count = candidates_token_count
+        self.total_token_count = total_token_count
+
+
+class MockPart:
+    """Mock Part object for Gemini API responses."""
+    
+    def __init__(
+        self,
+        text: Optional[str] = None,
+        thought: bool = False,
+        thought_signature: Optional[bytes] = None,
+        function_call: Optional[Any] = None
+    ):
+        self.text = text
+        self.thought = thought
+        self.thought_signature = thought_signature
+        self.function_call = function_call
+
+
+class MockFunctionCall:
+    """Mock function call from Gemini API."""
+    
+    def __init__(self, name: str, args: dict):
+        self.name = name
+        self.args = args
+
+
+class MockContent:
+    """Mock Content object for Gemini API responses."""
+    
+    def __init__(self, parts: list):
+        self.parts = parts
+
+
+class MockCandidate:
+    """Mock Candidate object for Gemini API responses."""
+    
+    def __init__(self, content: MockContent):
+        self.content = content
+
+
+class MockGeminiResponse:
+    """Mock response from Gemini API generate_content."""
+    
+    def __init__(
+        self,
+        text_content: str = "",
+        thinking_content: Optional[str] = None,
+        function_calls: Optional[list] = None,
+        thought_signature: Optional[bytes] = None,
+        usage_metadata: Optional[MockUsageMetadata] = None
+    ):
+        parts = []
+        
+        # Add thinking content if present
+        if thinking_content:
+            parts.append(MockPart(text=thinking_content, thought=True))
+        
+        # Add regular text content if present
+        if text_content:
+            parts.append(MockPart(text=text_content, thought=False, thought_signature=thought_signature))
+        
+        # Build candidates
+        content = MockContent(parts=parts)
+        self.candidates = [MockCandidate(content=content)]
+        
+        # Function calls are stored directly on response
+        self.function_calls = []
+        if function_calls:
+            for fc in function_calls:
+                self.function_calls.append(MockFunctionCall(name=fc["name"], args=fc.get("args", {})))
+        
+        self.usage_metadata = usage_metadata
+
+
+def create_native_thinking_response(
+    text_content: str = "",
+    thinking_content: Optional[str] = None,
+    function_calls: Optional[list] = None,
+    thought_signature: Optional[bytes] = None,
+    input_tokens: int = 100,
+    output_tokens: int = 50,
+    total_tokens: int = 150
+) -> MockGeminiResponse:
+    """
+    Create a mock Gemini native thinking response.
+    
+    Args:
+        text_content: The main text response
+        thinking_content: Optional thinking/reasoning content
+        function_calls: Optional list of function calls [{"name": "server__tool", "args": {...}}]
+        thought_signature: Optional thought signature for multi-turn continuity
+        input_tokens: Input token count
+        output_tokens: Output token count
+        total_tokens: Total token count
+        
+    Returns:
+        MockGeminiResponse object
+    """
+    usage = MockUsageMetadata(
+        prompt_token_count=input_tokens,
+        candidates_token_count=output_tokens,
+        total_token_count=total_tokens
+    )
+    
+    return MockGeminiResponse(
+        text_content=text_content,
+        thinking_content=thinking_content,
+        function_calls=function_calls,
+        thought_signature=thought_signature,
+        usage_metadata=usage
+    )
+
+
+class MockGeminiModels:
+    """Mock for google.genai.Client.aio.models."""
+    
+    def __init__(self, response_generator):
+        self._response_generator = response_generator
+        self._call_count = 0
+    
+    async def generate_content(self, model: str, contents: list, config: Any = None):
+        """Mock generate_content that returns responses from the generator."""
+        self._call_count += 1
+        return self._response_generator(self._call_count, model, contents, config)
+
+
+class MockGeminiAio:
+    """Mock for google.genai.Client.aio."""
+    
+    def __init__(self, response_generator):
+        self.models = MockGeminiModels(response_generator)
+
+
+class MockGeminiClient:
+    """Mock for google.genai.Client."""
+    
+    def __init__(self, response_generator, api_key: str = "test-api-key"):
+        self.api_key = api_key
+        self.aio = MockGeminiAio(response_generator)
+
+
+def create_gemini_client_mock(response_map: dict):
+    """
+    Create a mock Gemini client factory.
+    
+    Args:
+        response_map: Dictionary mapping interaction number (1-based) to response data:
+            {
+                1: {
+                    "text_content": "...",
+                    "thinking_content": "...",  # optional
+                    "function_calls": [...],    # optional
+                    "input_tokens": 100,
+                    "output_tokens": 50,
+                    "total_tokens": 150
+                },
+                ...
+            }
+    
+    Returns:
+        A function that creates MockGeminiClient instances
+    """
+    def response_generator(call_num: int, model: str, contents: list, config: Any):
+        """Generate response based on call number."""
+        response_data = response_map.get(call_num, {
+            "text_content": "",
+            "thinking_content": None,
+            "function_calls": None,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0
+        })
+        
+        return create_native_thinking_response(
+            text_content=response_data.get("text_content", ""),
+            thinking_content=response_data.get("thinking_content"),
+            function_calls=response_data.get("function_calls"),
+            thought_signature=response_data.get("thought_signature"),
+            input_tokens=response_data.get("input_tokens", 100),
+            output_tokens=response_data.get("output_tokens", 50),
+            total_tokens=response_data.get("total_tokens", 150)
+        )
+    
+    def client_factory(api_key: str = "test-api-key"):
+        return MockGeminiClient(response_generator, api_key)
+    
+    return client_factory
+
+
+@pytest.fixture
+def e2e_native_thinking_alert():
+    """Alert specifically for native thinking E2E tests."""
+    return {
+        "alert_type": "test-native-thinking",
+        "runbook": "https://runbooks.example.com/k8s-namespace-stuck",
+        "severity": "warning",
+        "data": {
+            "namespace": "test-namespace",
+            "description": "Namespace stuck in Terminating state",
+            "cluster": "test-cluster",
+            "contact": "admin@example.com",
+            "labels": {
+                "env": "test",
+                "team": "platform"
+            },
+            "annotations": {
+                "finalizers": "kubernetes.io/pv-protection"
+            }
+        }
+    }
+
+
+@pytest.fixture
+def isolated_native_thinking_settings(e2e_isolation):
+    """Create isolated test settings for native thinking e2e tests."""
+    from tarsy.config.settings import Settings
+    
+    # Create isolated database
+    test_db_url = e2e_isolation.create_temp_database()
+    
+    # Create isolated kubeconfig
+    kubeconfig_content = """
+apiVersion: v1
+kind: Config
+clusters:
+- name: test-cluster
+  cluster:
+    server: https://test-k8s-api.example.com
+contexts:
+- name: test-context
+  context:
+    cluster: test-cluster
+current-context: test-context
+"""
+    kubeconfig_path = e2e_isolation.create_temp_file(".yaml", kubeconfig_content)
+    
+    # Create absolute path to native thinking test agents config
+    current_dir = Path(__file__).parent
+    test_agents_path = current_dir / "test_native_thinking_agents.yaml"
+    
+    # Set isolated environment variables
+    e2e_isolation.set_isolated_env("DATABASE_URL", test_db_url)
+    e2e_isolation.set_isolated_env("HISTORY_ENABLED", "true")
+    e2e_isolation.set_isolated_env("AGENT_CONFIG_PATH", str(test_agents_path))
+    e2e_isolation.set_isolated_env("GOOGLE_API_KEY", "test-google-key-123")
+    e2e_isolation.set_isolated_env("LLM_PROVIDER", "google-default")  # Use builtin Google provider
+    e2e_isolation.set_isolated_env("KUBECONFIG", kubeconfig_path)
+    
+    # Create real Settings object with isolated environment
+    settings = Settings()
+    
+    # Override specific values after creation to ensure they're isolated
+    settings.database_url = test_db_url
+    settings.history_enabled = True
+    settings.agent_config_path = str(test_agents_path)
+    settings.google_api_key = "test-google-key-123"
+    settings.llm_provider = "google-default"  # Use builtin Google provider
+    
+    # Patch global settings
+    e2e_isolation.patch_settings(settings)
+    
+    return settings
+
+
+@pytest.fixture
+def e2e_native_thinking_test_client(isolated_native_thinking_settings):
+    """Create an isolated FastAPI test client for native thinking e2e tests."""
+    from fastapi.testclient import TestClient
+    from unittest.mock import patch
+
+    # Ensure settings cache is cleared before importing app
+    from contextlib import suppress
+    with suppress(Exception):
+        import tarsy.config.settings
+        tarsy.config.settings.get_settings.cache_clear()
+
+    # Mock MCPClient.initialize() to prevent real server startup
+    async def mock_mcp_initialize(self):
+        """Mock MCP initialization - tests will provide their own mocks."""
+        self._initialized = True
+        self.sessions = {}
+        logger.info("E2E Native Thinking: Skipping real MCP server initialization")
+    
+    with patch('tarsy.integrations.mcp.client.MCPClient.initialize', mock_mcp_initialize):
+        from tarsy.main import app
+        
+        with TestClient(app) as client:
+            yield client
