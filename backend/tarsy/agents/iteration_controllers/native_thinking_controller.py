@@ -16,6 +16,7 @@ import asyncio
 from typing import TYPE_CHECKING, Optional
 
 from tarsy.config.settings import get_settings
+from tarsy.integrations.llm.gemini_client import GeminiNativeThinkingClient
 from tarsy.models.llm_models import LLMProviderType
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.utils.logger import get_module_logger
@@ -24,7 +25,7 @@ from .base_controller import IterationController
 
 if TYPE_CHECKING:
     from ...agents.prompts import PromptBuilder
-    from ...integrations.llm.client import LLMClient
+    from ...integrations.llm.manager import LLMManager
     from ...models.processing_context import StageContext
 
 logger = get_module_logger(__name__)
@@ -43,7 +44,7 @@ class NativeThinkingController(IterationController):
     models that support native thinking capabilities.
     """
     
-    def __init__(self, llm_manager: 'LLMClient', prompt_builder: 'PromptBuilder'):
+    def __init__(self, llm_manager: 'LLMManager', prompt_builder: 'PromptBuilder'):
         """
         Initialize the native thinking controller.
         
@@ -54,8 +55,6 @@ class NativeThinkingController(IterationController):
         Raises:
             ValueError: If default LLM client is not Google/Gemini provider
         """
-        # Note: llm_manager is actually LLMManager, not LLMClient
-        # The type hint is 'LLMClient' for compatibility with base class interface
         self.llm_manager = llm_manager
         self.prompt_builder = prompt_builder
         self.logger = logger
@@ -71,8 +70,11 @@ class NativeThinkingController(IterationController):
                 f"got {actual_client.config.type.value}"
             )
         
-        # Store reference to the actual client for native thinking calls
-        self._google_client = actual_client
+        # Create dedicated native thinking client from the config
+        self._native_client = GeminiNativeThinkingClient(
+            actual_client.config,
+            provider_name=actual_client.provider_name
+        )
         
         logger.info("Initialized NativeThinkingController for Gemini native thinking")
     
@@ -117,7 +119,7 @@ class NativeThinkingController(IterationController):
         self.logger.info(f"Starting with {len(mcp_tools)} MCP tools bound as native functions")
         
         # Track thought signature across iterations for reasoning continuity
-        thought_signature: Optional[str] = None
+        thought_signature: Optional[bytes] = None
         
         # Track thinking content for observability
         all_thinking_content: list[str] = []
@@ -130,9 +132,9 @@ class NativeThinkingController(IterationController):
             self.logger.info(f"Native thinking iteration {iteration + 1}/{max_iterations}")
             
             try:
-                # Call LLM with native thinking (using the Google client directly)
+                # Call LLM with native thinking
                 response = await asyncio.wait_for(
-                    self._google_client.generate_response_with_native_thinking(
+                    self._native_client.generate(
                         conversation=conversation,
                         session_id=context.session_id,
                         mcp_tools=mcp_tools,

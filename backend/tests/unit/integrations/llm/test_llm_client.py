@@ -2176,21 +2176,30 @@ class TestMCPToolConverter:
         assert len(result) == 1
         assert result[0]["function"]["name"] == "test-server__simple_tool"
     
-    def test_parse_gemini_function_name(self, google_client):
+    def test_parse_function_name(self, google_client):
         """Test parsing Gemini function name back to server and tool."""
-        server, tool = google_client._parse_gemini_function_name("kubernetes-server__resources_get")
+        from tarsy.integrations.llm.gemini_client import GeminiNativeThinkingClient
+        native_client = GeminiNativeThinkingClient(google_client.config)
+        
+        server, tool = native_client._parse_function_name("kubernetes-server__resources_get")
         
         assert server == "kubernetes-server"
         assert tool == "resources_get"
     
-    def test_parse_gemini_function_name_multiple_underscores(self, google_client):
+    def test_parse_function_name_multiple_underscores(self, google_client):
         """Test parsing handles tool names with underscores."""
-        server, tool = google_client._parse_gemini_function_name("test-server__get_pod_status")
+        from tarsy.integrations.llm.gemini_client import GeminiNativeThinkingClient
+        native_client = GeminiNativeThinkingClient(google_client.config)
+        
+        server, tool = native_client._parse_function_name("test-server__get_pod_status")
         
         assert server == "test-server"
         assert tool == "get_pod_status"
     
-    def test_parse_gemini_function_name_invalid_format(self, google_client):
+    def test_parse_function_name_invalid_format(self, google_client):
         """Test parsing raises error for invalid format."""
+        from tarsy.integrations.llm.gemini_client import GeminiNativeThinkingClient
+        native_client = GeminiNativeThinkingClient(google_client.config)
+        
         with pytest.raises(ValueError, match="Invalid function name format"):
-            google_client._parse_gemini_function_name("invalid_name_no_separator")
+            native_client._parse_function_name("invalid_name_no_separator")
