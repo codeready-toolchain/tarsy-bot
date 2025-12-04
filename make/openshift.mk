@@ -34,7 +34,7 @@ OPENSHIFT_TARGETS := openshift-check openshift-login-registry openshift-create-n
                      openshift-apply openshift-deploy \
                      openshift-redeploy openshift-status \
                      openshift-urls openshift-logs openshift-logs-dashboard \
-                     openshift-clean openshift-clean-images
+                     openshift-db-reset openshift-clean openshift-clean-images
 
 ifneq ($(filter $(OPENSHIFT_TARGETS),$(MAKECMDGOALS)),)
 	# Auto-detect ROUTE_HOST
@@ -387,6 +387,42 @@ openshift-clean-images: openshift-check ## Delete images from OpenShift registry
 			oc delete imagestream tarsy-backend -n $(OPENSHIFT_NAMESPACE) 2>/dev/null || true; \
 			oc delete imagestream tarsy-dashboard -n $(OPENSHIFT_NAMESPACE) 2>/dev/null || true; \
 			echo -e "$(GREEN)✅ Images deleted from registry$(NC)"; \
+			;; \
+		*) \
+			echo -e "$(GREEN)Cancelled$(NC)"; \
+			;; \
+	esac
+
+# Database management targets
+# WARNING: This target will permanently delete all database data!
+# Use cases:
+# - Fix PostgreSQL version conflicts after cluster upgrades
+# - Reset to clean state for testing/development
+# - Recover from database corruption issues
+.PHONY: openshift-db-reset
+openshift-db-reset: openshift-check ## Reset PostgreSQL database in OpenShift cluster
+	@echo -e "$(YELLOW)⚠️  This will delete ALL database data in OpenShift cluster!$(NC)"
+	@echo -e "$(YELLOW)⚠️  This includes all alert sessions, history, and configuration data!$(NC)"
+	@printf "Are you sure? [y/N] "; \
+	read REPLY; \
+	case "$$REPLY" in \
+		[Yy]|[Yy][Ee][Ss]) \
+			echo -e "$(YELLOW)Scaling down database deployment...$(NC)"; \
+			oc scale deployment dev-tarsy-database --replicas=0 -n $(OPENSHIFT_NAMESPACE) 2>/dev/null || true; \
+			echo -e "$(YELLOW)Waiting for database pod to terminate...$(NC)"; \
+			oc wait --for=delete pod -l component=database -n $(OPENSHIFT_NAMESPACE) --timeout=60s 2>/dev/null || true; \
+			echo -e "$(YELLOW)Deleting persistent volume claim (this will delete all data)...$(NC)"; \
+			oc delete pvc dev-database-data -n $(OPENSHIFT_NAMESPACE) 2>/dev/null || true; \
+			echo -e "$(YELLOW)Recreating database resources using deployment manifests...$(NC)"; \
+			$(MAKE) openshift-apply >/dev/null 2>&1 || echo -e "$(YELLOW)Note: Some resources may already exist$(NC)"; \
+			echo -e "$(YELLOW)Scaling database deployment back up...$(NC)"; \
+			oc scale deployment dev-tarsy-database --replicas=1 -n $(OPENSHIFT_NAMESPACE); \
+			echo -e "$(YELLOW)Waiting for database to be ready...$(NC)"; \
+			oc wait --for=condition=available deployment/dev-tarsy-database -n $(OPENSHIFT_NAMESPACE) --timeout=120s; \
+			echo -e "$(YELLOW)Restarting backend deployment to trigger migrations...$(NC)"; \
+			oc rollout restart deployment/dev-tarsy-backend -n $(OPENSHIFT_NAMESPACE) 2>/dev/null || true; \
+			echo -e "$(GREEN)✅ Database reset completed$(NC)"; \
+			echo -e "$(BLUE)💡 The backend will automatically run migrations on startup$(NC)"; \
 			;; \
 		*) \
 			echo -e "$(GREEN)Cancelled$(NC)"; \
