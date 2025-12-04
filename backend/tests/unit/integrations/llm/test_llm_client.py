@@ -286,7 +286,7 @@ class TestLLMClientInitialization:
             model="gpt-4", 
             api_key_env="OPENAI_API_KEY",
             api_key="test-key"
-            # Uses BaseModel defaults: temperature=0.1
+            # Uses BaseModel defaults: temperature=None (model's default)
         )
         
         with patch('tarsy.integrations.llm.client.ChatOpenAI') as mock_openai:
@@ -296,7 +296,7 @@ class TestLLMClientInitialization:
             
             mock_openai.assert_called_once_with(
                 model="gpt-4",  # model from config
-                temperature=0.1,     # BaseModel default temperature
+                temperature=None,     # BaseModel default temperature (None = use model default)
                 api_key="test-key",
                 stream_usage=True    # Enabled for token tracking
             )
