@@ -254,7 +254,6 @@ function InteractionDetails({
           <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <PsychologyIcon sx={{ color: 'info.main', fontSize: '1.25rem' }} />
                 <Box sx={{
                   px: 1,
                   py: 0.5,
@@ -266,7 +265,7 @@ function InteractionDetails({
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px'
                 }}>
-                  Native Thinking
+                  Thinking
                 </Box>
                 <Typography variant="caption" color="text.secondary">
                   Internal reasoning from Gemini

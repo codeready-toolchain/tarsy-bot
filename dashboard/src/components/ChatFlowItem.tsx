@@ -190,7 +190,7 @@ function ChatFlowItem({ item, isCollapsed = false, onToggleCollapse }: ChatFlowI
               mb: 0.5
             }}
           >
-            Native Thinking
+            Thinking
           </Typography>
           {hasMarkdown ? (
             <Box sx={{ 

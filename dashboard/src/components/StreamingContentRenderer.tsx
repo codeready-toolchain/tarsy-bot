@@ -122,7 +122,7 @@ const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) 
               mb: 0.5
             }}
           >
-            Native Thinking
+            Thinking
           </Typography>
           <TypewriterText text={item.content || ''} speed={15}>
             {(displayText) => (
