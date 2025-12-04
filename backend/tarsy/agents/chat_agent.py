@@ -22,7 +22,10 @@ logger = get_module_logger(__name__)
 
 class ChatAgent(BaseAgent):
     """
-    Built-in agent for handling follow-up chat conversations with ReAct iteration.
+    Built-in agent for handling follow-up chat conversations.
+    
+    Supports both ReAct and NativeThinking iteration strategies, matching
+    the strategy used in the parent session's chain configuration.
     
     Unlike regular agents, ChatAgent does not define default MCP servers.
     Instead, it dynamically receives MCP configuration from ChainContext.mcp,
@@ -37,25 +40,26 @@ class ChatAgent(BaseAgent):
         iteration_strategy: IterationStrategy = IterationStrategy.REACT
     ):
         """
-        Initialize ChatAgent with ReAct iteration strategy.
+        Initialize ChatAgent with specified iteration strategy.
         
-        Note: The iteration_strategy parameter is accepted for compatibility
-        with AgentFactory, but ChatAgent always uses REACT strategy.
+        The strategy should match the parent session's chain configuration
+        (typically the last stage's strategy) for consistency.
         
         Args:
             llm_client: Client for LLM interactions
             mcp_client: MCP client for tool access
             mcp_registry: Registry of available MCP servers
-            iteration_strategy: Ignored - ChatAgent always uses REACT
+            iteration_strategy: Strategy to use (defaults to REACT, but can be
+                              NATIVE_THINKING for Gemini sessions)
         """
-        # Always use REACT strategy regardless of parameter value
         super().__init__(
             llm_client,
             mcp_client,
             mcp_registry,
-            iteration_strategy=IterationStrategy.REACT
+            iteration_strategy=iteration_strategy
         )
         self.prompt_builder = PromptBuilder()
+        logger.info(f"ChatAgent initialized with iteration strategy: {iteration_strategy.value}")
     
     def _get_general_instructions(self) -> str:
         """
@@ -72,19 +76,26 @@ class ChatAgent(BaseAgent):
     
     def _create_iteration_controller(self, strategy: IterationStrategy) -> IterationController:
         """
-        Override to always use ChatReActController for chat.
+        Create chat-specific iteration controller based on strategy.
         
-        Unlike regular agents, ChatAgent always uses the chat-specific ReAct controller
-        which builds initial conversation with investigation history context.
+        ChatAgent uses chat-specific controllers that build initial conversation
+        with investigation history context.
         
         Args:
-            strategy: Iteration strategy (ignored - always uses chat ReAct)
+            strategy: Iteration strategy (REACT or NATIVE_THINKING)
             
         Returns:
-            ChatReActController instance
+            Chat-specific controller instance (ChatReActController or ChatNativeThinkingController)
         """
-        from tarsy.agents.iteration_controllers.chat_react_controller import ChatReActController
-        return ChatReActController(self.llm_client, self._prompt_builder)
+        if strategy == IterationStrategy.NATIVE_THINKING:
+            from tarsy.agents.iteration_controllers.chat_native_thinking_controller import ChatNativeThinkingController
+            logger.info("Using ChatNativeThinkingController for Gemini native thinking")
+            return ChatNativeThinkingController(self.llm_client, self._prompt_builder)
+        else:
+            # Default to ChatReActController for REACT and other strategies
+            from tarsy.agents.iteration_controllers.chat_react_controller import ChatReActController
+            logger.info("Using ChatReActController for ReAct-based chat")
+            return ChatReActController(self.llm_client, self._prompt_builder)
     
     def agent_name(self) -> str:
         """

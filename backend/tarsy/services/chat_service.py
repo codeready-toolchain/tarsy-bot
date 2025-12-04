@@ -377,14 +377,19 @@ class ChatService:
                 else None
             )
             
-            # 9. Create session-scoped MCP client for this chat execution
+            # 9. Determine iteration strategy from parent session's chain config
+            session = self.history_service.get_session(chat.session_id)
+            iteration_strategy = self._determine_iteration_strategy_from_session(session) if session else None
+            
+            # 10. Create session-scoped MCP client for this chat execution
             logger.info(f"Creating MCP client for chat message {execution_id}")
             chat_mcp_client = await self.mcp_client_factory.create_client()
             
-            # 10. Create ChatAgent with MCP selection configuration
-            chat_agent = self.agent_factory.create_agent(
-                agent_name="ChatAgent",
-                mcp_client=chat_mcp_client
+            # 11. Create ChatAgent with iteration strategy from parent session
+            chat_agent = self.agent_factory.get_agent(
+                agent_identifier="ChatAgent",
+                mcp_client=chat_mcp_client,
+                iteration_strategy=iteration_strategy
             )
             
             # Set stage execution ID for interaction tagging
@@ -636,6 +641,68 @@ class ChatService:
                 for server_name in sorted(server_names)
             ]
         )
+    
+    def _determine_iteration_strategy_from_session(
+        self,
+        session
+    ) -> Optional[str]:
+        """
+        Determine the iteration strategy to use for chat based on the session's chain config.
+        
+        Uses the last stage's iteration strategy from the chain configuration,
+        ensuring chat uses the same strategy as the final investigation stage.
+        
+        Strategy resolution:
+        1. Get the last stage from the chain configuration
+        2. If stage has explicit iteration_strategy, use that
+        3. Otherwise, look up the agent's default strategy from configuration
+        4. Fall back to None (ChatAgent will use its default - REACT)
+        
+        Args:
+            session: AlertSession object with chain_config
+            
+        Returns:
+            Iteration strategy string (e.g., "react", "native-thinking") or None
+        """
+        chain_config = session.chain_config
+        if not chain_config or not chain_config.stages:
+            logger.debug(f"No chain config or stages for session {session.session_id}, using default strategy")
+            return None
+        
+        # Use the last stage's strategy (most relevant for chat follow-up)
+        last_stage = chain_config.stages[-1]
+        
+        # Check if stage has explicit strategy override
+        if last_stage.iteration_strategy:
+            logger.info(f"Chat using explicit stage strategy: {last_stage.iteration_strategy}")
+            return last_stage.iteration_strategy
+        
+        # Otherwise, look up agent's default strategy
+        agent_name = last_stage.agent
+        if not agent_name:
+            return None
+        
+        # Try configured agents first
+        if self.agent_factory.agent_configs and agent_name in self.agent_factory.agent_configs:
+            agent_config = self.agent_factory.agent_configs[agent_name]
+            strategy = agent_config.iteration_strategy
+            if strategy:
+                logger.info(f"Chat using configured agent '{agent_name}' default strategy: {strategy.value}")
+                return strategy.value
+        
+        # Try builtin agents
+        from tarsy.config.builtin_config import get_builtin_agent_config
+        try:
+            builtin_config = get_builtin_agent_config(agent_name)
+            strategy = builtin_config.get("iteration_strategy")
+            if strategy:
+                logger.info(f"Chat using builtin agent '{agent_name}' default strategy: {strategy}")
+                return strategy
+        except ValueError:
+            pass  # Not a builtin agent
+        
+        logger.debug(f"No strategy found for agent '{agent_name}', using ChatAgent default")
+        return None
     
     async def _build_chat_exchanges(
         self,

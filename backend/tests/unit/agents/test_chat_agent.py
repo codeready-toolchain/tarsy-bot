@@ -2,11 +2,11 @@
 Unit tests for ChatAgent.
 
 Tests the built-in chat agent functionality including MCP server configuration,
-custom instructions, and ReAct controller setup.
+custom instructions, and strategy-aware controller setup.
 """
 
 import pytest
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import Mock, AsyncMock, patch
 
 from tarsy.agents.chat_agent import ChatAgent
 from tarsy.models.constants import IterationStrategy
@@ -46,8 +46,8 @@ class TestChatAgent:
         servers = chat_agent.mcp_servers()
         assert servers == []
     
-    def test_uses_react_iteration_strategy(self, chat_agent):
-        """Test ChatAgent uses ReAct iteration strategy for tool-enabled conversations."""
+    def test_defaults_to_react_iteration_strategy(self, chat_agent):
+        """Test ChatAgent defaults to ReAct iteration strategy."""
         assert chat_agent.iteration_strategy == IterationStrategy.REACT
     
     def test_provides_chat_specific_instructions(self, chat_agent):
@@ -58,26 +58,54 @@ class TestChatAgent:
         assert len(instructions) > 0
         assert "follow-up" in instructions.lower() or "investigation" in instructions.lower()
     
-    def test_creates_chat_react_controller(self, chat_agent):
-        """Test ChatAgent creates ChatReActController for handling chat conversations."""
+    def test_creates_chat_react_controller_for_react_strategy(self, chat_agent):
+        """Test ChatAgent creates ChatReActController for REACT strategy."""
         controller = chat_agent._create_iteration_controller(IterationStrategy.REACT)
         
         assert isinstance(controller, ChatReActController)
     
-    def test_always_uses_react_strategy_regardless_of_parameter(
+    def test_creates_chat_native_thinking_controller_for_native_thinking_strategy(
         self, mock_llm_client, mock_mcp_client, mock_mcp_registry
     ):
-        """Test ChatAgent always uses REACT strategy even if different strategy is passed."""
-        # Try to create ChatAgent with REACT_STAGE strategy (should be ignored)
-        agent_with_react_stage = ChatAgent(
+        """Test ChatAgent creates ChatNativeThinkingController for NATIVE_THINKING strategy."""
+        from tarsy.agents.iteration_controllers.chat_native_thinking_controller import ChatNativeThinkingController
+        from tarsy.models.llm_models import LLMProviderType, LLMProviderConfig
+        
+        # Mock the LLM client to return Google provider config
+        mock_llm_client.get_client = Mock(return_value=mock_llm_client)
+        mock_llm_client.config = LLMProviderConfig(
+            type=LLMProviderType.GOOGLE,
+            model="gemini-3-pro-preview",
+            api_key="test-key",
+            api_key_env="GOOGLE_API_KEY"
+        )
+        mock_llm_client.provider_name = "test-google"
+        
+        # Create agent with NATIVE_THINKING strategy - patch at the source module
+        with patch('tarsy.integrations.llm.gemini_client.GeminiNativeThinkingClient'):
+            agent = ChatAgent(
+                llm_client=mock_llm_client,
+                mcp_client=mock_mcp_client,
+                mcp_registry=mock_mcp_registry,
+                iteration_strategy=IterationStrategy.NATIVE_THINKING
+            )
+        
+            assert agent.iteration_strategy == IterationStrategy.NATIVE_THINKING
+    
+    def test_respects_iteration_strategy_parameter(
+        self, mock_llm_client, mock_mcp_client, mock_mcp_registry
+    ):
+        """Test ChatAgent respects the iteration_strategy parameter."""
+        # Create ChatAgent with REACT_STAGE strategy
+        agent = ChatAgent(
             llm_client=mock_llm_client,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry,
             iteration_strategy=IterationStrategy.REACT_STAGE
         )
         
-        # Should still use REACT strategy
-        assert agent_with_react_stage.iteration_strategy == IterationStrategy.REACT
+        # Should use the provided strategy (falls back to ChatReActController for non-native-thinking)
+        assert agent.iteration_strategy == IterationStrategy.REACT_STAGE
     
     def test_provides_chat_specific_general_instructions(self, chat_agent):
         """Test ChatAgent provides chat-specific general instructions, not alert analysis instructions."""
