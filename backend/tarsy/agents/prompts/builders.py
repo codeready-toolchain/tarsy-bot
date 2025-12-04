@@ -6,23 +6,23 @@ for clean, composable prompt generation.
 """
 
 from dataclasses import dataclass
-from typing import List, Optional, TYPE_CHECKING
-from tarsy.utils.logger import get_module_logger
+from typing import TYPE_CHECKING, List, Optional
+
 from tarsy.models.processing_context import ToolWithServer
 from tarsy.models.unified_interactions import LLMConversation, MessageRole
+from tarsy.utils.logger import get_module_logger
 
 if TYPE_CHECKING:
     from tarsy.models.processing_context import StageContext
-from .components import (
-    AlertSectionTemplate, 
-    RunbookSectionTemplate
-)
+from .components import AlertSectionTemplate, RunbookSectionTemplate
 from .templates import (
     ANALYSIS_QUESTION_TEMPLATE,
     CONTEXT_SECTION_TEMPLATE,
     FINAL_ANALYSIS_PROMPT_TEMPLATE,
     MCP_SUMMARIZATION_SYSTEM_TEMPLATE,
     MCP_SUMMARIZATION_USER_TEMPLATE,
+    NATIVE_THINKING_ANALYSIS_TEMPLATE,
+    NATIVE_THINKING_SYSTEM_TEMPLATE,
     REACT_FORMATTING_INSTRUCTIONS,
     REACT_SYSTEM_TEMPLATE,
     STAGE_ANALYSIS_QUESTION_TEMPLATE,
@@ -208,6 +208,65 @@ You have access to the same tools and systems that were used in the original inv
 3. **Clarity**: If the question is ambiguous or unclear, ask for clarification in your Final Answer
 4. **Specificity**: Always reference actual data and observations, not assumptions
 5. **Brevity**: Be concise but complete - users have already read the full investigation"""
+    
+    # ============ Native Thinking Methods (Gemini-specific) ============
+    
+    def get_native_thinking_system_message(
+        self, 
+        composed_instructions: str, 
+        task_focus: str = "investigation and providing recommendations"
+    ) -> str:
+        """
+        Get system message for native thinking controller (Gemini-specific).
+        
+        This is a simplified system message without ReAct format instructions
+        since Gemini uses native function calling and internal reasoning.
+        
+        Args:
+            composed_instructions: Combined agent instructions
+            task_focus: Focus area for the task
+            
+        Returns:
+            Formatted system message string
+        """
+        return NATIVE_THINKING_SYSTEM_TEMPLATE.format(
+            composed_instructions=composed_instructions,
+            task_focus=task_focus
+        )
+    
+    def build_native_thinking_prompt(self, context: 'StageContext') -> str:
+        """
+        Build analysis prompt for native thinking controller.
+        
+        This prompt doesn't include ReAct format instructions or tool formatting
+        since Gemini receives tools as native function declarations.
+        
+        Args:
+            context: StageContext containing processing data
+            
+        Returns:
+            Formatted user prompt string
+        """
+        logger.debug("Building native thinking prompt")
+        
+        # Build question components using StageContext properties
+        alert_section = self.alert_component.format(context.chain_context.processing_alert)
+        runbook_section = self.runbook_component.format(context.runbook_content)
+        
+        # Use StageContext's built-in previous stages formatting
+        previous_stages_context = context.format_previous_stages_context()
+        if previous_stages_context == "No previous stage context available.":
+            chain_context = "## Previous Stage Data\nNo previous stage data is available for this alert. This is the first stage of analysis."
+        else:
+            chain_context = f"## Previous Stage Data\n{previous_stages_context}"
+        
+        # Build and return the native thinking prompt
+        return NATIVE_THINKING_ANALYSIS_TEMPLATE.format(
+            alert_type=context.chain_context.processing_alert.alert_type,
+            alert_section=alert_section,
+            runbook_section=runbook_section,
+            chain_context=chain_context
+        )
     
     def build_mcp_summarization_system_prompt(self, server_name: str, tool_name: str, max_summary_tokens: int) -> str:
         """Build system prompt for MCP result summarization."""

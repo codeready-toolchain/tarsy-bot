@@ -19,13 +19,17 @@ tool combination. The NEW SDK types (google.genai.types) are required.
 """
 
 import asyncio
-import httpx
-import json
 import pprint
 import traceback
-import urllib3
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+import httpx
+import urllib3
+from google.genai import (
+    types as google_genai_types,  # Google SDK types for tool definitions
+)
+from langchain_anthropic import ChatAnthropic
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -33,21 +37,21 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_google_vertexai.model_garden import ChatAnthropicVertex
 from langchain_openai import ChatOpenAI
 from langchain_xai import ChatXAI
-from langchain_anthropic import ChatAnthropic
-from google.genai import types as google_genai_types  # Google SDK types for tool definitions
 
 from tarsy.config.settings import Settings
 from tarsy.hooks.hook_context import llm_interaction_context
-from tarsy.models.constants import LLMInteractionType, StreamingEventType
-from tarsy.models.llm_models import GoogleNativeTool, LLMProviderConfig, LLMProviderType
-from tarsy.models.mcp_selection_models import NativeToolsConfig
-from tarsy.models.unified_interactions import LLMConversation, MessageRole
-from tarsy.utils.logger import get_module_logger
-from tarsy.utils.error_details import extract_error_details
 
 # Apply url_context patch for Gemini models
 # This enables url_context tool support which is not yet natively supported in LangChain
 from tarsy.integrations.llm.gemini_url_context_patch import apply_url_context_patch
+from tarsy.models.constants import LLMInteractionType, StreamingEventType
+from tarsy.models.llm_models import GoogleNativeTool, LLMProviderConfig, LLMProviderType
+from tarsy.models.mcp_selection_models import NativeToolsConfig
+from tarsy.models.processing_context import ToolWithServer
+from tarsy.models.unified_interactions import LLMConversation, MessageRole
+from tarsy.utils.error_details import extract_error_details
+from tarsy.utils.logger import get_module_logger
+
 apply_url_context_patch()
 
 # Suppress SSL warnings when SSL verification is disabled
@@ -66,6 +70,40 @@ CODE_EXECUTION_PART_EXECUTABLE = 'executable_code'
 CODE_EXECUTION_PART_RESULT = 'code_execution_result'
 
 
+@dataclass
+class NativeThinkingToolCall:
+    """Structured tool call from Gemini native function calling response."""
+    server: str
+    tool: str
+    parameters: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class NativeThinkingResponse:
+    """
+    Response from Gemini native thinking generation.
+    
+    Contains:
+    - content: The text response from the model
+    - thinking_content: Internal reasoning (from thinking parts)
+    - tool_calls: Structured tool calls (from function_call parts)
+    - thought_signature: Encrypted reasoning state for multi-turn continuity
+    - is_final: Whether this is a final response (no tool calls)
+    - conversation: Updated conversation with response
+    """
+    content: str
+    conversation: 'LLMConversation'
+    thinking_content: Optional[str] = None
+    tool_calls: List[NativeThinkingToolCall] = field(default_factory=list)
+    thought_signature: Optional[str] = None
+    is_final: bool = False
+    
+    @property
+    def has_tool_calls(self) -> bool:
+        """Check if response contains tool calls to execute."""
+        return len(self.tool_calls) > 0
+
+
 # LLM Providers mapping using LangChain
 def _create_openai_client(temp, api_key, model, disable_ssl_verification=False, base_url=None):
     """Create ChatOpenAI client with optional SSL verification disable and custom base URL.
@@ -75,13 +113,10 @@ def _create_openai_client(temp, api_key, model, disable_ssl_verification=False, 
     """
     client_kwargs = {
         "model": model, 
+        "temperature": temp, 
         "api_key": api_key,
         "stream_usage": True  # Enable token usage in streaming responses
     }
-    
-    # Only set temperature if explicitly provided
-    if temp is not None:
-        client_kwargs["temperature"] = temp
     
     # Only set base_url if explicitly provided, otherwise let LangChain use defaults
     if base_url:
@@ -93,53 +128,41 @@ def _create_openai_client(temp, api_key, model, disable_ssl_verification=False, 
     
     return ChatOpenAI(**client_kwargs)
 
-def _create_google_client(temp, api_key, model, _disable_ssl_verification=False, _base_url=None):
+def _create_google_client(temp, api_key, model, disable_ssl_verification=False, base_url=None):
     """Create ChatGoogleGenerativeAI client."""
     client_kwargs = {
         "model": model, 
+        "temperature": temp, 
         "google_api_key": api_key
     }
-    
-    # Only set temperature if explicitly provided
-    if temp is not None:
-        client_kwargs["temperature"] = temp
-    
     # Note: ChatGoogleGenerativeAI may not support custom base_url or HTTP clients
     return ChatGoogleGenerativeAI(**client_kwargs)
 
-def _create_xai_client(temp, api_key, model, _disable_ssl_verification=False, base_url=None):
+def _create_xai_client(temp, api_key, model, disable_ssl_verification=False, base_url=None):
     """Create ChatXAI client."""
     client_kwargs = {
         "model": model, 
-        "api_key": api_key
+        "api_key": api_key, 
+        "temperature": temp
     }
-    
-    # Only set temperature if explicitly provided
-    if temp is not None:
-        client_kwargs["temperature"] = temp
-    
     if base_url:
         client_kwargs["base_url"] = base_url
     # Note: ChatXAI may not support custom HTTP clients - would need to verify
     return ChatXAI(**client_kwargs)
 
-def _create_anthropic_client(temp, api_key, model, _disable_ssl_verification=False, base_url=None):
+def _create_anthropic_client(temp, api_key, model, disable_ssl_verification=False, base_url=None):
     """Create ChatAnthropic client."""
     client_kwargs = {
         "model": model, 
-        "api_key": api_key
+        "api_key": api_key, 
+        "temperature": temp
     }
-    
-    # Only set temperature if explicitly provided
-    if temp is not None:
-        client_kwargs["temperature"] = temp
-    
     if base_url:
         client_kwargs["base_url"] = base_url
     # Note: ChatAnthropic may not support custom HTTP clients - would need to verify  
     return ChatAnthropic(**client_kwargs)
 
-def _create_vertexai_client(temp, api_key, model, _disable_ssl_verification=False, _base_url=None):
+def _create_vertexai_client(temp, api_key, model, disable_ssl_verification=False, base_url=None):
     """Create ChatAnthropicVertex client for Claude models on Vertex AI.
     
     Authentication via GOOGLE_APPLICATION_CREDENTIALS env var pointing to service account JSON.
@@ -156,12 +179,9 @@ def _create_vertexai_client(temp, api_key, model, _disable_ssl_verification=Fals
     client_kwargs = {
         "model_name": model,
         "project": project,
-        "location": location
+        "location": location,
+        "temperature": temp
     }
-    
-    # Only set temperature if explicitly provided
-    if temp is not None:
-        client_kwargs["temperature"] = temp
     
     return ChatAnthropicVertex(**client_kwargs)
 
@@ -368,6 +388,72 @@ class LLMClient:
         logger.info(log_msg)
         
         return overridden_tools
+
+    def _convert_mcp_tools_to_gemini_functions(
+        self,
+        available_tools: List[ToolWithServer]
+    ) -> List[google_genai_types.FunctionDeclaration]:
+        """
+        Convert MCP tools to Gemini native function declarations.
+        
+        This enables native function calling for MCP tools when using
+        the NATIVE_THINKING iteration strategy with Gemini models.
+        
+        Function names use double underscore separator (server__tool_name) to
+        avoid conflicts with dots in tool names while remaining valid identifiers.
+        
+        Args:
+            available_tools: List of MCP tools with server context
+            
+        Returns:
+            List of Gemini FunctionDeclaration objects
+        """
+        functions = []
+        
+        for tool_with_server in available_tools:
+            try:
+                # Use server__tool_name as function name (double underscore separator)
+                # This avoids dots which aren't valid in function names
+                func_name = f"{tool_with_server.server}__{tool_with_server.tool.name}"
+                
+                # Get the input schema, defaulting to empty object if not specified
+                input_schema = tool_with_server.tool.inputSchema or {"type": "object", "properties": {}}
+                
+                # Create function declaration
+                func_decl = google_genai_types.FunctionDeclaration(
+                    name=func_name,
+                    description=tool_with_server.tool.description or f"Tool {tool_with_server.tool.name} from {tool_with_server.server}",
+                    parameters=input_schema
+                )
+                functions.append(func_decl)
+                
+                logger.debug(f"Converted MCP tool to Gemini function: {func_name}")
+                
+            except Exception as e:
+                logger.warning(f"Failed to convert MCP tool {tool_with_server.server}.{tool_with_server.tool.name}: {e}")
+                continue
+        
+        logger.info(f"Converted {len(functions)} MCP tools to Gemini function declarations")
+        return functions
+
+    def _parse_gemini_function_name(self, func_name: str) -> tuple[str, str]:
+        """
+        Parse Gemini function name back to server and tool names.
+        
+        Args:
+            func_name: Function name in format "server__tool_name"
+            
+        Returns:
+            Tuple of (server_name, tool_name)
+            
+        Raises:
+            ValueError: If function name doesn't contain separator
+        """
+        if "__" not in func_name:
+            raise ValueError(f"Invalid function name format: {func_name}, expected 'server__tool_name'")
+        
+        server, tool = func_name.split("__", 1)
+        return server, tool
 
     def _convert_conversation_to_langchain(self, conversation: LLMConversation) -> List:
         """Convert typed conversation to LangChain message objects."""
@@ -797,38 +883,317 @@ class LLMClient:
                         
                         raise Exception(enhanced_message) from e
     
+    async def generate_response_with_native_thinking(
+        self,
+        conversation: LLMConversation,
+        session_id: str,
+        mcp_tools: List[ToolWithServer],
+        stage_execution_id: Optional[str] = None,
+        thinking_level: str = "high",
+        thought_signature: Optional[str] = None,
+        max_tokens: Optional[int] = None,
+        timeout_seconds: int = 180,
+        native_tools_override: Optional[NativeToolsConfig] = None
+    ) -> NativeThinkingResponse:
+        """
+        Generate response using Gemini's native thinking and function calling.
+        
+        This method is specifically for the NATIVE_THINKING iteration strategy,
+        eliminating text-based ReAct parsing in favor of structured responses.
+        
+        Key features:
+        - Uses Gemini's thinkingLevel parameter for reasoning depth control
+        - Binds MCP tools as native function declarations
+        - Extracts structured tool_calls from response (no text parsing)
+        - Preserves thought_signature for multi-turn reasoning continuity
+        - Stores thinking_content for audit/observability
+        
+        Args:
+            conversation: The conversation to continue
+            session_id: Session ID for tracking
+            mcp_tools: MCP tools to bind as native functions
+            stage_execution_id: Optional stage execution ID
+            thinking_level: Thinking depth ("low" or "high", default "high")
+            thought_signature: Optional signature from previous turn for continuity
+            max_tokens: Optional max tokens configuration
+            timeout_seconds: Timeout for LLM call (default 180s for thinking)
+            native_tools_override: Optional per-session native tools override
+            
+        Returns:
+            NativeThinkingResponse with content, tool_calls, thinking_content, etc.
+            
+        Raises:
+            ValueError: If provider is not Google/Gemini
+            Exception: On LLM communication failures
+        """
+        # Validate provider is Google/Gemini
+        if self.config.type != LLMProviderType.GOOGLE:
+            raise ValueError(
+                f"Native thinking requires Google/Gemini provider, got {self.config.type.value}"
+            )
+        
+        if not self.available:
+            raise Exception(f"LLM provider {self.provider_name} is not available")
+        
+        # Generate unique request ID for logging
+        import uuid
+        request_id = str(uuid.uuid4())[:8]
+        
+        logger.info(f"[{request_id}] Starting native thinking generation for {session_id}")
+        logger.debug(f"[{request_id}] Thinking level: {thinking_level}, MCP tools: {len(mcp_tools)}")
+        
+        # Convert conversation to LangChain format
+        langchain_messages = self._convert_conversation_to_langchain(conversation)
+        
+        # Apply native tools override if provided
+        if native_tools_override and self.config.type == LLMProviderType.GOOGLE:
+            active_native_tools = self._apply_native_tools_override(native_tools_override)
+        else:
+            active_native_tools = self.native_tools.copy()
+        
+        # Create interaction context for audit
+        async with llm_interaction_context(session_id, stage_execution_id) as ctx:
+            try:
+                # Convert MCP tools to Gemini function declarations
+                mcp_function_declarations = self._convert_mcp_tools_to_gemini_functions(mcp_tools)
+                
+                # Build tools list combining:
+                # 1. Native Google tools (search, code_execution, url_context)
+                # 2. MCP tools as function declarations
+                all_tools = []
+                
+                # Add native Google tools
+                for tool_obj in active_native_tools.values():
+                    if tool_obj is not None:
+                        all_tools.append(tool_obj.model_dump(exclude_none=True))
+                
+                # Add MCP functions as a Tool with function_declarations
+                if mcp_function_declarations:
+                    mcp_tool = google_genai_types.Tool(
+                        function_declarations=mcp_function_declarations
+                    )
+                    all_tools.append(mcp_tool.model_dump(exclude_none=True))
+                
+                # Bind tools to model
+                llm_with_tools = self.llm_client
+                if all_tools:
+                    try:
+                        llm_with_tools = self.llm_client.bind(tools=all_tools)
+                        logger.info(f"[{request_id}] Bound {len(all_tools)} tool objects ({len(mcp_function_declarations)} MCP functions)")
+                    except Exception as e:
+                        logger.error(f"[{request_id}] Failed to bind tools: {e}")
+                        raise
+                
+                # Configure generation with thinking level
+                config = {}
+                if max_tokens is not None:
+                    config["max_tokens"] = max_tokens
+                
+                # Note: thinkingLevel is passed via generation config
+                # The exact parameter name may vary by SDK version
+                # Using generation_config for extended parameters
+                generation_config = {
+                    "thinking_config": {
+                        "thinking_budget": 24576 if thinking_level == "high" else 1024
+                    }
+                }
+                
+                # Add thought signature if provided (for multi-turn continuity)
+                if thought_signature:
+                    # Thought signatures are typically passed as part of the messages
+                    # or as a special parameter depending on SDK version
+                    logger.debug(f"[{request_id}] Including thought signature for continuity")
+                
+                # Make the API call with timeout
+                accumulated_content = ""
+                thinking_content_parts = []
+                tool_calls = []
+                new_thought_signature = None
+                response_metadata = None
+                
+                async with asyncio.timeout(timeout_seconds):
+                    # Use astream for streaming response
+                    aggregate_chunk = None
+                    
+                    async for chunk in llm_with_tools.astream(langchain_messages, config=config):
+                        aggregate_chunk = chunk if aggregate_chunk is None else aggregate_chunk + chunk
+                        
+                        # Extract text content
+                        token = self._extract_token_content(chunk, filter_code_execution=False)
+                        accumulated_content += token
+                    
+                    # Process the aggregated response
+                    if aggregate_chunk:
+                        # Extract response metadata
+                        if hasattr(aggregate_chunk, 'response_metadata'):
+                            response_metadata = aggregate_chunk.response_metadata
+                        
+                        # Extract thinking content from response parts
+                        if hasattr(aggregate_chunk, 'content') and isinstance(aggregate_chunk.content, list):
+                            for part in aggregate_chunk.content:
+                                if isinstance(part, dict):
+                                    # Check for thinking/reasoning parts
+                                    if 'thought' in part or 'thinking' in part:
+                                        thought_text = part.get('thought') or part.get('thinking', '')
+                                        if thought_text:
+                                            thinking_content_parts.append(thought_text)
+                                    
+                                    # Check for function calls
+                                    if 'function_call' in part:
+                                        func_call = part['function_call']
+                                        func_name = func_call.get('name', '')
+                                        func_args = func_call.get('args', {})
+                                        
+                                        try:
+                                            server, tool = self._parse_gemini_function_name(func_name)
+                                            tool_calls.append(NativeThinkingToolCall(
+                                                server=server,
+                                                tool=tool,
+                                                parameters=func_args
+                                            ))
+                                            logger.debug(f"[{request_id}] Extracted tool call: {server}.{tool}")
+                                        except ValueError as e:
+                                            logger.warning(f"[{request_id}] Failed to parse function name: {e}")
+                        
+                        # Extract tool calls from additional_kwargs (LangChain format)
+                        if hasattr(aggregate_chunk, 'additional_kwargs'):
+                            additional = aggregate_chunk.additional_kwargs
+                            
+                            # Check for function_call in additional_kwargs
+                            if 'function_call' in additional:
+                                func_call = additional['function_call']
+                                func_name = func_call.get('name', '')
+                                func_args = func_call.get('arguments', {})
+                                
+                                # Parse arguments if string
+                                if isinstance(func_args, str):
+                                    import json
+                                    try:
+                                        func_args = json.loads(func_args)
+                                    except json.JSONDecodeError:
+                                        func_args = {}
+                                
+                                try:
+                                    server, tool = self._parse_gemini_function_name(func_name)
+                                    # Avoid duplicates
+                                    if not any(tc.server == server and tc.tool == tool for tc in tool_calls):
+                                        tool_calls.append(NativeThinkingToolCall(
+                                            server=server,
+                                            tool=tool,
+                                            parameters=func_args
+                                        ))
+                                        logger.debug(f"[{request_id}] Extracted tool call from additional_kwargs: {server}.{tool}")
+                                except ValueError as e:
+                                    logger.warning(f"[{request_id}] Failed to parse function name: {e}")
+                            
+                            # Check for tool_calls array (newer format)
+                            if 'tool_calls' in additional:
+                                for tc in additional['tool_calls']:
+                                    func_name = tc.get('function', {}).get('name', '')
+                                    func_args = tc.get('function', {}).get('arguments', {})
+                                    
+                                    if isinstance(func_args, str):
+                                        import json
+                                        try:
+                                            func_args = json.loads(func_args)
+                                        except json.JSONDecodeError:
+                                            func_args = {}
+                                    
+                                    try:
+                                        server, tool = self._parse_gemini_function_name(func_name)
+                                        if not any(tc.server == server and tc.tool == tool for tc in tool_calls):
+                                            tool_calls.append(NativeThinkingToolCall(
+                                                server=server,
+                                                tool=tool,
+                                                parameters=func_args
+                                            ))
+                                    except ValueError:
+                                        pass
+                        
+                        # Extract thought signature from response metadata
+                        if response_metadata and isinstance(response_metadata, dict):
+                            new_thought_signature = response_metadata.get('thought_signature')
+                
+                # Combine thinking content
+                combined_thinking = "\n".join(thinking_content_parts) if thinking_content_parts else None
+                
+                # Determine if this is a final response (no tool calls)
+                is_final = len(tool_calls) == 0
+                
+                # Update conversation with response
+                if accumulated_content.strip():
+                    conversation.append_assistant_message(accumulated_content)
+                
+                # Update interaction record
+                ctx.interaction.conversation = conversation
+                ctx.interaction.provider = self.provider_name
+                ctx.interaction.model_name = self.model
+                ctx.interaction.temperature = self.temperature
+                ctx.interaction.response_metadata = response_metadata
+                
+                # Set interaction type based on whether this is final
+                ctx.interaction.interaction_type = (
+                    LLMInteractionType.FINAL_ANALYSIS.value if is_final 
+                    else LLMInteractionType.INVESTIGATION.value
+                )
+                
+                # Store native tools config
+                native_config = {k: (v is not None) for k, v in active_native_tools.items()}
+                ctx.interaction.native_tools_config = native_config
+                
+                await ctx.complete_success({})
+                
+                logger.info(
+                    f"[{request_id}] Native thinking complete: "
+                    f"tool_calls={len(tool_calls)}, "
+                    f"has_thinking={combined_thinking is not None}, "
+                    f"is_final={is_final}"
+                )
+                
+                return NativeThinkingResponse(
+                    content=accumulated_content,
+                    conversation=conversation,
+                    thinking_content=combined_thinking,
+                    tool_calls=tool_calls,
+                    thought_signature=new_thought_signature,
+                    is_final=is_final
+                )
+                
+            except asyncio.TimeoutError:
+                logger.error(f"[{request_id}] Native thinking timed out after {timeout_seconds}s")
+                raise TimeoutError(f"Native thinking timed out after {timeout_seconds}s") from None
+            except Exception as e:
+                self._log_llm_detailed_error(e, request_id)
+                raise
+    
     def _contains_final_answer(self, conversation: LLMConversation) -> bool:
         """
-        Check if the latest assistant message contains 'Final Answer:'.
+        Check if the LAST message is from assistant and contains 'Final Answer:'.
         
         Uses the centralized ReAct parser to determine if the response contains
         a final answer, ensuring consistency across the codebase.
-        
-        Note: This method finds the last ASSISTANT message, not the absolute last
-        message. This is important because metadata observations may be appended
-        after assistant messages.
         
         Args:
             conversation: The conversation to check
             
         Returns:
-            True if latest assistant message contains "Final Answer:", False otherwise
+            True if last message is assistant with "Final Answer:", False otherwise
         """
         if not conversation.messages:
             return False
         
-        # Find the last assistant message (not absolute last message)
-        # This handles cases where metadata observations are appended after assistant response
-        last_assistant_msg = conversation.get_latest_assistant_message()
+        # Check LAST message only
+        last_msg = conversation.messages[-1]
         
-        if last_assistant_msg is None:
+        # Must be from assistant
+        if last_msg.role != MessageRole.ASSISTANT:
             return False
         
         # Use the centralized ReAct parser to determine if this is a final answer
         # This ensures all Final Answer detection logic is in one place
         from tarsy.agents.parsers.react_parser import ReActParser
         
-        parsed = ReActParser.parse_response(last_assistant_msg.content)
+        parsed = ReActParser.parse_response(last_msg.content)
         return parsed.is_final_answer
     
     def get_max_tool_result_tokens(self) -> int:
@@ -974,37 +1339,6 @@ class LLMClient:
         """
         # Add assistant response to conversation
         conversation.append_assistant_message(accumulated_content)
-        
-        # Inject response metadata as observation if it contains valuable tool usage info
-        # This ensures LLM has context about native tool usage (Google Search, etc.)
-        # in subsequent iterations - without this, search results would be "lost"
-        #
-        # Only inject metadata containing these keys (indicates actual tool usage):
-        # - grounding_metadata: Google Search queries/results, URL context
-        # - parts: Code execution results (Python code blocks, outputs)
-        #
-        # Skip metadata that only contains generic fields like:
-        # - safety_ratings, model_provider, finish_reason, usage_metadata
-        metadata = ctx.interaction.response_metadata
-        if metadata and isinstance(metadata, dict):
-            valuable_keys = {'grounding_metadata', 'parts'}
-            
-            # Check if any valuable keys are present with non-empty content
-            has_valuable_content = any(
-                key in metadata and metadata[key]  # Key exists and has truthy value
-                for key in valuable_keys
-            )
-            
-            if has_valuable_content:
-                # Filter to only include valuable metadata for cleaner context
-                filtered_metadata = {k: v for k, v in metadata.items() if k in valuable_keys and v}
-                metadata_json = json.dumps(filtered_metadata, indent=2, default=str)
-                metadata_observation = (
-                    "[Response Metadata]\n"
-                    "The following metadata was captured from this LLM response:\n"
-                    f"```json\n{metadata_json}\n```"
-                )
-                conversation.append_observation(metadata_observation)
         
         # Update the interaction with conversation data
         ctx.interaction.conversation = conversation

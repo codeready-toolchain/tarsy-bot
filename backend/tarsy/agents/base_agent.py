@@ -8,37 +8,41 @@ It implements common processing logic and defines abstract methods for agent-spe
 import asyncio
 from abc import ABC, abstractmethod
 from datetime import UTC, datetime
-from typing import Dict, List, Optional, TYPE_CHECKING, assert_never
+from typing import TYPE_CHECKING, Dict, List, Optional, assert_never
 
 from tarsy.config.settings import get_settings
 from tarsy.integrations.llm.client import LLMClient
 from tarsy.integrations.mcp.client import MCPClient
-
-from tarsy.models.agent_execution_result import (
-    AgentExecutionResult
-)
+from tarsy.models.agent_execution_result import AgentExecutionResult
 from tarsy.models.constants import StageStatus
-
-from tarsy.models.processing_context import ChainContext, StageContext, AvailableTools, ToolWithServer
 from tarsy.models.mcp_selection_models import MCPSelectionConfig
+from tarsy.models.processing_context import (
+    AvailableTools,
+    ChainContext,
+    StageContext,
+    ToolWithServer,
+)
 
 if TYPE_CHECKING:
     from tarsy.models.unified_interactions import LLMConversation
-from .iteration_controllers import (
-    IterationController, SimpleReActController, ReactStageController
-)
-from .exceptions import (
-    SessionPaused,
-    AgentError, 
-    ToolExecutionError, ToolSelectionError, ConfigurationError,
-    ErrorRecoveryHandler
-)
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.utils.logger import get_module_logger
 from tarsy.utils.timestamp import now_us
 
 from ..models.constants import IterationStrategy
-
+from .exceptions import (
+    AgentError,
+    ConfigurationError,
+    ErrorRecoveryHandler,
+    SessionPaused,
+    ToolExecutionError,
+    ToolSelectionError,
+)
+from .iteration_controllers import (
+    IterationController,
+    ReactStageController,
+    SimpleReActController,
+)
 from .prompts import get_prompt_builder
 
 logger = get_module_logger(__name__)
@@ -112,8 +116,15 @@ class BaseAgent(ABC):
         elif strategy == IterationStrategy.REACT_STAGE:
             return ReactStageController(self.llm_client, self._prompt_builder)
         elif strategy == IterationStrategy.REACT_FINAL_ANALYSIS:
-            from .iteration_controllers.react_final_analysis_controller import ReactFinalAnalysisController
+            from .iteration_controllers.react_final_analysis_controller import (
+                ReactFinalAnalysisController,
+            )
             return ReactFinalAnalysisController(self.llm_client, self._prompt_builder)
+        elif strategy == IterationStrategy.NATIVE_THINKING:
+            from .iteration_controllers.native_thinking_controller import (
+                NativeThinkingController,
+            )
+            return NativeThinkingController(self.llm_client, self._prompt_builder)
         else:
             assert_never(strategy)
     
@@ -366,7 +377,10 @@ class BaseAgent(ABC):
             MCPToolSelectionError: When selected tools don't exist on specified server
             ToolSelectionError: For other tool retrieval failures
         """
-        from tarsy.agents.exceptions import MCPServerSelectionError, MCPToolSelectionError
+        from tarsy.agents.exceptions import (
+            MCPServerSelectionError,
+            MCPToolSelectionError,
+        )
         
         try:
             tools_with_server = []

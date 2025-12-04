@@ -8,7 +8,6 @@ for building various types of prompts in the system.
 
 from langchain_core.prompts import PromptTemplate
 
-
 # ReAct formatting instructions constant
 REACT_FORMATTING_INSTRUCTIONS = """You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
 
@@ -214,3 +213,43 @@ Based on the investigation context above, provide a concise summary of the tool 
 - Fits naturally as the next "Observation:" in the investigation conversation
 
 CRITICAL INSTRUCTION: You MUST return ONLY plain text. DO NOT include "Final Answer:", "Thought:", "Action:", or any other formatting. Just the summary text that will be inserted as an observation in the conversation.""")
+
+
+# ==============================================================================
+# NATIVE THINKING TEMPLATES (Gemini-specific)
+# ==============================================================================
+# These templates are used with the NATIVE_THINKING iteration strategy.
+# They don't include ReAct format instructions since Gemini uses native
+# function calling and internal reasoning.
+
+# Native Thinking System Message Template
+NATIVE_THINKING_SYSTEM_TEMPLATE = PromptTemplate.from_template("""{composed_instructions}
+
+You are an SRE agent analyzing incidents. Use the available tools to investigate and provide actionable recommendations.
+
+When you have gathered sufficient information, provide your final analysis with:
+1. Root cause analysis
+2. Current system state assessment
+3. Specific remediation steps for human operators
+4. Prevention recommendations
+
+Focus on {task_focus} for human operators to execute.""")
+
+
+# Native Thinking Analysis Question Template (simplified, no ReAct format)
+NATIVE_THINKING_ANALYSIS_TEMPLATE = PromptTemplate.from_template("""Analyze this {alert_type} alert and provide actionable recommendations.
+
+{alert_section}
+
+{runbook_section}
+
+{chain_context}
+
+## Your Task
+Investigate this alert using the available tools and provide:
+1. Root cause analysis based on your investigation
+2. Current system state assessment from tool observations
+3. Specific remediation steps for human operators
+4. Prevention recommendations
+
+Use tools as needed to gather information. When you have sufficient data, provide your complete analysis.""")

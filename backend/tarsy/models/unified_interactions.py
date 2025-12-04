@@ -7,14 +7,16 @@ separate runtime/database model hierarchies and manual conversions.
 """
 
 import uuid
-from typing import Dict, List, Optional
 from enum import Enum
-from sqlmodel import Column, Field, SQLModel, Index
-from sqlalchemy import JSON, String, TypeDecorator, ForeignKey
-from sqlalchemy.dialects.postgresql import JSONB, BIGINT
+from typing import Dict, List, Optional
+
 from pydantic import field_validator, model_validator
-from tarsy.utils.timestamp import now_us
+from sqlalchemy import JSON, ForeignKey, String, TypeDecorator
+from sqlalchemy.dialects.postgresql import BIGINT, JSONB
+from sqlmodel import Column, Field, Index, SQLModel
+
 from tarsy.models.constants import LLMInteractionType
+from tarsy.utils.timestamp import now_us
 
 
 class MessageRole(str, Enum):
@@ -174,6 +176,14 @@ class LLMInteraction(SQLModel, table=True):
     mcp_event_id: Optional[str] = Field(
         None,
         description="MCP event ID if this LLM interaction is summarizing a tool result"
+    )
+    
+    # Native thinking content (Gemini-specific)
+    # Stores internal reasoning from native thinking models for audit/observability
+    thinking_content: Optional[str] = Field(
+        None,
+        sa_column=Column(String, nullable=True),
+        description="Internal reasoning content from native thinking models (Gemini)"
     )
     
     @model_validator(mode="after")

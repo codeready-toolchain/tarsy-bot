@@ -10,6 +10,7 @@ from .react_controller import SimpleReActController
 from .react_stage_controller import ReactStageController
 from .react_final_analysis_controller import ReactFinalAnalysisController
 from .chat_react_controller import ChatReActController
+from .native_thinking_controller import NativeThinkingController
 
 __all__ = [
     'IterationController',
@@ -17,5 +18,6 @@ __all__ = [
     'SimpleReActController',
     'ReactStageController',
     'ReactFinalAnalysisController',
-    'ChatReActController'
+    'ChatReActController',
+    'NativeThinkingController'
 ]
