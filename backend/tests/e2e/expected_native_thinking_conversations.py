@@ -32,27 +32,40 @@ def load_native_thinking_chat_template(filename: str) -> str:
 # - Thinking content is captured separately
 # - LLM interactions may have thinking_content field
 
-# Expected thinking content patterns for verification
-# These are substrings that should be present in the thinking_content field
+# Expected thinking content for verification - EXACT MATCH required
+# These are the complete thinking content strings that should appear in each LLM interaction
+# The key is the LLM position (1-indexed) within the stage
 EXPECTED_THINKING_CONTENT = {
     'data-collection': {
-        1: "namespace stuck in Terminating state",  # Initial kubectl_get call thinking
-        2: "Terminating state for 45 minutes",       # collect_system_info call thinking
-        4: "System resources are fine",              # kubectl_get events call thinking
-        5: "enough information",                     # Final analysis thinking
+        # LLM 1 - Initial kubectl_get call (investigation)
+        1: "The alert mentions a namespace stuck in Terminating state. I should first check the namespace status using kubectl_get to understand its current state.",
+        # LLM 2 - collect_system_info call (investigation)
+        2: "The namespace is in Terminating state for 45 minutes - that's quite long. I should collect more information about the system to understand if there are resource constraints affecting the cleanup.",
+        # LLM 3 is summarization via LangChain - no thinking content
+        # LLM 4 - kubectl_get events call (investigation)
+        4: "System resources are fine - CPU, memory and disk look healthy. The issue must be with the namespace itself, possibly finalizers. Let me check events to see what's blocking the deletion.",
+        # LLM 5 - Final analysis
+        5: "I have gathered enough information. The namespace is stuck due to finalizers (kubernetes.io/pv-protection). I can now provide the final analysis for this data collection stage.",
     },
     'verification': {
-        1: "verify the findings",                    # kubectl_get verification thinking
-        2: "still in Terminating state",             # Final verification thinking
+        # LLM 1 - kubectl_get verification (investigation)
+        1: "I need to verify the findings from the data collection stage by checking the current namespace status. This will confirm whether the namespace is still in Terminating state.",
+        # LLM 2 - Final verification answer
+        2: "The namespace is still in Terminating state after 45 minutes, confirming our findings. The finalizers (kubernetes.io/pv-protection) are indeed blocking the namespace deletion.",
     },
     'analysis': {
-        1: "Synthesizing all the data",              # Final analysis thinking
+        # LLM 1 - Final analysis (no tools)
+        1: "Synthesizing all the data from the data-collection and verification stages. The root cause is clear: kubernetes.io/pv-protection finalizers are blocking namespace deletion. The namespace has been stuck for 45 minutes.",
     },
     'chat': {
-        'message_1_1': "pods in the",               # Chat 1 tool call thinking
-        'message_1_2': "No pods found",              # Chat 1 final answer thinking
-        'message_2_1': "namespace still exists",     # Chat 2 tool call thinking
-        'message_2_2': "stuck in Terminating",       # Chat 2 final answer thinking
+        # Chat message 1 - LLM 1 (tool call)
+        'message_1_1': "User wants to see pods in the stuck-namespace. I'll use kubectl_get to list the pods and see what's running there.",
+        # Chat message 1 - LLM 2 (final answer)
+        'message_1_2': "No pods found in the namespace. This makes sense - the namespace is terminating and all workload pods have been cleaned up already. The finalizers are what's blocking the final deletion of the namespace itself.",
+        # Chat message 2 - LLM 1 (tool call)
+        'message_2_1': "User wants to know if the namespace still exists. I'll check its current status to see if it's still in Terminating or has been deleted.",
+        # Chat message 2 - LLM 2 (final answer)
+        'message_2_2': "The namespace still exists and is stuck in Terminating state, just as expected. I should explain the resolution steps to help the user fix this issue.",
     }
 }
 

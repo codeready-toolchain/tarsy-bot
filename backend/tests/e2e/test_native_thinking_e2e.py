@@ -698,15 +698,16 @@ class TestNativeThinkingE2E:
                             f"expected thinking_content but got None or empty"
                         )
                         
-                        # Verify thinking content contains expected substring
+                        # Verify thinking content matches exactly
                         if stage_name and stage_name in EXPECTED_THINKING_CONTENT:
                             expected_thinking_patterns = EXPECTED_THINKING_CONTENT[stage_name]
                             if llm_position_counter in expected_thinking_patterns:
-                                expected_substring = expected_thinking_patterns[llm_position_counter]
-                                assert expected_substring.lower() in actual_thinking_content.lower(), (
+                                expected_thinking = expected_thinking_patterns[llm_position_counter]
+                                assert actual_thinking_content == expected_thinking, (
                                     f"{context_label} interaction {i+1} (LLM {llm_position_counter}): "
-                                    f"thinking_content should contain '{expected_substring}', "
-                                    f"but got: {actual_thinking_content[:100]}..."
+                                    f"thinking_content mismatch.\n"
+                                    f"Expected: '{expected_thinking}'\n"
+                                    f"Actual:   '{actual_thinking_content}'"
                                 )
                     else:
                         # LangChain summarization doesn't have thinking content
