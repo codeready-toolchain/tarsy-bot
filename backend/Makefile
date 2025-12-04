@@ -79,6 +79,9 @@ test-e2e: check-test-deps clean-test-db ## Run end-to-end tests only (one by one
 	@$(MAKE) clean-test-db
 	@echo "$(YELLOW)Running fifth E2E test (native thinking)...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_native_thinking_e2e.py -v --tb=short -m e2e || exit 1
+	@$(MAKE) clean-test-db
+	@echo "$(YELLOW)Running sixth E2E test (native thinking pause/resume)...$(NC)"
+	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_native_thinking_pause_resume_e2e.py -v --tb=short -m e2e || exit 1
 	@echo "$(GREEN)All E2E tests completed successfully!$(NC)"
 
 .PHONY: test-e2e-pause-resume
