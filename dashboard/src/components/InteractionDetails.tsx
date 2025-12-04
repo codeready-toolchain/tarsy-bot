@@ -208,7 +208,48 @@ function InteractionDetails({
           </Box>
         )}
 
+        {/* Show conversation messages in sequence */}
+        <Box>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+              Conversation
+            </Typography>
+            <CopyButton
+              text={(() => {
+                const messages = getMessages(llmDetails);
+                if (messages.length === 0) return '';
+                
+                let conversation = `=== LLM CONVERSATION ===\n\n`;
+                messages.forEach((message) => {
+                  const role = message.role.toUpperCase();
+                  const content = typeof message.content === 'string' ? message.content : 
+                                 (message.content == null || message.content === '') ? '' :
+                                 JSON.stringify(message.content);
+                  conversation += `${role}:\n${content}\n\n`;
+                });
+                
+                conversation += `--- METADATA ---\n`;
+                conversation += `Model: ${llmDetails.model_name}\n`;
+                if (llmDetails.total_tokens) {
+                  conversation += `Tokens: ${llmDetails.total_tokens.toLocaleString()}\n`;
+                }
+                if (llmDetails.temperature !== undefined) {
+                  conversation += `Temperature: ${llmDetails.temperature}\n`;
+                }
+                
+                return conversation;
+              })()}
+              variant="icon"
+              size="small"
+              tooltip="Copy entire conversation"
+            />
+          </Box>
+          {/* Render all conversation messages */}
+          {renderConversationMessages(llmDetails)}
+        </Box>
+
         {/* Native Thinking Content (Gemini 3.0+ native thinking mode) */}
+        {/* Placed after conversation messages - it's the model's internal reasoning that led to the response */}
         {llmDetails.thinking_content && (
           <Box>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
@@ -258,46 +299,6 @@ function InteractionDetails({
             </Typography>
           </Box>
         )}
-
-        {/* EP-0014: Show conversation messages in sequence */}
-        <Box>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
-            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-              Conversation
-            </Typography>
-            <CopyButton
-              text={(() => {
-                const messages = getMessages(llmDetails);
-                if (messages.length === 0) return '';
-                
-                let conversation = `=== LLM CONVERSATION ===\n\n`;
-                messages.forEach((message) => {
-                  const role = message.role.toUpperCase();
-                  const content = typeof message.content === 'string' ? message.content : 
-                                 (message.content == null || message.content === '') ? '' :
-                                 JSON.stringify(message.content);
-                  conversation += `${role}:\n${content}\n\n`;
-                });
-                
-                conversation += `--- METADATA ---\n`;
-                conversation += `Model: ${llmDetails.model_name}\n`;
-                if (llmDetails.total_tokens) {
-                  conversation += `Tokens: ${llmDetails.total_tokens.toLocaleString()}\n`;
-                }
-                if (llmDetails.temperature !== undefined) {
-                  conversation += `Temperature: ${llmDetails.temperature}\n`;
-                }
-                
-                return conversation;
-              })()}
-              variant="icon"
-              size="small"
-              tooltip="Copy entire conversation"
-            />
-          </Box>
-          {/* Render all conversation messages */}
-          {renderConversationMessages(llmDetails)}
-        </Box>
 
       {/* Model metadata */}
       <Box>
