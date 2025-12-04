@@ -213,31 +213,31 @@ openshift-create-secrets: openshift-check openshift-create-namespace ## Create s
 openshift-check-config-files: ## Check that required config files exist in deploy location
 	@echo -e "$(BLUE)Checking deployment configuration files...$(NC)"
 	@mkdir -p deploy/kustomize/base/config
-	@if [ ! -f deploy/kustomize/base/config/agents.yaml ]; then \
-		if [ -f config/agents.yaml ]; then \
-			echo -e "$(YELLOW)📋 Copying agents.yaml to deployment location...$(NC)"; \
-			cp config/agents.yaml deploy/kustomize/base/config/; \
-		elif [ -f config/agents.yaml.example ]; then \
-			echo -e "$(YELLOW)📋 Creating agents.yaml from example in deployment location...$(NC)"; \
-			cp config/agents.yaml.example deploy/kustomize/base/config/agents.yaml; \
-			echo -e "$(YELLOW)📝 Please customize deploy/kustomize/base/config/agents.yaml for your needs$(NC)"; \
-		else \
-			echo -e "$(RED)❌ Error: No agents.yaml or agents.yaml.example found$(NC)"; \
-			exit 1; \
-		fi; \
+	@if [ -f config/agents.yaml ]; then \
+		echo -e "$(YELLOW)📋 Syncing agents.yaml from config directory to deployment location...$(NC)"; \
+		cp config/agents.yaml deploy/kustomize/base/config/agents.yaml; \
+	elif [ -f deploy/kustomize/base/config/agents.yaml ]; then \
+		echo -e "$(YELLOW)📋 Using existing deploy/kustomize/base/config/agents.yaml (no config/agents.yaml found)...$(NC)"; \
+	elif [ -f config/agents.yaml.example ]; then \
+		echo -e "$(YELLOW)📋 Creating agents.yaml from example in deployment location...$(NC)"; \
+		cp config/agents.yaml.example deploy/kustomize/base/config/agents.yaml; \
+		echo -e "$(YELLOW)📝 Please customize config/agents.yaml or deploy/kustomize/base/config/agents.yaml for your needs$(NC)"; \
+	else \
+		echo -e "$(RED)❌ Error: No agents.yaml or agents.yaml.example found$(NC)"; \
+		exit 1; \
 	fi
-	@if [ ! -f deploy/kustomize/base/config/llm_providers.yaml ]; then \
-		if [ -f config/llm_providers.yaml ]; then \
-			echo -e "$(YELLOW)📋 Copying llm_providers.yaml to deployment location...$(NC)"; \
-			cp config/llm_providers.yaml deploy/kustomize/base/config/; \
-		elif [ -f config/llm_providers.yaml.example ]; then \
-			echo -e "$(YELLOW)📋 Creating llm_providers.yaml from example in deployment location...$(NC)"; \
-			cp config/llm_providers.yaml.example deploy/kustomize/base/config/llm_providers.yaml; \
-			echo -e "$(YELLOW)📝 Please customize deploy/kustomize/base/config/llm_providers.yaml for your needs$(NC)"; \
-		else \
-			echo -e "$(RED)❌ Error: No llm_providers.yaml or llm_providers.yaml.example found$(NC)"; \
-			exit 1; \
-		fi; \
+	@if [ -f config/llm_providers.yaml ]; then \
+		echo -e "$(YELLOW)📋 Syncing llm_providers.yaml from config directory to deployment location...$(NC)"; \
+		cp config/llm_providers.yaml deploy/kustomize/base/config/llm_providers.yaml; \
+	elif [ -f deploy/kustomize/base/config/llm_providers.yaml ]; then \
+		echo -e "$(YELLOW)📋 Using existing deploy/kustomize/base/config/llm_providers.yaml (no config/llm_providers.yaml found)...$(NC)"; \
+	elif [ -f config/llm_providers.yaml.example ]; then \
+		echo -e "$(YELLOW)📋 Creating llm_providers.yaml from example in deployment location...$(NC)"; \
+		cp config/llm_providers.yaml.example deploy/kustomize/base/config/llm_providers.yaml; \
+		echo -e "$(YELLOW)📝 Please customize config/llm_providers.yaml or deploy/kustomize/base/config/llm_providers.yaml for your needs$(NC)"; \
+	else \
+		echo -e "$(RED)❌ Error: No llm_providers.yaml or llm_providers.yaml.example found$(NC)"; \
+		exit 1; \
 	fi
 	@if [ -f config/oauth2-proxy-container.cfg ]; then \
 		echo -e "$(YELLOW)📋 Copying oauth2-proxy-container.cfg to deployment location...$(NC)"; \
