@@ -34,7 +34,7 @@ OPENSHIFT_TARGETS := openshift-check openshift-login-registry openshift-create-n
                      openshift-apply openshift-deploy \
                      openshift-redeploy openshift-status \
                      openshift-urls openshift-logs openshift-logs-dashboard \
-                     openshift-clean openshift-clean-images
+                     openshift-db-reset openshift-clean openshift-clean-images
 
 ifneq ($(filter $(OPENSHIFT_TARGETS),$(MAKECMDGOALS)),)
 	# Auto-detect ROUTE_HOST
@@ -213,31 +213,31 @@ openshift-create-secrets: openshift-check openshift-create-namespace ## Create s
 openshift-check-config-files: ## Check that required config files exist in deploy location
 	@echo -e "$(BLUE)Checking deployment configuration files...$(NC)"
 	@mkdir -p deploy/kustomize/base/config
-	@if [ ! -f deploy/kustomize/base/config/agents.yaml ]; then \
-		if [ -f config/agents.yaml ]; then \
-			echo -e "$(YELLOW)📋 Copying agents.yaml to deployment location...$(NC)"; \
-			cp config/agents.yaml deploy/kustomize/base/config/; \
-		elif [ -f config/agents.yaml.example ]; then \
-			echo -e "$(YELLOW)📋 Creating agents.yaml from example in deployment location...$(NC)"; \
-			cp config/agents.yaml.example deploy/kustomize/base/config/agents.yaml; \
-			echo -e "$(YELLOW)📝 Please customize deploy/kustomize/base/config/agents.yaml for your needs$(NC)"; \
-		else \
-			echo -e "$(RED)❌ Error: No agents.yaml or agents.yaml.example found$(NC)"; \
-			exit 1; \
-		fi; \
+	@if [ -f config/agents.yaml ]; then \
+		echo -e "$(YELLOW)📋 Syncing agents.yaml from config directory to deployment location...$(NC)"; \
+		cp config/agents.yaml deploy/kustomize/base/config/agents.yaml; \
+	elif [ -f deploy/kustomize/base/config/agents.yaml ]; then \
+		echo -e "$(YELLOW)📋 Using existing deploy/kustomize/base/config/agents.yaml (no config/agents.yaml found)...$(NC)"; \
+	elif [ -f config/agents.yaml.example ]; then \
+		echo -e "$(YELLOW)📋 Creating agents.yaml from example in deployment location...$(NC)"; \
+		cp config/agents.yaml.example deploy/kustomize/base/config/agents.yaml; \
+		echo -e "$(YELLOW)📝 Please customize config/agents.yaml or deploy/kustomize/base/config/agents.yaml for your needs$(NC)"; \
+	else \
+		echo -e "$(RED)❌ Error: No agents.yaml or agents.yaml.example found$(NC)"; \
+		exit 1; \
 	fi
-	@if [ ! -f deploy/kustomize/base/config/llm_providers.yaml ]; then \
-		if [ -f config/llm_providers.yaml ]; then \
-			echo -e "$(YELLOW)📋 Copying llm_providers.yaml to deployment location...$(NC)"; \
-			cp config/llm_providers.yaml deploy/kustomize/base/config/; \
-		elif [ -f config/llm_providers.yaml.example ]; then \
-			echo -e "$(YELLOW)📋 Creating llm_providers.yaml from example in deployment location...$(NC)"; \
-			cp config/llm_providers.yaml.example deploy/kustomize/base/config/llm_providers.yaml; \
-			echo -e "$(YELLOW)📝 Please customize deploy/kustomize/base/config/llm_providers.yaml for your needs$(NC)"; \
-		else \
-			echo -e "$(RED)❌ Error: No llm_providers.yaml or llm_providers.yaml.example found$(NC)"; \
-			exit 1; \
-		fi; \
+	@if [ -f config/llm_providers.yaml ]; then \
+		echo -e "$(YELLOW)📋 Syncing llm_providers.yaml from config directory to deployment location...$(NC)"; \
+		cp config/llm_providers.yaml deploy/kustomize/base/config/llm_providers.yaml; \
+	elif [ -f deploy/kustomize/base/config/llm_providers.yaml ]; then \
+		echo -e "$(YELLOW)📋 Using existing deploy/kustomize/base/config/llm_providers.yaml (no config/llm_providers.yaml found)...$(NC)"; \
+	elif [ -f config/llm_providers.yaml.example ]; then \
+		echo -e "$(YELLOW)📋 Creating llm_providers.yaml from example in deployment location...$(NC)"; \
+		cp config/llm_providers.yaml.example deploy/kustomize/base/config/llm_providers.yaml; \
+		echo -e "$(YELLOW)📝 Please customize config/llm_providers.yaml or deploy/kustomize/base/config/llm_providers.yaml for your needs$(NC)"; \
+	else \
+		echo -e "$(RED)❌ Error: No llm_providers.yaml or llm_providers.yaml.example found$(NC)"; \
+		exit 1; \
 	fi
 	@if [ -f config/oauth2-proxy-container.cfg ]; then \
 		echo -e "$(YELLOW)📋 Copying oauth2-proxy-container.cfg to deployment location...$(NC)"; \
@@ -387,6 +387,42 @@ openshift-clean-images: openshift-check ## Delete images from OpenShift registry
 			oc delete imagestream tarsy-backend -n $(OPENSHIFT_NAMESPACE) 2>/dev/null || true; \
 			oc delete imagestream tarsy-dashboard -n $(OPENSHIFT_NAMESPACE) 2>/dev/null || true; \
 			echo -e "$(GREEN)✅ Images deleted from registry$(NC)"; \
+			;; \
+		*) \
+			echo -e "$(GREEN)Cancelled$(NC)"; \
+			;; \
+	esac
+
+# Database management targets
+# WARNING: This target will permanently delete all database data!
+# Use cases:
+# - Fix PostgreSQL version conflicts after cluster upgrades
+# - Reset to clean state for testing/development
+# - Recover from database corruption issues
+.PHONY: openshift-db-reset
+openshift-db-reset: openshift-check ## Reset PostgreSQL database in OpenShift cluster
+	@echo -e "$(YELLOW)⚠️  This will delete ALL database data in OpenShift cluster!$(NC)"
+	@echo -e "$(YELLOW)⚠️  This includes all alert sessions, history, and configuration data!$(NC)"
+	@printf "Are you sure? [y/N] "; \
+	read REPLY; \
+	case "$$REPLY" in \
+		[Yy]|[Yy][Ee][Ss]) \
+			echo -e "$(YELLOW)Scaling down database deployment...$(NC)"; \
+			oc scale deployment dev-tarsy-database --replicas=0 -n $(OPENSHIFT_NAMESPACE) 2>/dev/null || true; \
+			echo -e "$(YELLOW)Waiting for database pod to terminate...$(NC)"; \
+			oc wait --for=delete pod -l component=database -n $(OPENSHIFT_NAMESPACE) --timeout=60s 2>/dev/null || true; \
+			echo -e "$(YELLOW)Deleting persistent volume claim (this will delete all data)...$(NC)"; \
+			oc delete pvc dev-database-data -n $(OPENSHIFT_NAMESPACE) 2>/dev/null || true; \
+			echo -e "$(YELLOW)Recreating database resources using deployment manifests...$(NC)"; \
+			$(MAKE) openshift-apply >/dev/null 2>&1 || echo -e "$(YELLOW)Note: Some resources may already exist$(NC)"; \
+			echo -e "$(YELLOW)Scaling database deployment back up...$(NC)"; \
+			oc scale deployment dev-tarsy-database --replicas=1 -n $(OPENSHIFT_NAMESPACE); \
+			echo -e "$(YELLOW)Waiting for database to be ready...$(NC)"; \
+			oc wait --for=condition=available deployment/dev-tarsy-database -n $(OPENSHIFT_NAMESPACE) --timeout=120s; \
+			echo -e "$(YELLOW)Restarting backend deployment to trigger migrations...$(NC)"; \
+			oc rollout restart deployment/dev-tarsy-backend -n $(OPENSHIFT_NAMESPACE) 2>/dev/null || true; \
+			echo -e "$(GREEN)✅ Database reset completed$(NC)"; \
+			echo -e "$(BLUE)💡 The backend will automatically run migrations on startup$(NC)"; \
 			;; \
 		*) \
 			echo -e "$(GREEN)Cancelled$(NC)"; \
