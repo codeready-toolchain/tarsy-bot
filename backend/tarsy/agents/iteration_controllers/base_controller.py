@@ -7,9 +7,9 @@ all iteration controller implementations.
 
 import asyncio
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
-from ...models.unified_interactions import MessageRole
+from ...models.unified_interactions import MessageRole, LLMConversation
 from ...config.settings import get_settings
 from ..parsers.react_parser import ReActParser
 
@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     from ...models.processing_context import StageContext
     from ...integrations.llm.client import LLMClient
     from ...agents.prompts import PromptBuilder
-    from ...models.unified_interactions import LLMConversation
 
 class IterationController(ABC):
     """
@@ -46,6 +45,96 @@ class IterationController(ABC):
             return None
         
         return getattr(mcp, "native_tools", None)
+    
+    def _restore_paused_conversation(
+        self, 
+        context: 'StageContext',
+        logger=None
+    ) -> Optional[LLMConversation]:
+        """
+        Check for paused session state and restore conversation if found.
+        
+        Args:
+            context: StageContext containing stage processing data
+            logger: Optional logger for debug messages
+            
+        Returns:
+            Restored LLMConversation if resuming from paused state, None otherwise
+        """
+        if context.stage_name not in context.chain_context.stage_outputs:
+            return None
+            
+        stage_result = context.chain_context.stage_outputs[context.stage_name]
+        if not hasattr(stage_result, 'status') or not hasattr(stage_result, 'paused_conversation_state'):
+            return None
+        
+        # Type-safe status comparison (handle both enum and string values)
+        from tarsy.models.constants import StageStatus
+        status_value = stage_result.status.value if isinstance(stage_result.status, StageStatus) else stage_result.status
+        
+        if status_value != StageStatus.PAUSED.value or not stage_result.paused_conversation_state:
+            return None
+        
+        # Restore conversation from paused state
+        try:
+            conversation = LLMConversation.model_validate(stage_result.paused_conversation_state)
+            if logger:
+                logger.info(f"Resuming from paused state with {len(conversation.messages)} messages")
+            return conversation
+        except Exception as e:
+            if logger:
+                logger.warning(f"Failed to restore conversation history: {e}, starting fresh")
+            return None
+    
+    def _raise_max_iterations_exception(
+        self,
+        max_iterations: int,
+        last_interaction_failed: bool,
+        conversation: LLMConversation,
+        context: 'StageContext',
+        logger=None
+    ) -> None:
+        """
+        Raise appropriate exception when max iterations reached.
+        
+        Args:
+            max_iterations: The maximum iteration count that was reached
+            last_interaction_failed: Whether the last LLM interaction failed
+            conversation: Current conversation state (for resume)
+            context: StageContext containing stage processing data
+            logger: Optional logger for messages
+            
+        Raises:
+            MaxIterationsFailureError: If last interaction failed
+            SessionPaused: If last interaction succeeded (allows resume)
+        """
+        from ..exceptions import MaxIterationsFailureError, SessionPaused
+        
+        if last_interaction_failed:
+            if logger:
+                logger.error(f"Stage failed: reached maximum iterations ({max_iterations}) with failed last interaction")
+            raise MaxIterationsFailureError(
+                f"Stage failed: reached maximum iterations ({max_iterations}) and last LLM interaction failed",
+                max_iterations=max_iterations,
+                context={
+                    "session_id": context.session_id,
+                    "stage_execution_id": context.agent.get_current_stage_execution_id() if context.agent else None,
+                    "stage_name": context.stage_name
+                }
+            )
+        else:
+            if logger:
+                logger.warning(f"Session paused: reached maximum iterations ({max_iterations}) without final answer")
+            raise SessionPaused(
+                f"Session paused at maximum iterations ({max_iterations})",
+                iteration=max_iterations,
+                conversation=conversation,
+                context={
+                    "session_id": context.session_id,
+                    "stage_execution_id": context.agent.get_current_stage_execution_id() if context.agent else None,
+                    "stage_name": context.stage_name
+                }
+            )
     
     @abstractmethod
     def needs_mcp_tools(self) -> bool:
@@ -178,25 +267,7 @@ class ReactController(IterationController):
         iteration_timeout = settings.llm_iteration_timeout
         
         # 1. Check if resuming from a paused session with conversation history
-        conversation = None
-        if context.stage_name in context.chain_context.stage_outputs:
-            stage_result = context.chain_context.stage_outputs[context.stage_name]
-            if hasattr(stage_result, 'status') and hasattr(stage_result, 'paused_conversation_state'):
-                # Type-safe status comparison (handle both enum and string values)
-                from tarsy.models.constants import StageStatus
-                status_value = stage_result.status.value if isinstance(stage_result.status, StageStatus) else stage_result.status
-                
-                if status_value == StageStatus.PAUSED.value and stage_result.paused_conversation_state:
-                    # Restore conversation from paused state
-                    from tarsy.models.unified_interactions import LLMConversation
-                    try:
-                        conversation = LLMConversation.model_validate(stage_result.paused_conversation_state)
-                        self.logger.info(f"Resuming from paused state with {len(conversation.messages)} messages")
-                    except Exception as e:
-                        self.logger.warning(f"Failed to restore conversation history: {e}, starting fresh")
-                        conversation = None
-        
-        # Build initial conversation if not resuming
+        conversation = self._restore_paused_conversation(context, self.logger)
         if conversation is None:
             conversation = self.build_initial_conversation(context)
         
@@ -359,33 +430,13 @@ class ReactController(IterationController):
                 continue
                 
         # 8. Max iterations reached - pause for user action or fail
-        if last_interaction_failed:
-            # Stage failure: reached max iterations with failed last interaction
-            from ..exceptions import MaxIterationsFailureError
-            self.logger.error(f"Stage failed: reached maximum iterations ({max_iterations}) with failed last interaction")
-            raise MaxIterationsFailureError(
-                f"Stage failed: reached maximum iterations ({max_iterations}) and last LLM interaction failed",
-                max_iterations=max_iterations,
-                context={
-                    "session_id": context.session_id,
-                    "stage_execution_id": context.agent.get_current_stage_execution_id(),
-                    "stage_name": context.stage_name
-                }
-            )
-        else:
-            # Max iterations reached but last interaction was successful - pause session
-            from tarsy.agents.exceptions import SessionPaused
-            self.logger.warning(f"Session paused: reached maximum iterations ({max_iterations}) without final answer")
-            raise SessionPaused(
-                f"Session paused at maximum iterations ({max_iterations})",
-                iteration=max_iterations,
-                conversation=conversation,  # Pass conversation history for resume
-                context={
-                    "session_id": context.session_id,
-                    "stage_execution_id": context.agent.get_current_stage_execution_id(),
-                    "stage_name": context.stage_name
-                }
-            )
+        self._raise_max_iterations_exception(
+            max_iterations=max_iterations,
+            last_interaction_failed=last_interaction_failed,
+            conversation=conversation,
+            context=context,
+            logger=self.logger
+        )
 
     @abstractmethod
     def build_initial_conversation(self, context: 'StageContext') -> 'LLMConversation':

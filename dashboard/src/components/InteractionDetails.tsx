@@ -10,7 +10,6 @@ import {
   AccordionDetails
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import PsychologyIcon from '@mui/icons-material/Psychology';
 import type { LLMInteraction, MCPInteraction, SystemEvent, LLMMessage } from '../types';
 import CopyButton from './CopyButton';
 import JsonDisplay from './JsonDisplay';

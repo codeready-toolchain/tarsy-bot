@@ -40,7 +40,7 @@ class NativeThinkingController(IterationController):
     - Native function calling for tool execution
     - Thought signatures for multi-turn reasoning continuity
     
-    This controller is specifically designed for Gemini 3.0 Pro and later
+    This controller is specifically designed for Gemini
     models that support native thinking capabilities.
     """
     
@@ -87,19 +87,25 @@ class NativeThinkingController(IterationController):
         Execute analysis using Gemini's native thinking and function calling.
         
         This loop:
-        1. Builds initial conversation with simplified prompt (no ReAct format)
-        2. Converts MCP tools to Gemini function declarations
-        3. Calls LLM with thinking_level + bound functions + thought_signature
-        4. Extracts thinking_content for audit
-        5. If tool_calls in response: execute MCP tools, append results
-        6. If no tool_calls: final answer reached
-        7. Preserves thought_signature for next iteration
+        1. Checks for paused session and resumes if found
+        2. Builds initial conversation with simplified prompt (no ReAct format)
+        3. Converts MCP tools to Gemini function declarations
+        4. Calls LLM with thinking_level + bound functions + thought_signature
+        5. Extracts thinking_content for audit
+        6. If tool_calls in response: execute MCP tools, append results
+        7. If no tool_calls: final answer reached
+        8. Preserves thought_signature for next iteration
+        9. Handles max iterations with pause/failure distinction
         
         Args:
             context: StageContext containing all stage processing data
             
         Returns:
             Final analysis result string
+            
+        Raises:
+            SessionPaused: When max iterations reached with successful last interaction
+            MaxIterationsFailureError: When max iterations reached with failed last interaction
         """
         self.logger.info("Starting native thinking analysis loop")
         
@@ -111,8 +117,10 @@ class NativeThinkingController(IterationController):
         settings = get_settings()
         iteration_timeout = settings.llm_iteration_timeout
         
-        # Build initial conversation (simplified, no ReAct format instructions)
-        conversation = self._build_initial_conversation(context)
+        # 1. Check if resuming from a paused session with conversation history
+        conversation = self._restore_paused_conversation(context, self.logger)
+        if conversation is None:
+            conversation = self._build_initial_conversation(context)
         
         # Get MCP tools for native function binding
         mcp_tools = context.available_tools.tools
@@ -127,9 +135,19 @@ class NativeThinkingController(IterationController):
         # Extract native tools override from context
         native_tools_override = self._get_native_tools_override(context)
         
+        # 2. Track last interaction success for failure detection
+        last_interaction_failed = False
+        consecutive_timeout_failures = 0  # Track consecutive timeout failures
+        
         # Main iteration loop
         for iteration in range(max_iterations):
             self.logger.info(f"Native thinking iteration {iteration + 1}/{max_iterations}")
+            
+            # Check for consecutive timeout failures (prevent infinite retry loops)
+            if consecutive_timeout_failures >= 2:
+                error_msg = f"Stopping after {consecutive_timeout_failures} consecutive timeout failures"
+                self.logger.error(error_msg)
+                raise Exception(error_msg)
             
             try:
                 # Call LLM with native thinking
@@ -156,6 +174,10 @@ class NativeThinkingController(IterationController):
                 
                 # Update conversation from response
                 conversation = response.conversation
+                
+                # Mark this interaction as successful
+                last_interaction_failed = False
+                consecutive_timeout_failures = 0  # Reset on successful call
                 
                 # Check if we have a final answer (no tool calls)
                 if response.is_final:
@@ -198,6 +220,14 @@ class NativeThinkingController(IterationController):
                             error_msg = f"Error executing {tool_call.server}.{tool_call.tool}: {str(e)}"
                             self.logger.error(error_msg)
                             conversation.append_observation(f"Tool Error: {error_msg}")
+                            
+                            # Track timeout failures specifically
+                            error_str = str(e).lower()
+                            if 'timeout' in error_str or 'timed out' in error_str:
+                                consecutive_timeout_failures += 1
+                                self.logger.warning(f"Tool timeout detected ({consecutive_timeout_failures} consecutive)")
+                            else:
+                                consecutive_timeout_failures = 0  # Reset on non-timeout errors
                 else:
                     # No tool calls and not marked as final - unusual state
                     self.logger.warning("Response has no tool calls but is not marked as final")
@@ -206,6 +236,14 @@ class NativeThinkingController(IterationController):
             except asyncio.TimeoutError:
                 error_msg = f"Iteration {iteration + 1} exceeded {iteration_timeout}s timeout"
                 self.logger.error(error_msg)
+                consecutive_timeout_failures += 1
+                self.logger.warning(f"Iteration timeout ({consecutive_timeout_failures} consecutive)")
+                
+                # Check if we should stop
+                if consecutive_timeout_failures >= 2:
+                    raise Exception(f"Stopping after {consecutive_timeout_failures} consecutive iteration timeouts") from None
+                
+                # Otherwise, append error and continue
                 conversation.append_observation(f"Error: {error_msg}")
                 
             except Exception as e:
@@ -213,14 +251,30 @@ class NativeThinkingController(IterationController):
                 error_msg = f"Native thinking iteration {iteration + 1} failed: {str(e)}"
                 self.logger.error(error_msg)
                 self.logger.error(f"Full traceback:\n{traceback.format_exc()}")
+                
+                # Mark this interaction as failed
+                last_interaction_failed = True
+                
+                # Check if it's a timeout-related failure
+                error_str = str(e).lower()
+                if 'timeout' in error_str or 'timed out' in error_str:
+                    consecutive_timeout_failures += 1
+                    self.logger.warning(f"Exception contains timeout ({consecutive_timeout_failures} consecutive)")
+                    if consecutive_timeout_failures >= 2:
+                        raise Exception(f"Stopping after {consecutive_timeout_failures} consecutive timeout failures") from e
+                else:
+                    consecutive_timeout_failures = 0  # Reset on non-timeout errors
+                
                 conversation.append_observation(f"Error: {error_msg}")
         
-        # Max iterations reached
-        self.logger.warning(f"Max iterations ({max_iterations}) reached without final answer")
-        
-        # Return best available result
-        last_content = self._get_last_assistant_content(conversation)
-        return self._build_final_result(last_content, all_thinking_content)
+        # 3. Max iterations reached - pause for user action or fail
+        self._raise_max_iterations_exception(
+            max_iterations=max_iterations,
+            last_interaction_failed=last_interaction_failed,
+            conversation=conversation,
+            context=context,
+            logger=self.logger
+        )
     
     def _build_initial_conversation(self, context: 'StageContext') -> LLMConversation:
         """
