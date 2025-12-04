@@ -6,6 +6,7 @@ bypassing LangChain to use the Google SDK directly for full access to:
 - Thinking content (internal reasoning via ThinkingConfig)
 - Native function calling (structured tool calls without text parsing)
 - Thought signatures (multi-turn reasoning continuity)
+- Live streaming of thinking summaries and response content
 
 Used by NativeThinkingController for Gemini-specific agent iteration.
 """
@@ -18,8 +19,9 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional
 from google import genai
 from google.genai import types as google_genai_types
 
+from tarsy.config.settings import get_settings
 from tarsy.hooks.hook_context import llm_interaction_context
-from tarsy.models.constants import LLMInteractionType
+from tarsy.models.constants import LLMInteractionType, StreamingEventType
 from tarsy.models.llm_models import GoogleNativeTool, LLMProviderConfig, LLMProviderType
 from tarsy.models.mcp_selection_models import NativeToolsConfig
 from tarsy.models.processing_context import ToolWithServer
@@ -30,6 +32,10 @@ if TYPE_CHECKING:
     pass
 
 logger = get_module_logger(__name__)
+
+# Streaming chunk sizes (small values for responsive UI updates)
+THINKING_CHUNK_SIZE = 1  # Tokens between thinking summary updates
+RESPONSE_CHUNK_SIZE = 2  # Tokens between response updates
 
 
 @dataclass
@@ -100,8 +106,71 @@ class GeminiNativeThinkingClient:
         self.model = config.model
         self.temperature = config.temperature
         self.provider_name = provider_name or config.model
+        self.settings = get_settings()
+        self._sqlite_warning_logged = False
         
         logger.info(f"Initialized GeminiNativeThinkingClient for model {self.model}")
+    
+    async def _publish_stream_chunk(
+        self,
+        session_id: str,
+        stage_execution_id: Optional[str],
+        stream_type: StreamingEventType,
+        chunk: str,
+        is_complete: bool
+    ) -> None:
+        """
+        Publish streaming chunk via transient channel for WebSocket delivery.
+        
+        Args:
+            session_id: Session identifier
+            stage_execution_id: Stage execution identifier
+            stream_type: Type of streaming content (THOUGHT or FINAL_ANSWER)
+            chunk: Content chunk (accumulated tokens)
+            is_complete: Whether this is the final chunk
+        """
+        # Check if streaming is enabled via config flag
+        if self.settings and not self.settings.enable_llm_streaming:
+            return
+        
+        try:
+            from tarsy.database.init_db import get_async_session_factory
+            from tarsy.models.event_models import LLMStreamChunkEvent
+            from tarsy.services.events.publisher import publish_transient_event
+            from tarsy.utils.timestamp import now_us
+            
+            async_session_factory = get_async_session_factory()
+            async with async_session_factory() as session:
+                # Check database dialect to warn about SQLite limitations
+                db_dialect = session.bind.dialect.name
+                
+                if db_dialect != "postgresql":
+                    if not self._sqlite_warning_logged:
+                        logger.warning(
+                            f"LLM streaming requested but database is {db_dialect}. "
+                            "Real-time streaming requires PostgreSQL with NOTIFY support. "
+                            "Events will be published but may not be delivered in real time."
+                        )
+                        self._sqlite_warning_logged = True
+                
+                event = LLMStreamChunkEvent(
+                    session_id=session_id,
+                    stage_execution_id=stage_execution_id,
+                    chunk=chunk,
+                    stream_type=stream_type.value,
+                    is_complete=is_complete,
+                    timestamp_us=now_us()
+                )
+                
+                await publish_transient_event(
+                    session=session,
+                    channel=f"session:{session_id}",
+                    event=event
+                )
+                
+        except Exception as e:
+            # Don't fail the main operation if streaming fails
+            logger.warning(f"Failed to publish stream chunk: {e}")
     
     def _parse_function_name(self, func_name: str) -> tuple[str, str]:
         """
@@ -345,70 +414,131 @@ class GeminiNativeThinkingClient:
                     ) if tools else None
                 )
                 
-                # Make the API call with timeout
+                # Make the API call with timeout using streaming
                 accumulated_content = ""
                 thinking_content_parts = []
                 tool_calls = []
                 new_thought_signature = None
                 response_metadata = {}
                 
+                # Streaming state tracking
+                is_streaming_thinking = False
+                is_streaming_response = False
+                thinking_token_count = 0
+                response_token_count = 0
+                accumulated_thinking = ""
+                
                 async with asyncio.timeout(timeout_seconds):
-                    # Use async generate_content
-                    response = await native_client.aio.models.generate_content(
+                    # Use async streaming generate_content for real-time updates
+                    async for chunk in await native_client.aio.models.generate_content_stream(
                         model=self.model,
                         contents=contents,
                         config=gen_config
-                    )
-                    
-                    # Process response parts
-                    if response.candidates and len(response.candidates) > 0:
-                        candidate = response.candidates[0]
+                    ):
+                        # Process streaming chunk
+                        if chunk.candidates and len(chunk.candidates) > 0:
+                            candidate = chunk.candidates[0]
+                            
+                            if candidate.content and candidate.content.parts:
+                                for part in candidate.content.parts:
+                                    # Check if this is a thought part (thinking summary)
+                                    if hasattr(part, 'thought') and part.thought:
+                                        if hasattr(part, 'text') and part.text:
+                                            thinking_content_parts.append(part.text)
+                                            accumulated_thinking += part.text
+                                            thinking_token_count += 1
+                                            
+                                            # Start streaming thinking if not already
+                                            if not is_streaming_thinking:
+                                                is_streaming_thinking = True
+                                                logger.debug(f"[{request_id}] Started streaming thinking content")
+                                            
+                                            # Stream thinking updates every N tokens
+                                            if thinking_token_count >= THINKING_CHUNK_SIZE:
+                                                await self._publish_stream_chunk(
+                                                    session_id, stage_execution_id,
+                                                    StreamingEventType.THOUGHT, accumulated_thinking,
+                                                    is_complete=False
+                                                )
+                                                thinking_token_count = 0
+                                    
+                                    elif hasattr(part, 'text') and part.text:
+                                        # This is regular response text
+                                        accumulated_content += part.text
+                                        response_token_count += 1
+                                        
+                                        # If we were streaming thinking, send final thinking chunk
+                                        if is_streaming_thinking:
+                                            await self._publish_stream_chunk(
+                                                session_id, stage_execution_id,
+                                                StreamingEventType.THOUGHT, accumulated_thinking,
+                                                is_complete=True
+                                            )
+                                            is_streaming_thinking = False
+                                            logger.debug(f"[{request_id}] Completed streaming thinking content")
+                                        
+                                        # Start streaming response if not already
+                                        if not is_streaming_response:
+                                            is_streaming_response = True
+                                            logger.debug(f"[{request_id}] Started streaming response content")
+                                        
+                                        # Stream response updates every N tokens
+                                        if response_token_count >= RESPONSE_CHUNK_SIZE:
+                                            await self._publish_stream_chunk(
+                                                session_id, stage_execution_id,
+                                                StreamingEventType.FINAL_ANSWER, accumulated_content,
+                                                is_complete=False
+                                            )
+                                            response_token_count = 0
+                                    
+                                    # Extract thought signature if present
+                                    if hasattr(part, 'thought_signature') and part.thought_signature:
+                                        new_thought_signature = part.thought_signature
                         
-                        if candidate.content and candidate.content.parts:
-                            for part in candidate.content.parts:
-                                # Check if this is a thought part
-                                if hasattr(part, 'thought') and part.thought:
-                                    # This is thinking content
-                                    if hasattr(part, 'text') and part.text:
-                                        thinking_content_parts.append(part.text)
-                                        logger.debug(f"[{request_id}] Captured thinking: {part.text[:100]}...")
-                                elif hasattr(part, 'text') and part.text:
-                                    # This is regular response text
-                                    accumulated_content += part.text
-                                
-                                # Extract thought signature if present
-                                if hasattr(part, 'thought_signature') and part.thought_signature:
-                                    new_thought_signature = part.thought_signature
+                        # Extract function calls from streaming chunk
+                        if hasattr(chunk, 'function_calls') and chunk.function_calls:
+                            for fc in chunk.function_calls:
+                                try:
+                                    func_name = fc.name if hasattr(fc, 'name') else str(fc.function_call.name if hasattr(fc, 'function_call') else '')
+                                    func_args = dict(fc.args) if hasattr(fc, 'args') else {}
+                                    
+                                    server, tool = self._parse_function_name(func_name)
+                                    tool_calls.append(NativeThinkingToolCall(
+                                        server=server,
+                                        tool=tool,
+                                        parameters=func_args
+                                    ))
+                                    logger.debug(f"[{request_id}] Extracted tool call: {server}.{tool}")
+                                except (ValueError, AttributeError) as e:
+                                    logger.warning(f"[{request_id}] Failed to parse function call: {e}")
+                        
+                        # Build response metadata from last chunk
+                        if hasattr(chunk, 'usage_metadata') and chunk.usage_metadata:
+                            usage = chunk.usage_metadata
+                            response_metadata = {
+                                'prompt_token_count': getattr(usage, 'prompt_token_count', None),
+                                'candidates_token_count': getattr(usage, 'candidates_token_count', None),
+                                'total_token_count': getattr(usage, 'total_token_count', None),
+                            }
+                            # Store token counts for interaction
+                            ctx.interaction.input_tokens = getattr(usage, 'prompt_token_count', None)
+                            ctx.interaction.output_tokens = getattr(usage, 'candidates_token_count', None)
+                            ctx.interaction.total_tokens = getattr(usage, 'total_token_count', None)
                     
-                    # Extract function calls from response
-                    if response.function_calls:
-                        for fc in response.function_calls:
-                            try:
-                                func_name = fc.name if hasattr(fc, 'name') else str(fc.function_call.name if hasattr(fc, 'function_call') else '')
-                                func_args = dict(fc.args) if hasattr(fc, 'args') else {}
-                                
-                                server, tool = self._parse_function_name(func_name)
-                                tool_calls.append(NativeThinkingToolCall(
-                                    server=server,
-                                    tool=tool,
-                                    parameters=func_args
-                                ))
-                                logger.debug(f"[{request_id}] Extracted tool call: {server}.{tool}")
-                            except (ValueError, AttributeError) as e:
-                                logger.warning(f"[{request_id}] Failed to parse function call: {e}")
+                    # Send final streaming chunks after stream completes
+                    if is_streaming_thinking and accumulated_thinking:
+                        await self._publish_stream_chunk(
+                            session_id, stage_execution_id,
+                            StreamingEventType.THOUGHT, accumulated_thinking,
+                            is_complete=True
+                        )
                     
-                    # Build response metadata
-                    if hasattr(response, 'usage_metadata') and response.usage_metadata:
-                        usage = response.usage_metadata
-                        response_metadata = {
-                            'prompt_token_count': getattr(usage, 'prompt_token_count', None),
-                            'candidates_token_count': getattr(usage, 'candidates_token_count', None),
-                            'total_token_count': getattr(usage, 'total_token_count', None),
-                        }
-                        # Store token counts for interaction
-                        ctx.interaction.input_tokens = getattr(usage, 'prompt_token_count', None)
-                        ctx.interaction.output_tokens = getattr(usage, 'candidates_token_count', None)
-                        ctx.interaction.total_tokens = getattr(usage, 'total_token_count', None)
+                    if is_streaming_response and accumulated_content:
+                        await self._publish_stream_chunk(
+                            session_id, stage_execution_id,
+                            StreamingEventType.FINAL_ANSWER, accumulated_content,
+                            is_complete=True
+                        )
                 
                 # Combine thinking content
                 combined_thinking = "\n".join(thinking_content_parts) if thinking_content_parts else None

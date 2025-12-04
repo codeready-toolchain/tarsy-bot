@@ -4,7 +4,7 @@ Unit tests for GeminiNativeThinkingClient.
 Tests the native thinking and function calling capabilities for Gemini models.
 """
 
-from typing import List
+from typing import AsyncIterator, List
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -19,6 +19,15 @@ from tarsy.models.llm_models import LLMProviderConfig, LLMProviderType
 from tarsy.models.mcp_selection_models import NativeToolsConfig
 from tarsy.models.processing_context import ToolWithServer
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
+
+
+async def mock_stream_response(response: MagicMock) -> AsyncIterator[MagicMock]:
+    """
+    Convert a mock response to an async iterator for streaming simulation.
+    
+    The streaming API yields the entire response as a single chunk for test simplicity.
+    """
+    yield response
 
 
 @pytest.mark.unit
@@ -562,10 +571,10 @@ class TestGeminiNativeThinkingClientGenerate:
         mock_response_final: MagicMock
     ) -> None:
         """Test generating a final response without tool calls."""
-        # Setup mocks
+        # Setup mocks - use streaming API
         mock_native_client = MagicMock()
-        mock_native_client.aio.models.generate_content = AsyncMock(
-            return_value=mock_response_final
+        mock_native_client.aio.models.generate_content_stream = AsyncMock(
+            return_value=mock_stream_response(mock_response_final)
         )
         mock_genai.Client.return_value = mock_native_client
         
@@ -603,8 +612,8 @@ class TestGeminiNativeThinkingClientGenerate:
     ) -> None:
         """Test that thinking content is captured from response."""
         mock_native_client = MagicMock()
-        mock_native_client.aio.models.generate_content = AsyncMock(
-            return_value=mock_response_with_thinking
+        mock_native_client.aio.models.generate_content_stream = AsyncMock(
+            return_value=mock_stream_response(mock_response_with_thinking)
         )
         mock_genai.Client.return_value = mock_native_client
         
@@ -640,8 +649,8 @@ class TestGeminiNativeThinkingClientGenerate:
     ) -> None:
         """Test extracting tool calls from response."""
         mock_native_client = MagicMock()
-        mock_native_client.aio.models.generate_content = AsyncMock(
-            return_value=mock_response_with_tool_calls
+        mock_native_client.aio.models.generate_content_stream = AsyncMock(
+            return_value=mock_stream_response(mock_response_with_tool_calls)
         )
         mock_genai.Client.return_value = mock_native_client
         
@@ -679,12 +688,15 @@ class TestGeminiNativeThinkingClientGenerate:
         """Test that timeout during generation raises TimeoutError."""
         import asyncio
         
-        async def slow_generate(*args, **kwargs):
+        async def slow_stream(*args, **kwargs):
+            """Async generator that delays before yielding."""
             await asyncio.sleep(10)  # Longer than timeout
-            return MagicMock()
+            yield MagicMock()
         
         mock_native_client = MagicMock()
-        mock_native_client.aio.models.generate_content = slow_generate
+        mock_native_client.aio.models.generate_content_stream = AsyncMock(
+            return_value=slow_stream()
+        )
         mock_genai.Client.return_value = mock_native_client
         
         mock_ctx = MagicMock()
@@ -715,8 +727,8 @@ class TestGeminiNativeThinkingClientGenerate:
     ) -> None:
         """Test that native_tools_override is applied correctly."""
         mock_native_client = MagicMock()
-        mock_native_client.aio.models.generate_content = AsyncMock(
-            return_value=mock_response_final
+        mock_native_client.aio.models.generate_content_stream = AsyncMock(
+            return_value=mock_stream_response(mock_response_final)
         )
         mock_genai.Client.return_value = mock_native_client
         
@@ -743,7 +755,7 @@ class TestGeminiNativeThinkingClientGenerate:
         
         # Verify the call was made (override is applied internally)
         assert result is not None
-        mock_native_client.aio.models.generate_content.assert_called_once()
+        mock_native_client.aio.models.generate_content_stream.assert_called_once()
         
     @pytest.mark.asyncio
     @patch("tarsy.integrations.llm.gemini_client.genai")
@@ -758,8 +770,8 @@ class TestGeminiNativeThinkingClientGenerate:
     ) -> None:
         """Test that thought_signature is passed for reasoning continuity."""
         mock_native_client = MagicMock()
-        mock_native_client.aio.models.generate_content = AsyncMock(
-            return_value=mock_response_final
+        mock_native_client.aio.models.generate_content_stream = AsyncMock(
+            return_value=mock_stream_response(mock_response_final)
         )
         mock_genai.Client.return_value = mock_native_client
         
@@ -782,7 +794,7 @@ class TestGeminiNativeThinkingClientGenerate:
         
         assert result is not None
         # The call was made - signature handling is internal
-        mock_native_client.aio.models.generate_content.assert_called_once()
+        mock_native_client.aio.models.generate_content_stream.assert_called_once()
         
     @pytest.mark.asyncio
     @patch("tarsy.integrations.llm.gemini_client.genai")
@@ -797,12 +809,12 @@ class TestGeminiNativeThinkingClientGenerate:
         """Test handling response with no candidates."""
         empty_response = MagicMock()
         empty_response.candidates = []
-        empty_response.function_calls = []
+        empty_response.function_calls = None
         empty_response.usage_metadata = None
         
         mock_native_client = MagicMock()
-        mock_native_client.aio.models.generate_content = AsyncMock(
-            return_value=empty_response
+        mock_native_client.aio.models.generate_content_stream = AsyncMock(
+            return_value=mock_stream_response(empty_response)
         )
         mock_genai.Client.return_value = mock_native_client
         
@@ -852,11 +864,13 @@ class TestGeminiNativeThinkingClientThinkingLevel:
         """Test that 'high' thinking level uses larger thinking budget."""
         response = MagicMock()
         response.candidates = []
-        response.function_calls = []
+        response.function_calls = None
         response.usage_metadata = None
         
         mock_native_client = MagicMock()
-        mock_native_client.aio.models.generate_content = AsyncMock(return_value=response)
+        mock_native_client.aio.models.generate_content_stream = AsyncMock(
+            return_value=mock_stream_response(response)
+        )
         mock_genai.Client.return_value = mock_native_client
         
         mock_ctx = MagicMock()
@@ -879,8 +893,8 @@ class TestGeminiNativeThinkingClientThinkingLevel:
             thinking_level="high"
         )
         
-        # Verify generate_content was called
-        call_args = mock_native_client.aio.models.generate_content.call_args
+        # Verify generate_content_stream was called
+        call_args = mock_native_client.aio.models.generate_content_stream.call_args
         config = call_args.kwargs.get('config')
         
         # The thinking_budget for "high" should be 24576
@@ -898,11 +912,13 @@ class TestGeminiNativeThinkingClientThinkingLevel:
         """Test that 'low' thinking level uses smaller thinking budget."""
         response = MagicMock()
         response.candidates = []
-        response.function_calls = []
+        response.function_calls = None
         response.usage_metadata = None
         
         mock_native_client = MagicMock()
-        mock_native_client.aio.models.generate_content = AsyncMock(return_value=response)
+        mock_native_client.aio.models.generate_content_stream = AsyncMock(
+            return_value=mock_stream_response(response)
+        )
         mock_genai.Client.return_value = mock_native_client
         
         mock_ctx = MagicMock()
@@ -925,9 +941,163 @@ class TestGeminiNativeThinkingClientThinkingLevel:
             thinking_level="low"
         )
         
-        call_args = mock_native_client.aio.models.generate_content.call_args
+        call_args = mock_native_client.aio.models.generate_content_stream.call_args
         config = call_args.kwargs.get('config')
         
         # The thinking_budget for "low" should be 4096
         assert config.thinking_config.thinking_budget == 4096
+
+
+@pytest.mark.unit
+class TestGeminiNativeThinkingStreaming:
+    """Tests for native thinking streaming functionality."""
+    
+    @pytest.fixture
+    def client(self) -> GeminiNativeThinkingClient:
+        """Create a client for testing."""
+        with patch("tarsy.integrations.llm.gemini_client.get_settings") as mock_settings:
+            settings = MagicMock()
+            settings.enable_llm_streaming = True
+            mock_settings.return_value = settings
+            
+            config = LLMProviderConfig(
+                type=LLMProviderType.GOOGLE,
+                model="gemini-2.5-flash",
+                api_key="test-api-key",
+                temperature=0.7
+            )
+            return GeminiNativeThinkingClient(config, "test-provider")
+    
+    @pytest.fixture
+    def sample_conversation(self) -> LLMConversation:
+        """Create a sample conversation for testing."""
+        return LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="You are an assistant."),
+            LLMMessage(role=MessageRole.USER, content="Analyze this alert."),
+        ])
+    
+    @pytest.mark.asyncio
+    @patch("tarsy.integrations.llm.gemini_client.genai")
+    @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
+    async def test_streaming_publishes_thinking_chunks(
+        self,
+        mock_context: MagicMock,
+        mock_genai: MagicMock,
+        client: GeminiNativeThinkingClient,
+        sample_conversation: LLMConversation
+    ) -> None:
+        """Test that thinking content is published via streaming."""
+        # Create streaming response with thinking and response parts
+        thinking_chunk = MagicMock()
+        thinking_part = MagicMock()
+        thinking_part.thought = True
+        thinking_part.text = "Let me analyze this..."
+        thinking_part.thought_signature = None
+        thinking_chunk.candidates = [MagicMock(content=MagicMock(parts=[thinking_part]))]
+        thinking_chunk.function_calls = None
+        thinking_chunk.usage_metadata = None
+        
+        response_chunk = MagicMock()
+        response_part = MagicMock()
+        response_part.thought = False
+        response_part.text = "Analysis complete."
+        response_part.thought_signature = b"sig123"
+        response_chunk.candidates = [MagicMock(content=MagicMock(parts=[response_part]))]
+        response_chunk.function_calls = None
+        response_chunk.usage_metadata = MagicMock(
+            prompt_token_count=100,
+            candidates_token_count=50,
+            total_token_count=150
+        )
+        
+        async def multi_chunk_stream():
+            yield thinking_chunk
+            yield response_chunk
+        
+        mock_native_client = MagicMock()
+        mock_native_client.aio.models.generate_content_stream = AsyncMock(
+            return_value=multi_chunk_stream()
+        )
+        mock_genai.Client.return_value = mock_native_client
+        
+        mock_ctx = MagicMock()
+        mock_ctx.interaction = MagicMock()
+        mock_ctx.complete_success = AsyncMock()
+        mock_context_cm = MagicMock()
+        mock_context_cm.__aenter__ = AsyncMock(return_value=mock_ctx)
+        mock_context_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_context.return_value = mock_context_cm
+        
+        # Mock the _publish_stream_chunk method to track calls
+        with patch.object(client, '_publish_stream_chunk', new_callable=AsyncMock) as mock_publish:
+            result = await client.generate(
+                conversation=sample_conversation,
+                session_id="test-session",
+                mcp_tools=[]
+            )
+        
+        # Verify result
+        assert result.thinking_content is not None
+        assert "Let me analyze" in result.thinking_content
+        assert "Analysis complete" in result.content
+        
+        # Verify streaming was attempted
+        # (calls may vary based on chunk sizes)
+        assert mock_publish.call_count >= 1
+    
+    @pytest.mark.asyncio
+    @patch("tarsy.integrations.llm.gemini_client.genai")
+    @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
+    async def test_streaming_disabled_via_settings(
+        self,
+        mock_context: MagicMock,
+        mock_genai: MagicMock,
+        sample_conversation: LLMConversation
+    ) -> None:
+        """Test that streaming can be disabled via settings."""
+        with patch("tarsy.integrations.llm.gemini_client.get_settings") as mock_settings:
+            settings = MagicMock()
+            settings.enable_llm_streaming = False
+            mock_settings.return_value = settings
+            
+            config = LLMProviderConfig(
+                type=LLMProviderType.GOOGLE,
+                model="gemini-2.5-flash",
+                api_key="test-api-key",
+                temperature=0.7
+            )
+            client = GeminiNativeThinkingClient(config, "test-provider")
+        
+        response = MagicMock()
+        part = MagicMock()
+        part.thought = False
+        part.text = "Response text."
+        part.thought_signature = None
+        response.candidates = [MagicMock(content=MagicMock(parts=[part]))]
+        response.function_calls = None
+        response.usage_metadata = None
+        
+        mock_native_client = MagicMock()
+        mock_native_client.aio.models.generate_content_stream = AsyncMock(
+            return_value=mock_stream_response(response)
+        )
+        mock_genai.Client.return_value = mock_native_client
+        
+        mock_ctx = MagicMock()
+        mock_ctx.interaction = MagicMock()
+        mock_ctx.complete_success = AsyncMock()
+        mock_context_cm = MagicMock()
+        mock_context_cm.__aenter__ = AsyncMock(return_value=mock_ctx)
+        mock_context_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_context.return_value = mock_context_cm
+        
+        # Even though we call generate, streaming events should not be published
+        # when streaming is disabled (the _publish_stream_chunk returns early)
+        result = await client.generate(
+            conversation=sample_conversation,
+            session_id="test-session",
+            mcp_tools=[]
+        )
+        
+        assert result.content == "Response text."
 
