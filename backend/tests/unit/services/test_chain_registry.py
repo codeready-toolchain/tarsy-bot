@@ -73,22 +73,33 @@ class TestChainRegistryValidation:
             'yaml-chain': ChainFactory.create_custom_chain(chain_id='yaml-chain', alert_types=['yaml-alert'])
         }, False, None),
         
-        ("duplicate_chain_ids", {
-            'duplicate-chain': ChainFactory.create_custom_chain(chain_id='duplicate-chain', alert_types=['builtin-alert'])
+        # YAML chains CAN override built-in chains with the same chain_id (no error)
+        ("duplicate_chain_ids_allowed", {
+            'duplicate-chain': ChainFactory.create_custom_chain(chain_id='duplicate-chain', alert_types=['builtin-alert', 'kubernetes'])
         }, {
             'duplicate-chain': ChainFactory.create_custom_chain(chain_id='duplicate-chain', alert_types=['yaml-alert'])
-        }, True, "Chain ID conflicts detected.*duplicate-chain"),
+        }, False, None),
         
+        # Built-in vs built-in conflicts still raise errors
         ("alert_type_conflicts_builtin", {
             'chain1': ChainFactory.create_custom_chain(chain_id='chain1', alert_types=['kubernetes', 'shared-alert']),
             'chain2': ChainFactory.create_custom_chain(chain_id='chain2', alert_types=['shared-alert'])
         }, {}, True, "Alert type 'shared-alert' conflicts.*chain1.*chain2"),
         
-        ("alert_type_conflicts_builtin_yaml", {
+        # YAML vs YAML conflicts still raise errors
+        ("alert_type_conflicts_yaml_yaml", {
+            'builtin-chain': ChainFactory.create_custom_chain(chain_id='builtin-chain', alert_types=['kubernetes'])
+        }, {
+            'yaml-chain1': ChainFactory.create_custom_chain(chain_id='yaml-chain1', alert_types=['yaml-alert']),
+            'yaml-chain2': ChainFactory.create_custom_chain(chain_id='yaml-chain2', alert_types=['yaml-alert'])
+        }, True, "Alert type 'yaml-alert' conflicts.*YAML.*YAML"),
+        
+        # YAML chains CAN override built-in alert types (no error)
+        ("alert_type_override_builtin_yaml_allowed", {
             'builtin-chain': ChainFactory.create_custom_chain(chain_id='builtin-chain', alert_types=['kubernetes'])
         }, {
             'yaml-chain': ChainFactory.create_custom_chain(chain_id='yaml-chain', alert_types=['kubernetes'])
-        }, True, "Alert type 'kubernetes' conflicts.*built-in.*YAML"),
+        }, False, None),
     ])
     def test_validation_scenarios(self, scenario, builtin_chains, yaml_chains, should_raise, expected_error):
         """Test validation for various conflict scenarios."""
@@ -420,3 +431,211 @@ class TestChainRegistryDefaultAlertType:
             registry = ChainRegistry(mock_config_loader)
             
             assert registry.get_default_alert_type() == 'yaml-alert'
+
+
+@pytest.mark.unit
+class TestChainRegistryOverrides:
+    """Test ChainRegistry override behavior - YAML chains can override built-in chains."""
+    
+    def test_yaml_chain_overrides_builtin_alert_type(self):
+        """Test that YAML chain properly overrides built-in chain for same alert type."""
+        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
+            mock_builtin.return_value = {
+                'builtin-kubernetes': ChainFactory.create_kubernetes_chain(
+                    chain_id='builtin-kubernetes',
+                    alert_types=['kubernetes']
+                )
+            }
+            
+            mock_config_loader = Mock(spec=ConfigurationLoader)
+            mock_config_loader.get_chain_configs.return_value = {
+                'yaml-kubernetes': ChainFactory.create_custom_chain(
+                    chain_id='yaml-kubernetes',
+                    alert_types=['kubernetes'],
+                    stages=[{'name': 'custom-stage', 'agent': 'CustomAgent'}]
+                )
+            }
+            mock_config = Mock()
+            mock_config.default_alert_type = None
+            mock_config_loader.load_and_validate.return_value = mock_config
+            
+            registry = ChainRegistry(mock_config_loader)
+            
+            # YAML chain should override the built-in for 'kubernetes' alert type
+            chain = registry.get_chain_for_alert_type('kubernetes')
+            assert chain.chain_id == 'yaml-kubernetes'
+            assert chain.stages[0].agent == 'CustomAgent'
+    
+    def test_yaml_chain_overrides_builtin_chain_id(self):
+        """Test that YAML chain with same chain_id as built-in takes precedence."""
+        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
+            mock_builtin.return_value = {
+                'shared-chain': ChainFactory.create_kubernetes_chain(
+                    chain_id='shared-chain',
+                    alert_types=['builtin-alert', 'kubernetes']
+                )
+            }
+            
+            mock_config_loader = Mock(spec=ConfigurationLoader)
+            mock_config_loader.get_chain_configs.return_value = {
+                'shared-chain': ChainFactory.create_custom_chain(
+                    chain_id='shared-chain',
+                    alert_types=['yaml-alert', 'builtin-alert', 'kubernetes'],
+                    stages=[{'name': 'yaml-stage', 'agent': 'YAMLAgent'}]
+                )
+            }
+            mock_config = Mock()
+            mock_config.default_alert_type = None
+            mock_config_loader.load_and_validate.return_value = mock_config
+            
+            registry = ChainRegistry(mock_config_loader)
+            
+            # Get chain by ID - YAML should take precedence
+            chain = registry.get_chain_by_id('shared-chain')
+            assert chain.stages[0].agent == 'YAMLAgent'
+            
+            # Alert type 'builtin-alert' should now use YAML chain (override)
+            chain_for_alert = registry.get_chain_for_alert_type('builtin-alert')
+            assert chain_for_alert.stages[0].agent == 'YAMLAgent'
+    
+    def test_overridden_chain_ids_tracked(self):
+        """Test that overridden chain_ids are tracked in the registry."""
+        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
+            mock_builtin.return_value = {
+                'chain-to-override': ChainFactory.create_kubernetes_chain(
+                    chain_id='chain-to-override',
+                    alert_types=['kubernetes']
+                )
+            }
+            
+            mock_config_loader = Mock(spec=ConfigurationLoader)
+            mock_config_loader.get_chain_configs.return_value = {
+                'chain-to-override': ChainFactory.create_custom_chain(
+                    chain_id='chain-to-override',
+                    alert_types=['custom-alert', 'kubernetes']
+                )
+            }
+            mock_config = Mock()
+            mock_config.default_alert_type = None
+            mock_config_loader.load_and_validate.return_value = mock_config
+            
+            registry = ChainRegistry(mock_config_loader)
+            
+            # Check that the override is tracked
+            assert 'chain-to-override' in registry.overridden_chain_ids
+    
+    def test_multiple_alert_type_overrides(self):
+        """Test that YAML chain can override multiple alert types from built-in."""
+        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
+            mock_builtin.return_value = {
+                'builtin-chain': ChainFactory.create_kubernetes_chain(
+                    chain_id='builtin-chain',
+                    alert_types=['alert1', 'alert2', 'kubernetes']
+                )
+            }
+            
+            mock_config_loader = Mock(spec=ConfigurationLoader)
+            mock_config_loader.get_chain_configs.return_value = {
+                'yaml-chain': ChainFactory.create_custom_chain(
+                    chain_id='yaml-chain',
+                    alert_types=['alert1', 'alert2'],  # Override both
+                    stages=[{'name': 'yaml-stage', 'agent': 'YAMLAgent'}]
+                )
+            }
+            mock_config = Mock()
+            mock_config.default_alert_type = None
+            mock_config_loader.load_and_validate.return_value = mock_config
+            
+            registry = ChainRegistry(mock_config_loader)
+            
+            # Both alert types should use YAML chain
+            assert registry.get_chain_for_alert_type('alert1').chain_id == 'yaml-chain'
+            assert registry.get_chain_for_alert_type('alert2').chain_id == 'yaml-chain'
+            # 'kubernetes' should still use built-in
+            assert registry.get_chain_for_alert_type('kubernetes').chain_id == 'builtin-chain'
+    
+    def test_override_does_not_affect_non_conflicting_chains(self):
+        """Test that override only affects conflicting alert types, not others."""
+        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
+            mock_builtin.return_value = {
+                'builtin-chain': ChainFactory.create_kubernetes_chain(
+                    chain_id='builtin-chain',
+                    alert_types=['kubernetes', 'builtin-only']
+                )
+            }
+            
+            mock_config_loader = Mock(spec=ConfigurationLoader)
+            mock_config_loader.get_chain_configs.return_value = {
+                'yaml-chain': ChainFactory.create_custom_chain(
+                    chain_id='yaml-chain',
+                    alert_types=['kubernetes', 'yaml-only']  # Only 'kubernetes' conflicts
+                )
+            }
+            mock_config = Mock()
+            mock_config.default_alert_type = None
+            mock_config_loader.load_and_validate.return_value = mock_config
+            
+            registry = ChainRegistry(mock_config_loader)
+            
+            # 'kubernetes' overridden by YAML
+            assert registry.get_chain_for_alert_type('kubernetes').chain_id == 'yaml-chain'
+            # 'builtin-only' still uses built-in
+            assert registry.get_chain_for_alert_type('builtin-only').chain_id == 'builtin-chain'
+            # 'yaml-only' uses YAML
+            assert registry.get_chain_for_alert_type('yaml-only').chain_id == 'yaml-chain'
+    
+    def test_list_available_chains_includes_both_sources(self):
+        """Test that list_available_chains includes chains from both sources."""
+        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
+            mock_builtin.return_value = {
+                'builtin-chain': ChainFactory.create_kubernetes_chain(
+                    chain_id='builtin-chain',
+                    alert_types=['kubernetes']
+                )
+            }
+            
+            mock_config_loader = Mock(spec=ConfigurationLoader)
+            mock_config_loader.get_chain_configs.return_value = {
+                'yaml-chain': ChainFactory.create_custom_chain(
+                    chain_id='yaml-chain',
+                    alert_types=['custom']
+                )
+            }
+            mock_config = Mock()
+            mock_config.default_alert_type = None
+            mock_config_loader.load_and_validate.return_value = mock_config
+            
+            registry = ChainRegistry(mock_config_loader)
+            
+            chains = registry.list_available_chains()
+            assert 'builtin-chain' in chains
+            assert 'yaml-chain' in chains
+    
+    def test_list_available_alert_types_includes_overridden(self):
+        """Test that list_available_alert_types includes both overridden and new alert types."""
+        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
+            mock_builtin.return_value = {
+                'builtin-chain': ChainFactory.create_kubernetes_chain(
+                    chain_id='builtin-chain',
+                    alert_types=['kubernetes', 'builtin-only']
+                )
+            }
+            
+            mock_config_loader = Mock(spec=ConfigurationLoader)
+            mock_config_loader.get_chain_configs.return_value = {
+                'yaml-chain': ChainFactory.create_custom_chain(
+                    chain_id='yaml-chain',
+                    alert_types=['kubernetes', 'yaml-only']  # Override 'kubernetes'
+                )
+            }
+            mock_config = Mock()
+            mock_config.default_alert_type = None
+            mock_config_loader.load_and_validate.return_value = mock_config
+            
+            registry = ChainRegistry(mock_config_loader)
+            
+            alert_types = registry.list_available_alert_types()
+            # All alert types should be available
+            assert 'kubernetes' in alert_types
+            assert 'builtin-only' in alert_types
+            assert 'yaml-only' in alert_types
