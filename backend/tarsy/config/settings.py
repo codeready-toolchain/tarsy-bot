@@ -271,12 +271,12 @@ class Settings(BaseSettings):
                         f"This usually means the password contains unencoded special characters like #, $, !, etc.\n\n"
                         f"SOLUTION 1 (Recommended): Use separate configuration components:\n"
                         f"  DATABASE_USER=<your-username>\n"
-                        f"  DATABASE_PASSWORD=<your-password>  # No encoding needed!\n"
+                        f"  DATABASE_PASSWORD=<your-password>  # Automatic URL encoding\n"
                         f"  DATABASE_HOST=<your-host>\n"
                         f"  DATABASE_PORT=5432\n"
                         f"  DATABASE_NAME=<your-database>\n\n"
-                        f"SOLUTION 2: URL-encode your password manually:\n"
-                        f"  python backend/encode_db_password.py \"<your-password>\"\n\n"
+                        f"SOLUTION 2: Manually URL-encode the password in DATABASE_URL\n"
+                        f"  Example: @ becomes %40, ! becomes %21, # becomes %23\n"
                         f"{'='*80}\n"
                     )
             
@@ -307,12 +307,12 @@ class Settings(BaseSettings):
                         f"Your database password contains special characters ({chars_list}) that must be URL-encoded.\n\n"
                         f"SOLUTION 1 (Recommended): Use separate configuration components:\n"
                         f"  DATABASE_USER={parsed.username}\n"
-                        f"  DATABASE_PASSWORD=<your-password>  # No encoding needed!\n"
+                        f"  DATABASE_PASSWORD=<your-password>  # Automatic URL encoding\n"
                         f"  DATABASE_HOST={parsed.hostname}\n"
                         f"  DATABASE_PORT={parsed.port or 5432}\n"
                         f"  DATABASE_NAME={parsed.path.lstrip('/') if parsed.path else ''}\n\n"
-                        f"SOLUTION 2: URL-encode your password manually:\n"
-                        f"  python backend/encode_db_password.py \"<your-password>\"\n\n"
+                        f"SOLUTION 2: Manually URL-encode the password in DATABASE_URL\n"
+                        f"  Example: @ becomes %40, ! becomes %21, # becomes %23\n"
                         f"{'='*80}\n"
                     )
         except ValueError:

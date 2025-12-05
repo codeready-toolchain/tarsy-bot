@@ -550,8 +550,10 @@ class TestSettingsDatabaseURL:
             assert "DATABASE_URL CONFIGURATION ERROR" in error_msg
             assert "special characters" in error_msg.lower()
             assert "'@'" in error_msg
-            assert "DATABASE_USER" in error_msg  # Suggests alternative approach
-            assert "encode_db_password.py" in error_msg  # Suggests encoder tool
+            assert "SOLUTION 1" in error_msg
+            assert "DATABASE_USER" in error_msg
+            assert "SOLUTION 2" in error_msg
+            assert "URL-encode" in error_msg
     
     def test_database_url_validation_catches_multiple_special_chars(self):
         """Test that validator catches multiple special characters."""
@@ -568,7 +570,8 @@ class TestSettingsDatabaseURL:
             # Should suggest solutions
             assert "SOLUTION 1" in error_msg
             assert "DATABASE_USER" in error_msg
-            assert "encode_db_password.py" in error_msg
+            assert "SOLUTION 2" in error_msg
+            assert "URL-encode" in error_msg
     
     def test_database_url_validation_allows_encoded_special_chars(self):
         """Test that properly encoded special characters pass validation."""
@@ -615,20 +618,15 @@ class TestSettingsDatabaseURL:
             
             error_msg = str(exc_info.value)
             
-            # Should suggest using separate components
+            # Should provide clear error message and solutions
+            assert "DATABASE_URL CONFIGURATION ERROR" in error_msg
             assert "SOLUTION 1" in error_msg
             assert "DATABASE_USER=myuser" in error_msg
             assert "DATABASE_HOST=db.example.com" in error_msg
             assert "DATABASE_PORT=5432" in error_msg
             assert "DATABASE_NAME=mydb" in error_msg
-            
-            # Should suggest using encoder tool
             assert "SOLUTION 2" in error_msg
-            assert "encode_db_password.py" in error_msg
-            
-            # Should suggest encoding the whole URL
-            assert "SOLUTION 3" in error_msg
-            assert "--url" in error_msg
+            assert "URL-encode" in error_msg
     
     def test_database_url_strips_whitespace(self):
         """Test that DATABASE_URL automatically strips whitespace and newlines."""
