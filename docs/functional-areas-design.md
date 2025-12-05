@@ -217,13 +217,16 @@ agents:
 chains:
   security-incident-chain:
     alert_types: ["SecurityBreach", "SuspiciousActivity"]
+    llm_provider: "google-default"  # Optional: chain-level default provider
     stages:
       - name: "evidence-collection"
         agent: "security-analyst"
         iteration_strategy: "react-stage"
+        llm_provider: "gemini-flash"  # Optional: stage-level override
       - name: "final-analysis" 
         agent: "security-analyst"
         iteration_strategy: "react-final-analysis"
+        # Uses chain-level provider (google-default) when not specified
 ```
 
 **📍 LLM Provider Configuration**: `config/llm_providers.yaml` (optional, see `config/llm_providers.yaml.example`)
@@ -373,17 +376,36 @@ sequenceDiagram
 chains:
   incident-investigation-chain:
     alert_types: ["CriticalIncident"]
+    llm_provider: "google-default"  # Optional: chain-level default
     stages:
       - name: "data-collection"
         agent: "data-collector"
         iteration_strategy: "react-stage"
+        llm_provider: "gemini-flash"  # Optional: fast model for data collection
       - name: "root-cause-analysis" 
         agent: "incident-analyst"
         iteration_strategy: "react-stage"
+        # Uses chain-level provider (google-default)
       - name: "recommendations"
         agent: "incident-analyst"  
         iteration_strategy: "react-final-analysis"
+        llm_provider: "openai-default"  # Optional: different provider for synthesis
 ```
+
+#### Per-Stage LLM Provider Configuration
+
+Chains support flexible LLM provider configuration at both chain and stage levels, enabling optimized model selection for different processing phases.
+
+**Provider Resolution Hierarchy** (highest priority first):
+1. **Stage-level `llm_provider`** - Use this provider for the specific stage
+2. **Chain-level `llm_provider`** - Default for all stages in the chain
+3. **Global `LLM_PROVIDER`** - System-wide default from environment
+
+**Non-Stage Components** (executive summary, follow-up chat):
+- Use chain-level provider if defined, otherwise global default
+- This ensures consistent model behavior within a chain's context
+
+**Native Thinking Constraint**: When using `native-thinking` iteration strategy, the stage's LLM provider must be a Google/Gemini type. Non-Google providers will raise an error at execution time.
 
 #### Chain Context & Data Flow
 
@@ -1104,11 +1126,12 @@ LLM_PROVIDERS = {
 
 #### Configuration & Customization
 
-**Three-tier configuration system**:
+**Four-tier configuration system**:
 
 1. **Built-in defaults** (zero config) - Just set GOOGLE_API_KEY
 2. **Environment overrides** - Set LLM_PROVIDER to use different built-in provider
 3. **YAML customization** - Override models, add proxies, custom base URLs, content truncation limits
+4. **Per-chain/stage overrides** - Set `llm_provider` at chain or stage level in `agents.yaml` (see [Per-Stage LLM Provider Configuration](#per-stage-llm-provider-configuration))
 
 **Advanced Configuration Examples**:
 ```yaml

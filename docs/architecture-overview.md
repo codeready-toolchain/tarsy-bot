@@ -185,6 +185,7 @@ The AI combines all four to make intelligent decisions about investigation appro
 - **LLM Provider Configuration**: Built-in support for multiple AI providers with optional custom configurations
   - *Built-in providers: OpenAI, Google Gemini, xAI Grok, Anthropic Claude, Google Vertex AI*
   - *Custom providers: Proxy configurations, model overrides, content truncation controls via `config/llm_providers.yaml`*
+  - *Per-chain/stage providers: Configure different LLM providers at chain level (default for all stages) or stage level (override for specific stages) via `llm_provider` field in `config/agents.yaml`*
   - *Native Tools for Gemini: Optional native tools (google_search, code_execution, url_context) via `native_tools` configuration - google_search and url_context enabled by default, code_execution disabled by default*
   - *Native Thinking for Gemini: Gemini 2.0+ models support native thinking mode with exposed internal reasoning, native function calling, and thought signatures for multi-turn reasoning continuity. Note: Native tools (google_search, code_execution, url_context) are automatically disabled when using native-thinking strategy*
 - **Configurable Chain Definitions**: Deploy new multi-stage workflows via YAML configuration without code changes
@@ -232,22 +233,26 @@ The AI combines all four to make intelligent decisions about investigation appro
         - "HighCPUUsage"
         - "MemoryPressure" 
         - "DiskSpaceWarning"
+      llm_provider: "google-default"                      # Optional: chain-level default provider
       stages:
         - name: "k8s-data-collection"
           agent: "performance-k8s-data-collector"         # Only k8s MCP Server available for this agent
           iteration_strategy: "react-stage"               # Override default if needed
+          llm_provider: "gemini-flash"                    # Optional: fast model for data collection
         - name: "prometheus-metrics-collection"
           agent: "performance-prometheus-data-collector"  # Only prometheus MCP Server available for this agent
           iteration_strategy: "react-stage"
+          # Uses chain-level provider (google-default) when not specified
         - name: "trend-analysis"
           agent: "performance-analyzer"
           iteration_strategy: "react-final-analysis"
+          llm_provider: "openai-default"                  # Optional: different provider for final analysis
       description: "Multi-stage performance investigation workflow"
-      # Key architectural benefit: Each stage can have specialized MCP servers
-      # - Stage 1: Only kubernetes-server (lightweight data collection)  
-      # - Stage 2: prometheus-server + kubernetes-server (metrics correlation)
-      # - Stage 3: No MCP servers needed (pure analysis of collected data)
-      # This avoids packing all MCP servers into a single agent, enabling focused expertise per stage
+      # Key architectural benefits:
+      # - Each stage can have specialized MCP servers (focused expertise)
+      # - Each stage can use different LLM providers (cost/performance optimization)
+      # - Chain-level provider serves as default for stages without explicit override
+      # - Follow-up chat and executive summary use chain-level provider
   ```
 - **Integration Points**: Connect with existing monitoring and ticketing systems
   - *Examples: AlertManager, PagerDuty, Jira, ServiceNow integrations*
