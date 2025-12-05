@@ -326,19 +326,44 @@ function ConversationTimeline({
   const displayedStreamingItems = useMemo(() => {
     if (streamingItems.size === 0) return [];
     
-    // Get recent DB items (last 3) to filter out duplicates
-    const recentDbItems = chatFlow.slice(-3);
+    // Get recent DB items (last 5) to filter out duplicates - increased for multi-iteration stages
+    const recentDbItems = chatFlow.slice(-5);
     
     return Array.from(streamingItems.entries())
       .filter(([, streamItem]) => {
+        // CRITICAL: Don't show items marked as waitingForDb
+        // These have completed streaming and should be replaced by DB content
+        // Showing them causes duplicates when DB content also appears
+        if (streamItem.waitingForDb) {
+          return false;
+        }
+        
         // Check if matching DB item exists
         const hasMatchingDbItem = recentDbItems.some(dbItem => {
           if (dbItem.type !== streamItem.type) return false;
           
+          const dbContent = dbItem.content?.trim() || '';
+          const streamContent = streamItem.content?.trim() || '';
+          
           // Match by content for thoughts/final_answer
-          if (streamItem.type === 'thought' || streamItem.type === 'final_answer') {
-            return dbItem.content && streamItem.content && 
-                   dbItem.content.trim() === streamItem.content.trim();
+          if (
+            streamItem.type === STREAMING_CONTENT_TYPES.THOUGHT || 
+            streamItem.type === STREAMING_CONTENT_TYPES.FINAL_ANSWER
+          ) {
+            return dbContent === streamContent;
+          }
+          
+          // For native_thinking: use prefix matching because streaming content is incremental
+          // The DB content is the final/complete version, streaming content may be partial
+          // Match if: streaming content is a prefix of DB content (or exact match)
+          if (streamItem.type === STREAMING_CONTENT_TYPES.NATIVE_THINKING) {
+            if (!dbContent || !streamContent) return false;
+            // Consider it a match if DB content starts with streaming content (streaming is partial)
+            // OR if they're exactly equal (streaming completed)
+            // Minimum 50 chars overlap to avoid false positives from common prefixes
+            const minOverlap = Math.min(50, streamContent.length);
+            return dbContent === streamContent || 
+                   (streamContent.length >= minOverlap && dbContent.startsWith(streamContent));
           }
           
           if (streamItem.type === 'user_message') {
@@ -356,9 +381,12 @@ function ConversationTimeline({
         return !hasMatchingDbItem;
       })
       .sort(([_keyA, itemA], [_keyB, itemB]) => {
-        const priorityA = itemA.type === 'thought' ? 0 : 1;
-        const priorityB = itemB.type === 'thought' ? 0 : 1;
-        return priorityA - priorityB;
+        // Sort by type priority: thoughts/native_thinking first, then others
+        const getPriority = (type: string) => {
+          if (type === STREAMING_CONTENT_TYPES.THOUGHT || type === STREAMING_CONTENT_TYPES.NATIVE_THINKING) return 0;
+          return 1;
+        };
+        return getPriority(itemA.type) - getPriority(itemB.type);
       });
   }, [streamingItems, chatFlow]);
 
@@ -603,10 +631,17 @@ function ConversationTimeline({
             // User messages match by type and message_id
             shouldMatch = dbItem.type === 'user_message' && 
                          dbItem.messageId === streamingItem.messageId;
-          } else {
-            // Thoughts and final_answer match by type and content
+          } else if (
+            streamingItem.type === STREAMING_CONTENT_TYPES.THOUGHT || 
+            streamingItem.type === STREAMING_CONTENT_TYPES.FINAL_ANSWER ||
+            streamingItem.type === STREAMING_CONTENT_TYPES.NATIVE_THINKING
+          ) {
+            // Thoughts, final_answer, and native_thinking match by type and content
             shouldMatch = dbItem.type === streamingItem.type && 
                          dbItem.content?.trim() === streamingItem.content?.trim();
+          } else {
+            // Default: match by type only (shouldn't reach here for known types)
+            shouldMatch = dbItem.type === streamingItem.type;
           }
           
           if (shouldMatch) {

@@ -372,20 +372,24 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
         })
       )}
       
-      {/* Show streaming items in real-time */}
-      {streamingItems.size > 0 && (
-        <Paper sx={{ p: 2, mb: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-            <Psychology sx={{ fontSize: 20, mr: 0.5, color: 'primary.main' }} />
-            <Typography variant="caption" color="text.secondary">
-              TARSy is thinking...
-            </Typography>
-          </Box>
-          {Array.from(streamingItems.values()).map((item, index) => (
-            <StreamingContentRenderer key={`stream-${index}`} item={item} />
-          ))}
-        </Paper>
-      )}
+      {/* Show streaming items in real-time (filter out items waiting for DB to avoid duplicates) */}
+      {(() => {
+        const activeStreamingItems = Array.from(streamingItems.values())
+          .filter(item => !item.waitingForDb);
+        return activeStreamingItems.length > 0 && (
+          <Paper sx={{ p: 2, mb: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+              <Psychology sx={{ fontSize: 20, mr: 0.5, color: 'primary.main' }} />
+              <Typography variant="caption" color="text.secondary">
+                TARSy is thinking...
+              </Typography>
+            </Box>
+            {activeStreamingItems.map((item, index) => (
+              <StreamingContentRenderer key={`stream-${index}`} item={item} />
+            ))}
+          </Paper>
+        );
+      })()}
       
       {isTyping && streamingItems.size === 0 && <TypingIndicator />}
     </Box>
