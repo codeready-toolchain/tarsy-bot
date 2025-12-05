@@ -377,19 +377,21 @@ class ChatService:
                 else None
             )
             
-            # 9. Determine iteration strategy from parent session's chain config
+            # 9. Determine iteration strategy and LLM provider from parent session's chain config
             session = self.history_service.get_session(chat.session_id)
             iteration_strategy = self._determine_iteration_strategy_from_session(session) if session else None
+            llm_provider = self._determine_llm_provider_from_session(session) if session else None
             
             # 10. Create session-scoped MCP client for this chat execution
             logger.info(f"Creating MCP client for chat message {execution_id}")
             chat_mcp_client = await self.mcp_client_factory.create_client()
             
-            # 11. Create ChatAgent with iteration strategy from parent session
+            # 11. Create ChatAgent with iteration strategy and LLM provider from parent session
             chat_agent = self.agent_factory.get_agent(
                 agent_identifier="ChatAgent",
                 mcp_client=chat_mcp_client,
-                iteration_strategy=iteration_strategy
+                iteration_strategy=iteration_strategy,
+                llm_provider=llm_provider
             )
             
             # Set stage execution ID for interaction tagging
@@ -702,6 +704,35 @@ class ChatService:
             pass  # Not a builtin agent
         
         logger.debug(f"No strategy found for agent '{agent_name}', using ChatAgent default")
+        return None
+    
+    def _determine_llm_provider_from_session(
+        self,
+        session
+    ) -> Optional[str]:
+        """
+        Determine the LLM provider to use for chat based on the session's chain config.
+        
+        Uses the chain-level provider from the chain configuration. If no chain-level
+        provider is defined, returns None to use the global default.
+        
+        Args:
+            session: AlertSession object with chain_config
+            
+        Returns:
+            LLM provider name string or None for global default
+        """
+        chain_config = session.chain_config
+        if not chain_config:
+            logger.debug(f"No chain config for session {session.session_id}, using default LLM provider")
+            return None
+        
+        # Use chain-level provider for chat (consistent with executive summary)
+        if chain_config.llm_provider:
+            logger.info(f"Chat using chain-level LLM provider: {chain_config.llm_provider}")
+            return chain_config.llm_provider
+        
+        logger.debug(f"No chain-level LLM provider for session {session.session_id}, using global default")
         return None
     
     async def _build_chat_exchanges(

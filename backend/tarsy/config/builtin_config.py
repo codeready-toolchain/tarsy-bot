@@ -61,6 +61,18 @@ BUILTIN_AGENTS: Dict[str, Dict[str, Any]] = {
 
 # Built-in chain definitions as single source of truth
 # Convert existing single-agent mappings to 1-stage chains and add multi-stage examples
+#
+# Supported fields:
+#   - alert_types: List of alert types this chain handles
+#   - stages: List of stage definitions, each with:
+#       - name: Human-readable stage name
+#       - agent: Agent identifier (class name or 'ConfigurableAgent:agent-name')
+#       - iteration_strategy: Optional strategy override (uses agent's default if not specified)
+#       - llm_provider: Optional LLM provider override for this stage
+#   - description: Optional description of the chain
+#   - chat_enabled: Enable follow-up chat (default: True)
+#   - llm_provider: Optional LLM provider for all stages (uses global default if not specified)
+#
 BUILTIN_CHAIN_DEFINITIONS: Dict[str, Dict[str, Any]] = {
     # Convert existing single-agent mappings to 1-stage chains
     "kubernetes-agent-chain": {
@@ -69,14 +81,16 @@ BUILTIN_CHAIN_DEFINITIONS: Dict[str, Dict[str, Any]] = {
             {"name": "analysis", "agent": "KubernetesAgent"}
         ],
         "description": "Single-stage Kubernetes analysis"
+        # llm_provider not specified - uses global default
     },
     
-    # Example multi-agent chain (future capability)
+    # Example multi-agent chain with per-stage providers (future capability)
     #"kubernetes-troubleshooting-chain": {
     #    "alert_types": ["KubernetesIssue", "PodFailure"],
+    #    "llm_provider": "google-default",  # Chain-level default
     #    "stages": [
-    #        {"name": "data-collection", "agent": "KubernetesAgent"},
-    #        {"name": "root-cause-analysis", "agent": "KubernetesAgent"}
+    #        {"name": "data-collection", "agent": "KubernetesAgent", "llm_provider": "gemini-flash"},
+    #        {"name": "root-cause-analysis", "agent": "KubernetesAgent"}  # Uses chain's "google-default"
     #    ],
     #    "description": "Multi-stage Kubernetes troubleshooting workflow"
     #}

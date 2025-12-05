@@ -376,9 +376,11 @@ class AlertService:
                 )
                 
                 # Generate executive summary for dashboard display and external notifications
+                # Use chain-level provider for executive summary (or global if not set)
                 final_result_summary = await self.final_analysis_summarizer.generate_executive_summary(
                     content=analysis,
-                    session_id=chain_context.session_id
+                    session_id=chain_context.session_id,
+                    provider=chain_definition.llm_provider
                 )
 
                 # Mark history session as completed successfully
@@ -575,9 +577,11 @@ class AlertService:
                 )
                 
                 # Generate executive summary for resumed sessions too
+                # Use chain-level provider for executive summary (or global if not set)
                 final_result_summary = await self.final_analysis_summarizer.generate_executive_summary(
                     content=analysis,
-                    session_id=session_id
+                    session_id=session_id,
+                    provider=chain_definition.llm_provider
                 )
                 
                 self._update_session_status(
@@ -701,12 +705,19 @@ class AlertService:
                     # Mark stage as started
                     await self._update_stage_execution_started(stage_execution_id)
                     
-                    # Get agent instance with stage-specific strategy (always creates unique instance)
+                    # Resolve effective LLM provider for this stage
+                    # Precedence: stage.llm_provider > chain.llm_provider > global (None)
+                    effective_provider = stage.llm_provider or chain_definition.llm_provider
+                    if effective_provider:
+                        logger.debug(f"Stage '{stage.name}' using LLM provider: {effective_provider}")
+                    
+                    # Get agent instance with stage-specific strategy and provider
                     # Pass session-scoped MCP client for isolation
                     agent = self.agent_factory.get_agent(
                         agent_identifier=stage.agent,
                         mcp_client=session_mcp_client,
-                        iteration_strategy=stage.iteration_strategy
+                        iteration_strategy=stage.iteration_strategy,
+                        llm_provider=effective_provider
                     )
                     
                     # Set current stage execution ID for interaction tagging

@@ -165,11 +165,13 @@ class ConfigurationLoader:
                         {
                             "name": stage.name,
                             "agent": stage.agent,
-                            "iteration_strategy": stage.iteration_strategy
+                            "iteration_strategy": stage.iteration_strategy,
+                            "llm_provider": stage.llm_provider
                         }
                         for stage in chain_config.stages
                     ],
-                    "description": chain_config.description
+                    "description": chain_config.description,
+                    "llm_provider": chain_config.llm_provider
                 }
             
             return chain_configs

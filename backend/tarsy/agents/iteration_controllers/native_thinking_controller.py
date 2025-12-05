@@ -13,7 +13,7 @@ Key features:
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 
 from tarsy.config.settings import get_settings
 from tarsy.integrations.llm.gemini_client import GeminiNativeThinkingClient
@@ -42,6 +42,10 @@ class NativeThinkingController(IterationController):
     
     This controller is specifically designed for Gemini
     models that support native thinking capabilities.
+    
+    Per-stage LLM provider switching IS supported, but only between Google/Gemini
+    providers (e.g., google-default, gemini-flash). Non-Google providers will
+    raise an error since native thinking uses Google SDK features.
     """
     
     def __init__(self, llm_manager: 'LLMManager', prompt_builder: 'PromptBuilder'):
@@ -49,7 +53,7 @@ class NativeThinkingController(IterationController):
         Initialize the native thinking controller.
         
         Args:
-            llm_manager: LLM manager (the default client must be Google/Gemini provider)
+            llm_manager: LLM manager (default client must be Google/Gemini provider)
             prompt_builder: Prompt builder for creating system/user prompts
             
         Raises:
@@ -58,25 +62,85 @@ class NativeThinkingController(IterationController):
         self.llm_manager = llm_manager
         self.prompt_builder = prompt_builder
         self.logger = logger
+        self._llm_provider_name: Optional[str] = None
         
-        # Get the actual LLM client from the manager and validate it's Google/Gemini
+        # Cache of native thinking clients per provider (created lazily)
+        self._native_clients: Dict[str, GeminiNativeThinkingClient] = {}
+        
+        # Validate that default provider is Google/Gemini
         actual_client = llm_manager.get_client()
         if actual_client is None:
             raise ValueError("No default LLM client available in manager")
         
         if actual_client.config.type != LLMProviderType.GOOGLE:
             raise ValueError(
-                f"NativeThinkingController requires Google/Gemini provider, "
+                f"NativeThinkingController requires Google/Gemini provider as default, "
                 f"got {actual_client.config.type.value}"
             )
         
-        # Create dedicated native thinking client from the config
-        self._native_client = GeminiNativeThinkingClient(
+        # Create native thinking client for default provider
+        self._default_provider_name = actual_client.provider_name
+        self._native_clients[actual_client.provider_name] = GeminiNativeThinkingClient(
             actual_client.config,
             provider_name=actual_client.provider_name
         )
         
         logger.info("Initialized NativeThinkingController for Gemini native thinking")
+    
+    def set_llm_provider(self, provider_name: Optional[str]):
+        """
+        Set the LLM provider for this controller.
+        
+        Native thinking supports switching between Google/Gemini providers only.
+        Non-Google providers will raise an error when execute_analysis_loop is called.
+        
+        Args:
+            provider_name: Name of the LLM provider (must be Google/Gemini type)
+        """
+        self._llm_provider_name = provider_name
+        if provider_name:
+            logger.info(f"NativeThinkingController configured with provider: {provider_name}")
+    
+    def _get_native_client(self) -> GeminiNativeThinkingClient:
+        """
+        Get the native thinking client for the current provider.
+        
+        Creates new clients lazily when a new provider is requested.
+        
+        Returns:
+            GeminiNativeThinkingClient for the current provider
+            
+        Raises:
+            ValueError: If requested provider is not Google/Gemini type
+        """
+        # Determine which provider to use
+        provider_name = self._llm_provider_name or self._default_provider_name
+        
+        # Return cached client if available
+        if provider_name in self._native_clients:
+            return self._native_clients[provider_name]
+        
+        # Create new client for this provider
+        llm_client = self.llm_manager.get_client(provider_name)
+        if llm_client is None:
+            raise ValueError(f"LLM provider '{provider_name}' not found")
+        
+        if llm_client.config.type != LLMProviderType.GOOGLE:
+            raise ValueError(
+                f"NativeThinkingController requires Google/Gemini provider, "
+                f"but '{provider_name}' is {llm_client.config.type.value}. "
+                f"Use a different iteration strategy for non-Google providers."
+            )
+        
+        # Create and cache the native client
+        native_client = GeminiNativeThinkingClient(
+            llm_client.config,
+            provider_name=provider_name
+        )
+        self._native_clients[provider_name] = native_client
+        logger.info(f"Created native thinking client for provider: {provider_name}")
+        
+        return native_client
     
     def needs_mcp_tools(self) -> bool:
         """Native thinking controller uses tools via native function calling."""
@@ -117,6 +181,9 @@ class NativeThinkingController(IterationController):
         settings = get_settings()
         iteration_timeout = settings.llm_iteration_timeout
         
+        # Get the native client for the current provider (supports per-stage switching)
+        native_client = self._get_native_client()
+        
         # 1. Check if resuming from a paused session with conversation history
         conversation = self._restore_paused_conversation(context, self.logger)
         if conversation is None:
@@ -152,7 +219,7 @@ class NativeThinkingController(IterationController):
             try:
                 # Call LLM with native thinking
                 response = await asyncio.wait_for(
-                    self._native_client.generate(
+                    native_client.generate(
                         conversation=conversation,
                         session_id=context.session_id,
                         mcp_tools=mcp_tools,

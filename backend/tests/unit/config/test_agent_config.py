@@ -633,6 +633,57 @@ class TestGetChainConfigs:
             assert len(chain_config["stages"]) == 1
             assert chain_config["stages"][0]["name"] == "analysis"
             assert chain_config["description"] == "Test chain description"
+            # Verify llm_provider fields are included (None when not specified)
+            assert "llm_provider" in chain_config
+            assert chain_config["llm_provider"] is None
+            assert "llm_provider" in chain_config["stages"][0]
+            assert chain_config["stages"][0]["llm_provider"] is None
+        finally:
+            os.unlink(temp_path)
+    
+    def test_get_chain_configs_with_llm_provider(self):
+        """Test chain configuration retrieval with LLM provider settings."""
+        valid_config = {
+            "agents": {},
+            "mcp_servers": {},
+            "agent_chains": {
+                "provider-chain": {
+                    "alert_types": ["test-alert"],
+                    "stages": [
+                        {
+                            "name": "stage-with-provider",
+                            "agent": "TestAgent",
+                            "llm_provider": "gemini-flash"
+                        },
+                        {
+                            "name": "stage-without-provider",
+                            "agent": "TestAgent"
+                        }
+                    ],
+                    "description": "Chain with LLM provider configuration",
+                    "llm_provider": "google-default"
+                }
+            }
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            yaml.dump(valid_config, f)
+            temp_path = f.name
+        
+        try:
+            loader = ConfigurationLoader(temp_path)
+            chain_configs = loader.get_chain_configs()
+            
+            assert "provider-chain" in chain_configs
+            chain_config = chain_configs["provider-chain"]
+            
+            # Verify chain-level provider
+            assert chain_config["llm_provider"] == "google-default"
+            
+            # Verify stage-level providers
+            assert len(chain_config["stages"]) == 2
+            assert chain_config["stages"][0]["llm_provider"] == "gemini-flash"
+            assert chain_config["stages"][1]["llm_provider"] is None
         finally:
             os.unlink(temp_path)
     

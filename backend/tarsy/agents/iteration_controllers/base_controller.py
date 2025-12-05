@@ -26,6 +26,27 @@ class IterationController(ABC):
     without conditional logic scattered throughout the BaseAgent.
     """
     
+    # LLM provider override (set by agent for per-stage/per-chain providers)
+    _llm_provider_name: Optional[str] = None
+    
+    def set_llm_provider(self, provider_name: Optional[str]):
+        """
+        Set the LLM provider override for this controller.
+        
+        Args:
+            provider_name: Name of the LLM provider to use, or None for global default
+        """
+        self._llm_provider_name = provider_name
+    
+    def get_llm_provider(self) -> Optional[str]:
+        """
+        Get the LLM provider override for this controller.
+        
+        Returns:
+            Provider name if set, or None for global default
+        """
+        return self._llm_provider_name
+    
     def _get_native_tools_override(self, context: 'StageContext'):
         """
         Extract native tools override from processing context.
@@ -247,6 +268,7 @@ class ReactController(IterationController):
         """Initialize with LLM client and prompt builder."""
         self.llm_client = llm_client
         self.prompt_builder = prompt_builder
+        self._llm_provider_name: Optional[str] = None
         # Import here to avoid circular imports during class definition
         from tarsy.utils.logger import get_module_logger
         self.logger = get_module_logger(__name__)
@@ -299,6 +321,7 @@ class ReactController(IterationController):
                         conversation=conversation,
                         session_id=context.session_id,
                         stage_execution_id=context.agent.get_current_stage_execution_id(),
+                        provider=self._llm_provider_name,
                         native_tools_override=native_tools_override
                     )
                     

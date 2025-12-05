@@ -52,15 +52,15 @@ class TestChainStageConfigModel:
     @pytest.mark.parametrize("stage_data,expected_dict", [
         (
             {"name": "test-stage", "agent": "TestAgent", "iteration_strategy": "react"},
-            {'name': 'test-stage', 'agent': 'TestAgent', 'iteration_strategy': 'react'}
+            {'name': 'test-stage', 'agent': 'TestAgent', 'iteration_strategy': 'react', 'llm_provider': None}
         ),
         (
             {"name": "test-stage", "agent": "TestAgent"},
-            {'name': 'test-stage', 'agent': 'TestAgent', 'iteration_strategy': None}
+            {'name': 'test-stage', 'agent': 'TestAgent', 'iteration_strategy': None, 'llm_provider': None}
         ),
         (
             {"name": "custom-stage", "agent": "ConfigurableAgent:custom", "iteration_strategy": "react"},
-            {'name': 'custom-stage', 'agent': 'ConfigurableAgent:custom', 'iteration_strategy': 'react'}
+            {'name': 'custom-stage', 'agent': 'ConfigurableAgent:custom', 'iteration_strategy': 'react', 'llm_provider': None}
         )
     ])
     def test_to_dict_serialization(self, stage_data, expected_dict):
@@ -68,6 +68,48 @@ class TestChainStageConfigModel:
         stage = ChainStageConfigModel(**stage_data)
         result = stage.model_dump()
         assert result == expected_dict
+    
+    def test_creation_with_llm_provider(self):
+        """Test stage creation with LLM provider override."""
+        stage = ChainStageConfigModel(
+            name="analysis",
+            agent="KubernetesAgent",
+            llm_provider="google-default"
+        )
+        
+        assert stage.name == "analysis"
+        assert stage.agent == "KubernetesAgent"
+        assert stage.llm_provider == "google-default"
+    
+    def test_creation_with_llm_provider_and_strategy(self):
+        """Test stage creation with both LLM provider and iteration strategy."""
+        stage = ChainStageConfigModel(
+            name="complex-stage",
+            agent="KubernetesAgent",
+            iteration_strategy="react",
+            llm_provider="gemini-flash"
+        )
+        
+        assert stage.name == "complex-stage"
+        assert stage.agent == "KubernetesAgent"
+        assert stage.iteration_strategy == "react"
+        assert stage.llm_provider == "gemini-flash"
+    
+    def test_to_dict_serialization_with_llm_provider(self):
+        """Test stage serialization includes llm_provider field."""
+        stage = ChainStageConfigModel(
+            name="provider-stage",
+            agent="TestAgent",
+            llm_provider="openai-default"
+        )
+        
+        result = stage.model_dump()
+        assert result == {
+            'name': 'provider-stage',
+            'agent': 'TestAgent',
+            'iteration_strategy': None,
+            'llm_provider': 'openai-default'
+        }
 
 
 @pytest.mark.unit
@@ -179,11 +221,12 @@ class TestChainConfigModel:
             'chain_id': 'serialization-test',
             'alert_types': ['alert1', 'alert2'],
             'stages': [
-                {'name': 'stage1', 'agent': 'Agent1', 'iteration_strategy': None},
-                {'name': 'stage2', 'agent': 'Agent2', 'iteration_strategy': 'react'}
+                {'name': 'stage1', 'agent': 'Agent1', 'iteration_strategy': None, 'llm_provider': None},
+                {'name': 'stage2', 'agent': 'Agent2', 'iteration_strategy': 'react', 'llm_provider': None}
             ],
             'description': 'Test serialization',
-            'chat_enabled': True
+            'chat_enabled': True,
+            'llm_provider': None
         }
         
         assert result == expected
@@ -202,10 +245,85 @@ class TestChainConfigModel:
             'chain_id': 'test-chain',
             'alert_types': ['test'],
             'stages': [
-                {'name': 'test-stage', 'agent': 'TestAgent', 'iteration_strategy': None}
+                {'name': 'test-stage', 'agent': 'TestAgent', 'iteration_strategy': None, 'llm_provider': None}
             ],
             'description': None,
-            'chat_enabled': True
+            'chat_enabled': True,
+            'llm_provider': None
+        }
+        
+        assert result == expected
+    
+    def test_creation_with_chain_llm_provider(self):
+        """Test chain creation with chain-level LLM provider."""
+        stage = ChainStageConfigModel(name="analysis", agent="TestAgent")
+        chain = ChainConfigModel(
+            chain_id="provider-chain",
+            alert_types=["test-alert"],
+            stages=[stage],
+            llm_provider="google-default"
+        )
+        
+        assert chain.llm_provider == "google-default"
+    
+    def test_chain_with_stage_level_provider_overrides(self):
+        """Test chain with different providers at chain and stage levels."""
+        stages = [
+            ChainStageConfigModel(
+                name="stage-with-override",
+                agent="Agent1",
+                llm_provider="gemini-flash"  # Stage-level override
+            ),
+            ChainStageConfigModel(
+                name="stage-without-override",
+                agent="Agent2"
+                # Uses chain-level provider
+            )
+        ]
+        
+        chain = ChainConfigModel(
+            chain_id="multi-provider-chain",
+            alert_types=["test"],
+            stages=stages,
+            llm_provider="google-default"  # Chain-level default
+        )
+        
+        assert chain.llm_provider == "google-default"
+        assert chain.stages[0].llm_provider == "gemini-flash"
+        assert chain.stages[1].llm_provider is None
+    
+    def test_chain_serialization_with_llm_providers(self):
+        """Test chain serialization includes llm_provider at both levels."""
+        stages = [
+            ChainStageConfigModel(
+                name="stage1",
+                agent="Agent1",
+                llm_provider="gemini-flash"
+            ),
+            ChainStageConfigModel(
+                name="stage2",
+                agent="Agent2"
+            )
+        ]
+        
+        chain = ChainConfigModel(
+            chain_id="provider-serialization-test",
+            alert_types=["test"],
+            stages=stages,
+            llm_provider="google-default"
+        )
+        
+        result = chain.model_dump()
+        expected = {
+            'chain_id': 'provider-serialization-test',
+            'alert_types': ['test'],
+            'stages': [
+                {'name': 'stage1', 'agent': 'Agent1', 'iteration_strategy': None, 'llm_provider': 'gemini-flash'},
+                {'name': 'stage2', 'agent': 'Agent2', 'iteration_strategy': None, 'llm_provider': None}
+            ],
+            'description': None,
+            'chat_enabled': True,
+            'llm_provider': 'google-default'
         }
         
         assert result == expected
@@ -319,6 +437,9 @@ class TestChainModelComplexScenarios:
         assert serialized['stages'][0]['iteration_strategy'] == 'react'
         assert serialized['stages'][1]['agent'] == 'ConfigurableAgent:log-analyzer'
         assert serialized['stages'][3]['iteration_strategy'] is None
+        # All stages should have llm_provider field (None by default)
+        for stage_dict in serialized['stages']:
+            assert 'llm_provider' in stage_dict
     
     def test_single_stage_chain_conversion(self):
         """Test that single-agent workflows become single-stage chains."""

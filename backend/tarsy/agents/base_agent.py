@@ -96,6 +96,10 @@ class BaseAgent(ABC):
         # Chat tracking for interaction recording
         self._current_chat_id: Optional[str] = None
         
+        # LLM provider override for this agent instance (per-stage or per-chain)
+        # When None, uses the global default provider from settings
+        self._llm_provider_name: Optional[str] = None
+        
         # Create appropriate iteration controller based on configuration
         self._iteration_controller: IterationController = self._create_iteration_controller(iteration_strategy)
         # Cache the iteration strategy to avoid redundant imports in property getter
@@ -319,6 +323,31 @@ class BaseAgent(ABC):
     def get_current_chat_id(self) -> Optional[str]:
         """Get the current chat ID."""
         return self._current_chat_id
+    
+    def set_llm_provider(self, provider_name: Optional[str]):
+        """
+        Set the LLM provider override for this agent instance.
+        
+        When set, this provider will be used for all LLM calls instead of the global default.
+        Used by AgentFactory to configure per-stage or per-chain providers.
+        
+        Args:
+            provider_name: Name of the LLM provider to use, or None to use global default
+        """
+        self._llm_provider_name = provider_name
+        # Update the iteration controller with the provider
+        self._iteration_controller.set_llm_provider(provider_name)
+        if provider_name:
+            logger.info(f"Agent {self.__class__.__name__} configured with LLM provider: {provider_name}")
+    
+    def get_llm_provider(self) -> Optional[str]:
+        """
+        Get the LLM provider override for this agent instance.
+        
+        Returns:
+            Provider name if set, or None if using global default
+        """
+        return self._llm_provider_name
     
     async def _configure_mcp_client(self):
         """Configure MCP client with agent-specific server subset and summarizer."""

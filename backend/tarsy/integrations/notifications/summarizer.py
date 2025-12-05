@@ -42,7 +42,8 @@ class ExecutiveSummaryAgent:
         content: str,
         session_id: str,
         stage_execution_id: Optional[str] = None,
-        max_tokens: int = 150
+        max_tokens: int = 150,
+        provider: Optional[str] = None
     ) -> Optional[str]:
         """
         Generate a concise executive summary of the content.
@@ -55,6 +56,7 @@ class ExecutiveSummaryAgent:
             session_id: Session ID for tracking
             stage_execution_id: Optional stage execution ID (typically None for post-chain)
             max_tokens: Maximum tokens for executive summary (default: 150)
+            provider: Optional LLM provider name (uses chain's provider or global default)
             
         Returns:
             Concise executive summary string, or None if generation fails
@@ -85,10 +87,12 @@ class ExecutiveSummaryAgent:
             conversation = LLMConversation(messages=[system_message, user_message])
             
             # Generate summary using LLM client with RESULT_SUMMARY interaction type
+            # Pass provider to use chain-level or global default
             response_conversation = await self.llm_client.generate_response(
                 conversation=conversation,
                 session_id=session_id,
                 stage_execution_id=stage_execution_id,
+                provider=provider,
                 max_tokens=max_tokens,
                 interaction_type=LLMInteractionType.FINAL_ANALYSIS_SUMMARY.value  # Type dedicated to Final Analysis Summaries only
             )

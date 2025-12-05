@@ -5,7 +5,7 @@ This controller implements final analysis without tool calling, using all
 accumulated data from previous stages to provide comprehensive conclusions.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from tarsy.utils.logger import get_module_logger
 from tarsy.models.constants import LLMInteractionType
@@ -32,6 +32,7 @@ class ReactFinalAnalysisController(IterationController):
         """Initialize with proper type annotations."""
         self.llm_client = llm_client
         self.prompt_builder = prompt_builder
+        self._llm_provider_name: Optional[str] = None
     
     def needs_mcp_tools(self) -> bool:
         """Final analysis doesn't need MCP tool discovery."""
@@ -79,6 +80,7 @@ class ReactFinalAnalysisController(IterationController):
                 conversation, 
                 context.session_id, 
                 stage_execution_id,
+                provider=self._llm_provider_name,
                 interaction_type=LLMInteractionType.FINAL_ANALYSIS.value,
                 native_tools_override=native_tools_override
             )

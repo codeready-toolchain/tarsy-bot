@@ -137,9 +137,15 @@ class AgentFactory:
             logger.error(f"Failed to create agent '{agent_name}': {e}")
             raise
 
-    def get_agent(self, agent_identifier: str, mcp_client: MCPClient, iteration_strategy: Optional[str] = None) -> BaseAgent:
+    def get_agent(
+        self, 
+        agent_identifier: str, 
+        mcp_client: MCPClient, 
+        iteration_strategy: Optional[str] = None,
+        llm_provider: Optional[str] = None
+    ) -> BaseAgent:
         """
-        Get agent instance by identifier with optional strategy override.
+        Get agent instance by identifier with optional strategy and provider overrides.
         
         All agent usage is chain-based (single-agent flows are chains with one stage).
         Always creates a unique instance to prevent race conditions between stages.
@@ -147,10 +153,12 @@ class AgentFactory:
         Args:
             agent_identifier: Either class name (e.g., "KubernetesAgent") 
                             or "ConfigurableAgent:agent-name" format
+            mcp_client: Session-scoped MCP client for this agent instance
             iteration_strategy: Strategy to use for this stage (overrides agent default)
+            llm_provider: Optional LLM provider name for this agent (overrides global default)
         
         Returns:
-            Agent instance configured with appropriate strategy
+            Agent instance configured with appropriate strategy and provider
         """
         # Create agent using existing create_agent method with session-scoped client
         agent = self.create_agent(agent_identifier, mcp_client)
@@ -162,6 +170,11 @@ class AgentFactory:
                 agent.set_iteration_strategy(strategy_enum)
             except ValueError:
                 logger.warning(f"Invalid iteration strategy '{iteration_strategy}', using agent default")
+        
+        # Set LLM provider override if provided
+        if llm_provider:
+            agent.set_llm_provider(llm_provider)
+            logger.debug(f"Agent {agent_identifier} configured with LLM provider: {llm_provider}")
         
         return agent
     
