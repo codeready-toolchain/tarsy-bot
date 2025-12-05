@@ -963,6 +963,7 @@ class TestGeminiNativeThinkingStreaming:
             config = LLMProviderConfig(
                 type=LLMProviderType.GOOGLE,
                 model="gemini-2.5-flash",
+                api_key_env="GOOGLE_API_KEY",
                 api_key="test-api-key",
                 temperature=0.7
             )
@@ -1063,6 +1064,7 @@ class TestGeminiNativeThinkingStreaming:
             config = LLMProviderConfig(
                 type=LLMProviderType.GOOGLE,
                 model="gemini-2.5-flash",
+                api_key_env="GOOGLE_API_KEY",
                 api_key="test-api-key",
                 temperature=0.7
             )

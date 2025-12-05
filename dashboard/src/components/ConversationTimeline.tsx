@@ -16,6 +16,11 @@ import CopyButton from './CopyButton';
 import StreamingContentRenderer, { type StreamingItem } from './StreamingContentRenderer';
 import { websocketService } from '../services/websocketService';
 import { isTerminalSessionStatus, SESSION_STATUS, STAGE_STATUS } from '../utils/statusConstants';
+import { 
+  LLM_EVENTS, 
+  STREAMING_CONTENT_TYPES, 
+  parseStreamingContentType 
+} from '../utils/eventTypes';
 // Auto-scroll is now handled by the centralized system in SessionDetailPageBase
 
 interface ProcessingIndicatorProps {
@@ -96,12 +101,17 @@ interface ConversationStreamingItem extends StreamingItem {
 /**
  * StreamingItemRenderer Component
  * Renders streaming items with proper formatting
- * Delegates common types (thought, final_answer, summarization) to shared StreamingContentRenderer
+ * Delegates common types (thought, final_answer, summarization, native_thinking) to shared StreamingContentRenderer
  * Handles ConversationTimeline-specific types (tool_call, user_message) locally
  */
 const StreamingItemRenderer = memo(({ item }: { item: ConversationStreamingItem }) => {
-  // Handle common streaming types with shared component
-  if (item.type === 'thought' || item.type === 'final_answer' || item.type === 'summarization') {
+  // Handle LLM streaming content types with shared component
+  if (
+    item.type === STREAMING_CONTENT_TYPES.THOUGHT || 
+    item.type === STREAMING_CONTENT_TYPES.FINAL_ANSWER || 
+    item.type === STREAMING_CONTENT_TYPES.SUMMARIZATION || 
+    item.type === STREAMING_CONTENT_TYPES.NATIVE_THINKING
+  ) {
     return <StreamingContentRenderer item={item} />;
   }
   
@@ -488,16 +498,18 @@ function ConversationTimeline({
           
           return updated;
         });
-      } else if (event.type === 'llm.stream.chunk') {
+      } else if (event.type === LLM_EVENTS.STREAM_CHUNK) {
         console.log('🌊 Received streaming chunk:', event.stream_type, event.is_complete, event.mcp_event_id);
         
         setStreamingItems(prev => {
           const updated = new Map(prev);
           // Use composite key based on stream type
           // For summarization, use mcp_event_id to link to specific tool call
-          const key = event.stream_type === 'summarization' && event.mcp_event_id
-            ? `${event.mcp_event_id}-summarization`
+          const key = event.stream_type === STREAMING_CONTENT_TYPES.SUMMARIZATION && event.mcp_event_id
+            ? `${event.mcp_event_id}-${STREAMING_CONTENT_TYPES.SUMMARIZATION}`
             : `${event.stage_execution_id || 'default'}-${event.stream_type}`;
+          
+          const streamType = parseStreamingContentType(event.stream_type);
           
           if (event.is_complete) {
             // Stream completed - mark as waiting for DB update
@@ -513,7 +525,7 @@ function ConversationTimeline({
             } else {
               // Seed a new entry for completion event with no prior partial entry
               updated.set(key, {
-                type: event.stream_type as 'thought' | 'final_answer' | 'summarization',
+                type: streamType,
                 content: event.chunk,
                 stage_execution_id: event.stage_execution_id,
                 mcp_event_id: event.mcp_event_id,
@@ -524,7 +536,7 @@ function ConversationTimeline({
           } else {
             // Still streaming - update content
             updated.set(key, {
-              type: event.stream_type as 'thought' | 'final_answer' | 'summarization',
+              type: streamType,
               content: event.chunk,
               stage_execution_id: event.stage_execution_id,
               mcp_event_id: event.mcp_event_id,

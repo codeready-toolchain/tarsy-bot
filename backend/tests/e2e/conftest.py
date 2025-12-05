@@ -591,6 +591,17 @@ class MockGeminiModels:
         """Mock generate_content that returns responses from the generator."""
         self._call_count += 1
         return self._response_generator(self._call_count, model, contents, config)
+    
+    async def generate_content_stream(self, model: str, contents: list, config: Any = None):
+        """Mock generate_content_stream that returns an async generator yielding the response."""
+        self._call_count += 1
+        response = self._response_generator(self._call_count, model, contents, config)
+        
+        # Return an async generator that yields the complete response as a single chunk
+        async def stream_response():
+            yield response
+        
+        return stream_response()
 
 
 class MockGeminiAio:

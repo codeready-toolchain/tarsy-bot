@@ -457,7 +457,7 @@ class GeminiNativeThinkingClient:
                                             if thinking_token_count >= THINKING_CHUNK_SIZE:
                                                 await self._publish_stream_chunk(
                                                     session_id, stage_execution_id,
-                                                    StreamingEventType.THOUGHT, accumulated_thinking,
+                                                    StreamingEventType.NATIVE_THINKING, accumulated_thinking,
                                                     is_complete=False
                                                 )
                                                 thinking_token_count = 0
@@ -471,7 +471,7 @@ class GeminiNativeThinkingClient:
                                         if is_streaming_thinking:
                                             await self._publish_stream_chunk(
                                                 session_id, stage_execution_id,
-                                                StreamingEventType.THOUGHT, accumulated_thinking,
+                                                StreamingEventType.NATIVE_THINKING, accumulated_thinking,
                                                 is_complete=True
                                             )
                                             is_streaming_thinking = False
@@ -529,7 +529,7 @@ class GeminiNativeThinkingClient:
                     if is_streaming_thinking and accumulated_thinking:
                         await self._publish_stream_chunk(
                             session_id, stage_execution_id,
-                            StreamingEventType.THOUGHT, accumulated_thinking,
+                            StreamingEventType.NATIVE_THINKING, accumulated_thinking,
                             is_complete=True
                         )
                     

@@ -10,6 +10,11 @@ import { apiClient } from '../../services/api';
 import type { ChatUserMessage, StageExecution, DetailedSession } from '../../types';
 import { STAGE_STATUS, isValidStageStatus, type StageStatus } from '../../utils/statusConstants';
 import { useAdvancedAutoScroll } from '../../hooks/useAdvancedAutoScroll';
+import { 
+  LLM_EVENTS, 
+  STREAMING_CONTENT_TYPES, 
+  parseStreamingContentType 
+} from '../../utils/eventTypes';
 
 interface ChatMessageListProps {
   sessionId: string;
@@ -279,15 +284,17 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
 
     // Handle streaming events
     const handleStreamEvent = (event: any) => {
-      if (event.type === 'llm.stream.chunk') {
+      if (event.type === LLM_EVENTS.STREAM_CHUNK) {
         console.log('🌊 Chat received streaming chunk:', event.stream_type, event.is_complete);
         
         setStreamingItems(prev => {
           const updated = new Map(prev);
           // Use composite key based on stream type
-          const key = event.stream_type === 'summarization' && event.mcp_event_id
-            ? `${event.mcp_event_id}-summarization`
+          const key = event.stream_type === STREAMING_CONTENT_TYPES.SUMMARIZATION && event.mcp_event_id
+            ? `${event.mcp_event_id}-${STREAMING_CONTENT_TYPES.SUMMARIZATION}`
             : `${event.stage_execution_id || 'default'}-${event.stream_type}`;
+          
+          const streamType = parseStreamingContentType(event.stream_type);
           
           if (event.is_complete) {
             // Stream completed - mark as waiting for DB update
@@ -300,7 +307,7 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
               });
             } else {
               updated.set(key, {
-                type: event.stream_type as 'thought' | 'final_answer' | 'summarization',
+                type: streamType,
                 content: event.chunk,
                 stage_execution_id: event.stage_execution_id,
                 mcp_event_id: event.mcp_event_id,
@@ -310,7 +317,7 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
           } else {
             // Still streaming - update content
             updated.set(key, {
-              type: event.stream_type as 'thought' | 'final_answer' | 'summarization',
+              type: streamType,
               content: event.chunk,
               stage_execution_id: event.stage_execution_id,
               mcp_event_id: event.mcp_event_id,
@@ -327,7 +334,7 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
     const unsubscribe = websocketService.subscribeToChannel(
       `session:${sessionId}`,
       (event: any) => {
-        if (event.type === 'llm.stream.chunk') {
+        if (event.type === LLM_EVENTS.STREAM_CHUNK) {
           handleStreamEvent(event);
         } else {
           handleStageEvent(event);

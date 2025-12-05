@@ -7,13 +7,21 @@ import {
   finalAnswerMarkdownComponents, 
   thoughtMarkdownComponents 
 } from '../utils/markdownComponents';
+import { 
+  STREAMING_CONTENT_TYPES, 
+  type StreamingContentType 
+} from '../utils/eventTypes';
 
 /**
  * Shared streaming item interface
  * Used by both ConversationTimeline and ChatMessageList
+ * 
+ * Types:
+ * - LLM streaming content types (thought, final_answer, summarization, native_thinking) 
+ * - UI-specific types (tool_call, user_message)
  */
 export interface StreamingItem {
-  type: 'thought' | 'final_answer' | 'summarization' | 'tool_call' | 'user_message' | 'native_thinking';
+  type: StreamingContentType | 'tool_call' | 'user_message';
   content?: string;
   stage_execution_id?: string;
   mcp_event_id?: string;
@@ -44,8 +52,8 @@ interface StreamingContentRendererProps {
  * - Consistent styling across views
  */
 const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) => {
-  // Render thought
-  if (item.type === 'thought') {
+  // Render thought (ReAct pattern)
+  if (item.type === STREAMING_CONTENT_TYPES.THOUGHT) {
     const hasMarkdown = hasMarkdownSyntax(item.content || '');
     
     return (
@@ -93,7 +101,7 @@ const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) 
   }
 
   // Render native thinking (Gemini 3.0+ native thinking mode)
-  if (item.type === 'native_thinking') {
+  if (item.type === STREAMING_CONTENT_TYPES.NATIVE_THINKING) {
     const hasMarkdown = hasMarkdownSyntax(item.content || '');
     
     return (
@@ -162,8 +170,8 @@ const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) 
     );
   }
   
-  // Render summarization
-  if (item.type === 'summarization') {
+  // Render summarization (tool result summary)
+  if (item.type === STREAMING_CONTENT_TYPES.SUMMARIZATION) {
     // Check if this is the placeholder text
     const isPlaceholder = item.content === 'Summarizing tool results...';
     
@@ -262,8 +270,8 @@ const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) 
     );
   }
   
-  // Render final answer
-  if (item.type === 'final_answer') {
+  // Render final answer (ReAct pattern)
+  if (item.type === STREAMING_CONTENT_TYPES.FINAL_ANSWER) {
     return (
       <Box sx={{ mb: 2, mt: 3 }}>
         <Box sx={{ display: 'flex', gap: 1.5, mb: 1 }}>

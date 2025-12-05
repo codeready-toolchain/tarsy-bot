@@ -30,6 +30,7 @@ export const LLM_EVENTS = {
   CALL_FAILED: 'llm.call.failed',
   STREAMING_CHUNK: 'llm.streaming.chunk',
   STREAMING_COMPLETE: 'llm.streaming.complete',
+  STREAM_CHUNK: 'llm.stream.chunk',  // Real-time streaming event type
 } as const;
 
 // MCP tool interaction events
@@ -43,6 +44,25 @@ export const MCP_EVENTS = {
 export const CHAIN_EVENTS = {
   PROGRESS: 'chain.progress',
 } as const;
+
+// LLM streaming content types (stream_type field in llm.stream.chunk events)
+export const STREAMING_CONTENT_TYPES = {
+  THOUGHT: 'thought',
+  FINAL_ANSWER: 'final_answer',
+  SUMMARIZATION: 'summarization',
+  NATIVE_THINKING: 'native_thinking',
+} as const;
+
+// Type for streaming content types
+export type StreamingContentType = typeof STREAMING_CONTENT_TYPES[keyof typeof STREAMING_CONTENT_TYPES];
+
+// All valid streaming content types (for type checking)
+export const ALL_STREAMING_CONTENT_TYPES = [
+  STREAMING_CONTENT_TYPES.THOUGHT,
+  STREAMING_CONTENT_TYPES.FINAL_ANSWER,
+  STREAMING_CONTENT_TYPES.SUMMARIZATION,
+  STREAMING_CONTENT_TYPES.NATIVE_THINKING,
+] as const;
 
 // All terminal session events (session has finished processing)
 export const TERMINAL_SESSION_EVENTS = [
@@ -84,5 +104,24 @@ export function isLLMEvent(eventType: string): boolean {
  */
 export function isMCPEvent(eventType: string): boolean {
   return eventType.startsWith('mcp.');
+}
+
+/**
+ * Check if a string is a valid streaming content type
+ */
+export function isValidStreamingContentType(type: string): type is StreamingContentType {
+  return ALL_STREAMING_CONTENT_TYPES.includes(type as StreamingContentType);
+}
+
+/**
+ * Safely cast a stream_type string to StreamingContentType
+ * Returns the type if valid, or 'thought' as fallback
+ */
+export function parseStreamingContentType(streamType: string): StreamingContentType {
+  if (isValidStreamingContentType(streamType)) {
+    return streamType;
+  }
+  console.warn(`Unknown streaming content type: ${streamType}, defaulting to 'thought'`);
+  return STREAMING_CONTENT_TYPES.THOUGHT;
 }
 
