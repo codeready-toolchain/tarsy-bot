@@ -357,10 +357,21 @@ class GeminiNativeThinkingClient:
                 # Convert conversation to native Google format
                 contents = self._convert_conversation_to_native_format(conversation)
                 
-                # If we have a thought signature from previous turn, include it for reasoning continuity
-                # The signature must be added as a Part to maintain the model's reasoning state
+                # If we have a thought signature from previous turn, include it for reasoning continuity.
+                #
+                # NOTE: This implementation deviates from Google's documentation which states that
+                # thought_signature must be attached to its original Part (functionCall, text, etc.),
+                # not as a standalone Part. However, our simplified LLMConversation model doesn't
+                # preserve the full Part structure needed for proper signature placement, and
+                # refactoring would break pause/resume functionality (which relies on serializing
+                # LLMConversation to the database).
+                #
+                # Empirical testing shows this approach still improves reasoning continuity compared
+                # to omitting the signature entirely. A proper fix would require extending
+                # LLMConversation to store function calls with their signatures.
+                #
+                # TODO: Consider proper implementation per Google docs if issues arise.
                 if thought_signature:
-                    # Add thought signature as a model turn part to preserve reasoning context
                     contents.append(google_genai_types.Content(
                         role="model",
                         parts=[google_genai_types.Part(thought_signature=thought_signature)]

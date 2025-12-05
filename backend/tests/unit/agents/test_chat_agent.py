@@ -81,8 +81,14 @@ class TestChatAgent:
         )
         mock_llm_client.provider_name = "test-google"
         
-        # Create agent with NATIVE_THINKING strategy - patch at the source module
-        with patch('tarsy.integrations.llm.gemini_client.GeminiNativeThinkingClient'):
+        # Patch GeminiNativeThinkingClient where the controller imports it (NativeThinkingController's module)
+        # to avoid creating a real client during agent construction
+        with patch(
+            'tarsy.agents.iteration_controllers.native_thinking_controller.GeminiNativeThinkingClient'
+        ) as mock_gemini_client_class:
+            # Return a harmless mock instance to prevent real client creation
+            mock_gemini_client_class.return_value = Mock()
+            
             agent = ChatAgent(
                 llm_client=mock_llm_client,
                 mcp_client=mock_mcp_client,
@@ -90,7 +96,11 @@ class TestChatAgent:
                 iteration_strategy=IterationStrategy.NATIVE_THINKING
             )
         
+            # Verify the strategy enum is set correctly
             assert agent.iteration_strategy == IterationStrategy.NATIVE_THINKING
+            
+            # Verify the actual controller type is ChatNativeThinkingController
+            assert isinstance(agent._iteration_controller, ChatNativeThinkingController)
     
     def test_respects_iteration_strategy_parameter(
         self, mock_llm_client, mock_mcp_client, mock_mcp_registry

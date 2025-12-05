@@ -292,7 +292,7 @@ class TestLLMClientInitialization:
         with patch('tarsy.integrations.llm.client.ChatOpenAI') as mock_openai:
             mock_openai.return_value = Mock()
             
-            client = LLMClient("openai", config)
+            LLMClient("openai", config)
             
             mock_openai.assert_called_once_with(
                 model="gpt-4",  # model from config
@@ -738,7 +738,7 @@ class TestLLMClientSSLAndBaseURL:
         )
         
         with patch('tarsy.integrations.llm.client.ChatOpenAI') as mock_openai:
-            client = LLMClient("openai", config)
+            LLMClient("openai", config)
             
             # Verify base_url was passed to ChatOpenAI
             call_args = mock_openai.call_args[1]
@@ -754,7 +754,7 @@ class TestLLMClientSSLAndBaseURL:
         )
         
         with patch('tarsy.integrations.llm.client.ChatGoogleGenerativeAI') as mock_google:
-            client = LLMClient("google", config)
+            LLMClient("google", config)
             
             # Verify base_url was not passed to Google client
             call_args = mock_google.call_args[1]
@@ -1466,7 +1466,8 @@ class TestLLMManager:
         # Act
         result = llm_manager.get_max_tool_result_tokens()
         
-        # Assert - should use google-default client's limit
+        # Assert - should use google-default client's limit (950000 from fixture)
+        assert result == 950000
         google_client = llm_manager.get_client("google-default")
         google_client.get_max_tool_result_tokens.assert_called_once()
     
