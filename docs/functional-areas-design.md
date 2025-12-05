@@ -1176,8 +1176,62 @@ response_conversation = await self.llm_client.generate_response(
 **Streaming Features**:
 - **Progressive content delivery** - users see LLM thinking process in real-time
 - **Non-blocking** - streaming failures don't affect LLM call success
-- **Marker detection** - automatically identifies and categorizes content (thought vs final_answer)
+- **Marker detection** - automatically identifies and categorizes content (thought vs final_answer vs native_thinking)
 - **Transient events** - chunks not persisted to database, only sent via WebSocket
+
+#### Native Thinking (Gemini Models)
+
+**📍 Native Thinking Client**: `backend/tarsy/integrations/llm/gemini_client.py`
+
+For Gemini 2.0+ models, TARSy supports **native thinking mode** - a model capability where the LLM performs internal reasoning (separate from ReAct patterns) before generating responses. This provides deeper, more thorough analysis.
+
+**Key Capabilities**:
+- **ThinkingConfig** with `include_thoughts=True` exposes the model's internal reasoning process
+- **Native function calling** - structured tool calls without text parsing (more reliable than ReAct pattern)
+- **Thought signatures** - opaque bytes for multi-turn reasoning continuity across iterations
+- **Live streaming** of thinking content and response content separately
+
+**Architecture**: The `GeminiNativeThinkingClient` bypasses LangChain to use the Google SDK directly:
+```python
+# Native thinking uses Google SDK for full access to thinking features
+native_client = genai.Client(api_key=config.api_key)
+
+# Configure thinking with include_thoughts=True
+thinking_config = google_genai_types.ThinkingConfig(
+    thinking_budget=24576,  # High: 24K tokens, Low: 4K tokens
+    include_thoughts=True   # Exposes thinking content
+)
+
+# Streaming response with separate thinking and content parts
+async for chunk in await native_client.aio.models.generate_content_stream(...):
+    # part.thought=True indicates thinking content
+    # part.text without thought flag is response content
+    # part.thought_signature for multi-turn continuity
+```
+
+**Streaming Event Types**:
+- **`native_thinking`** - Internal reasoning process (displayed with 🧠 icon in UI)
+- **`final_answer`** - Generated response content
+- **`thought`** - ReAct pattern thoughts (displayed with 💭 icon in UI)
+
+**Native Thinking vs ReAct Thoughts**:
+| Aspect | Native Thinking | ReAct Thoughts |
+|--------|-----------------|----------------|
+| **Source** | Model's internal reasoning (ThinkingConfig) | Text pattern in LLM response |
+| **Parsing** | Structured API response (part.thought flag) | Regex parsing of "Thought:" markers |
+| **Tool Calls** | Native function calling (structured) | Text parsing of "Action:" markers |
+| **Continuity** | Thought signatures for multi-turn | Conversation history only |
+| **UI Display** | 🧠 "Thinking" label, italic styling | 💭 standard thought styling |
+
+**Benefits**:
+- **More reliable tool calling** - native function declarations avoid parsing failures
+- **Deeper reasoning** - dedicated thinking budget separate from response tokens
+- **Multi-turn coherence** - thought signatures maintain reasoning state across iterations
+- **Transparent AI reasoning** - users see the model's internal deliberation process
+
+**Limitations**:
+- **Gemini 2.0+ required** - native thinking only available on Gemini 2.0 and later models
+- **Native tools disabled** - Google native tools (google_search, code_execution, url_context) are NOT supported with native-thinking strategy and are automatically disabled regardless of provider configuration. This is a Google API limitation where function calling cannot be combined with native tools in the same request
 
 #### Provider Support
 

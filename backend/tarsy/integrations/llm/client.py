@@ -587,14 +587,16 @@ class LLMClient:
                                     await self._publish_stream_chunk(
                                         session_id, stage_execution_id,
                                         StreamingEventType.THOUGHT, clean_thought,
-                                        is_complete=True
+                                        is_complete=True,
+                                        llm_interaction_id=ctx.interaction.interaction_id
                                     )
                                 else:
                                     # Send completion marker
                                     await self._publish_stream_chunk(
                                         session_id, stage_execution_id,
                                         StreamingEventType.THOUGHT, "",
-                                        is_complete=True
+                                        is_complete=True,
+                                        llm_interaction_id=ctx.interaction.interaction_id
                                     )
                                 is_streaming_thought = False
                                 token_count_since_last_send = 0
@@ -637,7 +639,8 @@ class LLMClient:
                                             await self._publish_stream_chunk(
                                                 session_id, stage_execution_id,
                                                 StreamingEventType.THOUGHT, current_thought,
-                                                is_complete=False
+                                                is_complete=False,
+                                                llm_interaction_id=ctx.interaction.interaction_id
                                             )
                                     
                                     elif is_streaming_final_answer:
@@ -648,7 +651,8 @@ class LLMClient:
                                             await self._publish_stream_chunk(
                                                 session_id, stage_execution_id,
                                                 StreamingEventType.FINAL_ANSWER, current_final_answer,
-                                                is_complete=False
+                                                is_complete=False,
+                                                llm_interaction_id=ctx.interaction.interaction_id
                                             )
                                     
                                     elif is_streaming_summarization:
@@ -678,14 +682,16 @@ class LLMClient:
                             await self._publish_stream_chunk(
                                 session_id, stage_execution_id,
                                 StreamingEventType.THOUGHT, final_thought,
-                                is_complete=True
+                                is_complete=True,
+                                llm_interaction_id=ctx.interaction.interaction_id
                             )
                         else:
                             # Send completion marker
                             await self._publish_stream_chunk(
                                 session_id, stage_execution_id,
                                 StreamingEventType.THOUGHT, "",
-                                is_complete=True
+                                is_complete=True,
+                                llm_interaction_id=ctx.interaction.interaction_id
                             )
                     
                     # Send final complete final answer if streaming is still active
@@ -697,14 +703,16 @@ class LLMClient:
                             await self._publish_stream_chunk(
                                 session_id, stage_execution_id,
                                 StreamingEventType.FINAL_ANSWER, final_answer,
-                                is_complete=True
+                                is_complete=True,
+                                llm_interaction_id=ctx.interaction.interaction_id
                             )
                         else:
                             # Send completion marker
                             await self._publish_stream_chunk(
                                 session_id, stage_execution_id,
                                 StreamingEventType.FINAL_ANSWER, "",
-                                is_complete=True
+                                is_complete=True,
+                                llm_interaction_id=ctx.interaction.interaction_id
                             )
                     
                     # Send final complete summarization if streaming is still active
@@ -1037,7 +1045,8 @@ class LLMClient:
         stream_type: StreamingEventType,
         chunk: str,
         is_complete: bool,
-        mcp_event_id: Optional[str] = None
+        mcp_event_id: Optional[str] = None,
+        llm_interaction_id: Optional[str] = None
     ) -> None:
         """Publish streaming chunk via transient channel."""
         # Check if streaming is enabled via config flag
@@ -1073,6 +1082,7 @@ class LLMClient:
                     stream_type=stream_type.value,
                     is_complete=is_complete,
                     mcp_event_id=mcp_event_id,
+                    llm_interaction_id=llm_interaction_id,
                     timestamp_us=now_us()
                 )
                 
@@ -1081,7 +1091,7 @@ class LLMClient:
                     f"session:{session_id}", 
                     event
                 )
-                logger.debug(f"Published streaming chunk ({stream_type.value}, complete={is_complete}, mcp_event={mcp_event_id}) for {session_id}")
+                logger.debug(f"Published streaming chunk ({stream_type.value}, complete={is_complete}, mcp_event={mcp_event_id}, llm_interaction={llm_interaction_id}) for {session_id}")
         except Exception as e:
             # Don't fail LLM call if streaming fails
             logger.warning(f"Failed to publish streaming chunk: {e}")

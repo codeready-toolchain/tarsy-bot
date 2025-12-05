@@ -29,6 +29,8 @@ export interface StreamingItem {
   // Tool call specific fields
   toolName?: string;
   messageId?: string;
+  // LLM interaction ID for deduplication of thought/final_answer/native_thinking streams
+  llm_interaction_id?: string;
 }
 
 interface StreamingContentRendererProps {
@@ -69,7 +71,7 @@ const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) 
         >
           💭
         </Typography>
-        <TypewriterText text={item.content || ''} speed={15}>
+        <TypewriterText text={item.content || ''} speed={3}>
           {(displayText) => (
             hasMarkdown ? (
               <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -132,7 +134,7 @@ const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) 
           >
             Thinking
           </Typography>
-          <TypewriterText text={item.content || ''} speed={15}>
+          <TypewriterText text={item.content || ''} speed={3}>
             {(displayText) => (
               hasMarkdown ? (
                 <Box sx={{ 
@@ -234,7 +236,7 @@ const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) 
               {item.content}
             </Typography>
           ) : (
-            <TypewriterText text={item.content || ''} speed={15}>
+            <TypewriterText text={item.content || ''} speed={3}>
               {(displayText) => (
                 hasMarkdown ? (
                   <Box sx={{ 
@@ -300,7 +302,7 @@ const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) 
           </Typography>
         </Box>
         <Box sx={{ pl: 3.5 }}>
-          <TypewriterText text={item.content || ''} speed={15}>
+          <TypewriterText text={item.content || ''} speed={3}>
             {(displayText) => (
               <ReactMarkdown
                 urlTransform={defaultUrlTransform}

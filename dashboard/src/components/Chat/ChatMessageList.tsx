@@ -285,14 +285,18 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
     // Handle streaming events
     const handleStreamEvent = (event: any) => {
       if (event.type === LLM_EVENTS.STREAM_CHUNK) {
-        console.log('🌊 Chat received streaming chunk:', event.stream_type, event.is_complete);
+        console.log('🌊 Chat received streaming chunk:', event.stream_type, event.is_complete,
+          event.llm_interaction_id ? `llm_id=${event.llm_interaction_id}` : '');
         
         setStreamingItems(prev => {
           const updated = new Map(prev);
-          // Use composite key based on stream type
-          const key = event.stream_type === STREAMING_CONTENT_TYPES.SUMMARIZATION && event.mcp_event_id
+          
+          // Use unique keys based on stream type:
+          // - For summarization: use mcp_event_id (links to specific tool call)
+          // - For thought/final_answer/native_thinking: use llm_interaction_id (unique per LLM call)
+          const key = event.stream_type === STREAMING_CONTENT_TYPES.SUMMARIZATION
             ? `${event.mcp_event_id}-${STREAMING_CONTENT_TYPES.SUMMARIZATION}`
-            : `${event.stage_execution_id || 'default'}-${event.stream_type}`;
+            : `${event.llm_interaction_id}-${event.stream_type}`;
           
           const streamType = parseStreamingContentType(event.stream_type);
           
@@ -311,6 +315,7 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
                 content: event.chunk,
                 stage_execution_id: event.stage_execution_id,
                 mcp_event_id: event.mcp_event_id,
+                llm_interaction_id: event.llm_interaction_id,
                 waitingForDb: true
               });
             }
@@ -321,6 +326,7 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
               content: event.chunk,
               stage_execution_id: event.stage_execution_id,
               mcp_event_id: event.mcp_event_id,
+              llm_interaction_id: event.llm_interaction_id,
               waitingForDb: false
             });
           }
@@ -372,24 +378,22 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
         })
       )}
       
-      {/* Show streaming items in real-time (filter out items waiting for DB to avoid duplicates) */}
-      {(() => {
-        const activeStreamingItems = Array.from(streamingItems.values())
-          .filter(item => !item.waitingForDb);
-        return activeStreamingItems.length > 0 && (
-          <Paper sx={{ p: 2, mb: 2 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-              <Psychology sx={{ fontSize: 20, mr: 0.5, color: 'primary.main' }} />
-              <Typography variant="caption" color="text.secondary">
-                TARSy is thinking...
-              </Typography>
-            </Box>
-            {activeStreamingItems.map((item, index) => (
-              <StreamingContentRenderer key={`stream-${index}`} item={item} />
-            ))}
-          </Paper>
-        );
-      })()}
+      {/* Show streaming items in real-time */}
+      {/* Note: We show all streaming items including waitingForDb to prevent brief disappearance */}
+      {/* They'll be cleared by the streaming state update when new data arrives */}
+      {streamingItems.size > 0 && (
+        <Paper sx={{ p: 2, mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+            <Psychology sx={{ fontSize: 20, mr: 0.5, color: 'primary.main' }} />
+            <Typography variant="caption" color="text.secondary">
+              TARSy is thinking...
+            </Typography>
+          </Box>
+          {Array.from(streamingItems.values()).map((item, index) => (
+            <StreamingContentRenderer key={`stream-${index}`} item={item} />
+          ))}
+        </Paper>
+      )}
       
       {isTyping && streamingItems.size === 0 && <TypingIndicator />}
     </Box>

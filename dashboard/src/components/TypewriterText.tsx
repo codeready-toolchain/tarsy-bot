@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 
 interface TypewriterTextProps {
   text: string;
-  speed?: number; // ms per character (default: 15)
+  speed?: number; // ms per character (default: 3)
   onComplete?: () => void;
   children?: (displayText: string, isAnimating: boolean) => ReactNode;
 }
@@ -14,7 +14,7 @@ interface TypewriterTextProps {
  * Features:
  * - Updates target text immediately when new content arrives (no queuing)
  * - Continues animation smoothly from current position to new target
- * - Fast speed (~15ms per char) for ChatGPT-like feel
+ * - Fast speed (~3ms per char) for responsive streaming feel
  * - Handles markdown content without flickering (passes full text to renderer)
  * - Efficient: only animates visible text, full content passed to ReactMarkdown
  * 
@@ -24,7 +24,7 @@ interface TypewriterTextProps {
  * 
  * Usage:
  * ```tsx
- * <TypewriterText text={content} speed={15}>
+ * <TypewriterText text={content} speed={3}>
  *   {(displayText, isAnimating) => (
  *     <Typography>{displayText}</Typography>
  *   )}
@@ -33,7 +33,7 @@ interface TypewriterTextProps {
  */
 export default function TypewriterText({ 
   text, 
-  speed = 15, 
+  speed = 3, 
   onComplete,
   children 
 }: TypewriterTextProps) {

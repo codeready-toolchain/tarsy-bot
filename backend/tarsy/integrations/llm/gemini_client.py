@@ -117,7 +117,8 @@ class GeminiNativeThinkingClient:
         stage_execution_id: Optional[str],
         stream_type: StreamingEventType,
         chunk: str,
-        is_complete: bool
+        is_complete: bool,
+        llm_interaction_id: Optional[str] = None
     ) -> None:
         """
         Publish streaming chunk via transient channel for WebSocket delivery.
@@ -125,9 +126,10 @@ class GeminiNativeThinkingClient:
         Args:
             session_id: Session identifier
             stage_execution_id: Stage execution identifier
-            stream_type: Type of streaming content (THOUGHT or FINAL_ANSWER)
+            stream_type: Type of streaming content (THOUGHT, FINAL_ANSWER, NATIVE_THINKING)
             chunk: Content chunk (accumulated tokens)
             is_complete: Whether this is the final chunk
+            llm_interaction_id: LLM interaction ID for deduplication
         """
         # Check if streaming is enabled via config flag
         if self.settings and not self.settings.enable_llm_streaming:
@@ -159,6 +161,7 @@ class GeminiNativeThinkingClient:
                     chunk=chunk,
                     stream_type=stream_type.value,
                     is_complete=is_complete,
+                    llm_interaction_id=llm_interaction_id,
                     timestamp_us=now_us()
                 )
                 
@@ -458,7 +461,8 @@ class GeminiNativeThinkingClient:
                                                 await self._publish_stream_chunk(
                                                     session_id, stage_execution_id,
                                                     StreamingEventType.NATIVE_THINKING, accumulated_thinking,
-                                                    is_complete=False
+                                                    is_complete=False,
+                                                    llm_interaction_id=ctx.interaction.interaction_id
                                                 )
                                                 thinking_token_count = 0
                                     
@@ -472,7 +476,8 @@ class GeminiNativeThinkingClient:
                                             await self._publish_stream_chunk(
                                                 session_id, stage_execution_id,
                                                 StreamingEventType.NATIVE_THINKING, accumulated_thinking,
-                                                is_complete=True
+                                                is_complete=True,
+                                                llm_interaction_id=ctx.interaction.interaction_id
                                             )
                                             is_streaming_thinking = False
                                             logger.debug(f"[{request_id}] Completed streaming thinking content")
@@ -487,7 +492,8 @@ class GeminiNativeThinkingClient:
                                             await self._publish_stream_chunk(
                                                 session_id, stage_execution_id,
                                                 StreamingEventType.FINAL_ANSWER, accumulated_content,
-                                                is_complete=False
+                                                is_complete=False,
+                                                llm_interaction_id=ctx.interaction.interaction_id
                                             )
                                             response_token_count = 0
                                     
@@ -530,14 +536,16 @@ class GeminiNativeThinkingClient:
                         await self._publish_stream_chunk(
                             session_id, stage_execution_id,
                             StreamingEventType.NATIVE_THINKING, accumulated_thinking,
-                            is_complete=True
+                            is_complete=True,
+                            llm_interaction_id=ctx.interaction.interaction_id
                         )
                     
                     if is_streaming_response and accumulated_content:
                         await self._publish_stream_chunk(
                             session_id, stage_execution_id,
                             StreamingEventType.FINAL_ANSWER, accumulated_content,
-                            is_complete=True
+                            is_complete=True,
+                            llm_interaction_id=ctx.interaction.interaction_id
                         )
                 
                 # Combine thinking content

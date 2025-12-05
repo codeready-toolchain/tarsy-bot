@@ -27,7 +27,8 @@ export interface ChatFlowItemData {
   messageId?: string; // Message identifier
   // For native_tool_usage type
   nativeToolsUsage?: NativeToolsUsage;
-  llmInteractionId?: string; // Link to the LLM interaction
+  // LLM interaction ID for deduplication of thought/final_answer/native_thinking
+  llm_interaction_id?: string;
 }
 
 
@@ -92,7 +93,8 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
           type: 'native_thinking',
           timestamp_us: lastTimestamp,
           stageId,
-          content: thinkingContent
+          content: thinkingContent,
+          llm_interaction_id: interaction.id || interaction.event_id // For deduplication
         });
         lastTimestamp = lastTimestamp + 1; // Ensure subsequent items come after
       }
@@ -102,12 +104,16 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
       const parsed = parseReActMessage(lastAssistantMessage.content);
 
       // Extract based on interaction type
+      // Include llm_interaction_id for deduplication with streaming events
+      const llmInteractionId = interaction.id || interaction.event_id;
+      
       if (interactionType === 'investigation' && parsed.thought) {
         chatItems.push({
           type: 'thought',
           timestamp_us: interaction.timestamp_us,
           stageId,
-          content: parsed.thought
+          content: parsed.thought,
+          llm_interaction_id: llmInteractionId
         });
       } else if (interactionType === 'final_analysis') {
         // Final analysis may have both thought AND final answer - show both
@@ -116,7 +122,8 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
             type: 'thought',
             timestamp_us: interaction.timestamp_us,
             stageId,
-            content: parsed.thought
+            content: parsed.thought,
+            llm_interaction_id: llmInteractionId
           });
         }
         if (parsed.finalAnswer) {
@@ -125,7 +132,8 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
             type: 'final_answer',
             timestamp_us: lastTimestamp, // +1 to ensure it comes after thought
             stageId,
-            content: parsed.finalAnswer
+            content: parsed.finalAnswer,
+            llm_interaction_id: llmInteractionId
           });
         }
       } else if (interactionType === 'summarization') {
@@ -159,7 +167,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
             timestamp_us: lastTimestamp + 2, // +2 to ensure it comes after other items
             stageId,
             nativeToolsUsage: toolsUsage,
-            llmInteractionId: interaction.id
+            llm_interaction_id: llmInteractionId
           });
         }
       }

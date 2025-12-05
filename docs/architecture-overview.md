@@ -57,7 +57,8 @@ graph LR
 
 ### 5. Real-time Monitoring (Enhanced)
 - Dashboard shows live chain processing status with stage-by-stage progress
-- **Real-time LLM streaming** - see agent thinking process as it happens (Thought and Final Answer sections)
+- **Real-time LLM streaming** - see agent thinking process as it happens (Thought, Final Answer, and Native Thinking sections)
+- **Native thinking visibility** - for Gemini models, internal reasoning process streamed with distinct 🧠 indicator
 - Complete audit trail of what each stage and agent did and why
 - Stage execution tracking with detailed performance metrics
 - **Pause/Resume UI** - prominent visual indicators for paused sessions with one-click resume functionality
@@ -185,6 +186,7 @@ The AI combines all four to make intelligent decisions about investigation appro
   - *Built-in providers: OpenAI, Google Gemini, xAI Grok, Anthropic Claude, Google Vertex AI*
   - *Custom providers: Proxy configurations, model overrides, content truncation controls via `config/llm_providers.yaml`*
   - *Native Tools for Gemini: Optional native tools (google_search, code_execution, url_context) via `native_tools` configuration - google_search and url_context enabled by default, code_execution disabled by default*
+  - *Native Thinking for Gemini: Gemini 2.0+ models support native thinking mode with exposed internal reasoning, native function calling, and thought signatures for multi-turn reasoning continuity. Note: Native tools (google_search, code_execution, url_context) are automatically disabled when using native-thinking strategy*
 - **Configurable Chain Definitions**: Deploy new multi-stage workflows via YAML configuration without code changes
   - *Note: Can override built-in chains via `config/agents.yaml` to customize investigation workflows*
   - *Example config/agents.yaml:*

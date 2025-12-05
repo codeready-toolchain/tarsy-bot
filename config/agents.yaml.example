@@ -29,9 +29,14 @@
 #   - "react": ReAct pattern with Think→Action→Observation cycles for complete analysis
 #   - "react-stage": ReAct pattern for stage-specific analysis within multi-stage chains
 #   - "react-final-analysis": ReAct final analysis only, no tools, uses accumulated data
+#   - "native-thinking": (Gemini 2.0+ only) Uses native thinking mode with internal reasoning,
+#     native function calling, and thought signatures for multi-turn reasoning continuity.
+#     NOTE: Native tools (google_search, code_execution, url_context) are NOT supported with
+#     native-thinking strategy and are automatically disabled regardless of provider config.
 # - Built-in agents have default strategies: KubernetesAgent uses "react"
 # - Configured agents default to "react" if iteration_strategy is not specified
 # - Choose "react" for standalone analysis, "react-stage" for chain stages, "react-final-analysis" for synthesis
+# - Choose "native-thinking" for Gemini models when you want visible internal reasoning and reliable tool calling
 #
 # DATA MASKING:
 # - MCP servers can include optional data_masking configuration to protect sensitive data
@@ -376,6 +381,8 @@ agents:
 # - "react": Standard ReAct pattern for complete analysis (default)
 # - "react-stage": ReAct pattern for stage-specific analysis within multi-stage chains
 # - "react-final-analysis": Pure analysis using all accumulated data (no tool calls)
+# - "native-thinking": Gemini 2.0+ native thinking with internal reasoning and structured tool calls
+#   NOTE: Native tools (google_search, code_execution, url_context) are always disabled for this strategy
 
 agent_chains:
   # Simple 2-stage security incident workflow
@@ -446,6 +453,24 @@ agent_chains:
         agent: "database-agent"
         # iteration_strategy: "react"       # Uses agent default if not specified
     description: "Single-stage database issue resolution"
+
+  # Native thinking chain (Gemini 2.0+ only)
+  # Demonstrates native-thinking strategy with visible internal reasoning
+  # NOTE: Requires Gemini 2.0+ model as LLM provider (e.g., gemini-3-pro-preview)
+  native-thinking-investigation:
+    alert_types: ["ComplexIncident", "DeepAnalysis"]
+    stages:
+      - name: "deep-investigation"          # Stage 1: Deep thinking investigation
+        agent: "performance-agent"
+        iteration_strategy: "native-thinking"  # Uses Gemini native thinking mode
+        # Benefits: Visible internal reasoning (🧠), reliable native function calling,
+        # thought signatures for multi-turn reasoning continuity
+        # NOTE: Native tools (google_search, code_execution, url_context) are automatically
+        # disabled when using native-thinking strategy, regardless of provider configuration
+      - name: "synthesis"                   # Stage 2: Synthesize findings
+        agent: "performance-agent"
+        iteration_strategy: "react-final-analysis"
+    description: "2-stage investigation using Gemini native thinking for deep analysis"
 
 # =============================================================================
 # CONFIGURATION VALIDATION NOTES
