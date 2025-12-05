@@ -637,6 +637,35 @@ class ChainFactory:
         }
         base_data.update(overrides)
         return base_data
+    
+    @staticmethod
+    def create_multi_model_chain(**overrides):
+        """Create a chain with different LLM providers per stage.
+        
+        Use this for testing per-stage LLM provider configuration.
+        """
+        base_data = {
+            "chain_id": "multi-model-chain",
+            "alert_types": ["multi-model"],
+            "stages": [
+                {
+                    "name": "data-collection",
+                    "agent": "KubernetesAgent",
+                    "iteration_strategy": "react",
+                    "llm_provider": "gemini-flash"
+                },
+                {
+                    "name": "analysis",
+                    "agent": "KubernetesAgent",
+                    "iteration_strategy": "native-thinking",
+                    "llm_provider": "gemini-pro"
+                }
+            ],
+            "description": "Multi-model chain with per-stage providers",
+            "llm_provider": "default-provider"
+        }
+        base_data.update(overrides)
+        return base_data
 
 
 class MockFactory:

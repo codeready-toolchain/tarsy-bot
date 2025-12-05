@@ -67,10 +67,16 @@ class ChainRegistry:
                     chain_id=chain_id,
                     alert_types=chain_data["alert_types"],
                     stages=[
-                        ChainStageConfigModel(name=stage["name"], agent=stage["agent"], iteration_strategy=stage.get("iteration_strategy"))
+                        ChainStageConfigModel(
+                            name=stage["name"],
+                            agent=stage["agent"],
+                            iteration_strategy=stage.get("iteration_strategy"),
+                            llm_provider=stage.get("llm_provider")
+                        )
                         for stage in chain_data["stages"]
                     ],
-                    description=chain_data.get("description")
+                    description=chain_data.get("description"),
+                    llm_provider=chain_data.get("llm_provider")
                 )
                 builtin_chains[chain_id] = chain_def
                 logger.debug(f"Loaded built-in chain: {chain_id}")
@@ -95,10 +101,16 @@ class ChainRegistry:
                         chain_id=chain_id,
                         alert_types=chain_data["alert_types"],
                         stages=[
-                            ChainStageConfigModel(name=stage["name"], agent=stage["agent"], iteration_strategy=stage.get("iteration_strategy"))
+                            ChainStageConfigModel(
+                                name=stage["name"],
+                                agent=stage["agent"],
+                                iteration_strategy=stage.get("iteration_strategy"),
+                                llm_provider=stage.get("llm_provider")
+                            )
                             for stage in chain_data["stages"]
                         ],
-                        description=chain_data.get("description")
+                        description=chain_data.get("description"),
+                        llm_provider=chain_data.get("llm_provider")
                     )
                     yaml_chains[chain_id] = chain_def
                     logger.debug(f"Loaded YAML chain: {chain_id}")

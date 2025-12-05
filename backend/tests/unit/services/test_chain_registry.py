@@ -639,3 +639,162 @@ class TestChainRegistryOverrides:
             assert 'kubernetes' in alert_types
             assert 'builtin-only' in alert_types
             assert 'yaml-only' in alert_types
+
+
+@pytest.mark.unit
+class TestChainRegistryLLMProviderPropagation:
+    """Test that llm_provider fields are properly propagated when loading chains."""
+    
+    def test_yaml_chain_stage_level_llm_provider_preserved(self):
+        """Test that stage-level llm_provider is preserved when loading YAML chains."""
+        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
+            mock_builtin.return_value = {}
+            
+            mock_config_loader = Mock(spec=ConfigurationLoader)
+            mock_config_loader.get_chain_configs.return_value = {
+                'multi-model-chain': ChainFactory.create_multi_model_chain(
+                    chain_id='multi-model-chain',
+                    alert_types=['multi-model', 'kubernetes']
+                )
+            }
+            mock_config = Mock()
+            mock_config.default_alert_type = None
+            mock_config_loader.load_and_validate.return_value = mock_config
+            
+            registry = ChainRegistry(mock_config_loader)
+            chain = registry.get_chain_for_alert_type('multi-model')
+            
+            # Verify stage-level llm_provider is preserved
+            assert chain.stages[0].llm_provider == 'gemini-flash'
+            assert chain.stages[1].llm_provider == 'gemini-pro'
+    
+    def test_yaml_chain_level_llm_provider_preserved(self):
+        """Test that chain-level llm_provider is preserved when loading YAML chains."""
+        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
+            mock_builtin.return_value = {}
+            
+            mock_config_loader = Mock(spec=ConfigurationLoader)
+            mock_config_loader.get_chain_configs.return_value = {
+                'chain-with-provider': ChainFactory.create_custom_chain(
+                    chain_id='chain-with-provider',
+                    alert_types=['test-alert', 'kubernetes'],
+                    llm_provider='google-default'
+                )
+            }
+            mock_config = Mock()
+            mock_config.default_alert_type = None
+            mock_config_loader.load_and_validate.return_value = mock_config
+            
+            registry = ChainRegistry(mock_config_loader)
+            chain = registry.get_chain_for_alert_type('test-alert')
+            
+            # Verify chain-level llm_provider is preserved
+            assert chain.llm_provider == 'google-default'
+    
+    def test_builtin_chain_stage_level_llm_provider_preserved(self):
+        """Test that stage-level llm_provider is preserved when loading builtin chains."""
+        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
+            mock_builtin.return_value = {
+                'builtin-multi-model': ChainFactory.create_multi_model_chain(
+                    chain_id='builtin-multi-model',
+                    alert_types=['kubernetes']
+                )
+            }
+            
+            registry = ChainRegistry()
+            chain = registry.get_chain_for_alert_type('kubernetes')
+            
+            # Verify stage-level llm_provider is preserved
+            assert chain.stages[0].llm_provider == 'gemini-flash'
+            assert chain.stages[1].llm_provider == 'gemini-pro'
+    
+    def test_builtin_chain_level_llm_provider_preserved(self):
+        """Test that chain-level llm_provider is preserved when loading builtin chains."""
+        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
+            mock_builtin.return_value = {
+                'builtin-with-provider': ChainFactory.create_custom_chain(
+                    chain_id='builtin-with-provider',
+                    alert_types=['kubernetes'],
+                    llm_provider='anthropic-default'
+                )
+            }
+            
+            registry = ChainRegistry()
+            chain = registry.get_chain_for_alert_type('kubernetes')
+            
+            # Verify chain-level llm_provider is preserved
+            assert chain.llm_provider == 'anthropic-default'
+    
+    def test_stage_without_llm_provider_has_none(self):
+        """Test that stages without llm_provider have None value."""
+        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
+            mock_builtin.return_value = {
+                'no-provider-chain': ChainFactory.create_kubernetes_chain(
+                    chain_id='no-provider-chain',
+                    alert_types=['kubernetes']
+                )
+            }
+            
+            registry = ChainRegistry()
+            chain = registry.get_chain_for_alert_type('kubernetes')
+            
+            # Verify stages without llm_provider have None
+            assert chain.stages[0].llm_provider is None
+            assert chain.stages[1].llm_provider is None
+            assert chain.llm_provider is None
+    
+    @pytest.mark.parametrize("stage_providers,chain_provider,expected_stage_providers,expected_chain_provider", [
+        # Both stage and chain level providers
+        (["gemini-flash", "gemini-pro"], "google-default", ["gemini-flash", "gemini-pro"], "google-default"),
+        # Only stage-level providers
+        (["gemini-flash", "gemini-pro"], None, ["gemini-flash", "gemini-pro"], None),
+        # Only chain-level provider
+        ([None, None], "google-default", [None, None], "google-default"),
+        # No providers at any level
+        ([None, None], None, [None, None], None),
+        # Mixed - some stages have provider, some don't
+        (["gemini-flash", None], "fallback-provider", ["gemini-flash", None], "fallback-provider"),
+    ])
+    def test_llm_provider_combinations(
+        self,
+        stage_providers,
+        chain_provider,
+        expected_stage_providers,
+        expected_chain_provider
+    ):
+        """Test various combinations of stage-level and chain-level llm_provider."""
+        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
+            mock_builtin.return_value = {}
+            
+            # Build stages with specified providers
+            stages = [
+                {
+                    "name": f"stage-{i}",
+                    "agent": "TestAgent",
+                    "llm_provider": provider
+                }
+                for i, provider in enumerate(stage_providers)
+            ]
+            
+            mock_config_loader = Mock(spec=ConfigurationLoader)
+            mock_config_loader.get_chain_configs.return_value = {
+                'test-chain': {
+                    "chain_id": "test-chain",
+                    "alert_types": ["test-alert", "kubernetes"],
+                    "stages": stages,
+                    "description": "Test chain",
+                    "llm_provider": chain_provider
+                }
+            }
+            mock_config = Mock()
+            mock_config.default_alert_type = None
+            mock_config_loader.load_and_validate.return_value = mock_config
+            
+            registry = ChainRegistry(mock_config_loader)
+            chain = registry.get_chain_for_alert_type('test-alert')
+            
+            # Verify all providers are correctly preserved
+            for i, expected_provider in enumerate(expected_stage_providers):
+                assert chain.stages[i].llm_provider == expected_provider
+            
+            assert chain.llm_provider == expected_chain_provider
