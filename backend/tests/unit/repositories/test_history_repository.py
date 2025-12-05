@@ -3107,3 +3107,369 @@ class TestGetLastLLMInteractionWithConversation:
         assert result is not None
         assert result.interaction_id == "llm-final-2"
         assert "latest" in result.conversation.messages[0].content
+
+
+class TestGetStageExecutionsForSession:
+    """Tests for get_stage_executions_for_session sorting behavior.
+    
+    Verifies that:
+    - Regular stages are sorted by stage_index
+    - Chat stages (with chat_id) appear after all regular stages
+    - Chat stages are sorted by started_at_us timestamp
+    """
+    
+    @pytest.fixture
+    def repository(self):
+        """Create repository with in-memory database."""
+        from sqlalchemy.pool import StaticPool
+        engine = create_engine(
+            "sqlite:///:memory:",
+            echo=False,
+            poolclass=StaticPool,
+            connect_args={"check_same_thread": False}
+        )
+        SQLModel.metadata.create_all(engine)
+        session = Session(engine)
+        return HistoryRepository(session)
+    
+    @pytest.fixture
+    def base_session(self, repository):
+        """Create a base alert session for testing."""
+        from tarsy.models.constants import AlertSessionStatus
+        from tarsy.utils.timestamp import now_us
+        
+        session = AlertSession(
+            session_id="test-session",
+            alert_data={"type": "test"},
+            agent_type="TestAgent",
+            alert_type="TestAlert",
+            status=AlertSessionStatus.COMPLETED.value,
+            started_at_us=now_us(),
+            chain_id="test-chain"
+        )
+        repository.session.add(session)
+        repository.session.commit()
+        return session
+    
+    @pytest.mark.unit
+    def test_regular_stages_sorted_by_stage_index(self, repository, base_session):
+        """Test that regular stages (without chat_id) are sorted by stage_index."""
+        from tarsy.models.constants import StageStatus
+        from tarsy.utils.timestamp import now_us
+        
+        base_time = now_us()
+        
+        # Create stages in reverse order to test sorting
+        stage2 = StageExecution(
+            execution_id="stage-2",
+            session_id="test-session",
+            stage_id="analysis",
+            stage_index=1,
+            stage_name="Analysis",
+            agent="AnalysisAgent",
+            status=StageStatus.COMPLETED.value,
+            started_at_us=base_time + 1000000
+        )
+        stage1 = StageExecution(
+            execution_id="stage-1",
+            session_id="test-session",
+            stage_id="triage",
+            stage_index=0,
+            stage_name="Triage",
+            agent="TriageAgent",
+            status=StageStatus.COMPLETED.value,
+            started_at_us=base_time
+        )
+        stage3 = StageExecution(
+            execution_id="stage-3",
+            session_id="test-session",
+            stage_id="resolution",
+            stage_index=2,
+            stage_name="Resolution",
+            agent="ResolutionAgent",
+            status=StageStatus.COMPLETED.value,
+            started_at_us=base_time + 2000000
+        )
+        
+        # Insert in non-sequential order
+        repository.create_stage_execution(stage2)
+        repository.create_stage_execution(stage1)
+        repository.create_stage_execution(stage3)
+        
+        # Act
+        result = repository.get_stage_executions_for_session("test-session")
+        
+        # Assert - should be sorted by stage_index
+        assert len(result) == 3
+        assert result[0].stage_index == 0
+        assert result[0].stage_name == "Triage"
+        assert result[1].stage_index == 1
+        assert result[1].stage_name == "Analysis"
+        assert result[2].stage_index == 2
+        assert result[2].stage_name == "Resolution"
+    
+    @pytest.mark.unit
+    def test_chat_stages_appear_after_regular_stages(self, repository, base_session):
+        """Test that chat stages appear after all regular stages regardless of stage_index."""
+        from tarsy.models.constants import StageStatus
+        from tarsy.models.db_models import Chat
+        from tarsy.utils.timestamp import now_us
+        
+        base_time = now_us()
+        
+        # Create regular stages
+        stage1 = StageExecution(
+            execution_id="stage-1",
+            session_id="test-session",
+            stage_id="triage",
+            stage_index=0,
+            stage_name="Triage",
+            agent="TriageAgent",
+            status=StageStatus.COMPLETED.value,
+            started_at_us=base_time
+        )
+        stage2 = StageExecution(
+            execution_id="stage-2",
+            session_id="test-session",
+            stage_id="analysis",
+            stage_index=1,
+            stage_name="Analysis",
+            agent="AnalysisAgent",
+            status=StageStatus.COMPLETED.value,
+            started_at_us=base_time + 1000000
+        )
+        
+        # Create chat
+        chat = Chat(
+            chat_id="test-chat",
+            session_id="test-session",
+            created_at_us=base_time + 2000000,
+            created_by="test-user",
+            conversation_history="[]",
+            chain_id="test-chain",
+            context_captured_at_us=base_time + 2000000
+        )
+        repository.session.add(chat)
+        repository.session.commit()
+        
+        # Create chat stage with stage_index=0 (like real chat stages)
+        chat_stage = StageExecution(
+            execution_id="chat-stage-1",
+            session_id="test-session",
+            stage_id="chat-response-1",
+            stage_index=0,  # Chat stages have stage_index=0
+            stage_name="Chat Response",
+            agent="ChatAgent",
+            status=StageStatus.COMPLETED.value,
+            started_at_us=base_time + 3000000,  # After regular stages
+            chat_id="test-chat"
+        )
+        
+        repository.create_stage_execution(stage1)
+        repository.create_stage_execution(chat_stage)  # Insert chat stage in middle
+        repository.create_stage_execution(stage2)
+        
+        # Act
+        result = repository.get_stage_executions_for_session("test-session")
+        
+        # Assert - chat stage should appear last despite stage_index=0
+        assert len(result) == 3
+        assert result[0].execution_id == "stage-1"
+        assert result[0].chat_id is None
+        assert result[1].execution_id == "stage-2"
+        assert result[1].chat_id is None
+        assert result[2].execution_id == "chat-stage-1"
+        assert result[2].chat_id == "test-chat"
+    
+    @pytest.mark.unit
+    def test_multiple_chat_stages_sorted_by_timestamp(self, repository, base_session):
+        """Test that multiple chat stages are sorted by started_at_us timestamp."""
+        from tarsy.models.constants import StageStatus
+        from tarsy.models.db_models import Chat
+        from tarsy.utils.timestamp import now_us
+        
+        base_time = now_us()
+        
+        # Create regular stage
+        stage1 = StageExecution(
+            execution_id="stage-1",
+            session_id="test-session",
+            stage_id="triage",
+            stage_index=0,
+            stage_name="Triage",
+            agent="TriageAgent",
+            status=StageStatus.COMPLETED.value,
+            started_at_us=base_time
+        )
+        
+        # Create chat
+        chat = Chat(
+            chat_id="test-chat",
+            session_id="test-session",
+            created_at_us=base_time + 1000000,
+            created_by="test-user",
+            conversation_history="[]",
+            chain_id="test-chain",
+            context_captured_at_us=base_time + 1000000
+        )
+        repository.session.add(chat)
+        repository.session.commit()
+        
+        # Create multiple chat stages (like multiple chat messages)
+        chat_stage1 = StageExecution(
+            execution_id="chat-stage-1",
+            session_id="test-session",
+            stage_id="chat-response-1",
+            stage_index=0,
+            stage_name="Chat Response",
+            agent="ChatAgent",
+            status=StageStatus.COMPLETED.value,
+            started_at_us=base_time + 2000000,
+            chat_id="test-chat"
+        )
+        chat_stage2 = StageExecution(
+            execution_id="chat-stage-2",
+            session_id="test-session",
+            stage_id="chat-response-2",
+            stage_index=0,
+            stage_name="Chat Response",
+            agent="ChatAgent",
+            status=StageStatus.COMPLETED.value,
+            started_at_us=base_time + 4000000,  # Later
+            chat_id="test-chat"
+        )
+        chat_stage3 = StageExecution(
+            execution_id="chat-stage-3",
+            session_id="test-session",
+            stage_id="chat-response-3",
+            stage_index=0,
+            stage_name="Chat Response",
+            agent="ChatAgent",
+            status=StageStatus.COMPLETED.value,
+            started_at_us=base_time + 3000000,  # Middle
+            chat_id="test-chat"
+        )
+        
+        # Insert in non-chronological order
+        repository.create_stage_execution(stage1)
+        repository.create_stage_execution(chat_stage2)
+        repository.create_stage_execution(chat_stage1)
+        repository.create_stage_execution(chat_stage3)
+        
+        # Act
+        result = repository.get_stage_executions_for_session("test-session")
+        
+        # Assert - chat stages should be sorted by timestamp
+        assert len(result) == 4
+        assert result[0].execution_id == "stage-1"  # Regular stage first
+        assert result[1].execution_id == "chat-stage-1"  # Earliest chat
+        assert result[2].execution_id == "chat-stage-3"  # Middle chat
+        assert result[3].execution_id == "chat-stage-2"  # Latest chat
+    
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        "stage_config,expected_order",
+        [
+            # Test case: 2 regular stages then 1 chat
+            # Stages created with index: regular-0 (idx=0), regular-1 (idx=1), chat-2 (idx=2)
+            (
+                [
+                    ("regular", 0, 1000000),
+                    ("regular", 1, 2000000),
+                    ("chat", 0, 3000000),
+                ],
+                ["regular-0", "regular-1", "chat-2"]
+            ),
+            # Test case: chat started between regular stages (should still appear last)
+            # Stages created with index: regular-0 (idx=0), chat-1 (idx=1), regular-2 (idx=2)
+            (
+                [
+                    ("regular", 0, 1000000),
+                    ("chat", 0, 1500000),  # Chat started between regular stages
+                    ("regular", 1, 2000000),
+                ],
+                ["regular-0", "regular-2", "chat-1"]
+            ),
+            # Test case: only chat stages
+            # Stages created with index: chat-0 (idx=0), chat-1 (idx=1), chat-2 (idx=2)
+            # Timestamps: 2000000, 1000000, 3000000 -> sorted: 1, 0, 2
+            (
+                [
+                    ("chat", 0, 2000000),
+                    ("chat", 0, 1000000),
+                    ("chat", 0, 3000000),
+                ],
+                ["chat-1", "chat-0", "chat-2"]  # Sorted by timestamp
+            ),
+            # Test case: only regular stages
+            # Stages created with index: regular-0 (idx=0), regular-1 (idx=1), regular-2 (idx=2)
+            # Stage indices: 2, 0, 1 -> sorted: 1 (stage_index=0), 2 (stage_index=1), 0 (stage_index=2)
+            (
+                [
+                    ("regular", 2, 3000000),
+                    ("regular", 0, 1000000),
+                    ("regular", 1, 2000000),
+                ],
+                ["regular-1", "regular-2", "regular-0"]  # Sorted by stage_index
+            ),
+        ],
+    )
+    def test_stage_ordering_scenarios(
+        self, repository, base_session, stage_config, expected_order
+    ):
+        """Test various stage ordering scenarios with parameterized test data."""
+        from tarsy.models.constants import StageStatus
+        from tarsy.models.db_models import Chat
+        from tarsy.utils.timestamp import now_us
+        
+        base_time = now_us()
+        
+        # Create chat if needed
+        has_chat = any(s[0] == "chat" for s in stage_config)
+        if has_chat:
+            chat = Chat(
+                chat_id="test-chat",
+                session_id="test-session",
+                created_at_us=base_time,
+                created_by="test-user",
+                conversation_history="[]",
+                chain_id="test-chain",
+                context_captured_at_us=base_time
+            )
+            repository.session.add(chat)
+            repository.session.commit()
+        
+        # Create stages based on config
+        for idx, (stage_type, stage_index, time_offset) in enumerate(stage_config):
+            stage = StageExecution(
+                execution_id=f"{stage_type}-{idx}",
+                session_id="test-session",
+                stage_id=f"stage-{idx}",
+                stage_index=stage_index,
+                stage_name=f"{stage_type.title()} Stage {idx}",
+                agent="TestAgent",
+                status=StageStatus.COMPLETED.value,
+                started_at_us=base_time + time_offset,
+                chat_id="test-chat" if stage_type == "chat" else None
+            )
+            repository.create_stage_execution(stage)
+        
+        # Act
+        result = repository.get_stage_executions_for_session("test-session")
+        
+        # Assert
+        assert len(result) == len(expected_order)
+        actual_order = [stage.execution_id for stage in result]
+        assert actual_order == expected_order, f"Expected {expected_order}, got {actual_order}"
+    
+    @pytest.mark.unit
+    def test_empty_session_returns_empty_list(self, repository, base_session):
+        """Test that a session with no stages returns an empty list."""
+        result = repository.get_stage_executions_for_session("test-session")
+        assert result == []
+    
+    @pytest.mark.unit
+    def test_nonexistent_session_returns_empty_list(self, repository):
+        """Test that a nonexistent session returns an empty list."""
+        result = repository.get_stage_executions_for_session("nonexistent-session")
+        assert result == []

@@ -404,7 +404,10 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                   
                   <Box flex={1}>
                     <Typography variant="h6" fontWeight={600}>
-                      Stage {stageIndex + 1}: {stage.stage_name}
+                      {stage.chat_id 
+                        ? `Chat: ${stage.stage_name}`
+                        : `Stage ${stage.stage_index + 1}: ${stage.stage_name}`
+                      }
                     </Typography>
                     <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
                       <Typography variant="body2" color="text.secondary">

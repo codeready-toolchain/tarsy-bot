@@ -358,12 +358,27 @@ class HistoryRepository:
             raise
     
     def get_stage_executions_for_session(self, session_id: str) -> List['StageExecution']:
-        """Get all stage executions for a session, ordered by stage_index."""
+        """Get all stage executions for a session in proper display order.
+        
+        Ordering:
+        1. Regular stages (chat_id IS NULL) first, sorted by stage_index
+        2. Chat stages (chat_id IS NOT NULL) last, sorted by started_at_us
+        
+        This ensures chat follow-up stages appear after all regular chain stages,
+        even though chat stages have stage_index=0.
+        """
         try:
             stmt = (
                 select(StageExecution)
                 .where(StageExecution.session_id == session_id)
-                .order_by(StageExecution.stage_index)
+                .order_by(
+                    # Chat stages (has chat_id) sort to the end
+                    case((StageExecution.chat_id.isnot(None), 1), else_=0),
+                    # Then by stage_index (for regular stages)
+                    asc(StageExecution.stage_index),
+                    # Then by timestamp (for chat stages with same stage_index)
+                    asc(StageExecution.started_at_us)
+                )
             )
             stage_executions = self.session.exec(stmt).all()
             return list(stage_executions)

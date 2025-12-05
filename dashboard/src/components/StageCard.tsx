@@ -116,7 +116,10 @@ const StageCard: React.FC<StageCardProps> = ({
             <Box display="flex" alignItems="center" gap={1} mb={1}>
               {statusConfig.icon}
               <Typography variant="h6" component="div">
-                Stage {stage.stage_index + 1}: {stage.stage_name}
+                {stage.chat_id 
+                  ? `Chat: ${stage.stage_name}`
+                  : `Stage ${stage.stage_index + 1}: ${stage.stage_name}`
+                }
               </Typography>
               <Chip
                 label={statusConfig.label}

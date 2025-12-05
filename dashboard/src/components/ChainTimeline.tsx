@@ -164,7 +164,10 @@ const ChainTimeline: React.FC<ChainTimelineProps> = ({
               <Box display="flex" alignItems="center" gap={1}>
                 {getStageStatusIcon(stage.status)}
                 <Typography variant="subtitle1" fontWeight={600}>
-                  Stage {stage.stage_index + 1}: {stage.stage_name}
+                  {stage.chat_id 
+                    ? `Chat: ${stage.stage_name}`
+                    : `Stage ${stage.stage_index + 1}: ${stage.stage_name}`
+                  }
                 </Typography>
               </Box>
               
