@@ -49,8 +49,10 @@ class TestConfigParserEscaping:
         
         # Should escape all % signs
         assert escaped_url == "postgresql://tarsy:qfaDQ7%%26Q%%21l%%40Ap9@host:5432/db"
-        # Verify that ConfigParser won't see interpolation syntax
-        assert "%26" not in escaped_url or "%%26" in escaped_url
+        # Verify that ConfigParser won't see unescaped interpolation syntax
+        # If %26 appears, it must be doubled as %%26
+        if "%26" in escaped_url:
+            assert "%%26" in escaped_url
     
     def test_multiple_percent_signs_in_various_positions(self):
         """Test handling of % in different parts of the URL."""

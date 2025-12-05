@@ -13,6 +13,7 @@ from sqlalchemy.exc import NoSuchModuleError
 from sqlmodel import Session, create_engine
 
 from tarsy.database.migrations import (
+    get_alembic_config,
     get_current_version,
     get_pending_migrations,
     rollback_migration,
@@ -213,3 +214,53 @@ class TestMigrationVersioning:
         after_pending = get_pending_migrations(temp_database)
         assert len(after_pending) == 0, "Should have no pending migrations after upgrade"
 
+
+@pytest.mark.integration
+class TestGetAlembicConfigIntegration:
+    """Integration tests for get_alembic_config with URL-encoded passwords."""
+
+    def test_get_alembic_config_escapes_percent_in_url(self) -> None:
+        """Test that get_alembic_config properly escapes % for ConfigParser.
+        
+        This verifies the actual integration with Alembic's Config class,
+        ensuring URL-encoded passwords work correctly.
+        """
+        # Test with URL-encoded password containing special characters
+        # Password: p@ssw0rd! (URL-encoded: p%40ssw0rd%21)
+        database_url = "postgresql://user:p%40ssw0rd%21@host:5432/db"
+        config = get_alembic_config(database_url)
+        
+        # Verify the URL was properly set
+        stored_url = config.get_main_option("sqlalchemy.url")
+        assert stored_url is not None
+        # ConfigParser automatically unescapes %% back to % when reading
+        # The important thing is that it matches the original URL
+        assert stored_url == database_url
+
+    def test_get_alembic_config_handles_simple_passwords(self) -> None:
+        """Test that simple passwords without % work unchanged."""
+        database_url = "postgresql://user:simplepass@host:5432/db"
+        config = get_alembic_config(database_url)
+        
+        stored_url = config.get_main_option("sqlalchemy.url")
+        # No % characters, so should be unchanged
+        assert stored_url == database_url
+    
+    def test_get_alembic_config_with_real_world_password(self) -> None:
+        """Test with the actual password that caused the original error.
+        
+        This was the real-world password that triggered the ConfigParser
+        interpolation error before the fix.
+        """
+        # Password: qfaDQ7&Q!l@Ap9 (URL-encoded)
+        database_url = "postgresql://tarsy:qfaDQ7%26Q%21l%40Ap9@host:5432/db"
+        config = get_alembic_config(database_url)
+        
+        stored_url = config.get_main_option("sqlalchemy.url")
+        # ConfigParser automatically unescapes %% back to % when reading
+        # The important thing is that it matches the original URL
+        assert stored_url == database_url
+        # Verify specific encoded sequences are preserved
+        assert "%26" in stored_url  # & encoded
+        assert "%21" in stored_url  # ! encoded  
+        assert "%40" in stored_url  # @ encoded

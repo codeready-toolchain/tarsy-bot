@@ -644,7 +644,7 @@ class TestSettingsDatabaseURL:
             assert settings.database_url == "postgresql://user:pass@host:5432/db"
     
     def test_database_url_empty_string_not_modified(self):
-        """Test that empty DATABASE_URL is not modified."""
+        """Test that empty DATABASE_URL triggers SQLite fallback."""
         with patch('tarsy.config.settings.is_testing', return_value=False):
             settings = Settings(database_url="")
             assert settings.database_url == "sqlite:///history.db"  # Falls back to SQLite

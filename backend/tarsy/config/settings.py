@@ -103,6 +103,7 @@ class Settings(BaseSettings):
     def strip_database_url(cls, v: str) -> str:
         """Strip whitespace from database URL to avoid common configuration errors."""
         return v.strip() if v else v
+
     database_host: str = Field(
         default="localhost",
         description="Database host"
@@ -262,7 +263,6 @@ class Settings(BaseSettings):
                 # Extract the part between :// and @ to show in error
                 match = re.search(r'://([^@/]+)@', self.database_url)
                 if match:
-                    credentials_part = match.group(1)
                     raise ValueError(
                         f"\n{'='*80}\n"
                         f"DATABASE_URL CONFIGURATION ERROR\n"
@@ -321,7 +321,10 @@ class Settings(BaseSettings):
         except Exception:
             # If URL parsing fails for any other reason, let it through
             # The database connection will fail with its own error
-            pass
+            from tarsy.utils.logger import get_module_logger
+            get_module_logger(__name__).debug(
+                "DATABASE_URL parsing encountered an unexpected issue; deferring to connection time"
+            )
         
         return self
     
