@@ -354,8 +354,8 @@ sequenceDiagram
 
 **📍 Chain Registry**: `backend/tarsy/services/chain_registry.py`
 - **O(1) chain lookup** by alert type
-- **Conflict detection** - ensures each alert type maps to exactly one chain
-- **Built-in + YAML chain merging**
+- **YAML override support** - YAML chains can override built-in chains for the same alert type (warning logged)
+- **Built-in + YAML chain merging** with YAML taking precedence for conflicts
 
 **Current Built-in Chain**:
 ```python
