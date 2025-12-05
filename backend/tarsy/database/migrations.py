@@ -41,7 +41,12 @@ def get_alembic_config(database_url: str) -> Config:
 
     # Create config and override database URL
     config = Config(str(alembic_ini))
-    config.set_main_option("sqlalchemy.url", database_url)
+    
+    # ConfigParser treats % as interpolation character (like %(variable)s)
+    # We need to escape % in URL-encoded passwords by doubling them: % -> %%
+    # This allows URL-encoded passwords like p%40ssw0rd to work as p%%40ssw0rd
+    escaped_url = database_url.replace('%', '%%')
+    config.set_main_option("sqlalchemy.url", escaped_url)
 
     return config
 

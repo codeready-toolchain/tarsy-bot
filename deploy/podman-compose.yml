@@ -36,6 +36,14 @@ services:
       - ../backend/.env                               # Load environment variables from backend/.env file
     environment:
       - HISTORY_ENABLED=true
+      # NOTE: If your password contains special characters (@, #, $, etc.), use separate
+      # components instead of DATABASE_URL or encode the password manually.
+      # Example with separate components (recommended):
+      #   - DATABASE_USER=tarsy
+      #   - DATABASE_PASSWORD=my-p@ssw0rd
+      #   - DATABASE_HOST=database
+      #   - DATABASE_PORT=5432
+      #   - DATABASE_NAME=tarsy
       - DATABASE_URL=postgresql://tarsy:tarsy-dev-password@database:5432/tarsy
     volumes:
       - ../config:/config:ro                        # Mount configuration files to expected path

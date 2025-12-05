@@ -536,6 +536,120 @@ class TestSettingsDatabaseURL:
         with patch('tarsy.config.settings.is_testing', return_value=False):
             settings = Settings()
             assert settings.database_url == "sqlite:///history.db"
+    
+    def test_database_url_validation_catches_unencoded_at_symbol(self):
+        """Test that validator catches unencoded @ symbol in password."""
+        with patch('tarsy.config.settings.is_testing', return_value=False):
+            with pytest.raises(ValueError) as exc_info:
+                Settings(
+                    database_url="postgresql://user:p@ssword@localhost:5432/db"
+                )
+            
+            # Check error message contains helpful information
+            error_msg = str(exc_info.value)
+            assert "DATABASE_URL CONFIGURATION ERROR" in error_msg
+            assert "special characters" in error_msg.lower()
+            assert "'@'" in error_msg
+            assert "DATABASE_USER" in error_msg  # Suggests alternative approach
+            assert "encode_db_password.py" in error_msg  # Suggests encoder tool
+    
+    def test_database_url_validation_catches_multiple_special_chars(self):
+        """Test that validator catches multiple special characters."""
+        with patch('tarsy.config.settings.is_testing', return_value=False):
+            with pytest.raises(ValueError) as exc_info:
+                Settings(
+                    database_url="postgresql://user:p#ssw0rd$!@localhost:5432/db"
+                )
+            
+            error_msg = str(exc_info.value)
+            # When URL parsing fails completely due to special chars, we show a generic error
+            assert "DATABASE_URL CONFIGURATION ERROR" in error_msg
+            assert "special characters" in error_msg.lower()
+            # Should suggest solutions
+            assert "SOLUTION 1" in error_msg
+            assert "DATABASE_USER" in error_msg
+            assert "encode_db_password.py" in error_msg
+    
+    def test_database_url_validation_allows_encoded_special_chars(self):
+        """Test that properly encoded special characters pass validation."""
+        with patch('tarsy.config.settings.is_testing', return_value=False):
+            # This should NOT raise an error - password is properly encoded
+            settings = Settings(
+                database_url="postgresql://user:p%40ssw0rd@localhost:5432/db"
+            )
+            assert settings.database_url == "postgresql://user:p%40ssw0rd@localhost:5432/db"
+    
+    def test_database_url_validation_allows_simple_passwords(self):
+        """Test that simple passwords without special chars pass validation."""
+        with patch('tarsy.config.settings.is_testing', return_value=False):
+            settings = Settings(
+                database_url="postgresql://user:simplepass123@localhost:5432/db"
+            )
+            assert settings.database_url == "postgresql://user:simplepass123@localhost:5432/db"
+    
+    def test_database_url_validation_skips_sqlite(self):
+        """Test that SQLite URLs are not validated for special characters."""
+        with patch('tarsy.config.settings.is_testing', return_value=False):
+            # SQLite URLs should not be validated, even with weird characters
+            settings = Settings(
+                database_url="sqlite:///path/with/@special#chars.db"
+            )
+            assert settings.database_url == "sqlite:///path/with/@special#chars.db"
+    
+    def test_database_url_validation_skips_urls_without_password(self):
+        """Test that URLs without password are not validated."""
+        with patch('tarsy.config.settings.is_testing', return_value=False):
+            # URLs without password should pass validation
+            settings = Settings(
+                database_url="postgresql://user@localhost:5432/db"
+            )
+            assert settings.database_url == "postgresql://user@localhost:5432/db"
+    
+    def test_database_url_validation_error_message_suggests_solutions(self):
+        """Test that error message provides actionable solutions."""
+        with patch('tarsy.config.settings.is_testing', return_value=False):
+            with pytest.raises(ValueError) as exc_info:
+                Settings(
+                    database_url="postgresql://myuser:my@pass@db.example.com:5432/mydb"
+                )
+            
+            error_msg = str(exc_info.value)
+            
+            # Should suggest using separate components
+            assert "SOLUTION 1" in error_msg
+            assert "DATABASE_USER=myuser" in error_msg
+            assert "DATABASE_HOST=db.example.com" in error_msg
+            assert "DATABASE_PORT=5432" in error_msg
+            assert "DATABASE_NAME=mydb" in error_msg
+            
+            # Should suggest using encoder tool
+            assert "SOLUTION 2" in error_msg
+            assert "encode_db_password.py" in error_msg
+            
+            # Should suggest encoding the whole URL
+            assert "SOLUTION 3" in error_msg
+            assert "--url" in error_msg
+    
+    def test_database_url_strips_whitespace(self):
+        """Test that DATABASE_URL automatically strips whitespace and newlines."""
+        with patch('tarsy.config.settings.is_testing', return_value=False):
+            # Test with trailing newline
+            settings = Settings(database_url="postgresql://user:pass@host:5432/db\n")
+            assert settings.database_url == "postgresql://user:pass@host:5432/db"
+            
+            # Test with leading/trailing spaces
+            settings = Settings(database_url="  postgresql://user:pass@host:5432/db  ")
+            assert settings.database_url == "postgresql://user:pass@host:5432/db"
+            
+            # Test with tabs and newlines
+            settings = Settings(database_url="\tpostgresql://user:pass@host:5432/db\n\t")
+            assert settings.database_url == "postgresql://user:pass@host:5432/db"
+    
+    def test_database_url_empty_string_not_modified(self):
+        """Test that empty DATABASE_URL is not modified."""
+        with patch('tarsy.config.settings.is_testing', return_value=False):
+            settings = Settings(database_url="")
+            assert settings.database_url == "sqlite:///history.db"  # Falls back to SQLite
 
 
 @pytest.mark.unit

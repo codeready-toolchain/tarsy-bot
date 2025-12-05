@@ -3,14 +3,15 @@ Application settings and configuration management.
 """
 
 import os
+import re
 import sys
 from functools import lru_cache
 from pathlib import Path
 from typing import Dict, List, Optional
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 
 import yaml
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from tarsy.config.builtin_config import get_builtin_llm_providers
@@ -96,6 +97,12 @@ class Settings(BaseSettings):
         default="",
         description="Database connection string for alert processing history"
     )
+    
+    @field_validator('database_url', mode='after')
+    @classmethod
+    def strip_database_url(cls, v: str) -> str:
+        """Strip whitespace from database URL to avoid common configuration errors."""
+        return v.strip() if v else v
     database_host: str = Field(
         default="localhost",
         description="Database host"
@@ -226,10 +233,97 @@ class Settings(BaseSettings):
                 self.database_url = "sqlite:///:memory:"
             elif self.database_password:
                 # Compose PostgreSQL URL from separate components if password is provided
+                # quote_plus automatically handles special characters like @ # $ % etc.
                 self.database_url = f"postgresql://{quote_plus(self.database_user)}:{quote_plus(self.database_password)}@{self.database_host}:{self.database_port}/{self.database_name}"
             else:
                 # Use file database for dev/production when no PostgreSQL credentials
                 self.database_url = "sqlite:///history.db"
+    
+    @model_validator(mode='after')
+    def validate_database_url(self) -> 'Settings':
+        """
+        Validate DATABASE_URL for common issues with special characters.
+        
+        Provides helpful error messages if unencoded special characters are detected
+        in the password portion of the DATABASE_URL.
+        """
+        if not self.database_url or self.database_url.startswith('sqlite'):
+            return self
+        
+        try:
+            # Try to parse the URL
+            parsed = urlparse(self.database_url)
+            
+            # Check if URL looks like it should have credentials but parsing failed
+            # Pattern: scheme://something:something@host suggests credentials
+            # If parsed.username is None but the URL contains '://' and '@', parsing likely failed due to special chars
+            if parsed.username is None and '://' in self.database_url and '@' in self.database_url:
+                # URL has @ but no username parsed - likely due to special characters breaking parsing
+                # Extract the part between :// and @ to show in error
+                match = re.search(r'://([^@/]+)@', self.database_url)
+                if match:
+                    credentials_part = match.group(1)
+                    raise ValueError(
+                        f"\n{'='*80}\n"
+                        f"DATABASE_URL CONFIGURATION ERROR\n"
+                        f"{'='*80}\n"
+                        f"Your DATABASE_URL appears to contain special characters that break URL parsing.\n"
+                        f"This usually means the password contains unencoded special characters like #, $, !, etc.\n\n"
+                        f"SOLUTION 1 (Recommended): Use separate configuration components:\n"
+                        f"  DATABASE_USER=<your-username>\n"
+                        f"  DATABASE_PASSWORD=<your-password>  # No encoding needed!\n"
+                        f"  DATABASE_HOST=<your-host>\n"
+                        f"  DATABASE_PORT=5432\n"
+                        f"  DATABASE_NAME=<your-database>\n\n"
+                        f"SOLUTION 2: URL-encode your password manually:\n"
+                        f"  python backend/encode_db_password.py \"<your-password>\"\n\n"
+                        f"{'='*80}\n"
+                    )
+            
+            # If we successfully parsed and have a password, check for unencoded special chars
+            if parsed.password:
+                password = parsed.password
+                
+                # Remove all properly encoded sequences (%XX where XX are hex digits)
+                # This helps us detect actual unencoded special characters
+                # Pattern: % followed by exactly two hex digits
+                password_without_encoding = re.sub(r'%[0-9A-Fa-f]{2}', '', password)
+                
+                # Check for common special characters that must be URL-encoded
+                # These characters have special meaning in URLs and will break parsing
+                # Note: We check the password after removing encoded sequences
+                special_chars = ['@', '#', '$', '%', '&', '/', ':', '?', '=', '+', ' ', '!']
+                found_chars = [char for char in special_chars if char in password_without_encoding]
+                
+                if found_chars:
+                    # Remove duplicates and sort for consistent error messages
+                    found_chars = sorted(set(found_chars))
+                    chars_list = ', '.join(f"'{c}'" for c in found_chars)
+                    
+                    raise ValueError(
+                        f"\n{'='*80}\n"
+                        f"DATABASE_URL CONFIGURATION ERROR\n"
+                        f"{'='*80}\n"
+                        f"Your database password contains special characters ({chars_list}) that must be URL-encoded.\n\n"
+                        f"SOLUTION 1 (Recommended): Use separate configuration components:\n"
+                        f"  DATABASE_USER={parsed.username}\n"
+                        f"  DATABASE_PASSWORD=<your-password>  # No encoding needed!\n"
+                        f"  DATABASE_HOST={parsed.hostname}\n"
+                        f"  DATABASE_PORT={parsed.port or 5432}\n"
+                        f"  DATABASE_NAME={parsed.path.lstrip('/') if parsed.path else ''}\n\n"
+                        f"SOLUTION 2: URL-encode your password manually:\n"
+                        f"  python backend/encode_db_password.py \"<your-password>\"\n\n"
+                        f"{'='*80}\n"
+                    )
+        except ValueError:
+            # Re-raise our validation error
+            raise
+        except Exception:
+            # If URL parsing fails for any other reason, let it through
+            # The database connection will fail with its own error
+            pass
+        
+        return self
     
     model_config = SettingsConfigDict(
         env_file=".env",
