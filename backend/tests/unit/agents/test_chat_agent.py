@@ -5,12 +5,13 @@ Tests the built-in chat agent functionality including MCP server configuration,
 custom instructions, and strategy-aware controller setup.
 """
 
+from unittest.mock import AsyncMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, AsyncMock, patch
 
 from tarsy.agents.chat_agent import ChatAgent
-from tarsy.models.constants import IterationStrategy
 from tarsy.agents.iteration_controllers.chat_react_controller import ChatReActController
+from tarsy.models.constants import IterationStrategy
 
 
 @pytest.mark.unit
@@ -18,7 +19,7 @@ class TestChatAgent:
     """Test ChatAgent functionality."""
     
     @pytest.fixture
-    def mock_llm_client(self):
+    def mock_llm_manager(self):
         """Mock LLM client for testing."""
         return AsyncMock()
     
@@ -33,10 +34,10 @@ class TestChatAgent:
         return Mock()
     
     @pytest.fixture
-    def chat_agent(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    def chat_agent(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Create ChatAgent instance for testing."""
         return ChatAgent(
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
         )
@@ -65,21 +66,23 @@ class TestChatAgent:
         assert isinstance(controller, ChatReActController)
     
     def test_creates_chat_native_thinking_controller_for_native_thinking_strategy(
-        self, mock_llm_client, mock_mcp_client, mock_mcp_registry
+        self, mock_llm_manager, mock_mcp_client, mock_mcp_registry
     ):
         """Test ChatAgent creates ChatNativeThinkingController for NATIVE_THINKING strategy."""
-        from tarsy.agents.iteration_controllers.chat_native_thinking_controller import ChatNativeThinkingController
-        from tarsy.models.llm_models import LLMProviderType, LLMProviderConfig
+        from tarsy.agents.iteration_controllers.chat_native_thinking_controller import (
+            ChatNativeThinkingController,
+        )
+        from tarsy.models.llm_models import LLMProviderConfig, LLMProviderType
         
         # Mock the LLM client to return Google provider config
-        mock_llm_client.get_client = Mock(return_value=mock_llm_client)
-        mock_llm_client.config = LLMProviderConfig(
+        mock_llm_manager.get_client = Mock(return_value=mock_llm_manager)
+        mock_llm_manager.config = LLMProviderConfig(
             type=LLMProviderType.GOOGLE,
             model="gemini-3-pro-preview",
             api_key="test-key",
             api_key_env="GOOGLE_API_KEY"
         )
-        mock_llm_client.provider_name = "test-google"
+        mock_llm_manager.provider_name = "test-google"
         
         # Patch GeminiNativeThinkingClient where the controller imports it (NativeThinkingController's module)
         # to avoid creating a real client during agent construction
@@ -90,7 +93,7 @@ class TestChatAgent:
             mock_gemini_client_class.return_value = Mock()
             
             agent = ChatAgent(
-                llm_client=mock_llm_client,
+                llm_manager=mock_llm_manager,
                 mcp_client=mock_mcp_client,
                 mcp_registry=mock_mcp_registry,
                 iteration_strategy=IterationStrategy.NATIVE_THINKING
@@ -103,12 +106,12 @@ class TestChatAgent:
             assert isinstance(agent._iteration_controller, ChatNativeThinkingController)
     
     def test_respects_iteration_strategy_parameter(
-        self, mock_llm_client, mock_mcp_client, mock_mcp_registry
+        self, mock_llm_manager, mock_mcp_client, mock_mcp_registry
     ):
         """Test ChatAgent respects the iteration_strategy parameter."""
         # Create ChatAgent with REACT_STAGE strategy
         agent = ChatAgent(
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry,
             iteration_strategy=IterationStrategy.REACT_STAGE

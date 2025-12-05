@@ -6,14 +6,11 @@ to final analysis, testing integration between all components.
 """
 
 import asyncio
-import uuid
 from datetime import datetime
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
-from fastapi.testclient import TestClient
 
-from tarsy.main import app
 from tarsy.models.alert import Alert
 from tarsy.models.processing_context import ChainContext
 from tarsy.utils.timestamp import now_us

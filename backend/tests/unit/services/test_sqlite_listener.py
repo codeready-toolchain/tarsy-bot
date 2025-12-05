@@ -5,8 +5,9 @@ This module tests SQLite-based event listening via polling.
 """
 
 import asyncio
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
+
 import pytest
-from unittest.mock import AsyncMock, Mock, patch, MagicMock
 
 from tarsy.models.db_models import Event
 from tarsy.services.events.sqlite_listener import SQLiteEventListener

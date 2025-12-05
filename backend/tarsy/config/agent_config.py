@@ -8,6 +8,7 @@ conflict detection, and MCP server reference validation.
 
 import os
 from typing import Any, Dict
+
 import yaml
 from pydantic import ValidationError
 
@@ -15,8 +16,8 @@ from ..models.agent_config import CombinedConfigModel
 from ..utils.logger import get_module_logger
 from .builtin_config import (
     get_builtin_agent_class_names,
+    get_builtin_chain_definitions,
     get_builtin_mcp_server_ids,
-    get_builtin_chain_definitions
 )
 from .exceptions import ConfigurationError
 
@@ -291,7 +292,7 @@ class ConfigurationLoader:
                 f"Configuration file {self.config_file_path} contains invalid UTF-8 encoding: {e}. "
                 f"Please ensure the file is saved with UTF-8 encoding."
             )
-        except yaml.YAMLError as e:
+        except yaml.YAMLError:
             # Re-raise with more context (will be caught and formatted by main handler)
             raise
     
@@ -431,7 +432,7 @@ class ConfigurationLoader:
             for suggestion in suggestions:
                 base_msg += f"\n  - {suggestion}"
         
-        base_msg += f"\n\nPlease validate your YAML syntax using an online YAML validator or check the example configuration at config/agents.yaml.example"
+        base_msg += "\n\nPlease validate your YAML syntax using an online YAML validator or check the example configuration at config/agents.yaml.example"
         
         return base_msg
     
@@ -457,15 +458,15 @@ class ConfigurationLoader:
             
             # Add specific suggestions based on error types
             if error_type == 'missing':
-                detail += f" (This field is required)"
+                detail += " (This field is required)"
             elif error_type == 'too_short':
-                detail += f" (Lists must have at least 1 item)"
+                detail += " (Lists must have at least 1 item)"
             elif error_type == 'string_type':
-                detail += f" (Expected text/string value)"
+                detail += " (Expected text/string value)"
             elif error_type == 'bool_parsing':
-                detail += f" (Expected true/false boolean value)"
+                detail += " (Expected true/false boolean value)"
             elif error_type == 'dict_type':
-                detail += f" (Expected dictionary/object structure)"
+                detail += " (Expected dictionary/object structure)"
             
             error_details.append(detail)
         
@@ -474,6 +475,6 @@ class ConfigurationLoader:
             for detail in error_details:
                 base_msg += f"\n  - {detail}"
         
-        base_msg += f"\n\nPlease check the example configuration at config/agents.yaml.example for the correct format."
+        base_msg += "\n\nPlease check the example configuration at config/agents.yaml.example for the correct format."
         
         return base_msg 

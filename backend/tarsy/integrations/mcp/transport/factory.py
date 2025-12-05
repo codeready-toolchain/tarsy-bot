@@ -1,14 +1,15 @@
 """MCP transport factory for creating transport instances."""
 
 from abc import ABC, abstractmethod
-from typing import Optional, Any
+from typing import Any, Optional
+
 from mcp import ClientSession
 
 from tarsy.models.mcp_transport_config import (
-    TransportConfig,
-    TRANSPORT_STDIO,
     TRANSPORT_HTTP,
     TRANSPORT_SSE,
+    TRANSPORT_STDIO,
+    TransportConfig,
 )
 from tarsy.utils.logger import get_module_logger
 

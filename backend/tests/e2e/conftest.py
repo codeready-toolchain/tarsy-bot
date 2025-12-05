@@ -70,7 +70,6 @@ class E2ETestIsolation:
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Clean up all resources when exiting the context manager."""
-        import asyncio
         from contextlib import suppress
         
         # Clean up resources as normal
@@ -309,12 +308,12 @@ def ensure_e2e_isolation(request):
 @pytest.fixture
 def e2e_test_client(isolated_e2e_settings):
     """Create an isolated FastAPI test client for e2e tests."""
-    from fastapi.testclient import TestClient
-    from unittest.mock import patch
-
     # Ensure settings cache is cleared before importing app
     # This ensures the app is created with the test configuration
     from contextlib import suppress
+    from unittest.mock import patch
+
+    from fastapi.testclient import TestClient
     with suppress(Exception):
         import tarsy.config.settings
         tarsy.config.settings.get_settings.cache_clear()
@@ -745,11 +744,11 @@ current-context: test-context
 @pytest.fixture
 def e2e_native_thinking_test_client(isolated_native_thinking_settings):
     """Create an isolated FastAPI test client for native thinking e2e tests."""
-    from fastapi.testclient import TestClient
-    from unittest.mock import patch
-
     # Ensure settings cache is cleared before importing app
     from contextlib import suppress
+    from unittest.mock import patch
+
+    from fastapi.testclient import TestClient
     with suppress(Exception):
         import tarsy.config.settings
         tarsy.config.settings.get_settings.cache_clear()

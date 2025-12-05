@@ -10,16 +10,24 @@ from urllib.parse import urlparse
 
 from sqlalchemy import Engine
 from sqlalchemy.exc import OperationalError, SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine, text
 
-from tarsy.config.settings import get_settings, Settings
+from tarsy.config.settings import Settings, get_settings
 from tarsy.database.migrations import run_migrations
 
 # Import all SQLModel table classes to ensure they are registered for schema creation
 from tarsy.models.db_models import AlertSession, StageExecution  # noqa: F401
-from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction  # noqa: F401
+from tarsy.models.unified_interactions import (  # noqa: F401
+    LLMInteraction,
+    MCPInteraction,
+)
 
 logger = logging.getLogger(__name__)
 

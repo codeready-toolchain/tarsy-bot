@@ -6,18 +6,26 @@ supporting comprehensive audit trails, chronological timeline reconstruction,
 and advanced querying capabilities using Unix timestamps for optimal performance.
 """
 
-from typing import Dict, List, Optional, Union
 from collections import defaultdict
+from typing import Dict, List, Optional, Union
 
-from sqlmodel import Session, asc, desc, func, select, and_, or_, case
 from sqlalchemy.exc import IntegrityError
+from sqlmodel import Session, and_, asc, case, desc, func, or_, select
 
 from tarsy.models.constants import AlertSessionStatus, StageStatus
-from tarsy.models.db_models import AlertSession, StageExecution, Chat, ChatUserMessage
+from tarsy.models.db_models import AlertSession, Chat, ChatUserMessage, StageExecution
 from tarsy.models.history_models import (
-    PaginatedSessions, DetailedSession, FilterOptions, TimeRangeOption, PaginationInfo,
-    SessionOverview, DetailedStage, LLMTimelineEvent, MCPTimelineEvent, MCPEventDetails,
-    ChatUserMessageData
+    ChatUserMessageData,
+    DetailedSession,
+    DetailedStage,
+    FilterOptions,
+    LLMTimelineEvent,
+    MCPEventDetails,
+    MCPTimelineEvent,
+    PaginatedSessions,
+    PaginationInfo,
+    SessionOverview,
+    TimeRangeOption,
 )
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.repositories.base_repository import BaseRepository

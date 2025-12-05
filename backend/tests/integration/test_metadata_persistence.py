@@ -3,6 +3,7 @@ Integration test to verify response metadata is properly persisted to database.
 """
 
 import pytest
+
 from tarsy.models.unified_interactions import LLMInteraction
 
 
@@ -22,7 +23,11 @@ class TestMetadataPersistence:
     
     def test_llm_interaction_model_has_response_metadata(self):
         """Test that LLMInteraction model has response_metadata field."""
-        from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
+        from tarsy.models.unified_interactions import (
+            LLMConversation,
+            LLMMessage,
+            MessageRole,
+        )
         from tarsy.utils.timestamp import now_us
         
         # Create interaction with metadata
@@ -63,7 +68,11 @@ class TestMetadataPersistence:
     
     def test_response_metadata_none_allowed(self):
         """Test that response_metadata can be None (for non-Google providers)."""
-        from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
+        from tarsy.models.unified_interactions import (
+            LLMConversation,
+            LLMMessage,
+            MessageRole,
+        )
         from tarsy.utils.timestamp import now_us
         
         conversation = LLMConversation(
@@ -88,7 +97,11 @@ class TestMetadataPersistence:
     
     def test_response_metadata_persists_to_database(self, test_database_session):
         """Test that response_metadata survives database round-trip with full JSON content."""
-        from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
+        from tarsy.models.unified_interactions import (
+            LLMConversation,
+            LLMMessage,
+            MessageRole,
+        )
         from tarsy.utils.timestamp import now_us
         
         # Create interaction with complex nested metadata

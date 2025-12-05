@@ -12,12 +12,12 @@ from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.pool import StaticPool
 
 from tarsy.database.init_db import (
+    create_database_engine,
     create_database_tables,
+    detect_database_type,
     get_database_info,
     initialize_database,
     test_database_connection,
-    detect_database_type,
-    create_database_engine,
 )
 
 

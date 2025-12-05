@@ -5,8 +5,10 @@ This module defines a simple format for agent execution results,
 allowing agents to provide their own summary format as a string.
 """
 
-from pydantic import BaseModel, Field, ConfigDict, field_validator, ValidationInfo
-from typing import Optional, Dict, Any
+from typing import Any, Dict, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+
 from tarsy.models.constants import StageStatus
 
 

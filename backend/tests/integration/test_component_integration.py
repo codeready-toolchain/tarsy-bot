@@ -9,7 +9,7 @@ focusing on service boundaries and interactions rather than full end-to-end flow
 import pytest
 
 from tarsy.agents.kubernetes_agent import KubernetesAgent
-from tarsy.integrations.llm.client import LLMManager
+from tarsy.integrations.llm.manager import LLMManager
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.constants import StageStatus
 from tarsy.services.agent_factory import AgentFactory
@@ -56,13 +56,13 @@ class TestAgentFactoryIntegration:
         """Test agent factory initialization."""
         # Act
         factory = AgentFactory(
-            llm_client=mock_llm_manager,
+            llm_manager=mock_llm_manager,
             mcp_registry=mock_mcp_server_registry
         )
         
         # Assert
         assert factory is not None
-        assert factory.llm_client == mock_llm_manager
+        assert factory.llm_manager == mock_llm_manager
         # mcp_client is no longer stored in factory, it's passed to create_agent()
         assert factory.mcp_registry == mock_mcp_server_registry
         assert len(factory.static_agent_classes) > 0
@@ -77,7 +77,7 @@ class TestAgentFactoryIntegration:
         """Test creation of KubernetesAgent through factory."""
         # Arrange
         factory = AgentFactory(
-            llm_client=mock_llm_manager,
+            llm_manager=mock_llm_manager,
             mcp_registry=mock_mcp_server_registry
         )
         
@@ -86,7 +86,7 @@ class TestAgentFactoryIntegration:
         
         # Assert
         assert isinstance(agent, KubernetesAgent)
-        assert agent.llm_client == mock_llm_manager
+        assert agent.llm_manager == mock_llm_manager
         assert agent.mcp_client == mock_mcp_client
         assert agent.mcp_registry == mock_mcp_server_registry
 
@@ -99,7 +99,7 @@ class TestAgentFactoryIntegration:
         """Test agent factory error handling for unknown agents."""
         # Arrange
         factory = AgentFactory(
-            llm_client=mock_llm_manager,
+            llm_manager=mock_llm_manager,
             mcp_registry=mock_mcp_server_registry
         )
         
@@ -179,7 +179,7 @@ class TestKubernetesAgentIntegration:
         """Test KubernetesAgent MCP server assignment."""
         # Arrange & Act
         agent = KubernetesAgent(
-            llm_client=mock_llm_manager.get_client(),
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_server_registry
         )
@@ -197,7 +197,7 @@ class TestKubernetesAgentIntegration:
         """Test KubernetesAgent custom instructions."""
         # Arrange & Act
         agent = KubernetesAgent(
-            llm_client=mock_llm_manager.get_client(),
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_server_registry
         )
@@ -302,7 +302,7 @@ class TestServiceInteractionPatterns:
         # Arrange
         registry = ChainRegistry()
         factory = AgentFactory(
-            llm_client=mock_llm_manager,
+            llm_manager=mock_llm_manager,
             mcp_registry=mock_mcp_server_registry
         )
         
@@ -329,7 +329,7 @@ class TestServiceInteractionPatterns:
         # Arrange
         registry = MCPServerRegistry()
         agent = KubernetesAgent(
-            llm_client=mock_llm_manager.get_client(),
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=registry
         )
@@ -355,14 +355,14 @@ class TestServiceInteractionPatterns:
         """Test integration between agents and LLM manager."""
         # Arrange
         agent = KubernetesAgent(
-            llm_client=mock_llm_manager.get_client(),
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_server_registry
         )
         
         # Create ChainContext for the new architecture
-        from tarsy.models.processing_context import ChainContext
         from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.processing_context import ChainContext
         from tarsy.utils.timestamp import now_us
         
         processing_alert = ProcessingAlert(
@@ -389,7 +389,8 @@ class TestServiceInteractionPatterns:
         assert len(result.result_summary) > 0
         assert result.status == StageStatus.FAILED  # New failure detection: max iterations + failed interactions = FAILED
         assert "reached maximum iterations" in result.error_message
-        mock_llm_manager.get_client().generate_response.assert_called()
+        # After LLMManager refactor, agents call llm_manager.generate_response directly
+        mock_llm_manager.generate_response.assert_called()
 
 @pytest.mark.asyncio
 @pytest.mark.integration
@@ -410,14 +411,14 @@ class TestErrorPropagationBetweenComponents:
         mock_mcp_client.call_tool.side_effect = Exception("MCP connection failed")
         
         agent = KubernetesAgent(
-            llm_client=mock_llm_manager.get_client(),
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_server_registry
         )
         
         # Act
-        from tarsy.models.processing_context import ChainContext
         from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.processing_context import ChainContext
         from tarsy.utils.timestamp import now_us
         
         processing_alert = ProcessingAlert(
@@ -453,14 +454,14 @@ class TestErrorPropagationBetweenComponents:
         mock_llm_manager.get_client().generate_response.side_effect = Exception("LLM API failed")
         
         agent = KubernetesAgent(
-            llm_client=mock_llm_manager.get_client(),
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_server_registry
         )
         
         # Act
-        from tarsy.models.processing_context import ChainContext
         from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.processing_context import ChainContext
         from tarsy.utils.timestamp import now_us
         
         processing_alert = ProcessingAlert(
@@ -500,7 +501,7 @@ class TestErrorPropagationBetweenComponents:
         
         # Act & Assert
         agent = KubernetesAgent(
-            llm_client=mock_llm_manager.get_client(),
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=empty_registry
         )

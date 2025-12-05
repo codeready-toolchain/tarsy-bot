@@ -5,17 +5,14 @@ Tests the integration of MCP selection through alert submission and processing,
 validating that user-provided server/tool selections override defaults correctly.
 """
 
+
 import pytest
-from unittest.mock import AsyncMock, Mock
 from mcp.types import Tool
 
-from tarsy.models.alert import Alert
+from tarsy.agents.kubernetes_agent import KubernetesAgent
+from tarsy.models.alert import Alert, ProcessingAlert
 from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
 from tarsy.models.processing_context import ChainContext
-from tarsy.models.alert import ProcessingAlert
-from tarsy.services.alert_service import AlertService
-from tarsy.services.agent_factory import AgentFactory
-from tarsy.agents.kubernetes_agent import KubernetesAgent
 
 
 @pytest.mark.asyncio
@@ -132,7 +129,7 @@ class TestMCPSelectionAgentExecution:
         
         # Create agent
         agent = KubernetesAgent(
-            llm_client=mock_llm_manager,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_server_registry
         )
@@ -182,7 +179,7 @@ class TestMCPSelectionAgentExecution:
         
         # Create agent
         agent = KubernetesAgent(
-            llm_client=mock_llm_manager,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_server_registry
         )
@@ -221,7 +218,7 @@ class TestMCPSelectionAgentExecution:
         
         # Create agent
         agent = KubernetesAgent(
-            llm_client=mock_llm_manager,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_server_registry
         )
@@ -266,7 +263,7 @@ class TestMCPSelectionErrorHandling:
         
         # Create agent
         agent = KubernetesAgent(
-            llm_client=mock_llm_manager,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_server_registry
         )
@@ -305,7 +302,7 @@ class TestMCPSelectionErrorHandling:
         
         # Create agent
         agent = KubernetesAgent(
-            llm_client=mock_llm_manager,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_server_registry
         )
@@ -390,7 +387,7 @@ class TestMCPSelectionEndToEnd:
         
         # Create agent and verify it uses the selection
         agent = KubernetesAgent(
-            llm_client=mock_llm_manager,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_server_registry
         )
@@ -421,8 +418,9 @@ class TestMCPSelectionExecutionValidation:
         mock_mcp_server_registry
     ):
         """Test that tool calls not in MCP selection are blocked at execution time."""
-        from tarsy.agents.kubernetes_agent import KubernetesAgent
         from mcp.types import Tool
+
+        from tarsy.agents.kubernetes_agent import KubernetesAgent
         
         # Mock the registry
         mock_mcp_server_registry.get_all_server_ids.return_value = ["kubernetes-server"]
@@ -443,7 +441,7 @@ class TestMCPSelectionExecutionValidation:
         
         # Create agent
         agent = KubernetesAgent(
-            llm_client=mock_llm_manager,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_server_registry
         )
@@ -524,7 +522,7 @@ class TestMCPSelectionExecutionValidation:
         
         # Create agent
         agent = KubernetesAgent(
-            llm_client=mock_llm_manager,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_server_registry
         )
@@ -575,7 +573,10 @@ class TestMCPSelectionPersistence:
     
     def test_mcp_selection_serialization_roundtrip(self):
         """Test that MCP selection can be serialized and deserialized correctly."""
-        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
+        from tarsy.models.mcp_selection_models import (
+            MCPSelectionConfig,
+            MCPServerSelection,
+        )
         
         # Create MCP selection
         original = MCPSelectionConfig(
@@ -601,7 +602,10 @@ class TestMCPSelectionPersistence:
     def test_mcp_selection_flows_through_alert_models(self):
         """Test that MCP selection flows correctly through alert processing models."""
         from tarsy.models.alert import Alert, ProcessingAlert
-        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
+        from tarsy.models.mcp_selection_models import (
+            MCPSelectionConfig,
+            MCPServerSelection,
+        )
         from tarsy.models.processing_context import ChainContext
         
         # Create alert with MCP selection
@@ -633,9 +637,12 @@ class TestMCPSelectionPersistence:
     
     def test_history_models_support_mcp_selection(self):
         """Test that history models can represent MCP selection."""
-        from tarsy.models.history_models import DetailedSession, SessionOverview
-        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
         from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.history_models import DetailedSession, SessionOverview
+        from tarsy.models.mcp_selection_models import (
+            MCPSelectionConfig,
+            MCPServerSelection,
+        )
         from tarsy.utils.timestamp import now_us
         
         mcp_selection = MCPSelectionConfig(

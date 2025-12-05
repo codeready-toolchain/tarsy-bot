@@ -9,16 +9,22 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from tarsy.hooks.hook_context import BaseHook
 from tarsy.hooks.history_hooks import (
     LLMHistoryHook,
     MCPHistoryHook,
     MCPListHistoryHook,
     StageExecutionHistoryHook,
 )
-from tarsy.models.constants import StageStatus, MAX_LLM_MESSAGE_CONTENT_SIZE
+from tarsy.hooks.hook_context import BaseHook
+from tarsy.models.constants import MAX_LLM_MESSAGE_CONTENT_SIZE, StageStatus
 from tarsy.models.db_models import StageExecution
-from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction, LLMConversation, LLMMessage, MessageRole
+from tarsy.models.unified_interactions import (
+    LLMConversation,
+    LLMInteraction,
+    LLMMessage,
+    MCPInteraction,
+    MessageRole,
+)
 from tarsy.services.history_service import HistoryService
 
 
@@ -453,9 +459,10 @@ class TestStageExecutionEventHook:
     @pytest.mark.asyncio
     async def test_execute_active_status_with_chat_user_message(self, event_hook):
         """Test that ACTIVE status publishes stage.started event with user message data when present."""
-        from tarsy.models.db_models import StageExecution, ChatUserMessage
-        from tarsy.models.constants import StageStatus
         from unittest.mock import AsyncMock, MagicMock
+
+        from tarsy.models.constants import StageStatus
+        from tarsy.models.db_models import ChatUserMessage, StageExecution
         
         # Create stage execution with chat user message
         chat_stage = StageExecution(

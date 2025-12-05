@@ -385,8 +385,9 @@ class TestNewModelsInRealScenarios:
             }
         }
         
-        from tarsy.models.alert import ProcessingAlert
         import time
+
+        from tarsy.models.alert import ProcessingAlert
         
         processing_alert = ProcessingAlert(
             alert_type="large-data-test",

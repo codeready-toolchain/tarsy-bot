@@ -5,8 +5,6 @@ This module tests the alert-related endpoints that were moved from main.py
 to controllers/alert_controller.py for better code organization.
 """
 
-import asyncio
-import uuid
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -164,7 +162,6 @@ class TestSubmitAlertEndpoint:
         self, client, valid_alert_data, invalid_input, expected_status, expected_error
     ):
         """Test alert submission with various invalid inputs."""
-        from tarsy.models.alert import AlertResponse
         if invalid_input == "invalid json":
             response = client.post(
                 "/api/v1/alerts",

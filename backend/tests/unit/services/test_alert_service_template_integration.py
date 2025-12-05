@@ -53,8 +53,8 @@ class TestAlertServiceTemplateIntegration:
     def test_alert_service_template_resolution_integration(self):
         """Test that template resolution works through AlertService initialization."""
         # Create a test .env file with KUBECONFIG for built-in kubernetes-server
-        import tempfile
         import os
+        import tempfile
         
         env_content = "KUBECONFIG=/integration/test/kubeconfig\n"
         
@@ -95,8 +95,8 @@ class TestAlertServiceTemplateIntegration:
     def test_alert_service_template_env_var_integration(self):
         """Test that environment variable resolution works through AlertService."""
         # Create an empty .env file to prevent loading of real .env values
-        import tempfile
         import os
+        import tempfile
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.env', delete=False) as f:
             f.write("# Empty .env file for testing defaults\n")

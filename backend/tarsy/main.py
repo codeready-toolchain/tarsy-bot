@@ -4,41 +4,41 @@ Main entry point for the tarsy backend service.
 """
 
 import asyncio
+import base64
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Dict, Optional, AsyncGenerator
-import base64
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, Optional
 
-from fastapi import FastAPI, HTTPException, Response
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
+from cachetools import TTLCache
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
-from cachetools import TTLCache
+from fastapi import FastAPI, HTTPException, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from tarsy.config.settings import get_settings
-from tarsy.controllers.history_controller import router as history_router
 from tarsy.controllers.alert_controller import router as alert_router
 from tarsy.controllers.chat_controller import router as chat_router
+from tarsy.controllers.history_controller import router as history_router
 from tarsy.controllers.websocket_controller import websocket_router
 from tarsy.database.init_db import (
-    get_database_info,
-    initialize_database,
-    initialize_async_database,
+    dispose_async_database,
     get_async_session_factory,
-    dispose_async_database
+    get_database_info,
+    initialize_async_database,
+    initialize_database,
 )
 from tarsy.models.processing_context import ChainContext
 from tarsy.services.alert_service import AlertService
 from tarsy.utils.logger import get_module_logger, setup_logging
 
 if TYPE_CHECKING:
+    from tarsy.repositories.base_repository import DatabaseManager
     from tarsy.services.events.manager import EventSystemManager
     from tarsy.services.history_cleanup_service import HistoryCleanupService
     from tarsy.services.mcp_health_monitor import MCPHealthMonitor
-    from tarsy.repositories.base_repository import DatabaseManager
 
 # Setup logger for this module
 logger = get_module_logger(__name__)
@@ -108,9 +108,11 @@ async def handle_cancel_request(event: dict) -> None:
                 
                 # If session is CANCELING but has no active task, it needs cancellation completion
                 # This handles sessions that were PAUSED when cancellation was requested
-                from tarsy.services.history_service import get_history_service
                 from tarsy.models.constants import AlertSessionStatus
-                from tarsy.services.events.event_helpers import publish_session_cancelled
+                from tarsy.services.events.event_helpers import (
+                    publish_session_cancelled,
+                )
+                from tarsy.services.history_service import get_history_service
                 
                 history_service = get_history_service()
                 if history_service:
@@ -295,8 +297,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize history cleanup service
     if settings.history_enabled and db_init_success:
         try:
-            from tarsy.services.history_cleanup_service import HistoryCleanupService
             from tarsy.repositories.base_repository import DatabaseManager
+            from tarsy.services.history_cleanup_service import HistoryCleanupService
             
             # Create and initialize database manager for sync operations
             # Stored at module level to allow cleanup during shutdown
@@ -462,6 +464,7 @@ app.include_router(alert_router, tags=["alerts"])
 app.include_router(websocket_router, tags=["websocket"])
 
 from tarsy.controllers.system_controller import router as system_router
+
 app.include_router(system_router, tags=["system"])
 
 # Chat routes (registered after other routers)
@@ -512,7 +515,9 @@ async def health_check(response: Response) -> Dict[str, Any]:
         event_listener_type = "unknown"
         try:
             from tarsy.services.events.manager import get_event_system
-            from tarsy.services.events.postgresql_listener import PostgreSQLEventListener
+            from tarsy.services.events.postgresql_listener import (
+                PostgreSQLEventListener,
+            )
             
             event_system = get_event_system()
             event_listener = event_system.get_listener() if event_system else None
@@ -757,9 +762,11 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
                 logger.info(f"Session {session_id} task was cancelled")
                 
                 # Check if this is a user-requested cancellation (status is CANCELING)
-                from tarsy.services.history_service import get_history_service
-                from tarsy.services.events.event_helpers import publish_session_cancelled
                 from tarsy.models.constants import AlertSessionStatus
+                from tarsy.services.events.event_helpers import (
+                    publish_session_cancelled,
+                )
+                from tarsy.services.history_service import get_history_service
                 
                 is_user_cancellation = False
                 history_service = get_history_service()
@@ -791,9 +798,9 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
         except asyncio.CancelledError:
             # Handle cancellation explicitly to prevent it from being caught by Exception handler
             # Check if this is a user-requested cancellation
-            from tarsy.services.history_service import get_history_service
-            from tarsy.services.events.event_helpers import publish_session_cancelled
             from tarsy.models.constants import AlertSessionStatus
+            from tarsy.services.events.event_helpers import publish_session_cancelled
+            from tarsy.services.history_service import get_history_service
             
             is_user_cancellation = False
             history_service = get_history_service()

@@ -5,8 +5,9 @@ Tests the end-to-end flow of generating executive summaries after alert processi
 completion, including LLM interaction, database persistence, and API response.
 """
 
+from unittest.mock import AsyncMock, Mock
+
 import pytest
-from unittest.mock import AsyncMock, Mock, patch
 
 from tarsy.integrations.notifications.summarizer import ExecutiveSummaryAgent
 from tarsy.models.constants import AlertSessionStatus, LLMInteractionType
@@ -29,7 +30,7 @@ class TestExecutiveSummaryGeneration:
     @pytest.fixture
     def summary_agent(self, mock_llm_manager):
         """Create ExecutiveSummaryAgent with mocked LLM."""
-        return ExecutiveSummaryAgent(llm_client=mock_llm_manager)
+        return ExecutiveSummaryAgent(llm_manager=mock_llm_manager)
     
     @pytest.mark.asyncio
     async def test_summary_generation_with_real_prompt_builder(self, summary_agent, mock_llm_manager):

@@ -8,15 +8,15 @@ investigation-relevant details.
 
 import copy
 import json
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from tarsy.models.constants import LLMInteractionType
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.utils.logger import get_module_logger
 
 if TYPE_CHECKING:
-    from tarsy.integrations.llm.client import LLMClient
     from tarsy.agents.prompts.builders import PromptBuilder
+    from tarsy.integrations.llm.client import LLMClient
 
 logger = get_module_logger(__name__)
 

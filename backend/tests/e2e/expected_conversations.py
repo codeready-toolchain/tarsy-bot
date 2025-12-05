@@ -1,5 +1,6 @@
 from pathlib import Path
 
+
 # Helper function to load chat message templates from external files
 def load_chat_message_template(filename: str) -> str:
     """Load a chat message template from the chat_message_templates directory."""

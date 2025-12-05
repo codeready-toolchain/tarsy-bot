@@ -7,9 +7,9 @@ using the official MCP SDK and the new typed hook system.
 
 from contextlib import AsyncExitStack
 from unittest.mock import AsyncMock, Mock, patch
-from mcp.types import Tool
 
 import pytest
+from mcp.types import Tool
 
 from tarsy.config.settings import Settings
 from tarsy.integrations.mcp.client import MCPClient
@@ -1137,7 +1137,11 @@ class TestMCPClientSummarizationPlaceholder:
         large_result = {"result": "x" * 1000}
         
         # Create sample conversation
-        from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
+        from tarsy.models.unified_interactions import (
+            LLMConversation,
+            LLMMessage,
+            MessageRole,
+        )
         conversation = LLMConversation(messages=[
             LLMMessage(role=MessageRole.SYSTEM, content="You are an SRE investigating alerts"),
             LLMMessage(role=MessageRole.USER, content="Test")

@@ -5,16 +5,15 @@ This lightweight agent creates AI-powered summaries after chain completion,
 displayed in the dashboard reasoning view and used in external notifications (Slack, etc.).
 """
 
-from typing import Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
+from tarsy.agents.prompts.builders import PromptBuilder
 from tarsy.models.constants import LLMInteractionType
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.utils.logger import get_module_logger
-from tarsy.agents.prompts.builders import PromptBuilder
-
 
 if TYPE_CHECKING:
-    from tarsy.integrations.llm.client import LLMClient
+    from tarsy.integrations.llm.manager import LLMManager
 
 logger = get_module_logger(__name__)
 
@@ -27,14 +26,14 @@ class ExecutiveSummaryAgent:
     and used in external notifications (Slack, etc.).
     """
     
-    def __init__(self, llm_client: 'LLMClient'):
+    def __init__(self, llm_manager: 'LLMManager'):
         """
-        Initialize summarizer with LLM client and prompt builder.
+        Initialize summarizer with LLM manager and prompt builder.
         
         Args:
-            llm_client: The LLM client (actually LLMManager) to use for summarization
+            llm_manager: The LLM manager to use for summarization
         """
-        self.llm_client = llm_client
+        self.llm_manager = llm_manager
         self.prompt_builder = PromptBuilder()
     
     async def generate_executive_summary(
@@ -86,9 +85,9 @@ class ExecutiveSummaryAgent:
             # Create conversation with both messages
             conversation = LLMConversation(messages=[system_message, user_message])
             
-            # Generate summary using LLM client with RESULT_SUMMARY interaction type
+            # Generate summary using LLM manager with RESULT_SUMMARY interaction type
             # Pass provider to use chain-level or global default
-            response_conversation = await self.llm_client.generate_response(
+            response_conversation = await self.llm_manager.generate_response(
                 conversation=conversation,
                 session_id=session_id,
                 stage_execution_id=stage_execution_id,

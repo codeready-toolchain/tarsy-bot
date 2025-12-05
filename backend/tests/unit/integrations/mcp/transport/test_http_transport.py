@@ -7,12 +7,13 @@ This module tests the HTTP transport functionality including:
 - Error handling scenarios
 """
 
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import AsyncMock, Mock
+
 import pytest
 from mcp import ClientSession
 
 from tarsy.integrations.mcp.transport.http_transport import HTTPTransport
-from tarsy.models.mcp_transport_config import HTTPTransportConfig, TRANSPORT_HTTP
+from tarsy.models.mcp_transport_config import TRANSPORT_HTTP, HTTPTransportConfig
 
 
 @pytest.mark.unit

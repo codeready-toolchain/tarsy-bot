@@ -12,10 +12,10 @@ import pytest
 
 from tarsy.config.builtin_config import BUILTIN_MCP_SERVERS
 from tarsy.integrations.mcp.client import MCPClient
-from .e2e_utils import E2ETestUtils
 
 # MockChunk and create_mock_stream are provided by conftest.py
 from .conftest import create_mock_stream
+from .e2e_utils import E2ETestUtils
 
 
 class TestStageFailureDetectionE2E:
@@ -96,10 +96,10 @@ class TestStageFailureDetectionE2E:
             streaming_mock = create_failing_streaming_mock()
             
             # Import LangChain clients to patch
-            from langchain_openai import ChatOpenAI
             from langchain_anthropic import ChatAnthropic
-            from langchain_xai import ChatXAI
             from langchain_google_genai import ChatGoogleGenerativeAI
+            from langchain_openai import ChatOpenAI
+            from langchain_xai import ChatXAI
             
             # Patch the astream method on all LangChain client classes
             with patch.object(ChatOpenAI, 'astream', streaming_mock), \

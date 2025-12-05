@@ -5,8 +5,9 @@ Tests the chat-specific ReAct controller that builds initial conversations
 with investigation history context.
 """
 
-import pytest
 from unittest.mock import AsyncMock
+
+import pytest
 
 from tarsy.agents.iteration_controllers.chat_react_controller import ChatReActController
 from tarsy.agents.prompts.builders import PromptBuilder
@@ -18,7 +19,7 @@ class TestChatReActController:
     """Test ChatReActController functionality."""
     
     @pytest.fixture
-    def mock_llm_client(self):
+    def mock_llm_manager(self):
         """Mock LLM client for testing."""
         return AsyncMock()
     
@@ -28,9 +29,9 @@ class TestChatReActController:
         return PromptBuilder()
     
     @pytest.fixture
-    def controller(self, mock_llm_client, prompt_builder):
+    def controller(self, mock_llm_manager, prompt_builder):
         """Create ChatReActController instance."""
-        return ChatReActController(mock_llm_client, prompt_builder)
+        return ChatReActController(mock_llm_manager, prompt_builder)
     
     @pytest.fixture
     def chat_message_context(self):

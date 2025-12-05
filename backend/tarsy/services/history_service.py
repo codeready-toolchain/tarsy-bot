@@ -14,19 +14,22 @@ from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Tuple
 
 from tarsy.config.settings import get_settings
-
-from tarsy.models.history_models import (
-    PaginatedSessions, DetailedSession, FilterOptions, SessionStats,
-    LLMConversationHistory, ConversationMessage
-)
-from tarsy.models.constants import AlertSessionStatus
-from tarsy.models.db_models import AlertSession, StageExecution, Chat, ChatUserMessage
-from tarsy.utils.timestamp import now_us
-from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
-from tarsy.models.processing_context import ChainContext
 from tarsy.models.agent_config import ChainConfigModel
+from tarsy.models.constants import AlertSessionStatus
+from tarsy.models.db_models import AlertSession, Chat, ChatUserMessage, StageExecution
+from tarsy.models.history_models import (
+    ConversationMessage,
+    DetailedSession,
+    FilterOptions,
+    LLMConversationHistory,
+    PaginatedSessions,
+    SessionStats,
+)
+from tarsy.models.processing_context import ChainContext
+from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.repositories.base_repository import DatabaseManager
 from tarsy.repositories.history_repository import HistoryRepository
+from tarsy.utils.timestamp import now_us
 
 logger = logging.getLogger(__name__)
 
@@ -485,7 +488,10 @@ class HistoryService:
                         return None
                     
                     # Calculate statistics from SessionOverview and return as SessionStats
-                    from tarsy.models.history_models import SessionStats, ChainStatistics
+                    from tarsy.models.history_models import (
+                        ChainStatistics,
+                        SessionStats,
+                    )
                     
                     # Calculate basic counts from the SessionOverview model
                     total_interactions = session_overview.total_interactions
@@ -798,8 +804,9 @@ class HistoryService:
             Number of stages marked as failed
         """
         from sqlmodel import select
-        from tarsy.models.db_models import StageExecution
+
         from tarsy.models.constants import StageStatus
+        from tarsy.models.db_models import StageExecution
         
         try:
             # Get all stages for this session that are not already in terminal states
@@ -1272,7 +1279,6 @@ class HistoryService:
             with self.get_repository() as repo:
                 if not repo:
                     return False
-                from tarsy.models.db_models import Chat
                 chat = repo.get_chat_by_id(chat_id)
                 if not chat:
                     return False

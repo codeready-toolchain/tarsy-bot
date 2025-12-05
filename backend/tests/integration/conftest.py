@@ -6,21 +6,28 @@ This module provides fixtures for mocking external services in e2e tests.
 
 import asyncio
 from unittest.mock import AsyncMock, Mock
-from mcp.types import Tool
 
 import pytest
+from mcp.types import Tool
 from sqlmodel import Session, SQLModel, create_engine
 
 from tarsy.agents.kubernetes_agent import KubernetesAgent
 from tarsy.config.settings import Settings
-from tarsy.integrations.llm.client import LLMClient, LLMManager
+from tarsy.integrations.llm.client import LLMClient
+from tarsy.integrations.llm.manager import LLMManager
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.agent_config import MCPServerConfigModel as MCPServerConfig
 from tarsy.models.agent_execution_result import AgentExecutionResult
 from tarsy.models.alert import Alert
 from tarsy.models.constants import StageStatus
 from tarsy.models.db_models import AlertSession
-from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction, LLMConversation, LLMMessage, MessageRole
+from tarsy.models.unified_interactions import (
+    LLMConversation,
+    LLMInteraction,
+    LLMMessage,
+    MCPInteraction,
+    MessageRole,
+)
 from tarsy.services.agent_factory import AgentFactory
 from tarsy.services.alert_service import AlertService
 from tarsy.services.history_service import HistoryService
@@ -299,6 +306,11 @@ def mock_llm_manager():
     # Create AsyncMock that can track calls and return dynamic responses
     mock_client.generate_response = AsyncMock(side_effect=mock_generate_response_sync)
     manager.get_client.return_value = mock_client
+    
+    # LLMManager.generate_response() now calls get_client().generate_response()
+    # Set up manager.generate_response to delegate to the client
+    manager.generate_response = AsyncMock(side_effect=mock_generate_response_sync)
+    
     return manager
 
 
@@ -827,10 +839,10 @@ def mock_agent_factory(mock_llm_manager, mock_mcp_client):
         return mock_agent
     
     # Make get_agent synchronous to match AlertService expectations
-    def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None):
+    def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None):
         return create_mock_agent(agent_identifier, iteration_strategy)
     
-    def mock_create_agent(agent_identifier, mcp_client, iteration_strategy=None):
+    def mock_create_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None):
         return create_mock_agent(agent_identifier, iteration_strategy)
     
     factory.get_agent = Mock(side_effect=mock_get_agent)
@@ -944,8 +956,8 @@ def history_test_database_engine():
     """Create in-memory SQLite engine for history service testing."""
     # CRITICAL: Must set check_same_thread=False AND use StaticPool for SQLite in-memory
     # to allow access from thread pool (matches production configuration)
-    from sqlalchemy.pool import StaticPool
     from sqlalchemy import event
+    from sqlalchemy.pool import StaticPool
     
     engine = create_engine(
         "sqlite:///:memory:", 
@@ -1071,10 +1083,11 @@ def datetime_now_utc():
 def history_service_with_test_db(history_test_database_engine):
     """Create HistoryService with test database engine."""
     from unittest.mock import patch
+
     from sqlalchemy.orm import sessionmaker
 
-    from tarsy.services.history_service import HistoryService
     from tarsy.repositories.base_repository import DatabaseManager
+    from tarsy.services.history_service import HistoryService
     
     # Mock settings for history service
     mock_settings = Mock()

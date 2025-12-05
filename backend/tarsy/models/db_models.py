@@ -10,9 +10,9 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Optional
 
-from sqlmodel import Column, Field, SQLModel, Index
-from sqlalchemy import JSON, Integer, DateTime, ForeignKey, String, func
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.dialects.postgresql import BIGINT
+from sqlmodel import Column, Field, Index, SQLModel
 
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.utils.timestamp import now_us
@@ -375,4 +375,4 @@ class ChatUserMessage(SQLModel, table=True):
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction 
+    pass

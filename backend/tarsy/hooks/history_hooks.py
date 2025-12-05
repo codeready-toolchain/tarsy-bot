@@ -10,8 +10,8 @@ import asyncio
 import logging
 
 from tarsy.hooks.hook_context import BaseHook, _apply_llm_interaction_truncation
-from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.models.db_models import StageExecution
+from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.services.history_service import HistoryService
 
 logger = logging.getLogger(__name__)

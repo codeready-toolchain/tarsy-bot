@@ -7,8 +7,9 @@ building initial conversation with historical context from completed investigati
 
 from typing import TYPE_CHECKING
 
-from tarsy.models.unified_interactions import LLMMessage, LLMConversation, MessageRole
+from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.utils.logger import get_module_logger
+
 from .base_controller import ReactController
 
 if TYPE_CHECKING:
@@ -26,9 +27,9 @@ class ChatReActController(ReactController):
     to answer follow-up questions with full context.
     """
     
-    def __init__(self, llm_client, prompt_builder):
-        """Initialize with LLM client and prompt builder."""
-        super().__init__(llm_client, prompt_builder)
+    def __init__(self, llm_manager, prompt_builder):
+        """Initialize with LLM manager and prompt builder."""
+        super().__init__(llm_manager, prompt_builder)
         logger.info("Initialized ChatReActController for follow-up conversations")
     
     def build_initial_conversation(self, context: 'StageContext') -> LLMConversation:

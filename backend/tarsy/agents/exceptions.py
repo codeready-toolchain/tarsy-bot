@@ -5,7 +5,7 @@ Provides a consistent exception hierarchy for better error handling,
 recovery strategies, and debugging throughout the agent system.
 """
 
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 if TYPE_CHECKING:
     from tarsy.models.unified_interactions import LLMConversation

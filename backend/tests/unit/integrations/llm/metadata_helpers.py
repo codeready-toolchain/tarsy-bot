@@ -5,7 +5,7 @@ These utilities help parse and validate response metadata from LLM providers,
 particularly for Google/Gemini native tools (Google Search, URL Context).
 """
 
-from typing import Any, Optional, List, Dict
+from typing import Any, Dict, List, Optional
 
 
 def aggregate_chunks(chunks: List[Any]) -> Optional[Any]:

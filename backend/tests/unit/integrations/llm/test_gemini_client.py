@@ -1029,8 +1029,8 @@ class TestGeminiNativeThinkingStreaming:
         mock_context_cm.__aexit__ = AsyncMock(return_value=None)
         mock_context.return_value = mock_context_cm
         
-        # Mock the _publish_stream_chunk method to track calls
-        with patch.object(client, '_publish_stream_chunk', new_callable=AsyncMock) as mock_publish:
+        # Mock the streaming publisher's publish_chunk method to track calls
+        with patch.object(client._streaming_publisher, 'publish_chunk', new_callable=AsyncMock) as mock_publish:
             result = await client.generate(
                 conversation=sample_conversation,
                 session_id="test-session",

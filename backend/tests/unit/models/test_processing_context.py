@@ -8,6 +8,7 @@ AlertProcessingData, IterationContext, PromptContext, and ChainExecutionContext.
 from unittest.mock import Mock
 
 import pytest
+from mcp.types import Tool
 from pydantic import ValidationError
 
 from tarsy.agents.prompts.builders import PromptBuilder
@@ -19,7 +20,6 @@ from tarsy.models.processing_context import (
     StageContext,
     ToolWithServer,
 )
-from mcp.types import Tool
 
 
 class TestAvailableTools:
@@ -64,8 +64,9 @@ class TestChainContext:
     
     def test_chain_context_creation(self):
         """Test creating ChainContext with all required fields."""
-        from tarsy.models.alert import ProcessingAlert
         import time
+
+        from tarsy.models.alert import ProcessingAlert
         
         processing_alert = ProcessingAlert(
             alert_type="kubernetes",
@@ -91,8 +92,9 @@ class TestChainContext:
     
     def test_chain_context_with_optional_fields(self):
         """Test ChainContext with optional fields populated."""
-        from tarsy.models.alert import ProcessingAlert
         import time
+
+        from tarsy.models.alert import ProcessingAlert
         
         stage_result = AgentExecutionResult(
             status=StageStatus.COMPLETED,
@@ -125,8 +127,9 @@ class TestChainContext:
     
     def test_get_original_alert_data(self):
         """Test getting original alert data as copy."""
-        from tarsy.models.alert import ProcessingAlert
         import time
+
+        from tarsy.models.alert import ProcessingAlert
         
         original_data = {"key": "value", "number": 42}
         processing_alert = ProcessingAlert(
@@ -155,8 +158,9 @@ class TestChainContext:
     
     def test_get_runbook_content(self):
         """Test getting runbook content with defaults."""
-        from tarsy.models.alert import ProcessingAlert
         import time
+
+        from tarsy.models.alert import ProcessingAlert
         
         # Test with no runbook content
         processing_alert = ProcessingAlert(
@@ -180,8 +184,9 @@ class TestChainContext:
     
     def test_add_stage_result(self):
         """Test adding stage results."""
-        from tarsy.models.alert import ProcessingAlert
         import time
+
+        from tarsy.models.alert import ProcessingAlert
         
         processing_alert = ProcessingAlert(
             alert_type="test",
@@ -219,8 +224,9 @@ class TestChainContext:
     
     def test_get_previous_stages_results_empty(self):
         """Test getting previous stages when none exist."""
-        from tarsy.models.alert import ProcessingAlert
         import time
+
+        from tarsy.models.alert import ProcessingAlert
         
         processing_alert = ProcessingAlert(
             alert_type="test",
@@ -241,8 +247,9 @@ class TestChainContext:
     
     def test_get_previous_stages_results_with_completed_stages(self):
         """Test getting previous stages with completed results."""
-        from tarsy.models.alert import ProcessingAlert
         import time
+
+        from tarsy.models.alert import ProcessingAlert
         
         processing_alert = ProcessingAlert(
             alert_type="test",
@@ -283,8 +290,9 @@ class TestChainContext:
     
     def test_get_previous_stages_results_preserves_order(self):
         """Test that previous stages results preserve insertion order."""
-        from tarsy.models.alert import ProcessingAlert
         import time
+
+        from tarsy.models.alert import ProcessingAlert
         
         processing_alert = ProcessingAlert(
             alert_type="test",
@@ -334,8 +342,9 @@ class TestChainContext:
     
     def test_chain_context_field_validation(self):
         """Test field validation in ChainContext and ProcessingAlert."""
-        from tarsy.models.alert import ProcessingAlert
         import time
+
+        from tarsy.models.alert import ProcessingAlert
         
         # Test empty alert_type in ProcessingAlert
         with pytest.raises(ValidationError):
@@ -388,8 +397,9 @@ class TestStageContext:
     
     def create_test_chain_context(self) -> ChainContext:
         """Create a test ChainContext for StageContext tests."""
-        from tarsy.models.alert import ProcessingAlert
         import time
+
+        from tarsy.models.alert import ProcessingAlert
         
         processing_alert = ProcessingAlert(
             alert_type="kubernetes",

@@ -9,12 +9,13 @@ This module tests the stdio transport functionality including:
 """
 
 from contextlib import AsyncExitStack
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
+
 import pytest
 from mcp import ClientSession
 
 from tarsy.integrations.mcp.transport.stdio_transport import StdioTransport
-from tarsy.models.mcp_transport_config import StdioTransportConfig, TRANSPORT_STDIO
+from tarsy.models.mcp_transport_config import TRANSPORT_STDIO, StdioTransportConfig
 
 
 @pytest.mark.unit

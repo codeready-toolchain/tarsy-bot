@@ -5,16 +5,17 @@ These tests use in-memory SQLite databases to avoid file system artifacts
 that could interfere with e2e tests.
 """
 
+from datetime import datetime, timedelta, timezone
+
 import pytest
 import pytest_asyncio
-from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from tarsy.models.db_models import Event, SQLModel
+from tarsy.models.event_models import SessionCreatedEvent
 from tarsy.repositories.event_repository import EventRepository
 from tarsy.services.events.cleanup import EventCleanupService
 from tarsy.services.events.publisher import EventPublisher
-from tarsy.models.event_models import SessionCreatedEvent
 
 
 @pytest_asyncio.fixture

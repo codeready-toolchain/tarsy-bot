@@ -5,13 +5,14 @@ Tests the logic that detects when max iterations is reached
 and raises SessionPaused exception.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from tarsy.agents.exceptions import MaxIterationsFailureError, SessionPaused
 from tarsy.agents.iteration_controllers.base_controller import ReactController
-from tarsy.agents.exceptions import SessionPaused, MaxIterationsFailureError
-from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.models.processing_context import StageContext
+from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 
 
 class TestReactController(ReactController):
@@ -35,7 +36,7 @@ class TestIterationControllerPauseDetection:
     async def test_pause_at_max_iterations_with_successful_interaction(self) -> None:
         """Test that SessionPaused is raised when max iterations reached with successful last interaction."""
         # Create mock LLM client that successfully generates responses but never returns Final Answer
-        mock_llm_client = AsyncMock()
+        mock_llm_manager = AsyncMock()
         
         async def mock_generate(*args, **kwargs):
             # Always return success but no Final Answer to trigger pause
@@ -47,11 +48,11 @@ class TestIterationControllerPauseDetection:
                 ]
             )
         
-        mock_llm_client.generate_response = mock_generate
+        mock_llm_manager.generate_response = mock_generate
         
         # Create controller
         mock_prompt_builder = MagicMock()
-        controller = TestReactController(mock_llm_client, mock_prompt_builder)
+        controller = TestReactController(mock_llm_manager, mock_prompt_builder)
         
         # Create mock context with agent
         mock_agent = MagicMock()
@@ -88,12 +89,12 @@ class TestIterationControllerPauseDetection:
     async def test_failure_at_max_iterations_with_failed_interaction(self) -> None:
         """Test that MaxIterationsFailureError is raised when last interaction failed."""
         # Create mock LLM client that fails
-        mock_llm_client = AsyncMock()
-        mock_llm_client.generate_response = AsyncMock(side_effect=Exception("LLM error"))
+        mock_llm_manager = AsyncMock()
+        mock_llm_manager.generate_response = AsyncMock(side_effect=Exception("LLM error"))
         
         # Create controller
         mock_prompt_builder = MagicMock()
-        controller = TestReactController(mock_llm_client, mock_prompt_builder)
+        controller = TestReactController(mock_llm_manager, mock_prompt_builder)
         
         # Create mock context
         mock_agent = MagicMock()
@@ -129,7 +130,7 @@ class TestIterationControllerPauseDetection:
     async def test_pause_preserves_conversation_history(self) -> None:
         """Test that SessionPaused exception includes conversation history."""
         # Create mock LLM client with responses
-        mock_llm_client = AsyncMock()
+        mock_llm_manager = AsyncMock()
         
         async def mock_generate(*args, **kwargs):
             # Always return success but no Final Answer
@@ -141,11 +142,11 @@ class TestIterationControllerPauseDetection:
                 ]
             )
         
-        mock_llm_client.generate_response = mock_generate
+        mock_llm_manager.generate_response = mock_generate
         
         # Create controller
         mock_prompt_builder = MagicMock()
-        controller = TestReactController(mock_llm_client, mock_prompt_builder)
+        controller = TestReactController(mock_llm_manager, mock_prompt_builder)
         
         # Create context
         mock_agent = MagicMock()
@@ -179,7 +180,7 @@ class TestIterationControllerPauseDetection:
     async def test_resume_from_paused_state(self) -> None:
         """Test that controller can resume from paused conversation state."""
         # Create mock LLM client
-        mock_llm_client = AsyncMock()
+        mock_llm_manager = AsyncMock()
         
         # Return final answer on resume
         final_conv = LLMConversation(
@@ -189,11 +190,11 @@ class TestIterationControllerPauseDetection:
                 LLMMessage(role=MessageRole.ASSISTANT, content="Final Answer: Completed")
             ]
         )
-        mock_llm_client.generate_response = AsyncMock(return_value=final_conv)
+        mock_llm_manager.generate_response = AsyncMock(return_value=final_conv)
         
         # Create controller
         mock_prompt_builder = MagicMock()
-        controller = TestReactController(mock_llm_client, mock_prompt_builder)
+        controller = TestReactController(mock_llm_manager, mock_prompt_builder)
         
         # Create context with paused conversation state
         paused_conversation = LLMConversation(
@@ -239,8 +240,8 @@ class TestIterationControllerPauseDetection:
     @pytest.mark.asyncio
     async def test_pause_context_includes_session_info(self) -> None:
         """Test that SessionPaused exception context includes session information."""
-        mock_llm_client = AsyncMock()
-        mock_llm_client.generate_response = AsyncMock(
+        mock_llm_manager = AsyncMock()
+        mock_llm_manager.generate_response = AsyncMock(
             return_value=LLMConversation(
                 messages=[
                     LLMMessage(role=MessageRole.SYSTEM, content="System"),
@@ -250,7 +251,7 @@ class TestIterationControllerPauseDetection:
         )
         
         mock_prompt_builder = MagicMock()
-        controller = TestReactController(mock_llm_client, mock_prompt_builder)
+        controller = TestReactController(mock_llm_manager, mock_prompt_builder)
         
         mock_agent = MagicMock()
         mock_agent.max_iterations = 1

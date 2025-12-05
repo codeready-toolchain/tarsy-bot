@@ -2,13 +2,11 @@
 Unit tests for MCP selection models including native tools configuration.
 """
 
-import pytest
-from pydantic import ValidationError
 
 from tarsy.models.mcp_selection_models import (
+    MCPSelectionConfig,
     MCPServerSelection,
     NativeToolsConfig,
-    MCPSelectionConfig,
 )
 
 

@@ -8,13 +8,13 @@ creating agents through YAML configuration files without writing Python code.
 
 from typing import List, Optional
 
-from ..integrations.llm.client import LLMClient
+from ..integrations.llm.manager import LLMManager
 from ..integrations.mcp.client import MCPClient
 from ..models.agent_config import AgentConfigModel
+from ..models.constants import IterationStrategy
 from ..services.mcp_server_registry import MCPServerRegistry
 from ..utils.logger import get_module_logger
 from .base_agent import BaseAgent
-from ..models.constants import IterationStrategy
 
 logger = get_module_logger(__name__)
 
@@ -32,7 +32,7 @@ class ConfigurableAgent(BaseAgent):
     def __init__(
         self,
         config: Optional[AgentConfigModel],
-        llm_client: Optional[LLMClient],
+        llm_manager: Optional[LLMManager],
         mcp_client: Optional[MCPClient],
         mcp_registry: Optional[MCPServerRegistry],
         agent_name: Optional[str] = None
@@ -42,7 +42,7 @@ class ConfigurableAgent(BaseAgent):
         
         Args:
             config: Agent configuration model containing behavior specifications (validated for None)
-            llm_client: Client for LLM interactions (validated for None)
+            llm_manager: LLM manager for accessing LLM clients (validated for None)
             mcp_client: Client for MCP server interactions (validated for None)
             mcp_registry: Registry of MCP server configurations (validated for None)
             agent_name: Optional name for the agent (used for identification)
@@ -52,14 +52,14 @@ class ConfigurableAgent(BaseAgent):
         """
         try:
             # Validate configuration and dependencies before initialization
-            self._validate_initialization_parameters(config, llm_client, mcp_client, mcp_registry)
+            self._validate_initialization_parameters(config, llm_manager, mcp_client, mcp_registry)
             
             # Extract iteration strategy from config (defaults to REACT)
             strategy_str = getattr(config, 'iteration_strategy', None)
             iteration_strategy = IterationStrategy(strategy_str) if strategy_str else IterationStrategy.REACT
             
             # Initialize base agent with dependency injection
-            super().__init__(llm_client, mcp_client, mcp_registry, iteration_strategy)
+            super().__init__(llm_manager, mcp_client, mcp_registry, iteration_strategy)
             
             # Store configuration for behavior customization
             self._config = config
@@ -129,7 +129,7 @@ class ConfigurableAgent(BaseAgent):
     def _validate_initialization_parameters(
         self,
         config: Optional[AgentConfigModel],
-        llm_client: Optional[LLMClient],
+        llm_manager: Optional[LLMManager],
         mcp_client: Optional[MCPClient],
         mcp_registry: Optional[MCPServerRegistry]
     ) -> None:
@@ -138,7 +138,7 @@ class ConfigurableAgent(BaseAgent):
         
         Args:
             config: Agent configuration model (None values are explicitly validated)
-            llm_client: LLM client instance (None values are explicitly validated)
+            llm_manager: LLM manager instance (None values are explicitly validated)
             mcp_client: MCP client instance (None values are explicitly validated)
             mcp_registry: MCP server registry instance (None values are explicitly validated)
             
@@ -155,8 +155,8 @@ class ConfigurableAgent(BaseAgent):
                 errors.append("Agent configuration must specify at least one MCP server")
         
         # Validate dependencies (fail-fast for None dependencies)
-        if llm_client is None:
-            errors.append("LLM client is required and cannot be None")
+        if llm_manager is None:
+            errors.append("LLM manager is required and cannot be None")
         if mcp_client is None:
             errors.append("MCP client is required and cannot be None")
         if mcp_registry is None:

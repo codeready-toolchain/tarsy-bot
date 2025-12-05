@@ -5,9 +5,10 @@ Tests the background task that keeps both session and chat timestamps
 fresh during long-running chat message processing.
 """
 
-import pytest
 import asyncio
 from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 
 from tarsy.services.chat_service import ChatService
 

@@ -10,10 +10,10 @@ Kubernetes deployments with session cleanup and orphan detection (EP-0024).
 from datetime import datetime, timezone
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy import text
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = '3d5f7251e766'

@@ -7,9 +7,10 @@ for real-time dashboard updates via WebSocket.
 """
 
 import logging
+
 from tarsy.hooks.hook_context import BaseHook
+from tarsy.models.db_models import ChatUserMessage, StageExecution
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
-from tarsy.models.db_models import StageExecution, ChatUserMessage
 
 logger = logging.getLogger(__name__)
 
@@ -109,13 +110,14 @@ class StageExecutionEventHook(BaseHook[StageExecution]):
         Args:
             stage_execution: Stage execution data
         """
+        from sqlmodel import select
+
+        from tarsy.database.init_db import get_async_session_factory
         from tarsy.models.constants import StageStatus
         from tarsy.services.events.event_helpers import (
+            publish_stage_completed,
             publish_stage_started,
-            publish_stage_completed
         )
-        from tarsy.database.init_db import get_async_session_factory
-        from sqlmodel import select
         
         if stage_execution.status == StageStatus.ACTIVE.value:
             # Fetch user message if this is a chat stage

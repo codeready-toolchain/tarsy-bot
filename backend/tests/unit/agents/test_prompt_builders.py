@@ -5,13 +5,14 @@ Tests prompt construction, template rendering, and helper methods.
 NOTE: ReAct parsing tests are now in test_react_parser.py (EP-0014).
 """
 
-import pytest
 from unittest.mock import Mock
+
+import pytest
+from mcp.types import Tool
 
 from tarsy.agents.prompts.builders import PromptBuilder
 from tarsy.models.processing_context import ToolWithServer
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
-from mcp.types import Tool
 
 
 @pytest.mark.unit

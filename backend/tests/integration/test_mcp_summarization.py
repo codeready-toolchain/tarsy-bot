@@ -7,8 +7,8 @@ for the summarization feature. Complex flow testing is covered by unit tests.
 
 import pytest
 
-from tarsy.integrations.mcp.summarizer import MCPResultSummarizer  
-from tarsy.models.agent_config import MCPServerConfigModel, SummarizationConfig
+from tarsy.integrations.mcp.summarizer import MCPResultSummarizer
+from tarsy.models.agent_config import SummarizationConfig
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.utils.token_counter import TokenCounter
@@ -157,7 +157,7 @@ class TestMCPSummarizerComponent:
     @pytest.fixture
     def mock_llm_client(self):
         """Create mock LLM client for summarizer testing."""
-        from unittest.mock import Mock, AsyncMock
+        from unittest.mock import AsyncMock, Mock
         client = Mock()
         
         async def mock_response(conversation, session_id, stage_execution_id=None, max_tokens=None, **kwargs):

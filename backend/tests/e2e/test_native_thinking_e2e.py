@@ -26,9 +26,10 @@ from mcp.types import Tool
 from tarsy.config.builtin_config import BUILTIN_MCP_SERVERS
 from tarsy.integrations.mcp.client import MCPClient
 
-from .conftest import create_native_thinking_response, MockGeminiClient
+from .conftest import MockGeminiClient, create_native_thinking_response
 from .e2e_utils import E2ETestUtils
 from .expected_native_thinking_conversations import (
+    EXPECTED_NATIVE_THINKING_ANALYSIS_CONVERSATION,
     EXPECTED_NATIVE_THINKING_CHAT_INTERACTIONS,
     EXPECTED_NATIVE_THINKING_CHAT_MESSAGE_1_CONVERSATION,
     EXPECTED_NATIVE_THINKING_CHAT_MESSAGE_2_CONVERSATION,
@@ -36,7 +37,6 @@ from .expected_native_thinking_conversations import (
     EXPECTED_NATIVE_THINKING_EXECUTIVE_SUMMARY_CONVERSATION,
     EXPECTED_NATIVE_THINKING_SESSION_LEVEL_INTERACTIONS,
     EXPECTED_NATIVE_THINKING_STAGES,
-    EXPECTED_NATIVE_THINKING_ANALYSIS_CONVERSATION,
     EXPECTED_NATIVE_THINKING_VERIFICATION_CONVERSATION,
     EXPECTED_THINKING_CONTENT,
 )
@@ -768,7 +768,7 @@ class TestNativeThinkingE2E:
         )
         
         assert len(session_level_interactions) == len(expected["interactions"]), (
-            f"Session-level interaction count mismatch"
+            "Session-level interaction count mismatch"
         )
         
         _, _, expected_total_tokens = self._verify_interactions(

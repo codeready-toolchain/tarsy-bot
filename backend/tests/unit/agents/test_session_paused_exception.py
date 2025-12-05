@@ -6,7 +6,7 @@ Tests the control flow exception used for pause/resume functionality.
 
 import pytest
 
-from tarsy.agents.exceptions import SessionPaused, AgentError
+from tarsy.agents.exceptions import AgentError, SessionPaused
 
 
 class TestSessionPausedException:

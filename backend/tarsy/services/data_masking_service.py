@@ -4,19 +4,19 @@ This module provides the core data masking functionality to prevent
 sensitive data from reaching the LLM, logging, and storage systems.
 """
 
-import re
-from typing import Any, Dict, List, Optional, Pattern
-import json
 import importlib
-
-from tarsy.models.agent_config import MaskingConfig, MaskingPattern
-from tarsy.config.builtin_config import BUILTIN_MASKING_PATTERNS, BUILTIN_PATTERN_GROUPS
-from tarsy.services.maskers.base_masker import BaseMasker
-from tarsy.utils.logger import get_logger
+import json
+import re
 
 # Import will be available when MCPServerRegistry is implemented
 # For now, we'll use TYPE_CHECKING to avoid runtime import issues
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Pattern
+
+from tarsy.config.builtin_config import BUILTIN_MASKING_PATTERNS, BUILTIN_PATTERN_GROUPS
+from tarsy.models.agent_config import MaskingConfig, MaskingPattern
+from tarsy.services.maskers.base_masker import BaseMasker
+from tarsy.utils.logger import get_logger
+
 if TYPE_CHECKING:
     from tarsy.services.mcp_server_registry import MCPServerRegistry
 

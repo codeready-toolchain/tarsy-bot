@@ -12,9 +12,10 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from tarsy.hooks.hook_context import llm_interaction_context
-from tarsy.integrations.llm.client import LLM_PROVIDERS, LLMClient, LLMManager
+from tarsy.integrations.llm.client import LLM_PROVIDERS, LLMClient
+from tarsy.integrations.llm.manager import LLMManager
 from tarsy.models.llm_models import GoogleNativeTool, LLMProviderConfig
-from tarsy.models.unified_interactions import LLMMessage, LLMConversation, MessageRole
+from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 
 # Import shared test helpers from conftest
 from .conftest import MockChunk, create_stream_side_effect, create_test_config
@@ -1996,6 +1997,7 @@ class TestLLMClientChunkAggregation:
     async def test_aggregate_chunks_preserves_metadata(self):
         """Test that chunk aggregation preserves response metadata."""
         from langchain_core.messages import AIMessageChunk
+
         from .metadata_helpers import aggregate_chunks
         
         # Create mock chunks with metadata
@@ -2102,6 +2104,7 @@ class TestMCPToolConverter:
     def sample_mcp_tools(self):
         """Create sample MCP tools for testing."""
         from mcp.types import Tool
+
         from tarsy.models.processing_context import ToolWithServer
         
         tool1 = Tool(
@@ -2162,6 +2165,7 @@ class TestMCPToolConverter:
     def test_convert_mcp_tools_minimal_schema(self, google_client):
         """Test conversion handles tools with minimal input schema."""
         from mcp.types import Tool
+
         from tarsy.models.processing_context import ToolWithServer
         
         # MCP Tool requires inputSchema to be a dict, so use empty schema

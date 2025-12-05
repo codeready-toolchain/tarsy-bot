@@ -14,17 +14,17 @@ from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query
 
-from tarsy.utils.logger import get_logger
+from tarsy.models.api_models import ErrorResponse
 from tarsy.models.history_models import (
     DetailedSession,
-    PaginatedSessions,
-    SessionStats,
     FilterOptions,
     FinalAnalysisResponse,
+    PaginatedSessions,
+    SessionStats,
 )
-from tarsy.models.api_models import ErrorResponse
-from tarsy.utils.timestamp import now_us
 from tarsy.services.history_service import HistoryService, get_history_service
+from tarsy.utils.logger import get_logger
+from tarsy.utils.timestamp import now_us
 
 migration_logger = logging.getLogger(__name__)
 

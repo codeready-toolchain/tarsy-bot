@@ -8,8 +8,8 @@ ensuring proper behavior for all supported sort fields and directions.
 import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
-from tarsy.models.db_models import AlertSession
 from tarsy.models.constants import AlertSessionStatus
+from tarsy.models.db_models import AlertSession
 from tarsy.repositories.history_repository import HistoryRepository
 from tarsy.utils.timestamp import now_us
 

@@ -13,7 +13,10 @@ from tarsy.models.constants import AlertSessionStatus
 from tarsy.models.db_models import AlertSession, SQLModel
 from tarsy.repositories.event_repository import EventRepository
 from tarsy.services.events.channels import EventChannel
-from tarsy.services.events.event_helpers import publish_cancel_request, publish_session_cancelled
+from tarsy.services.events.event_helpers import (
+    publish_cancel_request,
+    publish_session_cancelled,
+)
 from tarsy.utils.timestamp import now_us
 
 

@@ -5,8 +5,9 @@ Tests HistoryRepository and HistoryService chat CRUD operations with real databa
 """
 
 import pytest
-from tarsy.models.db_models import Chat, ChatUserMessage, AlertSession
+
 from tarsy.models.constants import AlertSessionStatus
+from tarsy.models.db_models import AlertSession, Chat, ChatUserMessage
 from tarsy.services.history_service import HistoryService
 from tarsy.utils.timestamp import now_us
 

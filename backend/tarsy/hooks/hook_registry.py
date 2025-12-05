@@ -8,19 +8,19 @@ proper initialization and dependency injection for the new typed hook system.
 import logging
 from typing import Optional
 
-from tarsy.hooks.hook_context import get_hook_manager
-from tarsy.hooks.history_hooks import (
-    LLMHistoryHook,
-    MCPHistoryHook,
-    MCPListHistoryHook,
-    StageExecutionHistoryHook
-)
 from tarsy.hooks.event_hooks import (
     LLMEventHook,
     MCPEventHook,
     MCPListEventHook,
-    StageExecutionEventHook
+    StageExecutionEventHook,
 )
+from tarsy.hooks.history_hooks import (
+    LLMHistoryHook,
+    MCPHistoryHook,
+    MCPListHistoryHook,
+    StageExecutionHistoryHook,
+)
+from tarsy.hooks.hook_context import get_hook_manager
 from tarsy.services.history_service import HistoryService
 
 logger = logging.getLogger(__name__)

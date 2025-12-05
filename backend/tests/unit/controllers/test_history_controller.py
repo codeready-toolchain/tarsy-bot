@@ -695,7 +695,12 @@ class TestHistoryControllerEndpoints:
             MCPEventDetails,
             MCPTimelineEvent,
         )
-        from tarsy.models.unified_interactions import LLMMessage, LLMInteraction, LLMConversation, MessageRole
+        from tarsy.models.unified_interactions import (
+            LLMConversation,
+            LLMInteraction,
+            LLMMessage,
+            MessageRole,
+        )
         
         # Create LLM interaction
         llm_interaction = LLMTimelineEvent(
@@ -884,7 +889,10 @@ class TestHistoryControllerEndpoints:
         """Test that session detail includes MCP selection when present."""
         from tarsy.models.constants import AlertSessionStatus
         from tarsy.models.history_models import DetailedSession
-        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
+        from tarsy.models.mcp_selection_models import (
+            MCPSelectionConfig,
+            MCPServerSelection,
+        )
         
         # Create DetailedSession with MCP selection
         detailed_session = DetailedSession(
@@ -994,7 +1002,10 @@ class TestHistoryControllerEndpoints:
             PaginationInfo,
             SessionOverview,
         )
-        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
+        from tarsy.models.mcp_selection_models import (
+            MCPSelectionConfig,
+            MCPServerSelection,
+        )
         
         now_us_time = now_us()
         
@@ -1207,7 +1218,10 @@ class TestHistoryControllerEndpoints:
         """Test final analysis retrieval with conversation history."""
         from tarsy.models.constants import AlertSessionStatus
         from tarsy.models.db_models import AlertSession
-        from tarsy.models.history_models import LLMConversationHistory, ConversationMessage
+        from tarsy.models.history_models import (
+            ConversationMessage,
+            LLMConversationHistory,
+        )
         
         session_id = "test-session-with-conv"
         
@@ -1286,7 +1300,10 @@ class TestHistoryControllerEndpoints:
         """Test final analysis retrieval with both session and chat conversation."""
         from tarsy.models.constants import AlertSessionStatus
         from tarsy.models.db_models import AlertSession
-        from tarsy.models.history_models import LLMConversationHistory, ConversationMessage
+        from tarsy.models.history_models import (
+            ConversationMessage,
+            LLMConversationHistory,
+        )
         
         session_id = "test-session-with-chat"
         
@@ -1418,7 +1435,10 @@ class TestHistoryControllerEndpoints:
         """Test requesting only chat conversation without session conversation."""
         from tarsy.models.constants import AlertSessionStatus
         from tarsy.models.db_models import AlertSession
-        from tarsy.models.history_models import LLMConversationHistory, ConversationMessage
+        from tarsy.models.history_models import (
+            ConversationMessage,
+            LLMConversationHistory,
+        )
         
         session_id = "test-session-chat-only"
         
@@ -1783,7 +1803,12 @@ class TestHistoryControllerResponseFormat:
             DetailedStage,
             LLMTimelineEvent,
         )
-        from tarsy.models.unified_interactions import LLMMessage, LLMInteraction, LLMConversation, MessageRole
+        from tarsy.models.unified_interactions import (
+            LLMConversation,
+            LLMInteraction,
+            LLMMessage,
+            MessageRole,
+        )
         
         # Create LLM interaction
         llm_interaction = LLMTimelineEvent(

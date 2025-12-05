@@ -8,6 +8,7 @@ implementations, Kubernetes-specific functionality, and integration with BaseAge
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from mcp.types import Tool
 
 from tarsy.agents.exceptions import ConfigurationError, ToolSelectionError
 from tarsy.agents.kubernetes_agent import KubernetesAgent
@@ -18,7 +19,6 @@ from tarsy.models.alert import Alert
 from tarsy.models.constants import IterationStrategy
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.services.mcp_server_registry import MCPServerRegistry
-from mcp.types import Tool
 from tarsy.utils.timestamp import now_us
 
 
@@ -27,7 +27,7 @@ class TestKubernetesAgentInitialization:
     """Test KubernetesAgent initialization and dependency injection."""
     
     @pytest.fixture
-    def mock_llm_client(self):
+    def mock_llm_manager(self):
         """Create mock LLM client."""
         client = Mock(spec=LLMClient)
         client.generate_response = AsyncMock(return_value="Test analysis result")
@@ -55,25 +55,25 @@ class TestKubernetesAgentInitialization:
         registry.get_server_configs.return_value = [server_config]
         return registry
     
-    def test_initialization_with_required_dependencies(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    def test_initialization_with_required_dependencies(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Test KubernetesAgent initialization with all required dependencies."""
         agent = KubernetesAgent(
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
         )
         
-        assert agent.llm_client is mock_llm_client
+        assert agent.llm_manager is mock_llm_manager
         assert agent.mcp_client is mock_mcp_client
         assert agent.mcp_registry is mock_mcp_registry
         assert agent._configured_servers is None
         # Verify default iteration strategy
         assert agent.iteration_strategy == IterationStrategy.REACT
     
-    def test_initialization_with_custom_iteration_strategy(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    def test_initialization_with_custom_iteration_strategy(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Test KubernetesAgent initialization with custom iteration strategy."""
         agent = KubernetesAgent(
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry,
             iteration_strategy=IterationStrategy.REACT_STAGE
@@ -81,10 +81,10 @@ class TestKubernetesAgentInitialization:
         
         assert agent.iteration_strategy == IterationStrategy.REACT_STAGE
     
-    def test_inheritance_from_base_agent(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    def test_inheritance_from_base_agent(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Test that KubernetesAgent properly inherits from BaseAgent."""
         agent = KubernetesAgent(
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
         )
@@ -95,15 +95,15 @@ class TestKubernetesAgentInitialization:
 
         assert hasattr(agent, '_compose_instructions')
     
-    def test_multiple_instances_independence(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    def test_multiple_instances_independence(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Test that multiple KubernetesAgent instances are independent."""
-        agent1 = KubernetesAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
-        agent2 = KubernetesAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
+        agent1 = KubernetesAgent(mock_llm_manager, mock_mcp_client, mock_mcp_registry)
+        agent2 = KubernetesAgent(mock_llm_manager, mock_mcp_client, mock_mcp_registry)
         
         assert agent1 is not agent2
         
         # Verify they are independent objects 
-        assert agent1.llm_client is agent2.llm_client  # Same clients (shared)
+        assert agent1.llm_manager is agent2.llm_manager  # Same clients (shared)
         assert agent1.mcp_client is agent2.mcp_client
         assert agent1._configured_servers is agent2._configured_servers  # Both None initially
 
@@ -542,8 +542,8 @@ class TestKubernetesAgentIntegrationScenarios:
     @pytest.mark.asyncio
     async def test_complete_analysis_workflow(self, full_kubernetes_agent_setup):
         """Test complete workflow from alert to analysis."""
-        from tarsy.models.processing_context import ChainContext
         from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.processing_context import ChainContext
         from tarsy.utils.timestamp import now_us
         
         agent, mock_llm, mock_mcp, mock_registry = full_kubernetes_agent_setup
@@ -552,7 +552,7 @@ class TestKubernetesAgentIntegrationScenarios:
         mock_mcp.list_tools.return_value = {"kubernetes-server": []}
         
         # Mock LLM to return proper LLMConversation object
-        async def mock_generate_response(conversation, session_id, stage_execution_id=None, native_tools_override=None):
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None, **kwargs):
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
             updated_conversation.append_assistant_message("Final Answer: Pod analysis completed")
             return updated_conversation
@@ -640,8 +640,8 @@ class TestKubernetesAgentIntegrationScenarios:
     @pytest.mark.asyncio
     async def test_error_recovery_and_fallback(self, full_kubernetes_agent_setup):
         """Test that agent fails gracefully when MCP connection fails."""
-        from tarsy.models.processing_context import ChainContext
         from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.processing_context import ChainContext
         from tarsy.utils.timestamp import now_us
         
         agent, mock_llm, mock_mcp, mock_registry = full_kubernetes_agent_setup
@@ -675,7 +675,6 @@ class TestKubernetesAgentIntegrationScenarios:
             }
         )
         
-        from tarsy.models.processing_context import ChainContext
         processing_alert = ProcessingAlert(
             alert_type=pod_crash_alert.alert_type,
             severity="critical",  # Match severity from alert.data
@@ -698,8 +697,8 @@ class TestKubernetesAgentIntegrationScenarios:
     @pytest.mark.asyncio
     async def test_multiple_tool_iterations(self, full_kubernetes_agent_setup):
         """Test handling of multiple MCP tool iterations."""
-        from tarsy.models.processing_context import ChainContext
         from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.processing_context import ChainContext
         from tarsy.utils.timestamp import now_us
         
         agent, mock_llm, mock_mcp, mock_registry = full_kubernetes_agent_setup
@@ -711,7 +710,7 @@ class TestKubernetesAgentIntegrationScenarios:
         mock_mcp.call_tool.return_value = {"result": "Pod details retrieved"}
         
         # Mock LLM to return proper LLMConversation object
-        async def mock_generate_response(conversation, session_id, stage_execution_id=None, native_tools_override=None):
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None, **kwargs):
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
             updated_conversation.append_assistant_message("Final Answer: Comprehensive analysis")
             return updated_conversation
@@ -743,7 +742,6 @@ class TestKubernetesAgentIntegrationScenarios:
             }
         )
         
-        from tarsy.models.processing_context import ChainContext
         processing_alert = ProcessingAlert(
             alert_type=pod_crash_alert.alert_type,
             severity="critical",  # Match severity from alert.data
@@ -771,8 +769,8 @@ class TestKubernetesAgentSummarization:
     def kubernetes_agent_with_summarization(self):
         """Create KubernetesAgent with summarization-capable MCP client."""
         # Use the existing fixtures from the file
-        mock_llm_client = Mock(spec=LLMClient)
-        mock_llm_client.generate_response = AsyncMock(return_value="Test analysis result")
+        mock_llm_manager = Mock(spec=LLMClient)
+        mock_llm_manager.generate_response = AsyncMock(return_value="Test analysis result")
         
         mock_mcp_client = Mock(spec=MCPClient)
         mock_mcp_client.list_tools = AsyncMock(return_value={"kubernetes-server": []})
@@ -788,8 +786,8 @@ class TestKubernetesAgentSummarization:
         )
         mock_mcp_registry.get_server_configs.return_value = [server_config]
         
-        agent = KubernetesAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
-        return agent, mock_llm_client, mock_mcp_client, mock_mcp_registry
+        agent = KubernetesAgent(mock_llm_manager, mock_mcp_client, mock_mcp_registry)
+        return agent, mock_llm_manager, mock_mcp_client, mock_mcp_registry
     
     @pytest.mark.asyncio
     async def test_execute_mcp_tools_with_summarization_context(self, kubernetes_agent_with_summarization):
@@ -863,7 +861,7 @@ DOMAIN KNOWLEDGE:
         agent, mock_llm, mock_mcp, mock_registry = kubernetes_agent_with_summarization
         
         # Ensure agent has required attributes for summarizer creation
-        agent.llm_client = mock_llm
+        agent.llm_manager = mock_llm
         
         # Mock the prompt builder that should exist
         with patch.object(agent, '_prompt_builder') as mock_prompt_builder:

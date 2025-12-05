@@ -6,7 +6,7 @@ API interactions, error handling, and authentication.
 """
 
 from typing import Any
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import Mock, patch
 
 import pytest
 from github import GithubException

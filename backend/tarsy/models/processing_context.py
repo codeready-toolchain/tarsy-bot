@@ -4,14 +4,16 @@ New context architecture for alert processing.
 This module contains the context models.
 """
 
-from pydantic import BaseModel, Field, ConfigDict
 from dataclasses import dataclass
-from typing import Dict, Any, Optional, List, TYPE_CHECKING
-from .agent_execution_result import AgentExecutionResult
-from .constants import StageStatus
-from .alert import ProcessingAlert
-from .mcp_selection_models import MCPSelectionConfig
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
 from mcp.types import Tool
+from pydantic import BaseModel, ConfigDict, Field
+
+from .agent_execution_result import AgentExecutionResult
+from .alert import ProcessingAlert
+from .constants import StageStatus
+from .mcp_selection_models import MCPSelectionConfig
 
 if TYPE_CHECKING:
     from ..agents.base_agent import BaseAgent

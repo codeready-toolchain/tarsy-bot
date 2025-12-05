@@ -7,8 +7,12 @@ chain_id uniqueness, and provides chain lookup functionality for alert types.
 """
 
 from typing import Dict, Optional
+
 from tarsy.config.agent_config import ConfigurationLoader
-from tarsy.config.builtin_config import get_builtin_chain_definitions, DEFAULT_ALERT_TYPE
+from tarsy.config.builtin_config import (
+    DEFAULT_ALERT_TYPE,
+    get_builtin_chain_definitions,
+)
 from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
 from tarsy.utils.logger import get_module_logger
 

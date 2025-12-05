@@ -9,14 +9,14 @@ import asyncio
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Optional
 
-from ...models.unified_interactions import MessageRole, LLMConversation
 from ...config.settings import get_settings
+from ...models.unified_interactions import LLMConversation, MessageRole
 from ..parsers.react_parser import ReActParser
 
 if TYPE_CHECKING:
-    from ...models.processing_context import StageContext
-    from ...integrations.llm.client import LLMClient
     from ...agents.prompts import PromptBuilder
+    from ...integrations.llm.manager import LLMManager
+    from ...models.processing_context import StageContext
 
 class IterationController(ABC):
     """
@@ -264,9 +264,9 @@ class ReactController(IterationController):
     Specific controllers only need to override build_initial_conversation().
     """
     
-    def __init__(self, llm_client: 'LLMClient', prompt_builder: 'PromptBuilder'):
-        """Initialize with LLM client and prompt builder."""
-        self.llm_client = llm_client
+    def __init__(self, llm_manager: 'LLMManager', prompt_builder: 'PromptBuilder'):
+        """Initialize with LLM manager and prompt builder."""
+        self.llm_manager = llm_manager
         self.prompt_builder = prompt_builder
         self._llm_provider_name: Optional[str] = None
         # Import here to avoid circular imports during class definition
@@ -317,7 +317,7 @@ class ReactController(IterationController):
                     # Extract native tools override from context (if specified)
                     native_tools_override = self._get_native_tools_override(context)
                     
-                    conversation_result = await self.llm_client.generate_response(
+                    conversation_result = await self.llm_manager.generate_response(
                         conversation=conversation,
                         session_id=context.session_id,
                         stage_execution_id=context.agent.get_current_stage_execution_id(),

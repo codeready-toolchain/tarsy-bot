@@ -304,7 +304,12 @@ class SessionFactory:
             MCPEventDetails,
             MCPTimelineEvent,
         )
-        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage, MessageRole
+        from tarsy.models.unified_interactions import (
+            LLMConversation,
+            LLMInteraction,
+            LLMMessage,
+            MessageRole,
+        )
         from tarsy.utils.timestamp import now_us
         
         current_time_us = now_us()
@@ -1248,12 +1253,12 @@ class AgentServiceFactory:
         """Create mock dependencies for AgentFactory."""
         from unittest.mock import Mock
 
-        from tarsy.integrations.llm.client import LLMClient
+        from tarsy.integrations.llm.manager import LLMManager
         from tarsy.integrations.mcp.client import MCPClient
         from tarsy.services.mcp_server_registry import MCPServerRegistry
         
         return {
-            'llm_client': Mock(spec=LLMClient),
+            'llm_manager': Mock(spec=LLMManager),
             'mcp_client': Mock(spec=MCPClient),
             'mcp_registry': Mock(spec=MCPServerRegistry)
         }
@@ -1283,7 +1288,7 @@ class AgentServiceFactory:
         
         mock_agent = Mock()
         mock_agent.agent_type = "KubernetesAgent"
-        mock_agent.llm_client = Mock()
+        mock_agent.llm_manager = Mock()
         mock_agent.mcp_client = Mock()
         mock_agent.mcp_registry = Mock()
         return mock_agent

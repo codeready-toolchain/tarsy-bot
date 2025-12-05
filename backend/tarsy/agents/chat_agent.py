@@ -11,7 +11,7 @@ from typing import List
 from tarsy.agents.base_agent import BaseAgent
 from tarsy.agents.iteration_controllers.base_controller import IterationController
 from tarsy.agents.prompts.builders import PromptBuilder
-from tarsy.integrations.llm.client import LLMClient
+from tarsy.integrations.llm.manager import LLMManager
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.constants import IterationStrategy
 from tarsy.services.mcp_server_registry import MCPServerRegistry
@@ -34,7 +34,7 @@ class ChatAgent(BaseAgent):
     
     def __init__(
         self,
-        llm_client: LLMClient,
+        llm_manager: LLMManager,
         mcp_client: MCPClient,
         mcp_registry: MCPServerRegistry,
         iteration_strategy: IterationStrategy = IterationStrategy.REACT
@@ -46,14 +46,14 @@ class ChatAgent(BaseAgent):
         (typically the last stage's strategy) for consistency.
         
         Args:
-            llm_client: Client for LLM interactions
+            llm_manager: LLM manager for accessing LLM clients
             mcp_client: MCP client for tool access
             mcp_registry: Registry of available MCP servers
             iteration_strategy: Strategy to use (defaults to REACT, but can be
                               NATIVE_THINKING for Gemini sessions)
         """
         super().__init__(
-            llm_client,
+            llm_manager,
             mcp_client,
             mcp_registry,
             iteration_strategy=iteration_strategy
@@ -88,14 +88,18 @@ class ChatAgent(BaseAgent):
             Chat-specific controller instance (ChatReActController or ChatNativeThinkingController)
         """
         if strategy == IterationStrategy.NATIVE_THINKING:
-            from tarsy.agents.iteration_controllers.chat_native_thinking_controller import ChatNativeThinkingController
+            from tarsy.agents.iteration_controllers.chat_native_thinking_controller import (
+                ChatNativeThinkingController,
+            )
             logger.info("Using ChatNativeThinkingController for Gemini native thinking")
-            return ChatNativeThinkingController(self.llm_client, self._prompt_builder)
+            return ChatNativeThinkingController(self.llm_manager, self._prompt_builder)
         else:
             # Default to ChatReActController for REACT and other strategies
-            from tarsy.agents.iteration_controllers.chat_react_controller import ChatReActController
+            from tarsy.agents.iteration_controllers.chat_react_controller import (
+                ChatReActController,
+            )
             logger.info("Using ChatReActController for ReAct-based chat")
-            return ChatReActController(self.llm_client, self._prompt_builder)
+            return ChatReActController(self.llm_manager, self._prompt_builder)
     
     def agent_name(self) -> str:
         """

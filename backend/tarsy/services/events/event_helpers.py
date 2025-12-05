@@ -6,22 +6,22 @@ from typing import Optional
 from tarsy.database.init_db import get_async_session_factory
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.models.event_models import (
-    SessionCreatedEvent,
-    SessionStartedEvent,
+    ChatCreatedEvent,
+    ChatUserMessageEvent,
+    LLMInteractionEvent,
+    MCPToolCallEvent,
+    MCPToolCallStartedEvent,
+    MCPToolListEvent,
+    SessionCancelledEvent,
+    SessionCancelRequestedEvent,
     SessionCompletedEvent,
+    SessionCreatedEvent,
     SessionFailedEvent,
     SessionPausedEvent,
     SessionResumedEvent,
-    SessionCancelRequestedEvent,
-    SessionCancelledEvent,
-    LLMInteractionEvent,
-    MCPToolCallStartedEvent,
-    MCPToolCallEvent,
-    MCPToolListEvent,
-    StageStartedEvent,
+    SessionStartedEvent,
     StageCompletedEvent,
-    ChatCreatedEvent,
-    ChatUserMessageEvent,
+    StageStartedEvent,
 )
 from tarsy.services.events.channels import EventChannel
 from tarsy.services.events.publisher import publish_event

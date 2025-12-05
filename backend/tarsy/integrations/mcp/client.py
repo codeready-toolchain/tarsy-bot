@@ -5,26 +5,26 @@ MCP client using the official MCP SDK for integration with MCP servers.
 import asyncio
 import json
 from contextlib import AsyncExitStack
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from mcp import ClientSession
 from mcp.types import Tool
 
 from tarsy.config.settings import Settings
 from tarsy.hooks.hook_context import mcp_interaction_context, mcp_list_context
+from tarsy.integrations.mcp.transport.factory import MCPTransport, MCPTransportFactory
 from tarsy.models.agent_config import MCPServerConfigModel
-from tarsy.integrations.mcp.transport.factory import MCPTransportFactory, MCPTransport
 from tarsy.models.mcp_transport_config import TRANSPORT_STDIO
-from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.services.data_masking_service import DataMaskingService
+from tarsy.services.mcp_server_registry import MCPServerRegistry
+from tarsy.utils.error_details import extract_error_details
 from tarsy.utils.logger import get_module_logger
 from tarsy.utils.token_counter import TokenCounter
-from tarsy.utils.error_details import extract_error_details
 
 if TYPE_CHECKING:
     from tarsy.integrations.mcp.summarizer import MCPResultSummarizer
-    from tarsy.models.unified_interactions import LLMConversation
     from tarsy.models.mcp_selection_models import MCPSelectionConfig
+    from tarsy.models.unified_interactions import LLMConversation
 
 # Setup logger for this module
 logger = get_module_logger(__name__)
@@ -482,8 +482,8 @@ class MCPClient:
         """Publish immediate placeholder for summarization to reduce perceived latency."""
         try:
             from tarsy.database.init_db import get_async_session_factory
-            from tarsy.models.event_models import LLMStreamChunkEvent
             from tarsy.models.constants import StreamingEventType
+            from tarsy.models.event_models import LLMStreamChunkEvent
             from tarsy.services.events.publisher import publish_transient_event
             from tarsy.utils.timestamp import now_us
             
@@ -571,7 +571,9 @@ class MCPClient:
                 raise
             
             # Emit started event before execution (for real-time UI feedback)
-            from tarsy.services.events.event_helpers import publish_mcp_tool_call_started
+            from tarsy.services.events.event_helpers import (
+                publish_mcp_tool_call_started,
+            )
             await publish_mcp_tool_call_started(
                 session_id=session_id,
                 communication_id=ctx.interaction.communication_id,
@@ -684,7 +686,7 @@ class MCPClient:
         except Exception as e:
             logger.warning(f"Failed to mask request parameters for logging: {e}. Using parameter keys only.")
             # Fallback: log only parameter keys, not values
-            masked_parameters = {k: "__MASKED__" for k in parameters.keys()}
+            masked_parameters = dict.fromkeys(parameters.keys(), "__MASKED__")
         
         mcp_comm_logger.debug(f"=== MCP REQUEST [{server_name}] [ID: {request_id}] ===")
         mcp_comm_logger.debug(f"Request ID: {request_id}")

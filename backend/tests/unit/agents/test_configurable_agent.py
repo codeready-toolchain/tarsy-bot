@@ -22,7 +22,7 @@ class TestConfigurableAgent:
         )
 
     @pytest.fixture
-    def mock_llm_client(self):
+    def mock_llm_manager(self):
         """Mock LLM client for testing."""
         mock = Mock()
         mock.analyze = Mock()
@@ -43,78 +43,78 @@ class TestConfigurableAgent:
         return mock
 
     @pytest.fixture
-    def agent(self, mock_config, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    def agent(self, mock_config, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """ConfigurableAgent instance for testing."""
         return ConfigurableAgent(
             agent_name="test-security-agent",
             config=mock_config,
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
         )
 
-    def test_init_success(self, mock_config, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    def test_init_success(self, mock_config, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Test successful ConfigurableAgent initialization."""
         agent = ConfigurableAgent(
             agent_name="test-agent",
             config=mock_config,
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
         )
         
         assert agent.agent_name == "test-agent"
         assert agent.config == mock_config
-        assert agent.llm_client == mock_llm_client
+        assert agent.llm_manager == mock_llm_manager
         assert agent.mcp_client == mock_mcp_client
         assert agent.mcp_registry == mock_mcp_registry
 
-    def test_init_with_none_config_fails(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    def test_init_with_none_config_fails(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Test that initialization fails with None config."""
         with pytest.raises(ValueError) as exc_info:
             ConfigurableAgent(
                 agent_name="test-agent",
                 config=None,
-                llm_client=mock_llm_client,
+                llm_manager=mock_llm_manager,
                 mcp_client=mock_mcp_client,
                 mcp_registry=mock_mcp_registry
             )
             
         assert "Agent configuration is required and cannot be None" in str(exc_info.value)
 
-    def test_init_with_none_llm_client_fails(self, mock_config, mock_mcp_client, mock_mcp_registry):
+    def test_init_with_none_llm_manager_fails(self, mock_config, mock_mcp_client, mock_mcp_registry):
         """Test that initialization fails with None LLM client."""
         with pytest.raises(ValueError) as exc_info:
             ConfigurableAgent(
                 agent_name="test-agent",
                 config=mock_config,
-                llm_client=None,
+                llm_manager=None,
                 mcp_client=mock_mcp_client,
                 mcp_registry=mock_mcp_registry
             )
             
-        assert "LLM client is required and cannot be None" in str(exc_info.value)
+        assert "LLM manager is required and cannot be None" in str(exc_info.value)
 
-    def test_init_with_none_mcp_client_fails(self, mock_config, mock_llm_client, mock_mcp_registry):
+    def test_init_with_none_mcp_client_fails(self, mock_config, mock_llm_manager, mock_mcp_registry):
         """Test that initialization fails with None MCP client."""
         with pytest.raises(ValueError) as exc_info:
             ConfigurableAgent(
                 agent_name="test-agent",
                 config=mock_config,
-                llm_client=mock_llm_client,
+                llm_manager=mock_llm_manager,
                 mcp_client=None,
                 mcp_registry=mock_mcp_registry
             )
             
         assert "MCP client is required and cannot be None" in str(exc_info.value)
 
-    def test_init_with_none_mcp_registry_fails(self, mock_config, mock_llm_client, mock_mcp_client):
+    def test_init_with_none_mcp_registry_fails(self, mock_config, mock_llm_manager, mock_mcp_client):
         """Test that initialization fails with None MCP registry."""
         with pytest.raises(ValueError) as exc_info:
             ConfigurableAgent(
                 agent_name="test-agent",
                 config=mock_config,
-                llm_client=mock_llm_client,
+                llm_manager=mock_llm_manager,
                 mcp_client=mock_mcp_client,
                 mcp_registry=None
             )
@@ -133,7 +133,7 @@ class TestConfigurableAgent:
         
         assert instructions == "Focus on threat detection and response."
 
-    def test_custom_instructions_property_without_instructions(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    def test_custom_instructions_property_without_instructions(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Test custom_instructions property when no instructions are provided."""
         config_without_instructions = AgentConfigModel(
             mcp_servers=["security-tools"]
@@ -143,7 +143,7 @@ class TestConfigurableAgent:
         agent = ConfigurableAgent(
             agent_name="test-agent",
             config=config_without_instructions,
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
         )
@@ -157,12 +157,12 @@ class TestConfigurableAgent:
         
         assert name == "ConfigurableAgent(test-security-agent)"
 
-    def test_generate_agent_name_with_different_name(self, mock_config, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    def test_generate_agent_name_with_different_name(self, mock_config, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Test _generate_agent_name with different agent name."""
         agent = ConfigurableAgent(
             agent_name="performance-monitoring-agent",
             config=mock_config,
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
         )
@@ -202,7 +202,7 @@ class TestConfigurableAgent:
         assert instructions1 == instructions2 == instructions3
         assert instructions1 == "Focus on threat detection and response."
 
-    def test_empty_mcp_servers_list(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    def test_empty_mcp_servers_list(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Test ConfigurableAgent with minimum required MCP servers (one server)."""
         config_min_servers = AgentConfigModel(
             mcp_servers=["single-server"]  # Minimum one server required by Pydantic model
@@ -211,7 +211,7 @@ class TestConfigurableAgent:
         agent = ConfigurableAgent(
             agent_name="min-agent",
             config=config_min_servers,
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
         )
@@ -219,14 +219,14 @@ class TestConfigurableAgent:
         servers = agent.mcp_servers()
         assert servers == ["single-server"]
 
-    def test_long_agent_name(self, mock_config, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    def test_long_agent_name(self, mock_config, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Test ConfigurableAgent with very long agent name."""
         long_name = "very-long-agent-name-for-comprehensive-security-monitoring-and-threat-detection-system"
         
         agent = ConfigurableAgent(
             agent_name=long_name,
             config=mock_config,
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
         )
@@ -247,14 +247,14 @@ class TestConfigurableAgent:
         # Return values should match configuration
         assert returned_servers == original_mcp_servers
 
-    def test_special_characters_in_agent_name(self, mock_config, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    def test_special_characters_in_agent_name(self, mock_config, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Test ConfigurableAgent with special characters in agent name."""
         special_name = "security-agent_v2.0-beta"
         
         agent = ConfigurableAgent(
             agent_name=special_name,
             config=mock_config,
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
         )
@@ -262,7 +262,7 @@ class TestConfigurableAgent:
         assert agent.agent_name == special_name
         assert agent._generate_agent_name() == f"ConfigurableAgent({special_name})"
 
-    def test_unicode_characters_in_custom_instructions(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    def test_unicode_characters_in_custom_instructions(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Test ConfigurableAgent with unicode characters in custom instructions."""
         config_with_unicode = AgentConfigModel(
             mcp_servers=["security-tools"],
@@ -272,7 +272,7 @@ class TestConfigurableAgent:
         agent = ConfigurableAgent(
             agent_name="unicode-agent",
             config=config_with_unicode,
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
         )
@@ -286,7 +286,7 @@ class TestConfigurableAgentIterationStrategies:
     """Test iteration strategy support in ConfigurableAgent."""
     
     @pytest.fixture
-    def mock_llm_client(self):
+    def mock_llm_manager(self):
         return Mock()
     
     @pytest.fixture
@@ -297,7 +297,7 @@ class TestConfigurableAgentIterationStrategies:
     def mock_mcp_registry(self):
         return Mock()
     
-    def test_default_iteration_strategy_react(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    def test_default_iteration_strategy_react(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Test that ConfigurableAgent defaults to REACT iteration strategy."""
         config = AgentConfigModel(
             mcp_servers=["security-tools"]
@@ -307,14 +307,14 @@ class TestConfigurableAgentIterationStrategies:
         agent = ConfigurableAgent(
             agent_name="test-agent",
             config=config,
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
         )
         
         assert agent.iteration_strategy == IterationStrategy.REACT
     
-    def test_explicit_react_iteration_strategy(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    def test_explicit_react_iteration_strategy(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Test ConfigurableAgent with explicit REACT iteration strategy."""
         config = AgentConfigModel(
             mcp_servers=["security-tools"],
@@ -324,14 +324,14 @@ class TestConfigurableAgentIterationStrategies:
         agent = ConfigurableAgent(
             agent_name="test-agent",
             config=config,
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
         )
         
         assert agent.iteration_strategy == IterationStrategy.REACT
     
-    def test_react_stage_iteration_strategy(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    def test_react_stage_iteration_strategy(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Test ConfigurableAgent with REACT_STAGE iteration strategy."""
         config = AgentConfigModel(
             mcp_servers=["monitoring-tools"],
@@ -341,14 +341,14 @@ class TestConfigurableAgentIterationStrategies:
         agent = ConfigurableAgent(
             agent_name="performance-agent",
             config=config,
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
         )
         
         assert agent.iteration_strategy == IterationStrategy.REACT_STAGE
     
-    def test_string_iteration_strategy_react(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    def test_string_iteration_strategy_react(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Test ConfigurableAgent with string-based REACT iteration strategy."""
         config = AgentConfigModel(
             mcp_servers=["security-tools"],
@@ -358,14 +358,14 @@ class TestConfigurableAgentIterationStrategies:
         agent = ConfigurableAgent(
             agent_name="test-agent",
             config=config,
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
         )
         
         assert agent.iteration_strategy == IterationStrategy.REACT
     
-    def test_string_iteration_strategy_react_stage(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    def test_string_iteration_strategy_react_stage(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Test ConfigurableAgent with string-based REACT_STAGE iteration strategy."""
         config = AgentConfigModel(
             mcp_servers=["monitoring-tools"],
@@ -375,14 +375,14 @@ class TestConfigurableAgentIterationStrategies:
         agent = ConfigurableAgent(
             agent_name="perf-agent",
             config=config,
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
         )
         
         assert agent.iteration_strategy == IterationStrategy.REACT_STAGE
     
-    def test_iteration_strategy_affects_controller_type(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    def test_iteration_strategy_affects_controller_type(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Test that different iteration strategies create different controller types."""
         from tarsy.agents.iteration_controllers.react_controller import (
             SimpleReActController,
@@ -400,7 +400,7 @@ class TestConfigurableAgentIterationStrategies:
         react_stage_agent = ConfigurableAgent(
             agent_name="react-stage-agent",
             config=react_stage_config,
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
         )
@@ -414,7 +414,7 @@ class TestConfigurableAgentIterationStrategies:
         react_agent = ConfigurableAgent(
             agent_name="react-agent",
             config=react_config,
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
         )
@@ -427,7 +427,7 @@ class TestConfigurableAgentIterationStrategies:
         assert react_stage_agent.iteration_strategy == IterationStrategy.REACT_STAGE
         assert react_agent.iteration_strategy == IterationStrategy.REACT
     
-    def test_config_property_includes_iteration_strategy(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    def test_config_property_includes_iteration_strategy(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Test that agent config property reflects the iteration strategy."""
         config = AgentConfigModel(
             mcp_servers=["security-tools"],
@@ -437,7 +437,7 @@ class TestConfigurableAgentIterationStrategies:
         agent = ConfigurableAgent(
             agent_name="test-agent",
             config=config,
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
         )

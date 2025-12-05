@@ -4,8 +4,9 @@ Unit tests for resume endpoint in history controller.
 Tests the POST /sessions/{session_id}/resume endpoint for resuming paused sessions.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 from fastapi import BackgroundTasks, HTTPException
 
 from tarsy.controllers.history_controller import resume_session

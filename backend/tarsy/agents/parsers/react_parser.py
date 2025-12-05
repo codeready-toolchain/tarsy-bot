@@ -471,7 +471,7 @@ class ReActParser:
                 pattern = r'[.!?][`\s*]*Action Input:'
                 if re.search(pattern, line):
                     logger.info(
-                        f"Parser fallback: detected mid-line 'Action Input:' after sentence boundary"
+                        "Parser fallback: detected mid-line 'Action Input:' after sentence boundary"
                     )
                     return True
         

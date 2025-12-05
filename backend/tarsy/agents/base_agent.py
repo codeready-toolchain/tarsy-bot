@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Dict, List, Optional, assert_never
 
 from tarsy.config.settings import get_settings
-from tarsy.integrations.llm.client import LLMClient
+from tarsy.integrations.llm.manager import LLMManager
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.agent_execution_result import AgentExecutionResult
 from tarsy.models.constants import StageStatus
@@ -69,7 +69,7 @@ class BaseAgent(ABC):
     
     def __init__(
         self,
-        llm_client: LLMClient,
+        llm_manager: LLMManager,
         mcp_client: MCPClient,
         mcp_registry: MCPServerRegistry,
         iteration_strategy: IterationStrategy = IterationStrategy.REACT
@@ -78,12 +78,12 @@ class BaseAgent(ABC):
         Initialize the base agent with required dependencies.
         
         Args:
-            llm_client: Client for LLM interactions
+            llm_manager: LLM manager for accessing LLM clients (both LangChain and native thinking)
             mcp_client: Client for MCP server interactions
             mcp_registry: Registry of MCP server configurations (REQUIRED)
             iteration_strategy: Which iteration strategy to use (configured per agent)
         """
-        self.llm_client = llm_client
+        self.llm_manager = llm_manager
         self.mcp_client = mcp_client
         self.mcp_registry = mcp_registry
         self._max_iterations = get_settings().max_llm_mcp_iterations
@@ -116,19 +116,19 @@ class BaseAgent(ABC):
             Appropriate IterationController instance
         """
         if strategy == IterationStrategy.REACT:
-            return SimpleReActController(self.llm_client, self._prompt_builder)
+            return SimpleReActController(self.llm_manager, self._prompt_builder)
         elif strategy == IterationStrategy.REACT_STAGE:
-            return ReactStageController(self.llm_client, self._prompt_builder)
+            return ReactStageController(self.llm_manager, self._prompt_builder)
         elif strategy == IterationStrategy.REACT_FINAL_ANALYSIS:
             from .iteration_controllers.react_final_analysis_controller import (
                 ReactFinalAnalysisController,
             )
-            return ReactFinalAnalysisController(self.llm_client, self._prompt_builder)
+            return ReactFinalAnalysisController(self.llm_manager, self._prompt_builder)
         elif strategy == IterationStrategy.NATIVE_THINKING:
             from .iteration_controllers.native_thinking_controller import (
                 NativeThinkingController,
             )
-            return NativeThinkingController(self.llm_client, self._prompt_builder)
+            return NativeThinkingController(self.llm_manager, self._prompt_builder)
         else:
             assert_never(strategy)
     
@@ -374,10 +374,10 @@ class BaseAgent(ABC):
             logger.error(f"Missing MCP server configurations: {config_error.to_dict()}")
             raise config_error
         
-        # Create and inject summarizer if LLM client is available
-        if hasattr(self, 'llm_client') and self.llm_client:
+        # Create and inject summarizer if LLM manager is available
+        if hasattr(self, 'llm_manager') and self.llm_manager:
             from tarsy.integrations.mcp.summarizer import MCPResultSummarizer
-            summarizer = MCPResultSummarizer(self.llm_client, self._prompt_builder)
+            summarizer = MCPResultSummarizer(self.llm_manager, self._prompt_builder)
             # Update MCP client with summarizer
             self.mcp_client.summarizer = summarizer
         

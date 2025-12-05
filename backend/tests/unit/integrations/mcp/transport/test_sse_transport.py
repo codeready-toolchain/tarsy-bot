@@ -7,12 +7,13 @@ This module tests the SSE transport functionality including:
 - SSE-specific features (endpoint discovery, long timeouts)
 """
 
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import AsyncMock, Mock
+
 import pytest
 from mcp import ClientSession
 
 from tarsy.integrations.mcp.transport.sse_transport import SSETransport
-from tarsy.models.mcp_transport_config import SSETransportConfig, TRANSPORT_SSE
+from tarsy.models.mcp_transport_config import TRANSPORT_SSE, SSETransportConfig
 
 
 @pytest.mark.unit

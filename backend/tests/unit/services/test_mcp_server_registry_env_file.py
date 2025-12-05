@@ -12,8 +12,8 @@ from unittest.mock import patch
 import pytest
 
 from tarsy.config.settings import Settings
-from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.models.agent_config import MCPServerConfigModel
+from tarsy.services.mcp_server_registry import MCPServerRegistry
 
 
 @pytest.mark.unit

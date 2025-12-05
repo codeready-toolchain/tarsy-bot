@@ -20,12 +20,13 @@ from tarsy.models.constants import IterationStrategy
 from tarsy.models.processing_context import AvailableTools, ChainContext, StageContext
 from tarsy.models.unified_interactions import LLMConversation, MessageRole
 
+
 @pytest.mark.unit
 class TestSimpleReActController:
     """Test SimpleReActController implementation."""
     
     @pytest.fixture
-    def mock_llm_client(self):
+    def mock_llm_manager(self):
         """Create mock LLM client."""
         client = Mock()
         
@@ -75,9 +76,9 @@ class TestSimpleReActController:
         return agent
     
     @pytest.fixture
-    def controller(self, mock_llm_client, mock_prompt_builder):
+    def controller(self, mock_llm_manager, mock_prompt_builder):
         """Create SimpleReActController instance."""
-        return SimpleReActController(mock_llm_client, mock_prompt_builder)
+        return SimpleReActController(mock_llm_manager, mock_prompt_builder)
     
     @pytest.fixture
     def sample_context(self, mock_agent):
@@ -105,7 +106,7 @@ class TestSimpleReActController:
         )
     
     @pytest.mark.asyncio
-    async def test_execute_analysis_loop_success(self, controller, sample_context, mock_llm_client):
+    async def test_execute_analysis_loop_success(self, controller, sample_context, mock_llm_manager):
         """Test successful ReAct analysis loop with final answer."""
         result = await controller.execute_analysis_loop(sample_context)
         
@@ -113,10 +114,10 @@ class TestSimpleReActController:
         assert result == "Final Answer: Analysis complete"
         
         # Verify LLM was called
-        mock_llm_client.generate_response.assert_called()
+        mock_llm_manager.generate_response.assert_called()
         
         # Verify system message contains ReAct instructions
-        conversation_arg = mock_llm_client.generate_response.call_args.kwargs['conversation']
+        conversation_arg = mock_llm_manager.generate_response.call_args.kwargs['conversation']
         system_message = conversation_arg.messages[0]
         assert "ReAct" in system_message.content
     
@@ -150,7 +151,7 @@ class TestSimpleReActController:
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_with_action_execution(
-        self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder
+        self, controller, sample_context, mock_agent, mock_llm_manager, mock_prompt_builder
     ):
         """Test ReAct loop that executes an action before completing."""
         # Mock LLM responses in ReAct format for the parser to understand
@@ -168,7 +169,7 @@ class TestSimpleReActController:
             call_count += 1
             return updated_conversation
         
-        mock_llm_client.generate_response.side_effect = mock_generate_response_with_sequence
+        mock_llm_manager.generate_response.side_effect = mock_generate_response_with_sequence
         
         result = await controller.execute_analysis_loop(sample_context)
         
@@ -179,11 +180,11 @@ class TestSimpleReActController:
         mock_agent.execute_mcp_tools.assert_called_once()
         
         # Verify multiple LLM calls for iterations
-        assert mock_llm_client.generate_response.call_count >= 2
+        assert mock_llm_manager.generate_response.call_count >= 2
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_max_iterations_with_successful_last_interaction(
-        self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder
+        self, controller, sample_context, mock_agent, mock_llm_manager, mock_prompt_builder
     ):
         """Test ReAct loop that reaches maximum iterations with successful last interaction - should pause."""
         from tarsy.agents.exceptions import SessionPaused
@@ -196,7 +197,7 @@ class TestSimpleReActController:
             updated_conversation.append_assistant_message("Thought: Still thinking...")  # No Final Answer
             return updated_conversation
         
-        mock_llm_client.generate_response.side_effect = mock_generate_response_incomplete
+        mock_llm_manager.generate_response.side_effect = mock_generate_response_incomplete
         
         # Should raise SessionPaused when reaching max iterations with successful last interaction
         with pytest.raises(SessionPaused) as exc_info:
@@ -209,7 +210,7 @@ class TestSimpleReActController:
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_max_iterations_with_failed_last_interaction(
-        self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder
+        self, controller, sample_context, mock_agent, mock_llm_manager, mock_prompt_builder
     ):
         """Test ReAct loop that reaches maximum iterations with failed last interaction (NEW BEHAVIOR)."""
         from tarsy.agents.exceptions import MaxIterationsFailureError
@@ -217,7 +218,7 @@ class TestSimpleReActController:
         mock_agent.max_iterations = 2  # Set max iterations
         
         # Mock LLM to fail on all attempts
-        mock_llm_client.generate_response.side_effect = Exception("LLM connection failed")
+        mock_llm_manager.generate_response.side_effect = Exception("LLM connection failed")
         
         # Should raise MaxIterationsFailureError (new failure detection behavior)
         with pytest.raises(MaxIterationsFailureError) as exc_info:
@@ -228,11 +229,11 @@ class TestSimpleReActController:
         assert error.max_iterations == 2
         
         # Verify all iterations were attempted
-        assert mock_llm_client.generate_response.call_count == 2
+        assert mock_llm_manager.generate_response.call_count == 2
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_tool_execution_error(
-        self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder
+        self, controller, sample_context, mock_agent, mock_llm_manager, mock_prompt_builder
     ):
         """Test ReAct loop with tool execution error."""
         # Mock tool execution to fail
@@ -253,7 +254,7 @@ class TestSimpleReActController:
             call_count += 1
             return updated_conversation
         
-        mock_llm_client.generate_response.side_effect = mock_generate_response_with_error
+        mock_llm_manager.generate_response.side_effect = mock_generate_response_with_error
         
         result = await controller.execute_analysis_loop(sample_context)
         
@@ -265,7 +266,7 @@ class TestSimpleReActController:
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_malformed_response_kept_with_specific_feedback(
-        self, controller, sample_context, mock_agent, mock_llm_client
+        self, controller, sample_context, mock_agent, mock_llm_manager
     ):
         """Test that malformed responses are kept in context with specific error feedback."""
         mock_agent.max_iterations = 3
@@ -290,7 +291,7 @@ class TestSimpleReActController:
             call_count += 1
             return updated_conversation
         
-        mock_llm_client.generate_response.side_effect = mock_generate_response_track_conversation
+        mock_llm_manager.generate_response.side_effect = mock_generate_response_track_conversation
         
         result = await controller.execute_analysis_loop(sample_context)
         
@@ -298,7 +299,7 @@ class TestSimpleReActController:
         assert "Final Answer: Analysis complete" in result
         
         # Verify two LLM calls (first malformed, second valid)
-        assert mock_llm_client.generate_response.call_count == 2
+        assert mock_llm_manager.generate_response.call_count == 2
         
         # Verify second call's conversation contains:
         # 1. The malformed assistant message (not deleted)
@@ -326,7 +327,7 @@ class TestReactFinalAnalysisController:
     """Test ReactFinalAnalysisController implementation."""
     
     @pytest.fixture
-    def mock_llm_client(self):
+    def mock_llm_manager(self):
         """Create mock LLM client."""
         client = Mock()
         
@@ -358,9 +359,9 @@ class TestReactFinalAnalysisController:
         return agent
     
     @pytest.fixture
-    def controller(self, mock_llm_client, mock_prompt_builder):
+    def controller(self, mock_llm_manager, mock_prompt_builder):
         """Create ReactFinalAnalysisController instance."""
-        return ReactFinalAnalysisController(mock_llm_client, mock_prompt_builder)
+        return ReactFinalAnalysisController(mock_llm_manager, mock_prompt_builder)
     
     @pytest.fixture
     def sample_context(self, mock_agent):
@@ -392,7 +393,7 @@ class TestReactFinalAnalysisController:
         assert controller.needs_mcp_tools() is False
     
     @pytest.mark.asyncio
-    async def test_execute_analysis_loop_success(self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder):
+    async def test_execute_analysis_loop_success(self, controller, sample_context, mock_agent, mock_llm_manager, mock_prompt_builder):
         """Test successful final analysis execution."""
         result = await controller.execute_analysis_loop(sample_context)
         
@@ -406,8 +407,8 @@ class TestReactFinalAnalysisController:
         mock_prompt_builder.build_final_analysis_prompt.assert_called_once()
         
         # Verify LLM was called with correct conversation
-        mock_llm_client.generate_response.assert_called_once()
-        call_args = mock_llm_client.generate_response.call_args[0]
+        mock_llm_manager.generate_response.assert_called_once()
+        call_args = mock_llm_manager.generate_response.call_args[0]
         conversation = call_args[0]
         assert len(conversation.messages) == 2
         assert conversation.messages[0].role == MessageRole.SYSTEM
@@ -449,7 +450,7 @@ class TestReactFinalAnalysisController:
             await controller.execute_analysis_loop(context)
     
     @pytest.mark.asyncio
-    async def test_execute_analysis_loop_with_previous_stage_data(self, controller, sample_context, mock_agent, mock_llm_client):
+    async def test_execute_analysis_loop_with_previous_stage_data(self, controller, sample_context, mock_agent, mock_llm_manager):
         """Test final analysis execution (previous stage data handled at chain level)."""        
         result = await controller.execute_analysis_loop(sample_context)
         
@@ -458,7 +459,7 @@ class TestReactFinalAnalysisController:
         # EP-0012: Context creation handled by StageContext directly
     
     @pytest.mark.asyncio
-    async def test_execute_analysis_loop_minimal_context(self, controller, mock_agent, mock_llm_client, mock_prompt_builder):
+    async def test_execute_analysis_loop_minimal_context(self, controller, mock_agent, mock_llm_manager, mock_prompt_builder):
         """Test final analysis with minimal context."""
         from tarsy.models.alert import ProcessingAlert
         from tarsy.utils.timestamp import now_us
@@ -489,11 +490,11 @@ class TestReactFinalAnalysisController:
         # EP-0012: Context creation handled by StageContext and prompt builders directly
     
     @pytest.mark.asyncio
-    async def test_execute_analysis_loop_llm_failure(self, controller, sample_context, mock_llm_client):
+    async def test_execute_analysis_loop_llm_failure(self, controller, sample_context, mock_llm_manager):
         """Test final analysis when LLM call fails (NEW BEHAVIOR - MaxIterationsFailureError)."""
         from tarsy.agents.exceptions import MaxIterationsFailureError
         
-        mock_llm_client.generate_response.side_effect = Exception("LLM service unavailable")
+        mock_llm_manager.generate_response.side_effect = Exception("LLM service unavailable")
         
         # Should now raise MaxIterationsFailureError instead of regular Exception
         with pytest.raises(MaxIterationsFailureError) as exc_info:
@@ -509,7 +510,7 @@ class TestReactStageController:
     """Test ReactStageController implementation."""
     
     @pytest.fixture
-    def mock_llm_client(self):
+    def mock_llm_manager(self):
         """Create mock LLM client."""
         client = Mock()
         
@@ -562,9 +563,9 @@ class TestReactStageController:
         return agent
     
     @pytest.fixture
-    def controller(self, mock_llm_client, mock_prompt_builder):
+    def controller(self, mock_llm_manager, mock_prompt_builder):
         """Create ReactStageController instance."""
-        return ReactStageController(mock_llm_client, mock_prompt_builder)
+        return ReactStageController(mock_llm_manager, mock_prompt_builder)
     
     @pytest.fixture
     def sample_context(self, mock_agent):
@@ -596,7 +597,7 @@ class TestReactStageController:
         assert controller.needs_mcp_tools() is True
     
     @pytest.mark.asyncio
-    async def test_execute_analysis_loop_success_immediate_completion(self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder):
+    async def test_execute_analysis_loop_success_immediate_completion(self, controller, sample_context, mock_agent, mock_llm_manager, mock_prompt_builder):
         """Test successful partial analysis that completes immediately."""
         result = await controller.execute_analysis_loop(sample_context)
         
@@ -610,7 +611,7 @@ class TestReactStageController:
         mock_prompt_builder.build_stage_analysis_react_prompt.assert_called_once()
         
         # Verify LLM call
-        mock_llm_client.generate_response.assert_called_once()
+        mock_llm_manager.generate_response.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_no_agent(self, controller):
@@ -641,7 +642,7 @@ class TestReactStageController:
             await controller.execute_analysis_loop(context)
     
     @pytest.mark.asyncio
-    async def test_execute_analysis_loop_with_tool_execution(self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder):
+    async def test_execute_analysis_loop_with_tool_execution(self, controller, sample_context, mock_agent, mock_llm_manager, mock_prompt_builder):
         """Test partial analysis loop that executes tools before completing."""
         # Mock LLM responses in ReAct format for the parser to understand
         react_responses = [
@@ -658,7 +659,7 @@ class TestReactStageController:
             call_count += 1
             return updated_conversation
         
-        mock_llm_client.generate_response.side_effect = mock_generate_response_with_sequence
+        mock_llm_manager.generate_response.side_effect = mock_generate_response_with_sequence
         
         result = await controller.execute_analysis_loop(sample_context)
         
@@ -669,10 +670,10 @@ class TestReactStageController:
         mock_agent.execute_mcp_tools.assert_called_once()
         
         # Verify multiple LLM calls
-        assert mock_llm_client.generate_response.call_count >= 2
+        assert mock_llm_manager.generate_response.call_count >= 2
     
     @pytest.mark.asyncio
-    async def test_execute_analysis_loop_max_iterations_with_fallback(self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder):
+    async def test_execute_analysis_loop_max_iterations_with_fallback(self, controller, sample_context, mock_agent, mock_llm_manager, mock_prompt_builder):
         """Test partial analysis loop that reaches maximum iterations - should pause."""
         from tarsy.agents.exceptions import SessionPaused
         
@@ -687,7 +688,7 @@ class TestReactStageController:
             call_count += 1
             return updated_conversation
         
-        mock_llm_client.generate_response.side_effect = mock_generate_response_incomplete
+        mock_llm_manager.generate_response.side_effect = mock_generate_response_incomplete
         
         # Should raise SessionPaused when reaching max iterations
         with pytest.raises(SessionPaused) as exc_info:
@@ -699,10 +700,10 @@ class TestReactStageController:
         assert "Session paused at maximum iterations" in str(exc_info.value)
         
         # Should have attempted the ReAct analysis 
-        assert mock_llm_client.generate_response.call_count >= 1
+        assert mock_llm_manager.generate_response.call_count >= 1
     
     @pytest.mark.asyncio
-    async def test_execute_analysis_loop_fallback_failure(self, controller, sample_context, mock_agent, mock_llm_client, mock_prompt_builder):
+    async def test_execute_analysis_loop_fallback_failure(self, controller, sample_context, mock_agent, mock_llm_manager, mock_prompt_builder):
         """Test partial analysis loop that reaches max iterations - should pause."""
         from tarsy.agents.exceptions import SessionPaused
         
@@ -714,7 +715,7 @@ class TestReactStageController:
             updated_conversation.append_assistant_message("Thought: Still working on analysis...")  # No Final Answer
             return updated_conversation
         
-        mock_llm_client.generate_response.side_effect = mock_generate_response_incomplete
+        mock_llm_manager.generate_response.side_effect = mock_generate_response_incomplete
         
         # Should raise SessionPaused when reaching max iterations
         with pytest.raises(SessionPaused) as exc_info:
@@ -730,14 +731,14 @@ class TestIterationControllerFactory:
     """Test the factory method in BaseAgent for creating iteration controllers."""
     
     @pytest.fixture
-    def mock_llm_client(self):
+    def mock_llm_manager(self):
         return Mock()
     
     @pytest.fixture
     def mock_prompt_builder(self):
         return Mock()
     
-    def test_create_react_stage_controller(self, mock_llm_client, mock_prompt_builder):
+    def test_create_react_stage_controller(self, mock_llm_manager, mock_prompt_builder):
         """Test creating ReactStageController."""
         from tarsy.agents.base_agent import BaseAgent
         
@@ -750,7 +751,7 @@ class TestIterationControllerFactory:
         
         with patch('tarsy.agents.base_agent.get_prompt_builder', return_value=mock_prompt_builder):
             agent = TestAgent(
-                llm_client=mock_llm_client,
+                llm_manager=mock_llm_manager,
                 mcp_client=Mock(),
                 mcp_registry=Mock(),
                 iteration_strategy=IterationStrategy.REACT_STAGE
@@ -759,7 +760,7 @@ class TestIterationControllerFactory:
             assert isinstance(agent._iteration_controller, ReactStageController)
             assert agent.iteration_strategy == IterationStrategy.REACT_STAGE
     
-    def test_create_react_iteration_controller(self, mock_llm_client, mock_prompt_builder):
+    def test_create_react_iteration_controller(self, mock_llm_manager, mock_prompt_builder):
         """Test creating SimpleReActController."""
         from tarsy.agents.base_agent import BaseAgent
         
@@ -771,7 +772,7 @@ class TestIterationControllerFactory:
         
         with patch('tarsy.agents.base_agent.get_prompt_builder', return_value=mock_prompt_builder):
             agent = TestAgent(
-                llm_client=mock_llm_client,
+                llm_manager=mock_llm_manager,
                 mcp_client=Mock(),
                 mcp_registry=Mock(),
                 iteration_strategy=IterationStrategy.REACT
@@ -780,7 +781,7 @@ class TestIterationControllerFactory:
             assert isinstance(agent._iteration_controller, SimpleReActController)
             assert agent.iteration_strategy == IterationStrategy.REACT
     
-    def test_create_unknown_iteration_strategy_fails(self, mock_llm_client, mock_prompt_builder):
+    def test_create_unknown_iteration_strategy_fails(self, mock_llm_manager, mock_prompt_builder):
         """Test that unknown iteration strategy raises AssertionError via assert_never."""
         from tarsy.agents.base_agent import BaseAgent
         
@@ -793,7 +794,7 @@ class TestIterationControllerFactory:
         with patch('tarsy.agents.base_agent.get_prompt_builder', return_value=mock_prompt_builder):
             with pytest.raises(AssertionError, match="Expected code to be unreachable"):
                 TestAgent(
-                    llm_client=mock_llm_client,
+                    llm_manager=mock_llm_manager,
                     mcp_client=Mock(),
                     mcp_registry=Mock(),
                     iteration_strategy="unknown_strategy"  # Invalid strategy
@@ -807,7 +808,7 @@ class TestIterationControllerIntegration:
     def mock_dependencies(self):
         """Create all mock dependencies."""
         return {
-            'llm_client': Mock(),
+            'llm_manager': Mock(),
             'mcp_client': Mock(),
             'mcp_registry': Mock(),
             'prompt_builder': Mock()
@@ -827,7 +828,7 @@ class TestIterationControllerIntegration:
                    return_value=mock_dependencies['prompt_builder']):
             # Create agent with REACT strategy
             react_agent = TestAgent(
-                llm_client=mock_dependencies['llm_client'],
+                llm_manager=mock_dependencies['llm_manager'],
                 mcp_client=mock_dependencies['mcp_client'],
                 mcp_registry=mock_dependencies['mcp_registry'],
                 iteration_strategy=IterationStrategy.REACT
@@ -835,7 +836,7 @@ class TestIterationControllerIntegration:
             
             # Create agent with REACT_STAGE strategy  
             react_stage_agent = TestAgent(
-                llm_client=mock_dependencies['llm_client'],
+                llm_manager=mock_dependencies['llm_manager'],
                 mcp_client=mock_dependencies['mcp_client'],
                 mcp_registry=mock_dependencies['mcp_registry'],
                 iteration_strategy=IterationStrategy.REACT_STAGE
@@ -998,7 +999,11 @@ class TestNativeToolsOverride:
     def test_get_native_tools_override_with_all_fields_present(self, controller):
         """Test extraction when all fields are present."""
         from tarsy.models.alert import ProcessingAlert
-        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection, NativeToolsConfig
+        from tarsy.models.mcp_selection_models import (
+            MCPSelectionConfig,
+            MCPServerSelection,
+            NativeToolsConfig,
+        )
         from tarsy.utils.timestamp import now_us
         
         # Create ProcessingAlert with full MCP configuration
@@ -1041,7 +1046,10 @@ class TestNativeToolsOverride:
     def test_get_native_tools_override_with_no_native_tools(self, controller):
         """Test extraction when mcp exists but native_tools is None."""
         from tarsy.models.alert import ProcessingAlert
-        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
+        from tarsy.models.mcp_selection_models import (
+            MCPSelectionConfig,
+            MCPServerSelection,
+        )
         from tarsy.utils.timestamp import now_us
         
         # Create ProcessingAlert with MCP but no native_tools

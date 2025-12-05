@@ -7,8 +7,9 @@ for MCP server configuration parameters, supporting the ${VARIABLE_NAME} syntax.
 
 import os
 import re
-from typing import Any, Dict, List, Optional, Set, TYPE_CHECKING
 from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
+
 from tarsy.utils.logger import get_module_logger
 
 if TYPE_CHECKING:

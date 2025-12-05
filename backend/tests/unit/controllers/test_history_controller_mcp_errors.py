@@ -2,13 +2,19 @@
 Tests for history controller MCP error message API endpoints.
 """
 
+from unittest.mock import Mock
+
 import pytest
-from unittest.mock import Mock, patch
 from fastapi import HTTPException
 
 from tarsy.controllers.history_controller import get_session_detail
-from tarsy.models.history_models import DetailedSession, DetailedStage, MCPTimelineEvent, MCPEventDetails
 from tarsy.models.constants import AlertSessionStatus, StageStatus
+from tarsy.models.history_models import (
+    DetailedSession,
+    DetailedStage,
+    MCPEventDetails,
+    MCPTimelineEvent,
+)
 from tarsy.utils.timestamp import now_us
 
 

@@ -6,8 +6,9 @@ This module tests PostgreSQL-based event listening via LISTEN/NOTIFY.
 
 import asyncio
 import json
-import pytest
 from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 
 from tarsy.services.events.postgresql_listener import PostgreSQLEventListener
 

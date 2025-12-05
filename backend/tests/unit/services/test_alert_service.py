@@ -138,7 +138,7 @@ class TestAlertServiceAsyncInitialization:
             
             # Verify agent factory creation (no longer receives mcp_client in constructor)
             mock_factory.assert_called_once_with(
-                llm_client=alert_service.llm_manager,
+                llm_manager=alert_service.llm_manager,
                 mcp_registry=alert_service.mcp_server_registry,
                 agent_configs={}  # Empty dict when no config path is provided
             )
@@ -914,8 +914,8 @@ class TestChainErrorAggregation:
     def chain_context_with_failures(self):
         """Create ChainContext with mixed successful and failed stage results."""
         from tarsy.models.agent_execution_result import AgentExecutionResult
-        from tarsy.models.constants import StageStatus
         from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.constants import StageStatus
         
         processing_alert = ProcessingAlert(
             alert_type="test_alert",
@@ -988,9 +988,8 @@ class TestChainErrorAggregation:
     def test_aggregate_stage_errors_single_failure(self, alert_service):
         """Test error aggregation with single stage failure."""
         from tarsy.models.agent_execution_result import AgentExecutionResult
-        from tarsy.models.constants import StageStatus
-        
         from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.constants import StageStatus
         
         processing_alert = ProcessingAlert(
             alert_type="test_alert",
@@ -1024,9 +1023,8 @@ class TestChainErrorAggregation:
     def test_aggregate_stage_errors_no_failures(self, alert_service):
         """Test error aggregation when no stage failures exist (edge case)."""
         from tarsy.models.agent_execution_result import AgentExecutionResult
-        from tarsy.models.constants import StageStatus
-        
         from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.constants import StageStatus
         
         processing_alert = ProcessingAlert(
             alert_type="test_alert",
@@ -1224,7 +1222,7 @@ class TestEnhancedChainExecution:
         )
         
         # Mock get_agent to return appropriate agents
-        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None):
+        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None):
             if agent_identifier == 'DataAgent':
                 agent = successful_agent
             elif agent_identifier == 'AnalysisAgent': 
@@ -1294,7 +1292,7 @@ class TestEnhancedChainExecution:
             final_analysis="All systems operational"
         )
         
-        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None):
+        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None):
             agent = successful_agent
             agent.set_current_stage_execution_id = Mock()
             return agent
@@ -1345,7 +1343,7 @@ class TestEnhancedChainExecution:
         failing_agent = AsyncMock()
         failing_agent.process_alert.side_effect = Exception("Unexpected agent failure")
         
-        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None):
+        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None):
             agent = failing_agent
             agent.set_current_stage_execution_id = Mock()
             return agent
@@ -1451,7 +1449,7 @@ class TestFullErrorPropagation:
             error_message="API rate limit exceeded"
         )
         
-        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None):
+        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None):
             if agent_identifier == 'Agent1':
                 agent = failing_agent_1
             else:  # Agent2
@@ -1530,7 +1528,7 @@ class TestFullErrorPropagation:
             error_message="Critical system error detected"
         )
         
-        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None):
+        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None):
             agent = failing_agent
             agent.set_current_stage_execution_id = Mock()
             return agent

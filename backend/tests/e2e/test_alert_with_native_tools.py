@@ -5,9 +5,10 @@ Tests the complete flow from API submission through to LLM client with
 native tools override applied.
 """
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from httpx import AsyncClient
-from unittest.mock import patch, AsyncMock
 
 from tarsy.main import app
 

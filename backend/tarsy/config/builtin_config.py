@@ -15,10 +15,10 @@ Agent classes are imported dynamically by AgentFactory when needed.
 """
 
 import copy
-from typing import Dict, Any
+from typing import Any, Dict
+
 from tarsy.models.llm_models import GoogleNativeTool, LLMProviderConfig, LLMProviderType
 from tarsy.models.mcp_transport_config import TRANSPORT_STDIO
-
 
 # ==============================================================================
 # DEFAULT ALERT TYPE

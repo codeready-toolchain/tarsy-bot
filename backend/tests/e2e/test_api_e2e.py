@@ -1387,6 +1387,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
         Verifies that the normalized response matches expected output.
         """
         import json
+
         from .expected_conversations import (
             EXPECTED_FINAL_ANALYSIS_LLM_ONLY,
             EXPECTED_FINAL_ANALYSIS_WITH_CHAT,

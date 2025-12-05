@@ -5,8 +5,9 @@ These models define the exact structure of data passed between different
 layers of the application, providing type safety and validation.
 """
 
-from pydantic import BaseModel, Field, ConfigDict
 from typing import TYPE_CHECKING
+
+from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:
     from .processing_context import ChainContext
@@ -38,8 +39,8 @@ class AlertKey(BaseModel):
         Returns:
             AlertKey instance with deterministic hash
         """
-        import json
         import hashlib
+        import json
         
         # Generate deterministic hash from alert data (excluding timestamp for duplicate detection)
         alert_data_for_hash = context.processing_alert.alert_data.copy()

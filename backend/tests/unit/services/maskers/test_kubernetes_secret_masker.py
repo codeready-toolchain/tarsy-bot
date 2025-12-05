@@ -8,7 +8,6 @@ import pytest
 
 from tarsy.services.maskers.kubernetes_secret_masker import KubernetesSecretMasker
 
-
 # Test data matrix: (input, expected_output, description)
 TEST_CASES = [
     # ============================================================================

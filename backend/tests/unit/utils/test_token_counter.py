@@ -118,7 +118,7 @@ class TestTokenCounter:
         assert result == 5  # Mock returns 5 tokens
         
         # String results should not be JSON formatted
-        expected_observation = f"kubectl.describe: Pod is running successfully"
+        expected_observation = "kubectl.describe: Pod is running successfully"
         
         self.mock_encoding.encode.assert_called_once_with(expected_observation)
     

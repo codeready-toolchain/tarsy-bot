@@ -7,17 +7,16 @@ serves as the single source of truth for all MCP server configurations,
 including both built-in and configured servers.
 """
 
-from typing import Any, Dict, List, Optional
-
-from ..models.agent_config import MCPServerConfigModel as MCPServerConfig
-from ..models.mcp_transport_config import TRANSPORT_STDIO, TRANSPORT_HTTP, TRANSPORT_SSE
-from ..utils.logger import get_module_logger
-from ..config.builtin_config import BUILTIN_MCP_SERVERS
-from ..utils.template_resolver import TemplateResolver, TemplateResolutionError
-from ..config.settings import Settings
-
 # Import for type hints only (avoid circular imports)
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
+
+from ..config.builtin_config import BUILTIN_MCP_SERVERS
+from ..config.settings import Settings
+from ..models.agent_config import MCPServerConfigModel as MCPServerConfig
+from ..models.mcp_transport_config import TRANSPORT_HTTP, TRANSPORT_SSE, TRANSPORT_STDIO
+from ..utils.logger import get_module_logger
+from ..utils.template_resolver import TemplateResolutionError, TemplateResolver
+
 if TYPE_CHECKING:
     from ..models.agent_config import MCPServerConfigModel
 

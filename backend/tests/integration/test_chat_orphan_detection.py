@@ -5,11 +5,12 @@ Tests the chat pod tracking, orphan detection, and cleanup mechanisms
 that mirror the session orphan detection pattern.
 """
 
-import pytest
 import time
 
-from tarsy.models.db_models import Chat, AlertSession
+import pytest
+
 from tarsy.models.constants import AlertSessionStatus
+from tarsy.models.db_models import AlertSession, Chat
 from tarsy.services.history_service import HistoryService
 from tarsy.utils.timestamp import now_us
 

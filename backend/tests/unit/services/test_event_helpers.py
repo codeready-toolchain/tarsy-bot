@@ -4,23 +4,24 @@ Unit tests for event helper functions.
 This module tests the helper functions for publishing events.
 """
 
-import pytest
 from unittest.mock import AsyncMock, Mock, patch
 
-from tarsy.services.events.event_helpers import (
-    publish_session_created,
-    publish_session_started,
-    publish_session_completed,
-    publish_session_failed,
-    publish_llm_interaction,
-    publish_mcp_tool_call_started,
-    publish_mcp_tool_call,
-    publish_mcp_tool_list,
-    publish_stage_started,
-    publish_stage_completed,
-    publish_chat_cancel_request,
-)
+import pytest
+
 from tarsy.services.events.channels import EventChannel
+from tarsy.services.events.event_helpers import (
+    publish_chat_cancel_request,
+    publish_llm_interaction,
+    publish_mcp_tool_call,
+    publish_mcp_tool_call_started,
+    publish_mcp_tool_list,
+    publish_session_completed,
+    publish_session_created,
+    publish_session_failed,
+    publish_session_started,
+    publish_stage_completed,
+    publish_stage_started,
+)
 
 
 @pytest.mark.unit

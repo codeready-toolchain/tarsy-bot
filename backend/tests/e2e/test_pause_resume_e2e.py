@@ -25,13 +25,13 @@ import logging
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from mcp.types import Tool
 
 from tarsy.config.builtin_config import BUILTIN_MCP_SERVERS
 from tarsy.integrations.mcp.client import MCPClient
-from mcp.types import Tool
 
-from .e2e_utils import E2ETestUtils
 from .conftest import create_mock_stream
+from .e2e_utils import E2ETestUtils
 from .expected_pause_resume_conversations import EXPECTED_PAUSE_RESUME_STAGES
 
 logger = logging.getLogger(__name__)
@@ -484,10 +484,10 @@ Finalizers:   [kubernetes.io/pvc-protection]
                     # Mock LLM streaming
                     streaming_mock = create_streaming_mock()
 
-                    from langchain_openai import ChatOpenAI
                     from langchain_anthropic import ChatAnthropic
-                    from langchain_xai import ChatXAI
                     from langchain_google_genai import ChatGoogleGenerativeAI
+                    from langchain_openai import ChatOpenAI
+                    from langchain_xai import ChatXAI
 
                     with patch.object(ChatOpenAI, "astream", streaming_mock), \
                          patch.object(ChatAnthropic, "astream", streaming_mock), \

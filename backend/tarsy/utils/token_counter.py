@@ -6,8 +6,9 @@ with fallback handling for unknown models and specific formatting for ReAct obse
 """
 
 import json
-import tiktoken
 from typing import Any, Dict
+
+import tiktoken
 
 from tarsy.utils.logger import get_module_logger
 

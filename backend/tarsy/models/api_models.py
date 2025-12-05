@@ -9,6 +9,7 @@ performance and consistency with the rest of the system.
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field, field_validator
+
 from tarsy.models.constants import ChainStatus
 
 # Non-history related response models

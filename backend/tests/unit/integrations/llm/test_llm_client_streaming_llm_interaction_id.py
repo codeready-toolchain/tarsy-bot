@@ -37,11 +37,12 @@ class TestLLMClientStreamingWithLLMInteractionID:
             new_callable=AsyncMock
         ) as mock_publish:
             mock_session = AsyncMock()
+            mock_session.bind.dialect.name = "postgresql"
             mock_session_context = AsyncMock()
             mock_session_context.__aenter__.return_value = mock_session
             mock_factory.return_value.return_value = mock_session_context
             
-            await client._publish_stream_chunk(
+            await client._streaming_publisher.publish_chunk(
                 session_id="test-session",
                 stage_execution_id="stage-123",
                 stream_type=StreamingEventType.THOUGHT,
@@ -51,8 +52,7 @@ class TestLLMClientStreamingWithLLMInteractionID:
             )
             
             mock_publish.assert_called_once()
-            call_args = mock_publish.call_args
-            event = call_args[0][2]
+            event = mock_publish.call_args.kwargs["event"]
             
             assert event.stream_type == StreamingEventType.THOUGHT.value
             assert event.chunk == "This is my thought process"
@@ -69,11 +69,12 @@ class TestLLMClientStreamingWithLLMInteractionID:
             new_callable=AsyncMock
         ) as mock_publish:
             mock_session = AsyncMock()
+            mock_session.bind.dialect.name = "postgresql"
             mock_session_context = AsyncMock()
             mock_session_context.__aenter__.return_value = mock_session
             mock_factory.return_value.return_value = mock_session_context
             
-            await client._publish_stream_chunk(
+            await client._streaming_publisher.publish_chunk(
                 session_id="test-session",
                 stage_execution_id="stage-456",
                 stream_type=StreamingEventType.FINAL_ANSWER,
@@ -83,7 +84,7 @@ class TestLLMClientStreamingWithLLMInteractionID:
             )
             
             mock_publish.assert_called_once()
-            event = mock_publish.call_args[0][2]
+            event = mock_publish.call_args.kwargs["event"]
             
             assert event.stream_type == StreamingEventType.FINAL_ANSWER.value
             assert event.llm_interaction_id == "interaction-def456"
@@ -99,11 +100,12 @@ class TestLLMClientStreamingWithLLMInteractionID:
             new_callable=AsyncMock
         ) as mock_publish:
             mock_session = AsyncMock()
+            mock_session.bind.dialect.name = "postgresql"
             mock_session_context = AsyncMock()
             mock_session_context.__aenter__.return_value = mock_session
             mock_factory.return_value.return_value = mock_session_context
             
-            await client._publish_stream_chunk(
+            await client._streaming_publisher.publish_chunk(
                 session_id="test-session",
                 stage_execution_id="stage-789",
                 stream_type=StreamingEventType.NATIVE_THINKING,
@@ -113,7 +115,7 @@ class TestLLMClientStreamingWithLLMInteractionID:
             )
             
             mock_publish.assert_called_once()
-            event = mock_publish.call_args[0][2]
+            event = mock_publish.call_args.kwargs["event"]
             
             assert event.stream_type == StreamingEventType.NATIVE_THINKING.value
             assert event.chunk == "Let me analyze this situation..."
@@ -129,11 +131,12 @@ class TestLLMClientStreamingWithLLMInteractionID:
             new_callable=AsyncMock
         ) as mock_publish:
             mock_session = AsyncMock()
+            mock_session.bind.dialect.name = "postgresql"
             mock_session_context = AsyncMock()
             mock_session_context.__aenter__.return_value = mock_session
             mock_factory.return_value.return_value = mock_session_context
             
-            await client._publish_stream_chunk(
+            await client._streaming_publisher.publish_chunk(
                 session_id="test-session",
                 stage_execution_id="stage-123",
                 stream_type=StreamingEventType.THOUGHT,
@@ -142,7 +145,7 @@ class TestLLMClientStreamingWithLLMInteractionID:
             )
             
             mock_publish.assert_called_once()
-            event = mock_publish.call_args[0][2]
+            event = mock_publish.call_args.kwargs["event"]
             
             assert event.stream_type == StreamingEventType.THOUGHT.value
             assert event.llm_interaction_id is None
@@ -157,11 +160,12 @@ class TestLLMClientStreamingWithLLMInteractionID:
             new_callable=AsyncMock
         ) as mock_publish:
             mock_session = AsyncMock()
+            mock_session.bind.dialect.name = "postgresql"
             mock_session_context = AsyncMock()
             mock_session_context.__aenter__.return_value = mock_session
             mock_factory.return_value.return_value = mock_session_context
             
-            await client._publish_stream_chunk(
+            await client._streaming_publisher.publish_chunk(
                 session_id="test-session",
                 stage_execution_id="stage-123",
                 stream_type=StreamingEventType.SUMMARIZATION,
@@ -172,7 +176,7 @@ class TestLLMClientStreamingWithLLMInteractionID:
             )
             
             mock_publish.assert_called_once()
-            event = mock_publish.call_args[0][2]
+            event = mock_publish.call_args.kwargs["event"]
             
             assert event.stream_type == StreamingEventType.SUMMARIZATION.value
             assert event.mcp_event_id == "mcp-event-123"
@@ -187,7 +191,7 @@ class TestLLMClientStreamingWithLLMInteractionID:
             mock_factory.side_effect = Exception("Event system failure")
             
             # Should not raise exception even with llm_interaction_id
-            await client._publish_stream_chunk(
+            await client._streaming_publisher.publish_chunk(
                 session_id="test-session",
                 stage_execution_id=None,
                 stream_type=StreamingEventType.THOUGHT,

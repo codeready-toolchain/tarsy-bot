@@ -3,14 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from tarsy.models.agent_config import (
-    MCPServerConfigModel,
-    CombinedConfigModel
-)
-from tarsy.models.mcp_transport_config import (
-    StdioTransportConfig,
-    HTTPTransportConfig
-)
+from tarsy.models.agent_config import CombinedConfigModel, MCPServerConfigModel
+from tarsy.models.mcp_transport_config import HTTPTransportConfig, StdioTransportConfig
 
 
 @pytest.mark.unit

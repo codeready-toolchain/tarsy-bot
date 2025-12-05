@@ -326,9 +326,8 @@ class TestMCPClientTimeoutLogging:
             mock_ctx = AsyncMock()
             mock_context.return_value.__aenter__.return_value = mock_ctx
             
-            with patch('asyncio.sleep'):
-                with pytest.raises(TimeoutError):
-                    await client.call_tool("test-server", "tool", {}, "session")
+            with patch('asyncio.sleep'), pytest.raises(TimeoutError):
+                await client.call_tool("test-server", "tool", {}, "session")
         
         # Verify timeout was logged
         assert any("timed out after 60s" in record.message for record in caplog.records)

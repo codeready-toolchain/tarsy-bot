@@ -1,22 +1,22 @@
 """Unit tests for EventPublisher."""
 
-import json
-import pytest
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 from pydantic import ValidationError
 from sqlalchemy.exc import OperationalError
 
-from tarsy.services.events.publisher import EventPublisher, publish_event
+from tarsy.models.db_models import Event
 from tarsy.models.event_models import (
-    SessionCreatedEvent,
-    SessionStartedEvent,
     LLMInteractionEvent,
     MCPToolCallEvent,
+    SessionCreatedEvent,
+    SessionStartedEvent,
     StageStartedEvent,
 )
-from tarsy.models.db_models import Event
 from tarsy.repositories.event_repository import EventRepository
+from tarsy.services.events.publisher import EventPublisher, publish_event
 
 
 @pytest.mark.unit

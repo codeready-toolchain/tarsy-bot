@@ -7,14 +7,16 @@ analysis, providing incremental insights during chain processing.
 
 from typing import TYPE_CHECKING
 
+from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.utils.logger import get_module_logger
-from tarsy.models.unified_interactions import LLMMessage, LLMConversation, MessageRole
+
 from .base_controller import ReactController
 
 if TYPE_CHECKING:
-    from ...models.processing_context import StageContext
-    from tarsy.integrations.llm.client import LLMClient
     from tarsy.agents.prompts import PromptBuilder
+    from tarsy.integrations.llm.manager import LLMManager
+
+    from ...models.processing_context import StageContext
 
 logger = get_module_logger(__name__)
 
@@ -27,9 +29,9 @@ class ReactStageController(ReactController):
     All ReAct loop logic is handled by the parent class.
     """
     
-    def __init__(self, llm_client: 'LLMClient', prompt_builder: 'PromptBuilder'):
+    def __init__(self, llm_manager: 'LLMManager', prompt_builder: 'PromptBuilder'):
         """Initialize with proper type annotations."""
-        super().__init__(llm_client, prompt_builder)
+        super().__init__(llm_manager, prompt_builder)
         logger.info("Initialized ReactStageController for stage-specific analysis")
     
     def build_initial_conversation(self, context: 'StageContext') -> LLMConversation:

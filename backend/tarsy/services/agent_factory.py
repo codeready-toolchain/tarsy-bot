@@ -8,19 +8,22 @@ configuration-based agents.
 """
 
 import importlib
-from typing import Dict, Optional, Type
+
+# Import for type hints only (avoid circular imports)
+from typing import TYPE_CHECKING, Dict, Optional, Type
 
 from tarsy.agents.base_agent import BaseAgent
-from tarsy.integrations.llm.client import LLMClient
+from tarsy.config.builtin_config import (
+    get_builtin_agent_config,
+    get_builtin_agent_import_mapping,
+)
+from tarsy.integrations.llm.manager import LLMManager
 from tarsy.integrations.mcp.client import MCPClient
-from tarsy.utils.logger import get_module_logger
-from tarsy.config.builtin_config import get_builtin_agent_import_mapping, get_builtin_agent_config
 from tarsy.models.constants import IterationStrategy
+from tarsy.utils.logger import get_module_logger
 
 from .mcp_server_registry import MCPServerRegistry
 
-# Import for type hints only (avoid circular imports)
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from ..models.agent_config import AgentConfigModel
 
@@ -38,7 +41,7 @@ class AgentFactory:
     
     def __init__(
         self,
-        llm_client: LLMClient,
+        llm_manager: LLMManager,
         mcp_registry: MCPServerRegistry,
         agent_configs: Optional[Dict[str, "AgentConfigModel"]] = None
     ):
@@ -46,7 +49,7 @@ class AgentFactory:
         Initialize the agent factory with dependencies.
         
         Args:
-            llm_client: Client for LLM interactions
+            llm_manager: LLM manager for accessing LLM clients (both LangChain and native thinking)
             mcp_registry: Registry of MCP server configurations (REQUIRED)
             agent_configs: Optional dictionary of configured agents for ConfigurableAgent creation
             
@@ -54,7 +57,7 @@ class AgentFactory:
             MCP client is NOT stored - it must be provided per agent creation
             to ensure proper isolation between alert sessions.
         """
-        self.llm_client = llm_client
+        self.llm_manager = llm_manager
         self.mcp_registry = mcp_registry
         self.agent_configs = agent_configs
         
@@ -212,7 +215,7 @@ class AgentFactory:
                 )
             
             agent = agent_class(
-                llm_client=self.llm_client,
+                llm_manager=self.llm_manager,
                 mcp_client=mcp_client,
                 mcp_registry=self.mcp_registry,
                 iteration_strategy=iteration_strategy
@@ -253,7 +256,7 @@ class AgentFactory:
             
             agent = ConfigurableAgent(
                 config=self.agent_configs[agent_name],
-                llm_client=self.llm_client,
+                llm_manager=self.llm_manager,
                 mcp_client=mcp_client,
                 mcp_registry=self.mcp_registry,
                 agent_name=agent_name
@@ -282,9 +285,8 @@ class AgentFactory:
         """
         errors = []
         
-        if self.llm_client is None:
-            errors.append("LLM client is not initialized")
-        
+        if self.llm_manager is None:
+            errors.append("LLM manager is not initialized")
         
         if self.mcp_registry is None:
             errors.append("MCP registry is not initialized")
@@ -304,8 +306,8 @@ class AgentFactory:
         """
         errors = []
         
-        if self.llm_client is None:
-            errors.append("LLM client is not initialized")
+        if self.llm_manager is None:
+            errors.append("LLM manager is not initialized")
         
         if self.mcp_registry is None:
             errors.append("MCP registry is not initialized")

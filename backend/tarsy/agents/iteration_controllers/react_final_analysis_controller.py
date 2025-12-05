@@ -7,15 +7,17 @@ accumulated data from previous stages to provide comprehensive conclusions.
 
 from typing import TYPE_CHECKING, Optional
 
-from tarsy.utils.logger import get_module_logger
 from tarsy.models.constants import LLMInteractionType
-from tarsy.models.unified_interactions import LLMMessage, LLMConversation
+from tarsy.models.unified_interactions import LLMConversation, LLMMessage
+from tarsy.utils.logger import get_module_logger
+
 from .base_controller import IterationController
 
 if TYPE_CHECKING:
-    from ...models.processing_context import StageContext
-    from tarsy.integrations.llm.client import LLMClient
     from tarsy.agents.prompts import PromptBuilder
+    from tarsy.integrations.llm.manager import LLMManager
+
+    from ...models.processing_context import StageContext
 
 logger = get_module_logger(__name__)
 
@@ -28,9 +30,9 @@ class ReactFinalAnalysisController(IterationController):
     previous chain stages without additional data collection.
     """
     
-    def __init__(self, llm_client: 'LLMClient', prompt_builder: 'PromptBuilder'):
+    def __init__(self, llm_manager: 'LLMManager', prompt_builder: 'PromptBuilder'):
         """Initialize with proper type annotations."""
-        self.llm_client = llm_client
+        self.llm_manager = llm_manager
         self.prompt_builder = prompt_builder
         self._llm_provider_name: Optional[str] = None
     
@@ -76,7 +78,7 @@ class ReactFinalAnalysisController(IterationController):
         
         # Generate response and get the latest assistant message content
         try:
-            updated_conversation = await self.llm_client.generate_response(
+            updated_conversation = await self.llm_manager.generate_response(
                 conversation, 
                 context.session_id, 
                 stage_execution_id,

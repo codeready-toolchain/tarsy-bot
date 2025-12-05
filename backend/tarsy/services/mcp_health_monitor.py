@@ -5,7 +5,7 @@ Independent background service for periodic MCP server health monitoring.
 """
 
 import asyncio
-from typing import Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from mcp.types import Tool
 
@@ -264,8 +264,9 @@ class MCPHealthMonitor:
         Ensure a warning exists for unhealthy MCP server.
         Idempotent - only adds if no warning currently exists.
         """
-        from tarsy.utils.timestamp import now_us
         from datetime import datetime, timezone
+
+        from tarsy.utils.timestamp import now_us
         
         # Check if warning already exists
         existing_warnings = self._warnings_service.get_warnings()

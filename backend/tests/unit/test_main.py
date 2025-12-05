@@ -6,7 +6,7 @@ Tests lifespan management, endpoints, WebSocket connections, and background proc
 
 import asyncio
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, Mock, patch, call
+from unittest.mock import AsyncMock, Mock, call, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -909,6 +909,7 @@ class TestJWKSEndpoint:
     def mock_rsa_public_key(self):
         """Create a mock RSA public key for testing."""
         from unittest.mock import Mock
+
         from cryptography.hazmat.primitives.asymmetric import rsa
         
         # Mock RSA public key with test values, using spec to pass isinstance checks
@@ -1060,6 +1061,7 @@ FOJ2jGqq/6l5mGqGqJ7nFOJ2jGqq/6l5mGqGqJ7nFQIDAQAB
     def test_jwks_endpoint_non_rsa_key_validation(self, mock_load_key, mock_open, mock_path_class, mock_get_settings, client, valid_pem_key_content):
         """Test JWKS endpoint rejects non-RSA public keys."""
         from unittest.mock import Mock
+
         from cryptography.hazmat.primitives.asymmetric import ec
         
         # Setup mocks

@@ -5,10 +5,10 @@ Tests the _contains_final_answer() method and interaction_type logic in LLMClien
 """
 
 import pytest
+
 from tarsy.integrations.llm.client import LLMClient
-from tarsy.models.constants import LLMInteractionType
-from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.models.llm_models import LLMProviderConfig
+from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 
 
 @pytest.mark.unit

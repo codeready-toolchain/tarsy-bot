@@ -29,9 +29,12 @@ from mcp.types import Tool
 from tarsy.config.builtin_config import BUILTIN_MCP_SERVERS
 from tarsy.integrations.mcp.client import MCPClient
 
-from .conftest import create_native_thinking_response, MockGeminiClient, create_mock_stream
+from .conftest import (
+    MockGeminiClient,
+    create_mock_stream,
+    create_native_thinking_response,
+)
 from .e2e_utils import E2ETestUtils
-from .expected_native_thinking_conversations import EXPECTED_THINKING_CONTENT
 
 logger = logging.getLogger(__name__)
 
@@ -474,10 +477,10 @@ class TestNativeThinkingPauseResumeE2E:
                 
                 langchain_mock = create_langchain_streaming_mock()
                 
-                from langchain_openai import ChatOpenAI
                 from langchain_anthropic import ChatAnthropic
-                from langchain_xai import ChatXAI
                 from langchain_google_genai import ChatGoogleGenerativeAI
+                from langchain_openai import ChatOpenAI
+                from langchain_xai import ChatXAI
                 
                 with patch("google.genai.Client", create_gemini_mock_client), \
                      patch.object(ChatOpenAI, 'astream', langchain_mock), \
@@ -520,7 +523,7 @@ class TestNativeThinkingPauseResumeE2E:
                         assert pause_metadata is not None, "pause_metadata missing"
                         assert pause_metadata.get("current_iteration") == 2, \
                             f"Expected iteration=2, got {pause_metadata.get('current_iteration')}"
-                        print(f"✅ First pause verified at iteration 2")
+                        print("✅ First pause verified at iteration 2")
                         
                         # Step 4: Set max_iterations to 1 and resume
                         print("⏳ Step 4: Setting max_iterations=1 and resuming...")
@@ -546,7 +549,7 @@ class TestNativeThinkingPauseResumeE2E:
                         second_pause = second_detail.get("pause_metadata")
                         assert second_pause.get("current_iteration") == 1, \
                             f"Expected iteration=1 (reset), got {second_pause.get('current_iteration')}"
-                        print(f"✅ Second pause verified at iteration 1 (counter reset)")
+                        print("✅ Second pause verified at iteration 1 (counter reset)")
                         
                         # Step 7: Set max_iterations to 4 and resume
                         print("⏳ Step 7: Setting max_iterations=4 and resuming...")

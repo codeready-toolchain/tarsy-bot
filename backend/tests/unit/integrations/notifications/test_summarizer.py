@@ -1,7 +1,8 @@
 """Tests for ExecutiveSummaryAgent."""
 
-import pytest
 from unittest.mock import AsyncMock, Mock
+
+import pytest
 
 from tarsy.integrations.notifications.summarizer import ExecutiveSummaryAgent
 from tarsy.models.constants import LLMInteractionType
@@ -19,7 +20,7 @@ def mock_llm_client():
 @pytest.fixture
 def summary_agent(mock_llm_client):
     """Create SummaryAgent with mocked dependencies."""
-    return ExecutiveSummaryAgent(llm_client=mock_llm_client)
+    return ExecutiveSummaryAgent(llm_manager=mock_llm_client)
 
 
 @pytest.mark.unit

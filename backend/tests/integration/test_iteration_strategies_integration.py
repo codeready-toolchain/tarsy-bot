@@ -8,9 +8,9 @@ to ensure they work correctly in realistic scenarios.
 import os
 import tempfile
 from unittest.mock import AsyncMock, Mock, patch
-from mcp.types import Tool
 
 import pytest
+from mcp.types import Tool
 
 from tarsy.agents.configurable_agent import ConfigurableAgent
 from tarsy.agents.kubernetes_agent import KubernetesAgent
@@ -97,14 +97,14 @@ class TestIterationStrategiesIntegration:
         
         # Create agents with different strategies
         react_agent = KubernetesAgent(
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_client,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry,
             iteration_strategy=IterationStrategy.REACT
         )
         
         react_stage_agent = KubernetesAgent(
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_client,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry,
             iteration_strategy=IterationStrategy.REACT_STAGE
@@ -123,8 +123,8 @@ class TestIterationStrategiesIntegration:
         )
         
         # Process alert with both strategies
-        from tarsy.models.processing_context import ChainContext
         from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.processing_context import ChainContext
         from tarsy.utils.timestamp import now_us
         
         processing_alert_react = ProcessingAlert(
@@ -192,7 +192,7 @@ class TestIterationStrategiesIntegration:
         react_stage_agent = ConfigurableAgent(
             agent_name="react-stage-k8s-agent",
             config=react_stage_config,
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_client,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
         )
@@ -200,7 +200,7 @@ class TestIterationStrategiesIntegration:
         react_agent = ConfigurableAgent(
             agent_name="react-k8s-agent",
             config=react_config,
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_client,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
         )
@@ -218,8 +218,8 @@ class TestIterationStrategiesIntegration:
         )
         
         # Process alerts
-        from tarsy.models.processing_context import ChainContext
         from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.processing_context import ChainContext
         from tarsy.utils.timestamp import now_us
         
         processing_alert_react_stage = ProcessingAlert(
@@ -271,7 +271,7 @@ class TestIterationStrategiesIntegration:
         
         # Create factory after patching KubernetesAgent 
         factory = AgentFactory(
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_client,
             mcp_registry=mock_mcp_registry
         )
         
@@ -280,7 +280,7 @@ class TestIterationStrategiesIntegration:
         
         # Verify factory called agent with REACT strategy
         mock_k8s_agent.assert_called_with(
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_client,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry,
             iteration_strategy=IterationStrategy.REACT
@@ -447,7 +447,7 @@ mcp_servers:
             
             # Create agent factory
             factory = AgentFactory(
-                llm_client=mock_llm_client,
+                llm_manager=mock_llm_client,
                 mcp_registry=mcp_registry,
                 agent_configs=config.agents
             )
@@ -472,8 +472,8 @@ mcp_servers:
             )
             
             # Process alerts with both agents
-            from tarsy.models.processing_context import ChainContext
             from tarsy.models.alert import ProcessingAlert
+            from tarsy.models.processing_context import ChainContext
             from tarsy.utils.timestamp import now_us
             
             processing_alert_react_stage = ProcessingAlert(
@@ -587,7 +587,7 @@ mcp_servers:
             ConfigurableAgent(
                 agent_name="test-agent",
                 config=config,
-                llm_client=mock_llm_client,
+                llm_manager=mock_llm_client,
                 mcp_client=mock_mcp_client,
                 mcp_registry=mock_mcp_registry
             )
@@ -605,7 +605,7 @@ mcp_servers:
         with patch('tarsy.agents.base_agent.get_prompt_builder'):
             with pytest.raises(AssertionError, match="Expected code to be unreachable"):
                 TestAgent(
-                    llm_client=Mock(),
+                    llm_manager=Mock(),
                     mcp_client=Mock(),
                     mcp_registry=Mock(),
                     iteration_strategy="completely_invalid"

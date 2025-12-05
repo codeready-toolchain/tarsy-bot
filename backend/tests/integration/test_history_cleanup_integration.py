@@ -4,11 +4,11 @@ import time
 
 import pytest
 
+from tarsy.models.constants import AlertSessionStatus, StageStatus
 from tarsy.models.db_models import AlertSession, StageExecution
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
-from tarsy.models.constants import AlertSessionStatus, StageStatus
-from tarsy.services.history_cleanup_service import HistoryCleanupService
 from tarsy.repositories.history_repository import HistoryRepository
+from tarsy.services.history_cleanup_service import HistoryCleanupService
 from tarsy.utils.timestamp import now_us
 
 
@@ -327,9 +327,9 @@ class TestHistoryCleanupServiceIntegration:
         assert hasattr(service, "last_retention_cleanup_time")
         
         # Verify methods exist and are callable
-        assert callable(getattr(service, "_cleanup_orphaned_sessions"))
-        assert callable(getattr(service, "_should_run_retention_cleanup"))
-        assert callable(getattr(service, "_update_last_retention_cleanup"))
+        assert callable(service._cleanup_orphaned_sessions)
+        assert callable(service._should_run_retention_cleanup)
+        assert callable(service._update_last_retention_cleanup)
 
         # Verify initial state
         assert service.orphaned_timeout_minutes == 30

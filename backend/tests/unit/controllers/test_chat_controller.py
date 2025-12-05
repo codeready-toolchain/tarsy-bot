@@ -6,9 +6,10 @@ authorization header extraction, and response model serialization.
 """
 
 import asyncio
-import pytest
 import time
 from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 from fastapi.testclient import TestClient
 
 from tarsy.main import app

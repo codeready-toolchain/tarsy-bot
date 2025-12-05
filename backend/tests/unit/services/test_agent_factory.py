@@ -10,7 +10,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from tarsy.integrations.llm.client import LLMClient
+from tarsy.integrations.llm.manager import LLMManager
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.services.agent_factory import AgentFactory
 from tarsy.services.mcp_server_registry import MCPServerRegistry
@@ -29,11 +29,11 @@ class TestAgentFactoryInitialization:
     def test_initialization_success(self, mock_dependencies):
         """Test successful AgentFactory initialization."""
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
-        assert factory.llm_client == mock_dependencies['llm_client']
+        assert factory.llm_manager == mock_dependencies['llm_manager']
         # mcp_client is no longer stored in factory - provided per agent creation
         assert factory.mcp_registry == mock_dependencies['mcp_registry']
         assert factory.agent_configs is None  # Default value
@@ -44,13 +44,13 @@ class TestAgentFactoryInitialization:
         """Test initialization with agent configs."""
         mock_agent_configs = AgentServiceFactory.create_agent_configs()
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry'],
             agent_configs=mock_agent_configs
         )
         
         assert factory.agent_configs == mock_agent_configs
-        assert factory.llm_client == mock_dependencies['llm_client']
+        assert factory.llm_manager == mock_dependencies['llm_manager']
         # mcp_client is no longer stored in factory - provided per agent creation
         assert factory.mcp_registry == mock_dependencies['mcp_registry']
     
@@ -58,7 +58,7 @@ class TestAgentFactoryInitialization:
     def test_agent_registration(self, mock_kubernetes_agent, mock_dependencies):
         """Test that agents are properly registered during initialization."""
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
@@ -69,12 +69,12 @@ class TestAgentFactoryInitialization:
     def test_agent_registry_immutable(self, mock_dependencies):
         """Test that agent registry is properly isolated between instances."""
         factory1 = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
         factory2 = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
@@ -97,7 +97,7 @@ class TestAgentCreation:
     def agent_factory(self, mock_dependencies):
         """Create AgentFactory with mocked dependencies."""
         return AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
     
@@ -109,7 +109,7 @@ class TestAgentCreation:
             
             # Create factory after mocking
             agent_factory = AgentFactory(
-                llm_client=mock_dependencies['llm_client'],
+                llm_manager=mock_dependencies['llm_manager'],
                 mcp_registry=mock_dependencies['mcp_registry']
             )
             
@@ -117,7 +117,7 @@ class TestAgentCreation:
             
             # Verify agent class was called with correct dependencies
             mock_kubernetes_agent.assert_called_with(
-                llm_client=mock_dependencies['llm_client'],
+                llm_manager=mock_dependencies['llm_manager'],
                 mcp_client=mock_dependencies['mcp_client'],
                 mcp_registry=mock_dependencies['mcp_registry'],
                 iteration_strategy=mock.ANY  # Accept any IterationStrategy enum value
@@ -130,7 +130,7 @@ class TestAgentCreation:
     def test_create_agent_with_default_strategy(self, mock_kubernetes_agent, mock_dependencies):
         """Test agent creation with default iteration strategy."""
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
@@ -142,7 +142,7 @@ class TestAgentCreation:
         # Verify agent class was called with default iteration strategy
         from tarsy.models.constants import IterationStrategy
         mock_kubernetes_agent.assert_called_once_with(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_client=mock_dependencies['mcp_client'],
             mcp_registry=mock_dependencies['mcp_registry'],
             iteration_strategy=IterationStrategy.REACT  # Default strategy
@@ -170,7 +170,7 @@ class TestAgentCreation:
             
             # Create factory after mocking
             agent_factory = AgentFactory(
-                llm_client=mock_dependencies['llm_client'],
+                llm_manager=mock_dependencies['llm_manager'],
                 mcp_registry=mock_dependencies['mcp_registry']
             )
             
@@ -185,7 +185,7 @@ class TestAgentCreation:
             
             # Create factory after mocking
             agent_factory = AgentFactory(
-                llm_client=mock_dependencies['llm_client'],
+                llm_manager=mock_dependencies['llm_manager'],
                 mcp_registry=mock_dependencies['mcp_registry']
             )
             
@@ -200,7 +200,7 @@ class TestAgentCreation:
             # Both should have been called with same dependencies
             assert mock_kubernetes_agent.call_count == 2
             for call in mock_kubernetes_agent.call_args_list:
-                assert call[1]['llm_client'] == mock_dependencies['llm_client']
+                assert call[1]['llm_manager'] == mock_dependencies['llm_manager']
                 assert call[1]['mcp_client'] == mock_dependencies['mcp_client']
                 assert call[1]['mcp_registry'] == mock_dependencies['mcp_registry']
                 # iteration_strategy should be present in all calls
@@ -215,7 +215,7 @@ class TestAgentFactoryRegistry:
     def mock_dependencies(self):
         """Mock all AgentFactory dependencies."""
         return {
-            'llm_client': Mock(spec=LLMClient),
+            'llm_manager': Mock(spec=LLMManager),
             'mcp_client': Mock(spec=MCPClient),
             'mcp_registry': Mock(spec=MCPServerRegistry)
         }
@@ -223,7 +223,7 @@ class TestAgentFactoryRegistry:
     def test_default_agent_registry(self, mock_dependencies):
         """Test that default agents are registered."""
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
@@ -240,7 +240,7 @@ class TestAgentFactoryRegistry:
     def test_agent_registry_contents(self, mock_dependencies):
         """Test the contents of the agent registry."""
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
@@ -257,7 +257,7 @@ class TestAgentFactoryRegistry:
         """Test that agent registration happens during initialization."""
         # Import should be called during _register_available_agents
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
@@ -272,8 +272,8 @@ class TestDependencyInjection:
     @pytest.fixture
     def mock_dependencies(self):
         """Mock all AgentFactory dependencies with specific characteristics."""
-        llm_client = Mock(spec=LLMClient)
-        llm_client.name = "test_llm_client"
+        llm_manager = Mock(spec=LLMManager)
+        llm_manager.name = "test_llm_manager"
         
         mcp_client = Mock(spec=MCPClient)
         mcp_client.name = "test_mcp_client"
@@ -282,7 +282,7 @@ class TestDependencyInjection:
         mcp_registry.name = "test_mcp_registry"
         
         return {
-            'llm_client': llm_client,
+            'llm_manager': llm_manager,
             'mcp_client': mcp_client,
             'mcp_registry': mcp_registry
         }
@@ -291,7 +291,7 @@ class TestDependencyInjection:
     def test_dependency_injection_all_parameters(self, mock_kubernetes_agent, mock_dependencies):
         """Test that all dependencies are correctly injected."""
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
@@ -300,7 +300,7 @@ class TestDependencyInjection:
         # Verify all dependencies were passed correctly
         from tarsy.models.constants import IterationStrategy
         mock_kubernetes_agent.assert_called_once_with(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_client=mock_dependencies['mcp_client'],
             mcp_registry=mock_dependencies['mcp_registry'],
             iteration_strategy=IterationStrategy.REACT
@@ -310,7 +310,7 @@ class TestDependencyInjection:
     def test_dependency_injection_parameter_order(self, mock_kubernetes_agent, mock_dependencies):
         """Test that parameters are passed in correct order."""
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
@@ -321,7 +321,7 @@ class TestDependencyInjection:
         
         # Verify keyword arguments are correct
         from tarsy.models.constants import IterationStrategy
-        assert call_args[1]['llm_client'] == mock_dependencies['llm_client']
+        assert call_args[1]['llm_manager'] == mock_dependencies['llm_manager']
         assert call_args[1]['mcp_client'] == mock_dependencies['mcp_client']
         assert call_args[1]['mcp_registry'] == mock_dependencies['mcp_registry']
         assert call_args[1]['iteration_strategy'] == IterationStrategy.REACT
@@ -331,7 +331,7 @@ class TestDependencyInjection:
         """Test dependency injection with agent configs."""
         mock_configs = {'test-agent': Mock()}
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry'],
             agent_configs=mock_configs
         )
@@ -350,7 +350,7 @@ class TestDependencyInjection:
         """Test that mcp_registry is required parameter."""
         # This should work fine
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
@@ -365,7 +365,7 @@ class TestAgentFactoryLogging:
     def mock_dependencies(self):
         """Mock all AgentFactory dependencies."""
         return {
-            'llm_client': Mock(spec=LLMClient),
+            'llm_manager': Mock(spec=LLMManager),
             'mcp_client': Mock(spec=MCPClient),
             'mcp_registry': Mock(spec=MCPServerRegistry)
         }
@@ -374,7 +374,7 @@ class TestAgentFactoryLogging:
         """Test that initialization logs correct information."""
         with caplog.at_level("INFO"):
             factory = AgentFactory(
-                llm_client=mock_dependencies['llm_client'],
+                llm_manager=mock_dependencies['llm_manager'],
                 mcp_registry=mock_dependencies['mcp_registry']
             )
         
@@ -392,7 +392,7 @@ class TestAgentFactoryLogging:
     def test_agent_creation_logging(self, mock_kubernetes_agent, mock_dependencies, caplog):
         """Test that agent creation logs correct information."""
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
@@ -419,7 +419,7 @@ class TestEdgeCases:
     def mock_dependencies(self):
         """Mock all AgentFactory dependencies."""
         return {
-            'llm_client': Mock(spec=LLMClient),
+            'llm_manager': Mock(spec=LLMManager),
             'mcp_client': Mock(spec=MCPClient),
             'mcp_registry': Mock(spec=MCPServerRegistry)
         }
@@ -427,7 +427,7 @@ class TestEdgeCases:
     def test_empty_agent_name(self, mock_dependencies):
         """Test creation with empty agent name."""
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
@@ -437,7 +437,7 @@ class TestEdgeCases:
     def test_none_agent_name(self, mock_dependencies):
         """Test creation with None agent name."""
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
@@ -447,7 +447,7 @@ class TestEdgeCases:
     def test_whitespace_agent_name(self, mock_dependencies):
         """Test creation with whitespace-only agent name."""
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
@@ -462,7 +462,7 @@ class TestEdgeCases:
         
         # Since we're patching the import, it should work fine
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
@@ -478,7 +478,7 @@ class TestAgentFactoryIterationStrategies:
     def mock_dependencies(self):
         """Mock all AgentFactory dependencies."""
         return {
-            'llm_client': Mock(spec=LLMClient),
+            'llm_manager': Mock(spec=LLMManager),
             'mcp_client': Mock(spec=MCPClient),
             'mcp_registry': Mock(spec=MCPServerRegistry)
         }
@@ -508,7 +508,7 @@ class TestAgentFactoryIterationStrategies:
         from tarsy.models.constants import IterationStrategy
         
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
@@ -521,7 +521,7 @@ class TestAgentFactoryIterationStrategies:
         
         # Verify factory called agent with REACT strategy (default)
         mock_kubernetes_agent.assert_called_with(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_client=mock_dependencies['mcp_client'],
             mcp_registry=mock_dependencies['mcp_registry'],
             iteration_strategy=IterationStrategy.REACT  # Default
@@ -532,7 +532,7 @@ class TestAgentFactoryIterationStrategies:
     def test_create_configurable_agent_with_react_stage_strategy(self, mock_dependencies, sample_agent_configs):
         """Test creating ConfigurableAgent with REACT_STAGE iteration strategy."""
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry'],
             agent_configs=sample_agent_configs
         )
@@ -555,7 +555,7 @@ class TestAgentFactoryIterationStrategies:
     def test_create_configurable_agent_with_react_strategy(self, mock_dependencies, sample_agent_configs):
         """Test creating ConfigurableAgent with REACT iteration strategy."""
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry'],
             agent_configs=sample_agent_configs
         )
@@ -578,7 +578,7 @@ class TestAgentFactoryIterationStrategies:
     def test_multiple_configurable_agents_different_strategies(self, mock_dependencies, sample_agent_configs):
         """Test creating multiple configurable agents with different strategies."""
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry'],
             agent_configs=sample_agent_configs
         )
@@ -626,7 +626,7 @@ class TestAgentFactoryIterationStrategies:
         }
         
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry'],
             agent_configs=agent_configs
         )
@@ -657,7 +657,7 @@ class TestAgentFactoryErrorHandling:
     @pytest.fixture
     def factory_with_mocks(self):
         """Create factory with all mocked dependencies."""
-        llm_client = Mock()
+        llm_manager = Mock()
         mcp_client = Mock()
         mcp_registry = Mock()
         
@@ -667,7 +667,7 @@ class TestAgentFactoryErrorHandling:
         }
         
         return {
-            'factory': AgentFactory(llm_client, mcp_registry, agent_configs),
+            'factory': AgentFactory(llm_manager, mcp_registry, agent_configs),
             'mcp_client': mcp_client
         }
     
@@ -677,19 +677,19 @@ class TestAgentFactoryErrorHandling:
             factory_with_mocks['factory'].create_agent("nonexistent-agent", factory_with_mocks['mcp_client'])
     
     def test_create_agent_missing_dependencies_llm(self):
-        """Test error when LLM client is missing."""
+        """Test error when LLM manager is missing."""
         factory = AgentFactory(
-            llm_client=None,  # Missing
+            llm_manager=None,  # Missing
             mcp_registry=Mock()
         )
         
-        with pytest.raises(ValueError, match="Missing dependencies.*LLM client is not initialized"):
+        with pytest.raises(ValueError, match="Missing dependencies.*LLM manager is not initialized"):
             factory.create_agent("KubernetesAgent", Mock())
     
     def test_create_agent_missing_dependencies_mcp_registry(self):
         """Test error when MCP registry is missing."""
         factory = AgentFactory(
-            llm_client=Mock(),
+            llm_manager=Mock(),
             mcp_registry=None  # Missing
         )
         
@@ -699,7 +699,7 @@ class TestAgentFactoryErrorHandling:
     def test_create_agent_multiple_missing_dependencies(self):
         """Test error message includes all missing dependencies."""
         factory = AgentFactory(
-            llm_client=None,
+            llm_manager=None,
             mcp_registry=Mock()
         )
         
@@ -707,7 +707,7 @@ class TestAgentFactoryErrorHandling:
             factory.create_agent("KubernetesAgent", Mock())
         
         error_message = str(exc_info.value)
-        assert "LLM client is not initialized" in error_message
+        assert "LLM manager is not initialized" in error_message
     
     def test_create_configured_agent_missing_in_config(self, factory_with_mocks):
         """Test error when configured agent is not in agent_configs."""
@@ -716,7 +716,7 @@ class TestAgentFactoryErrorHandling:
     
     def test_create_configured_agent_mcp_server_validation_error(self):
         """Test error when configured agent references invalid MCP server."""
-        llm_client = Mock()
+        llm_manager = Mock()
         mcp_client = Mock()
         
         # Mock MCP registry that raises error for unknown server
@@ -727,7 +727,7 @@ class TestAgentFactoryErrorHandling:
         agent_config.mcp_servers = ["invalid-server"]
         agent_configs = {"test-agent": agent_config}
         
-        factory = AgentFactory(llm_client, mcp_registry, agent_configs)
+        factory = AgentFactory(llm_manager, mcp_registry, agent_configs)
         
         with pytest.raises(ValueError) as exc_info:
             factory._create_configured_agent("test-agent", mcp_client)
@@ -749,7 +749,7 @@ class TestAgentFactoryErrorHandling:
     
     def test_create_configured_agent_constructor_error(self):
         """Test handling of constructor errors in configured agents."""
-        llm_client = Mock()
+        llm_manager = Mock()
         mcp_client = Mock() 
         mcp_registry = Mock()
         mcp_registry.get_server_config.return_value = Mock()  # Valid server config
@@ -758,7 +758,7 @@ class TestAgentFactoryErrorHandling:
         agent_config.mcp_servers = ["test-server"]
         agent_configs = {"test-agent": agent_config}
         
-        factory = AgentFactory(llm_client, mcp_registry, agent_configs)
+        factory = AgentFactory(llm_manager, mcp_registry, agent_configs)
         
         # Mock ConfigurableAgent to raise TypeError
         with patch('tarsy.agents.configurable_agent.ConfigurableAgent') as mock_configurable:
@@ -779,7 +779,7 @@ class TestAgentFactoryErrorHandling:
     
     def test_create_configured_agent_generic_error(self):
         """Test handling of generic errors in configured agent creation."""
-        llm_client = Mock()
+        llm_manager = Mock()
         mcp_client = Mock()
         mcp_registry = Mock()
         mcp_registry.get_server_config.return_value = Mock()
@@ -788,7 +788,7 @@ class TestAgentFactoryErrorHandling:
         agent_config.mcp_servers = ["test-server"]
         agent_configs = {"test-agent": agent_config}
         
-        factory = AgentFactory(llm_client, mcp_registry, agent_configs)
+        factory = AgentFactory(llm_manager, mcp_registry, agent_configs)
         
         with patch('tarsy.agents.configurable_agent.ConfigurableAgent') as mock_configurable:
             mock_configurable.side_effect = Exception("Unexpected configuration error")
@@ -821,7 +821,7 @@ class TestAgentFactoryErrorHandling:
     
     def test_legacy_format_handling_success(self):
         """Test successful legacy format handling."""
-        llm_client = Mock()
+        llm_manager = Mock()
         mcp_client = Mock()
         mcp_registry = Mock()
         
@@ -830,7 +830,7 @@ class TestAgentFactoryErrorHandling:
         mcp_registry.get_server_config.return_value = Mock()
         agent_configs = {"legacy-agent": agent_config}
         
-        factory = AgentFactory(llm_client, mcp_registry, agent_configs)
+        factory = AgentFactory(llm_manager, mcp_registry, agent_configs)
         
         with patch('tarsy.agents.configurable_agent.ConfigurableAgent') as mock_configurable:
             mock_agent = Mock()
@@ -854,11 +854,11 @@ class TestAgentFactoryValidation:
     
     def test_validate_dependencies_all_present(self):
         """Test validation passes when all dependencies are present."""
-        llm_client = Mock()
+        llm_manager = Mock()
         mcp_registry = Mock()
         
         agent_configs = {"test-agent": Mock(mcp_servers=["test-server"])}
-        factory = AgentFactory(llm_client, mcp_registry, agent_configs)
+        factory = AgentFactory(llm_manager, mcp_registry, agent_configs)
         mcp_registry.get_server_config.return_value = Mock()  # Mock valid server config
         
         # Should not raise any errors
@@ -867,7 +867,7 @@ class TestAgentFactoryValidation:
     
     def test_configured_agent_validation_with_valid_servers(self):
         """Test configured agent validation with valid MCP servers."""
-        llm_client = Mock()
+        llm_manager = Mock()
         mcp_registry = Mock()
         mcp_registry.get_server_config.return_value = Mock()  # Valid config
         
@@ -875,7 +875,7 @@ class TestAgentFactoryValidation:
         agent_config.mcp_servers = ["valid-server", "another-server"]
         agent_configs = {"test-agent": agent_config}
         
-        factory = AgentFactory(llm_client, mcp_registry, agent_configs)
+        factory = AgentFactory(llm_manager, mcp_registry, agent_configs)
         
         # Should validate all servers without errors
         factory._validate_dependencies_for_configured_agent("test-agent")
@@ -894,7 +894,7 @@ class TestAgentFactoryLLMProvider:
     def mock_dependencies(self):
         """Mock all AgentFactory dependencies."""
         return {
-            'llm_client': Mock(spec=LLMClient),
+            'llm_manager': Mock(spec=LLMManager),
             'mcp_client': Mock(spec=MCPClient),
             'mcp_registry': Mock(spec=MCPServerRegistry)
         }
@@ -903,7 +903,7 @@ class TestAgentFactoryLLMProvider:
     def test_get_agent_without_provider(self, mock_kubernetes_agent, mock_dependencies):
         """Test get_agent without LLM provider uses default."""
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
@@ -924,7 +924,7 @@ class TestAgentFactoryLLMProvider:
     def test_get_agent_with_provider(self, mock_kubernetes_agent, mock_dependencies):
         """Test get_agent with LLM provider override."""
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
@@ -948,7 +948,7 @@ class TestAgentFactoryLLMProvider:
         from tarsy.models.constants import IterationStrategy
         
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
@@ -960,7 +960,7 @@ class TestAgentFactoryLLMProvider:
         agent = factory.get_agent(
             agent_identifier="KubernetesAgent",
             mcp_client=mock_dependencies['mcp_client'],
-            iteration_strategy="react_stage",
+            iteration_strategy="react-stage",
             llm_provider="openai-default"
         )
         
@@ -973,7 +973,7 @@ class TestAgentFactoryLLMProvider:
     def test_get_agent_with_none_provider(self, mock_kubernetes_agent, mock_dependencies):
         """Test get_agent with explicit None provider (uses global default)."""
         factory = AgentFactory(
-            llm_client=mock_dependencies['llm_client'],
+            llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
         )
         
@@ -995,7 +995,7 @@ class TestAgentFactoryLLMProvider:
         """Test that provider override is logged."""
         with patch('tarsy.agents.kubernetes_agent.KubernetesAgent') as mock_kubernetes_agent:
             factory = AgentFactory(
-                llm_client=mock_dependencies['llm_client'],
+                llm_manager=mock_dependencies['llm_manager'],
                 mcp_registry=mock_dependencies['mcp_registry']
             )
             

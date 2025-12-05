@@ -140,9 +140,8 @@ class TestHistoryService:
                 ChainConfigModel,
                 ChainStageConfigModel,
             )
-            from tarsy.models.processing_context import ChainContext
-            
             from tarsy.models.alert import ProcessingAlert
+            from tarsy.models.processing_context import ChainContext
             from tarsy.utils.timestamp import now_us
             
             processing_alert = ProcessingAlert(
@@ -215,10 +214,9 @@ class TestHistoryService:
     def test_create_session_stores_mcp_selection(self, history_service, mcp_selection, expected_serialized):
         """Test that create_session correctly stores MCP selection in database."""
         from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
-        from tarsy.models.processing_context import ChainContext
-        from tarsy.models.alert import ProcessingAlert, Alert
+        from tarsy.models.alert import Alert, ProcessingAlert
         from tarsy.models.mcp_selection_models import MCPSelectionConfig
-        from tarsy.utils.timestamp import now_us
+        from tarsy.models.processing_context import ChainContext
         
         dependencies = MockFactory.create_mock_history_service_dependencies()
         history_service.is_enabled = True
@@ -465,7 +463,10 @@ class TestHistoryService:
         """Test session details retrieval includes mcp_selection."""
         from tarsy.models.constants import AlertSessionStatus
         from tarsy.models.history_models import DetailedSession
-        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
+        from tarsy.models.mcp_selection_models import (
+            MCPSelectionConfig,
+            MCPServerSelection,
+        )
         
         dependencies = MockFactory.create_mock_history_service_dependencies()
         
@@ -964,9 +965,8 @@ class TestHistoryServiceErrorHandling:
                 ChainConfigModel,
                 ChainStageConfigModel,
             )
-            from tarsy.models.processing_context import ChainContext
-            
             from tarsy.models.alert import ProcessingAlert
+            from tarsy.models.processing_context import ChainContext
             from tarsy.utils.timestamp import now_us
             
             processing_alert = ProcessingAlert(
@@ -1025,9 +1025,8 @@ class TestHistoryServiceErrorHandling:
                 ChainConfigModel,
                 ChainStageConfigModel,
             )
-            from tarsy.models.processing_context import ChainContext
-            
             from tarsy.models.alert import ProcessingAlert
+            from tarsy.models.processing_context import ChainContext
             from tarsy.utils.timestamp import now_us
             
             processing_alert = ProcessingAlert(
@@ -1433,7 +1432,6 @@ async def test_cleanup_orphaned_sessions():
     history_service.is_enabled = True
     
     from tarsy.models.constants import AlertSessionStatus
-    from tarsy.models.db_models import AlertSession
     
     # Create test data - orphaned sessions with old last_interaction_at
     orphaned_session_1 = AlertSession(
@@ -1555,7 +1553,6 @@ async def test_cleanup_never_touches_failed_sessions():
     history_service.is_enabled = True
     
     from tarsy.models.constants import AlertSessionStatus
-    from tarsy.models.db_models import AlertSession
     
     # Create a session that is already FAILED (should NEVER be touched by cleanup)
     failed_session = AlertSession(
@@ -1600,7 +1597,6 @@ async def test_cleanup_never_touches_completed_sessions():
     history_service.is_enabled = True
     
     from tarsy.models.constants import AlertSessionStatus
-    from tarsy.models.db_models import AlertSession
     
     # Create a session that is COMPLETED (should NEVER be touched by cleanup)
     completed_session = AlertSession(
@@ -1644,7 +1640,6 @@ async def test_cleanup_never_touches_null_last_interaction():
     history_service.is_enabled = True
     
     from tarsy.models.constants import AlertSessionStatus
-    from tarsy.models.db_models import AlertSession
     
     # Create IN_PROGRESS session with NULL last_interaction_at
     session_with_null = AlertSession(
@@ -1686,7 +1681,6 @@ async def test_cleanup_only_touches_in_progress_with_old_interaction():
     history_service.is_enabled = True
     
     from tarsy.models.constants import AlertSessionStatus
-    from tarsy.models.db_models import AlertSession
     from tarsy.utils.timestamp import now_us
     
     # Create an orphaned IN_PROGRESS session with old timestamp
@@ -1730,7 +1724,6 @@ async def test_cleanup_orphaned_sessions_session_not_found():
     history_service = HistoryService()
     history_service.is_enabled = True
     
-    from tarsy.models.db_models import AlertSession
     
     # Create an orphaned session
     orphaned_session = AlertSession(
@@ -2174,7 +2167,12 @@ class TestConversationHistory:
     @pytest.mark.unit
     def test_build_conversation_history_with_valid_interaction(self, history_service):
         """Test _build_conversation_history with a valid LLM interaction."""
-        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage, MessageRole
+        from tarsy.models.unified_interactions import (
+            LLMConversation,
+            LLMInteraction,
+            LLMMessage,
+            MessageRole,
+        )
         
         # Create a valid LLM interaction with conversation
         interaction = LLMInteraction(
@@ -2236,8 +2234,13 @@ class TestConversationHistory:
     @pytest.mark.unit
     def test_get_session_conversation_history_returns_both(self, history_service):
         """Test get_session_conversation_history returns both session and chat conversations."""
-        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage, MessageRole
         from tarsy.models.db_models import Chat
+        from tarsy.models.unified_interactions import (
+            LLMConversation,
+            LLMInteraction,
+            LLMMessage,
+            MessageRole,
+        )
         
         # Create mock interactions
         session_interaction = LLMInteraction(
@@ -2312,7 +2315,12 @@ class TestConversationHistory:
     @pytest.mark.unit
     def test_get_session_conversation_history_no_chat(self, history_service):
         """Test get_session_conversation_history when no chat exists."""
-        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage, MessageRole
+        from tarsy.models.unified_interactions import (
+            LLMConversation,
+            LLMInteraction,
+            LLMMessage,
+            MessageRole,
+        )
         
         session_interaction = LLMInteraction(
             interaction_id="session-int-1",

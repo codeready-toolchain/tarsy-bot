@@ -6,8 +6,9 @@ Tests the extraction of author information from oauth2-proxy headers
 when headers are not present.
 """
 
-import pytest
 from unittest.mock import Mock, patch
+
+import pytest
 from fastapi.testclient import TestClient
 
 from tarsy.main import app

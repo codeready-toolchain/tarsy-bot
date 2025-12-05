@@ -3,14 +3,16 @@
 import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack, asynccontextmanager, suppress
-from typing import Optional, Dict
+from typing import Dict, Optional
+
 import httpx
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
-from .factory import MCPTransport
 from tarsy.models.mcp_transport_config import HTTPTransportConfig
 from tarsy.utils.logger import get_module_logger
+
+from .factory import MCPTransport
 
 logger = get_module_logger(__name__)
 

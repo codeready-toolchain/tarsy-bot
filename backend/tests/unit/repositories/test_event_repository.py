@@ -1,13 +1,14 @@
 """Unit tests for EventRepository."""
 
-import pytest
 from datetime import datetime, timezone
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock
+
+import pytest
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from tarsy.repositories.event_repository import EventRepository
 from tarsy.models.db_models import Event
+from tarsy.repositories.event_repository import EventRepository
 
 
 @pytest.mark.unit

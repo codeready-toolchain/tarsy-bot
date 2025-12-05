@@ -5,13 +5,20 @@ Tests chat lifecycle management, context building, and message processing
 with mocked dependencies.
 """
 
-import pytest
 from unittest.mock import AsyncMock, Mock, patch
-from tarsy.models.db_models import Chat, AlertSession
-from tarsy.models.constants import StageStatus, AlertSessionStatus
-from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage, MessageRole
-from tarsy.models.processing_context import SessionContextData, ChatMessageContext
+
+import pytest
+
 from tarsy.models.agent_execution_result import AgentExecutionResult
+from tarsy.models.constants import AlertSessionStatus, StageStatus
+from tarsy.models.db_models import AlertSession, Chat
+from tarsy.models.processing_context import ChatMessageContext, SessionContextData
+from tarsy.models.unified_interactions import (
+    LLMConversation,
+    LLMInteraction,
+    LLMMessage,
+    MessageRole,
+)
 from tarsy.services.chat_service import ChatService
 from tarsy.utils.timestamp import now_us
 
@@ -588,7 +595,10 @@ class TestChatService:
     
     def test_chat_context_interaction_types_is_defined(self):
         """Test that CHAT_CONTEXT_INTERACTION_TYPES is properly defined and documented."""
-        from tarsy.models.constants import CHAT_CONTEXT_INTERACTION_TYPES, LLMInteractionType
+        from tarsy.models.constants import (
+            CHAT_CONTEXT_INTERACTION_TYPES,
+            LLMInteractionType,
+        )
         
         # Should be a frozenset
         assert isinstance(CHAT_CONTEXT_INTERACTION_TYPES, frozenset)

@@ -1,6 +1,5 @@
 """Event system manager for lifecycle and channel management."""
 
-import logging
 from typing import Callable, Optional
 
 from tarsy.services.events.base import EventListener

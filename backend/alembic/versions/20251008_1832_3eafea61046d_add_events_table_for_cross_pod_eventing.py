@@ -11,10 +11,10 @@ Note: This migration is database-agnostic and handles differences between Postgr
 
 from typing import Sequence, Union
 
-from alembic import op
 import sqlalchemy as sa
 import sqlmodel
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "3eafea61046d"

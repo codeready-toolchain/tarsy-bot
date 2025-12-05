@@ -6,10 +6,11 @@ Tests critical configuration loading, validation, and template functionality.
 
 import os
 import tempfile
-import pytest
 from unittest.mock import patch
 
-from tarsy.config.settings import Settings, is_testing, get_settings
+import pytest
+
+from tarsy.config.settings import Settings, get_settings, is_testing
 from tarsy.models.llm_models import LLMProviderType
 
 

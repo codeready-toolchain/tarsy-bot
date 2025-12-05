@@ -6,11 +6,11 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from tarsy.utils.logger import (
+    ConnectionClosedFilter,
+    HealthEndpointFilter,
     get_logger,
     get_module_logger,
     setup_logging,
-    HealthEndpointFilter,
-    ConnectionClosedFilter,
 )
 
 

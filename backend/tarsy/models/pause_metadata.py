@@ -6,6 +6,7 @@ Provides type-safe structures for tracking why and when a session paused.
 
 from enum import Enum
 from typing import Optional
+
 from pydantic import BaseModel, Field
 
 

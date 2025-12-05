@@ -7,13 +7,11 @@ added to the template resolution system.
 
 import os
 import tempfile
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from tarsy.utils.template_resolver import (
-    TemplateResolutionError,
     TemplateResolver,
 )
 

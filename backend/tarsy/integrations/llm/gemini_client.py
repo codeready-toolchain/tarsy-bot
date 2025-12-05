@@ -21,8 +21,10 @@ from google.genai import types as google_genai_types
 
 from tarsy.config.settings import get_settings
 from tarsy.hooks.hook_context import llm_interaction_context
+from tarsy.integrations.llm.native_tools import NativeToolsHelper
+from tarsy.integrations.llm.streaming import StreamingPublisher
 from tarsy.models.constants import LLMInteractionType, StreamingEventType
-from tarsy.models.llm_models import GoogleNativeTool, LLMProviderConfig, LLMProviderType
+from tarsy.models.llm_models import LLMProviderConfig, LLMProviderType
 from tarsy.models.mcp_selection_models import NativeToolsConfig
 from tarsy.models.processing_context import ToolWithServer
 from tarsy.models.unified_interactions import LLMConversation, MessageRole
@@ -107,73 +109,10 @@ class GeminiNativeThinkingClient:
         self.temperature = config.temperature
         self.provider_name = provider_name or config.model
         self.settings = get_settings()
-        self._sqlite_warning_logged = False
+        # Use shared streaming publisher utility
+        self._streaming_publisher = StreamingPublisher(self.settings)
         
         logger.info(f"Initialized GeminiNativeThinkingClient for model {self.model}")
-    
-    async def _publish_stream_chunk(
-        self,
-        session_id: str,
-        stage_execution_id: Optional[str],
-        stream_type: StreamingEventType,
-        chunk: str,
-        is_complete: bool,
-        llm_interaction_id: Optional[str] = None
-    ) -> None:
-        """
-        Publish streaming chunk via transient channel for WebSocket delivery.
-        
-        Args:
-            session_id: Session identifier
-            stage_execution_id: Stage execution identifier
-            stream_type: Type of streaming content (THOUGHT, FINAL_ANSWER, NATIVE_THINKING)
-            chunk: Content chunk (accumulated tokens)
-            is_complete: Whether this is the final chunk
-            llm_interaction_id: LLM interaction ID for deduplication
-        """
-        # Check if streaming is enabled via config flag
-        if self.settings and not self.settings.enable_llm_streaming:
-            return
-        
-        try:
-            from tarsy.database.init_db import get_async_session_factory
-            from tarsy.models.event_models import LLMStreamChunkEvent
-            from tarsy.services.events.publisher import publish_transient_event
-            from tarsy.utils.timestamp import now_us
-            
-            async_session_factory = get_async_session_factory()
-            async with async_session_factory() as session:
-                # Check database dialect to warn about SQLite limitations
-                db_dialect = session.bind.dialect.name
-                
-                if db_dialect != "postgresql":
-                    if not self._sqlite_warning_logged:
-                        logger.warning(
-                            f"LLM streaming requested but database is {db_dialect}. "
-                            "Real-time streaming requires PostgreSQL with NOTIFY support. "
-                            "Events will be published but may not be delivered in real time."
-                        )
-                        self._sqlite_warning_logged = True
-                
-                event = LLMStreamChunkEvent(
-                    session_id=session_id,
-                    stage_execution_id=stage_execution_id,
-                    chunk=chunk,
-                    stream_type=stream_type.value,
-                    is_complete=is_complete,
-                    llm_interaction_id=llm_interaction_id,
-                    timestamp_us=now_us()
-                )
-                
-                await publish_transient_event(
-                    session=session,
-                    channel=f"session:{session_id}",
-                    event=event
-                )
-                
-        except Exception as e:
-            # Don't fail the main operation if streaming fails
-            logger.warning(f"Failed to publish stream chunk: {e}")
     
     def _parse_function_name(self, func_name: str) -> tuple[str, str]:
         """
@@ -326,27 +265,15 @@ class GeminiNativeThinkingClient:
             'mcp_tools_count': len(mcp_tools)
         }
         
-        # Determine which native tools to enable (using config directly)
-        google_search_enabled = self.config.get_native_tool_status(GoogleNativeTool.GOOGLE_SEARCH.value)
-        code_execution_enabled = self.config.get_native_tool_status(GoogleNativeTool.CODE_EXECUTION.value)
-        url_context_enabled = self.config.get_native_tool_status(GoogleNativeTool.URL_CONTEXT.value)
+        # Get effective native tools config using shared helper
+        # Handles provider defaults and session-level overrides with tri-state semantics
+        native_tools_config = NativeToolsHelper.get_effective_config(
+            self.config, 
+            native_tools_override
+        )
         
-        # Apply session-level override if provided
         if native_tools_override is not None:
-            if native_tools_override.google_search is not None:
-                google_search_enabled = native_tools_override.google_search
-            if native_tools_override.code_execution is not None:
-                code_execution_enabled = native_tools_override.code_execution
-            if native_tools_override.url_context is not None:
-                url_context_enabled = native_tools_override.url_context
             logger.info(f"[{request_id}] Applied session-level native tools override")
-        
-        # Capture effective config for audit trail
-        native_tools_config = {
-            GoogleNativeTool.GOOGLE_SEARCH.value: google_search_enabled,
-            GoogleNativeTool.CODE_EXECUTION.value: code_execution_enabled,
-            GoogleNativeTool.URL_CONTEXT.value: url_context_enabled
-        }
         
         # Create interaction context for audit
         async with llm_interaction_context(session_id, request_data, stage_execution_id, native_tools_config) as ctx:
@@ -392,21 +319,16 @@ class GeminiNativeThinkingClient:
                     logger.info(f"[{request_id}] Bound {len(mcp_functions)} MCP tools as native functions")
                 else:
                     # Only add native Google tools when no MCP function calling is needed
-                    native_tools_bound = []
-                    if google_search_enabled:
-                        tools.append(google_genai_types.Tool(google_search=google_genai_types.GoogleSearch()))
-                        native_tools_bound.append("google_search")
+                    # Use shared helper to build tool list from effective config
+                    native_tools_list = NativeToolsHelper.build_tool_list(
+                        native_tools_config,
+                        provider_name=self.provider_name
+                    )
+                    tools.extend(native_tools_list)
                     
-                    if url_context_enabled:
-                        tools.append(google_genai_types.Tool(url_context=google_genai_types.UrlContext()))
-                        native_tools_bound.append("url_context")
-                    
-                    if code_execution_enabled:
-                        tools.append(google_genai_types.Tool(code_execution=google_genai_types.ToolCodeExecution()))
-                        native_tools_bound.append("code_execution")
-                    
-                    if native_tools_bound:
-                        logger.info(f"[{request_id}] Bound native Google tools: {native_tools_bound}")
+                    if native_tools_list:
+                        enabled_names = [name for name, enabled in native_tools_config.items() if enabled]
+                        logger.info(f"[{request_id}] Bound native Google tools: {enabled_names}")
                 
                 # Configure thinking with include_thoughts=True to get reasoning content
                 thinking_budget = 24576 if thinking_level == "high" else 4096
@@ -469,7 +391,7 @@ class GeminiNativeThinkingClient:
                                             
                                             # Stream thinking updates every N tokens
                                             if thinking_token_count >= THINKING_CHUNK_SIZE:
-                                                await self._publish_stream_chunk(
+                                                await self._streaming_publisher.publish_chunk(
                                                     session_id, stage_execution_id,
                                                     StreamingEventType.NATIVE_THINKING, accumulated_thinking,
                                                     is_complete=False,
@@ -484,7 +406,7 @@ class GeminiNativeThinkingClient:
                                         
                                         # If we were streaming thinking, send final thinking chunk
                                         if is_streaming_thinking:
-                                            await self._publish_stream_chunk(
+                                            await self._streaming_publisher.publish_chunk(
                                                 session_id, stage_execution_id,
                                                 StreamingEventType.NATIVE_THINKING, accumulated_thinking,
                                                 is_complete=True,
@@ -500,7 +422,7 @@ class GeminiNativeThinkingClient:
                                         
                                         # Stream response updates every N tokens
                                         if response_token_count >= RESPONSE_CHUNK_SIZE:
-                                            await self._publish_stream_chunk(
+                                            await self._streaming_publisher.publish_chunk(
                                                 session_id, stage_execution_id,
                                                 StreamingEventType.FINAL_ANSWER, accumulated_content,
                                                 is_complete=False,
@@ -544,7 +466,7 @@ class GeminiNativeThinkingClient:
                     
                     # Send final streaming chunks after stream completes
                     if is_streaming_thinking and accumulated_thinking:
-                        await self._publish_stream_chunk(
+                        await self._streaming_publisher.publish_chunk(
                             session_id, stage_execution_id,
                             StreamingEventType.NATIVE_THINKING, accumulated_thinking,
                             is_complete=True,
@@ -552,7 +474,7 @@ class GeminiNativeThinkingClient:
                         )
                     
                     if is_streaming_response and accumulated_content:
-                        await self._publish_stream_chunk(
+                        await self._streaming_publisher.publish_chunk(
                             session_id, stage_execution_id,
                             StreamingEventType.FINAL_ANSWER, accumulated_content,
                             is_complete=True,

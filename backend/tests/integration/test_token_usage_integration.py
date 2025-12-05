@@ -5,11 +5,15 @@ Tests the end-to-end token tracking from LLM calls through database storage
 to API responses and WebSocket updates.
 """
 
-import pytest
-from unittest.mock import Mock, patch, AsyncMock
 
-from tarsy.integrations.llm.client import LLMClient
-from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole, LLMInteraction
+import pytest
+
+from tarsy.models.unified_interactions import (
+    LLMConversation,
+    LLMInteraction,
+    LLMMessage,
+    MessageRole,
+)
 
 
 @pytest.mark.integration
@@ -20,7 +24,9 @@ class TestTokenUsageIntegration:
     async def test_llm_interaction_token_storage(self, history_service_with_test_db):
         """Test that LLM interactions with token data are stored correctly."""
         # Arrange - Create session using proper integration pattern
-        from tests.integration.test_history_integration import create_test_context_and_chain
+        from tests.integration.test_history_integration import (
+            create_test_context_and_chain,
+        )
         
         chain_context, chain_definition = create_test_context_and_chain(
             alert_type="PodCrash",
@@ -75,7 +81,9 @@ class TestTokenUsageIntegration:
     async def test_stage_token_aggregation(self, history_service_with_test_db):
         """Test that stage-level token aggregations work with multiple interactions."""
         # Arrange - Create session  
-        from tests.integration.test_history_integration import create_test_context_and_chain
+        from tests.integration.test_history_integration import (
+            create_test_context_and_chain,
+        )
         from tests.utils import StageExecutionFactory
         
         chain_context, chain_definition = create_test_context_and_chain(
@@ -147,7 +155,9 @@ class TestTokenUsageIntegration:
     async def test_session_token_aggregation(self, history_service_with_test_db):
         """Test that session-level token aggregations work across stages."""
         # Arrange - Create session with multiple stages
-        from tests.integration.test_history_integration import create_test_context_and_chain
+        from tests.integration.test_history_integration import (
+            create_test_context_and_chain,
+        )
         from tests.utils import StageExecutionFactory
         
         chain_context, chain_definition = create_test_context_and_chain(
@@ -223,7 +233,9 @@ class TestTokenUsageIntegration:
     async def test_mixed_token_availability(self, history_service_with_test_db):
         """Test aggregation when some interactions have token data and others don't."""
         # Arrange
-        from tests.integration.test_history_integration import create_test_context_and_chain
+        from tests.integration.test_history_integration import (
+            create_test_context_and_chain,
+        )
         from tests.utils import StageExecutionFactory
         
         chain_context, chain_definition = create_test_context_and_chain(

@@ -5,12 +5,14 @@ Tests the core business logic of pausing and resuming sessions,
 including state reconstruction and execution continuation.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from tarsy.services.alert_service import AlertService
-from tarsy.models.constants import AlertSessionStatus, StageStatus, ChainStatus
-from tarsy.models.db_models import AlertSession, StageExecution
+
+import pytest
+
 from tarsy.models.api_models import ChainExecutionResult
+from tarsy.models.constants import AlertSessionStatus, ChainStatus, StageStatus
+from tarsy.models.db_models import AlertSession, StageExecution
+from tarsy.services.alert_service import AlertService
 
 
 @pytest.mark.unit
@@ -116,11 +118,11 @@ class TestAlertServiceResumePausedSession:
         # Verify chain execution called
         alert_service._execute_chain_stages.assert_called_once()
         
-        # Verify executive summary was generated
-        mock_summarizer.generate_executive_summary.assert_called_once_with(
-            content="Analysis completed after resume",
-            session_id=session_id
-        )
+        # Verify executive summary was generated with correct content and session_id
+        mock_summarizer.generate_executive_summary.assert_called_once()
+        call_kwargs = mock_summarizer.generate_executive_summary.call_args.kwargs
+        assert call_kwargs["content"] == "Analysis completed after resume"
+        assert call_kwargs["session_id"] == session_id
     
     @pytest.mark.asyncio
     async def test_resume_session_not_found(self) -> None:

@@ -131,8 +131,9 @@ class ProcessingAlert(BaseModel):
         Returns:
             ProcessingAlert ready for ChainContext
         """
-        from tarsy.utils.timestamp import now_us
         from datetime import datetime
+
+        from tarsy.utils.timestamp import now_us
         
         # Extract severity and environment from client data if present (but keep them there too)
         severity = alert.data.get('severity', 'warning')

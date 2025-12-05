@@ -11,10 +11,11 @@ This module contains all configuration models
 
 import re
 from typing import Dict, List, Optional
-from pydantic import BaseModel, Field, ConfigDict, model_validator, field_validator
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
 from .constants import IterationStrategy
 from .mcp_transport_config import TransportConfig
-
 
 # =============================================================================
 # MASKING CONFIGURATION MODELS (moved from masking_config.py)

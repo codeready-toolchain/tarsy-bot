@@ -5,7 +5,6 @@ This module tests the MCPResultSummarizer class used for reducing large
 MCP tool output sizes using LLM-powered summarization.
 """
 
-import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

@@ -5,13 +5,14 @@ Tests the complete chat flow including chat creation, message sending,
 and history retrieval with real database and service interactions.
 """
 
-import pytest
 from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 from fastapi.testclient import TestClient
 
 from tarsy.main import app
-from tarsy.models.db_models import ChatUserMessage, AlertSession
 from tarsy.models.constants import AlertSessionStatus
+from tarsy.models.db_models import AlertSession, ChatUserMessage
 from tarsy.services.chat_service import ChatService
 from tarsy.services.history_service import HistoryService
 from tarsy.utils.timestamp import now_us
@@ -100,7 +101,12 @@ class TestChatAPIIntegration:
         )
         
         # Mock LLM interactions for context capture
-        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage, MessageRole
+        from tarsy.models.unified_interactions import (
+            LLMConversation,
+            LLMInteraction,
+            LLMMessage,
+            MessageRole,
+        )
         
         mock_interaction = LLMInteraction(
             interaction_id="test-interaction",
@@ -155,7 +161,12 @@ class TestChatAPIIntegration:
         )
         
         # Create mock LLM interaction for context
-        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage, MessageRole
+        from tarsy.models.unified_interactions import (
+            LLMConversation,
+            LLMInteraction,
+            LLMMessage,
+            MessageRole,
+        )
         
         mock_interaction = LLMInteraction(
             interaction_id="test-interaction-2",
@@ -229,7 +240,12 @@ class TestChatAPIIntegration:
         )
         
         # Create mock LLM interaction
-        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage, MessageRole
+        from tarsy.models.unified_interactions import (
+            LLMConversation,
+            LLMInteraction,
+            LLMMessage,
+            MessageRole,
+        )
         
         mock_interaction = LLMInteraction(
             interaction_id="test-interaction-3",
@@ -342,7 +358,12 @@ class TestChatAPIIntegration:
         )
         
         # Create mock LLM interaction
-        from tarsy.models.unified_interactions import LLMInteraction, LLMConversation, LLMMessage, MessageRole
+        from tarsy.models.unified_interactions import (
+            LLMConversation,
+            LLMInteraction,
+            LLMMessage,
+            MessageRole,
+        )
         
         mock_interaction = LLMInteraction(
             interaction_id="test-interaction-4",

@@ -4,10 +4,11 @@ JWT Token Generator for Tarsy API Authentication
 Usage: python generate_token.py [days] [private_key_path] [subject] [issuer]
 """
 
-import sys
-import jwt
 import datetime
+import sys
 from pathlib import Path
+
+import jwt
 
 
 def _load_private_key(private_key_path: Path) -> str:

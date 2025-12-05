@@ -9,6 +9,8 @@ import time
 from typing import List
 from unittest.mock import Mock
 
+from mcp.types import Tool
+
 from tarsy.models.agent_execution_result import AgentExecutionResult
 from tarsy.models.alert import ProcessingAlert
 from tarsy.models.constants import StageStatus
@@ -18,7 +20,6 @@ from tarsy.models.processing_context import (
     StageContext,
     ToolWithServer,
 )
-from mcp.types import Tool
 
 
 class ChainContextFactory:

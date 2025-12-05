@@ -1,13 +1,14 @@
 """Unit tests for EventCleanupService."""
 
 import asyncio
-import pytest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 from sqlalchemy.exc import OperationalError
 
-from tarsy.services.events.cleanup import EventCleanupService
 from tarsy.repositories.event_repository import EventRepository
+from tarsy.services.events.cleanup import EventCleanupService
 
 
 @pytest.mark.unit

@@ -4,11 +4,11 @@ import pytest
 from pydantic import ValidationError
 
 from tarsy.models.mcp_transport_config import (
-    TRANSPORT_STDIO,
     TRANSPORT_HTTP,
+    TRANSPORT_STDIO,
     BaseTransportConfig,
+    HTTPTransportConfig,
     StdioTransportConfig,
-    HTTPTransportConfig
 )
 
 

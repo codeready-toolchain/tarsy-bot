@@ -25,7 +25,7 @@ TODO: Remove this patch when langchain-google-genai adds native url_context supp
 """
 
 import logging
-from typing import Any, List
+
 from tarsy.models.llm_models import GoogleNativeTool
 
 logger = logging.getLogger(__name__)

@@ -13,7 +13,11 @@ from typing import Any, AsyncContextManager, Dict, Generic, Optional, TypeVar, U
 
 from tarsy.models.constants import MAX_LLM_MESSAGE_CONTENT_SIZE, LLMInteractionType
 from tarsy.models.db_models import StageExecution
-from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction, MessageRole
+from tarsy.models.unified_interactions import (
+    LLMInteraction,
+    MCPInteraction,
+    MessageRole,
+)
 from tarsy.utils.timestamp import now_us
 
 logger = logging.getLogger(__name__)

@@ -39,14 +39,15 @@ class TestLLMClientStreamingChunks:
         ) as mock_factory, patch(
             "tarsy.services.events.publisher.publish_transient_event"
         ) as mock_publish:
-            # Setup mock session
+            # Setup mock session with bind.dialect.name for StreamingPublisher
             mock_session = AsyncMock()
+            mock_session.bind.dialect.name = "postgresql"
             mock_session_context = AsyncMock()
             mock_session_context.__aenter__.return_value = mock_session
             mock_factory.return_value.return_value = mock_session_context
 
-            # Test publishing thought chunk
-            await client._publish_stream_chunk(
+            # Test publishing thought chunk via StreamingPublisher
+            await client._streaming_publisher.publish_chunk(
                 session_id="test-session",
                 stage_execution_id="stage-123",
                 stream_type=StreamingEventType.THOUGHT,
@@ -56,12 +57,12 @@ class TestLLMClientStreamingChunks:
 
             # Verify event was published
             mock_publish.assert_called_once()
-            call_args = mock_publish.call_args
-            assert call_args[0][0] == mock_session  # session
-            assert call_args[0][1] == "session:test-session"  # channel
+            call_kwargs = mock_publish.call_args.kwargs
+            assert call_kwargs["session"] == mock_session  # session
+            assert call_kwargs["channel"] == "session:test-session"  # channel
 
             # Verify event structure
-            event = call_args[0][2]
+            event = call_kwargs["event"]
             assert event.session_id == "test-session"
             assert event.stage_execution_id == "stage-123"
             assert event.chunk == "This is my thought process"
@@ -77,11 +78,12 @@ class TestLLMClientStreamingChunks:
             "tarsy.services.events.publisher.publish_transient_event"
         ) as mock_publish:
             mock_session = AsyncMock()
+            mock_session.bind.dialect.name = "postgresql"
             mock_session_context = AsyncMock()
             mock_session_context.__aenter__.return_value = mock_session
             mock_factory.return_value.return_value = mock_session_context
 
-            await client._publish_stream_chunk(
+            await client._streaming_publisher.publish_chunk(
                 session_id="test-session",
                 stage_execution_id=None,
                 stream_type=StreamingEventType.FINAL_ANSWER,
@@ -90,8 +92,8 @@ class TestLLMClientStreamingChunks:
             )
 
             mock_publish.assert_called_once()
-            call_args = mock_publish.call_args
-            event = call_args[0][2]
+            call_kwargs = mock_publish.call_args.kwargs
+            event = call_kwargs["event"]
             assert event.stream_type == StreamingEventType.FINAL_ANSWER.value
             assert event.is_complete is True
 
@@ -104,11 +106,12 @@ class TestLLMClientStreamingChunks:
             "tarsy.services.events.publisher.publish_transient_event"
         ) as mock_publish:
             mock_session = AsyncMock()
+            mock_session.bind.dialect.name = "postgresql"
             mock_session_context = AsyncMock()
             mock_session_context.__aenter__.return_value = mock_session
             mock_factory.return_value.return_value = mock_session_context
 
-            await client._publish_stream_chunk(
+            await client._streaming_publisher.publish_chunk(
                 session_id="test-session",
                 stage_execution_id="stage-123",
                 stream_type=StreamingEventType.THOUGHT,
@@ -117,7 +120,7 @@ class TestLLMClientStreamingChunks:
             )
 
             mock_publish.assert_called_once()
-            event = mock_publish.call_args[0][2]
+            event = mock_publish.call_args.kwargs["event"]
             assert event.chunk == ""
             assert event.is_complete is True
 
@@ -130,7 +133,7 @@ class TestLLMClientStreamingChunks:
             mock_factory.side_effect = Exception("Event system error")
 
             # Should not raise exception
-            await client._publish_stream_chunk(
+            await client._streaming_publisher.publish_chunk(
                 session_id="test-session",
                 stage_execution_id=None,
                 stream_type=StreamingEventType.THOUGHT,
@@ -147,11 +150,12 @@ class TestLLMClientStreamingChunks:
             "tarsy.services.events.publisher.publish_transient_event"
         ) as mock_publish:
             mock_session = AsyncMock()
+            mock_session.bind.dialect.name = "postgresql"
             mock_session_context = AsyncMock()
             mock_session_context.__aenter__.return_value = mock_session
             mock_factory.return_value.return_value = mock_session_context
 
-            await client._publish_stream_chunk(
+            await client._streaming_publisher.publish_chunk(
                 session_id="test-session",
                 stage_execution_id=None,
                 stream_type=StreamingEventType.FINAL_ANSWER,
@@ -160,7 +164,7 @@ class TestLLMClientStreamingChunks:
             )
 
             mock_publish.assert_called_once()
-            event = mock_publish.call_args[0][2]
+            event = mock_publish.call_args.kwargs["event"]
             assert event.stage_execution_id is None
 
 

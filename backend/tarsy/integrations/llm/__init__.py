@@ -1,10 +1,13 @@
 # LLM integrations package
-from .client import LLMClient, LLMManager
+from .client import LLMClient
 from .gemini_client import (
     GeminiNativeThinkingClient,
     NativeThinkingResponse,
     NativeThinkingToolCall,
 )
+from .manager import LLMManager
+from .native_tools import NativeToolsHelper
+from .streaming import StreamingPublisher
 
 __all__ = [
     "LLMManager",
@@ -12,4 +15,6 @@ __all__ = [
     "GeminiNativeThinkingClient",
     "NativeThinkingResponse",
     "NativeThinkingToolCall",
+    "NativeToolsHelper",
+    "StreamingPublisher",
 ]

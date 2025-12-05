@@ -121,7 +121,6 @@ def _upgrade_postgresql() -> None:
 
 def _upgrade_sqlite() -> None:
     """SQLite-specific upgrade: recreate tables with CASCADE foreign keys."""
-    import sqlite3
     
     # SQLite doesn't support ALTER TABLE for foreign keys. For tables created
     # from SQLModel metadata (which already have CASCADE in model definitions),

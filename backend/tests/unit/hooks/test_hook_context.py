@@ -6,21 +6,28 @@ from service methods to hooks without contamination or type mismatches.
 """
 
 
+from unittest.mock import AsyncMock, Mock
+
 import pytest
-from unittest.mock import Mock, AsyncMock
 
 from tarsy.hooks.hook_context import (
     BaseHook,
-    InteractionHookContext,
     HookManager,
+    InteractionHookContext,
+    _apply_llm_interaction_truncation,
     get_hook_manager,
     llm_interaction_context,
     mcp_interaction_context,
-    _apply_llm_interaction_truncation,
 )
-from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction, LLMConversation, LLMMessage, MessageRole
-from tarsy.models.db_models import StageExecution
 from tarsy.models.constants import MAX_LLM_MESSAGE_CONTENT_SIZE
+from tarsy.models.db_models import StageExecution
+from tarsy.models.unified_interactions import (
+    LLMConversation,
+    LLMInteraction,
+    LLMMessage,
+    MCPInteraction,
+    MessageRole,
+)
 
 
 class TestLLMHook(BaseHook[LLMInteraction]):

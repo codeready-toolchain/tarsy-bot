@@ -15,12 +15,18 @@ from sqlmodel import SQLModel, create_engine
 
 from tarsy.main import app
 from tarsy.models.alert import Alert
-from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction, LLMConversation, LLMMessage, MessageRole
-from tarsy.utils.timestamp import now_us
+from tarsy.models.unified_interactions import (
+    LLMConversation,
+    LLMInteraction,
+    LLMMessage,
+    MCPInteraction,
+    MessageRole,
+)
 
 # Import history models to ensure they're registered with SQLModel.metadata
 from tarsy.services.alert_service import AlertService
 from tarsy.services.history_service import HistoryService
+from tarsy.utils.timestamp import now_us
 from tests.conftest import alert_to_api_format
 
 logger = logging.getLogger(__name__)
@@ -111,8 +117,8 @@ class TestHistoryServiceIntegration:
             service.db_manager.engine = in_memory_engine  # Use the same engine with tables
             
             # Create session factory using the existing engine
-            from sqlmodel import Session
             from sqlalchemy.orm import sessionmaker
+            from sqlmodel import Session
             service.db_manager.session_factory = sessionmaker(
                 bind=in_memory_engine,
                 class_=Session,
@@ -120,7 +126,7 @@ class TestHistoryServiceIntegration:
             )
             service._is_healthy = True  # Mark as healthy since we have a working engine
             
-            logger.info(f"Using shared in-memory database engine with tables already created")
+            logger.info("Using shared in-memory database engine with tables already created")
             
             yield service
     
@@ -229,9 +235,14 @@ class TestHistoryServiceIntegration:
         )
         
         # Log LLM interaction
-        from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
         # Create conversation with proper structure
-        from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
+        from tarsy.models.unified_interactions import (
+            LLMConversation,
+            LLMInteraction,
+            LLMMessage,
+            MCPInteraction,
+            MessageRole,
+        )
         conversation = LLMConversation(messages=[
             LLMMessage(role=MessageRole.SYSTEM, content="You are an expert Kubernetes troubleshooter."),
             LLMMessage(role=MessageRole.USER, content="Analyze the namespace termination issue"),
@@ -967,7 +978,6 @@ class TestHistoryAPIIntegration:
         """Test final analysis API endpoint integration with multiple scenarios."""
         from tarsy.models.constants import AlertSessionStatus
         from tarsy.models.db_models import AlertSession
-        from tests.utils import SessionFactory
         
         # Define test scenarios similar to unit test pattern
         test_scenarios = [
@@ -1161,7 +1171,7 @@ class TestDuplicatePreventionIntegration:
                 chain_context, chain_definition = create_test_context_and_chain(
                     alert_type="TestAlert",
                     session_id=shared_session_id,  # Same session_id for all threads
-                    chain_id=f"test-integration-chain-concurrent",
+                    chain_id="test-integration-chain-concurrent",
                     agent=f"Agent_{thread_id}",
                     alert_data={**sample_alert_data, "thread_id": thread_id}
                 )

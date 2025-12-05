@@ -16,9 +16,13 @@ from tarsy.integrations.llm.gemini_client import (
     NativeThinkingResponse,
     NativeThinkingToolCall,
 )
-from tarsy.models.constants import IterationStrategy
 from tarsy.models.llm_models import LLMProviderConfig, LLMProviderType
-from tarsy.models.processing_context import AvailableTools, ChainContext, StageContext, ToolWithServer
+from tarsy.models.processing_context import (
+    AvailableTools,
+    ChainContext,
+    StageContext,
+    ToolWithServer,
+)
 from tarsy.models.unified_interactions import LLMConversation
 
 
@@ -52,9 +56,12 @@ class TestNativeThinkingController:
     
     @pytest.fixture
     def mock_llm_manager_google(self, mock_llm_client_google):
-        """Create mock LLM manager that returns Google client."""
+        """Create mock LLM manager that returns Google client and native thinking client."""
         manager = Mock()
         manager.get_client.return_value = mock_llm_client_google
+        # Mock get_native_thinking_client to return a valid native thinking client
+        mock_native_client = Mock()
+        manager.get_native_thinking_client.return_value = mock_native_client
         return manager
     
     @pytest.fixture
@@ -69,6 +76,8 @@ class TestNativeThinkingController:
         """Create mock LLM manager that returns non-Google client."""
         manager = Mock()
         manager.get_client.return_value = mock_llm_client_non_google
+        # Non-Google provider returns None for native thinking client
+        manager.get_native_thinking_client.return_value = None
         return manager
     
     @pytest.fixture
@@ -98,9 +107,10 @@ class TestNativeThinkingController:
     @pytest.fixture
     def sample_context(self, mock_agent):
         """Create sample stage context."""
+        from mcp.types import Tool
+
         from tarsy.models.alert import ProcessingAlert
         from tarsy.utils.timestamp import now_us
-        from mcp.types import Tool
         
         processing_alert = ProcessingAlert(
             alert_type="kubernetes",
@@ -131,19 +141,12 @@ class TestNativeThinkingController:
             agent=mock_agent
         )
     
-    @patch('tarsy.agents.iteration_controllers.native_thinking_controller.GeminiNativeThinkingClient')
-    def test_init_with_google_provider(self, mock_native_client_cls, mock_llm_manager_google, mock_llm_client_google, mock_prompt_builder):
+    def test_init_with_google_provider(self, mock_llm_manager_google, mock_prompt_builder):
         """Test controller initialization with Google provider succeeds."""
         controller = NativeThinkingController(mock_llm_manager_google, mock_prompt_builder)
         
         assert controller.llm_manager == mock_llm_manager_google
-        assert controller._native_client == mock_native_client_cls.return_value
         assert controller.prompt_builder == mock_prompt_builder
-        # Verify native client was created with correct config
-        mock_native_client_cls.assert_called_once_with(
-            mock_llm_client_google.config,
-            provider_name=mock_llm_client_google.provider_name
-        )
     
     def test_init_with_non_google_provider_raises(self, mock_llm_manager_non_google, mock_prompt_builder):
         """Test controller initialization with non-Google provider raises ValueError."""
@@ -158,14 +161,12 @@ class TestNativeThinkingController:
         assert controller.needs_mcp_tools() is True
     
     @pytest.mark.asyncio
-    @patch('tarsy.agents.iteration_controllers.native_thinking_controller.GeminiNativeThinkingClient')
     async def test_execute_analysis_loop_final_answer(
-        self, mock_native_client_cls, mock_llm_manager_google, mock_llm_client_google, mock_prompt_builder, sample_context
+        self, mock_llm_manager_google, mock_prompt_builder, sample_context
     ):
         """Test successful analysis loop with final answer."""
-        # Setup mock for the native thinking client
-        mock_native_client = Mock()
-        mock_native_client_cls.return_value = mock_native_client
+        # Setup mock native client via LLM manager
+        mock_native_client = mock_llm_manager_google.get_native_thinking_client.return_value
         
         async def mock_generate(conversation, session_id, mcp_tools, **kwargs):
             return NativeThinkingResponse(
@@ -186,12 +187,6 @@ class TestNativeThinkingController:
         # Should return the content from the response
         assert "Analysis complete" in result
         
-        # Verify native thinking client was created with correct config
-        mock_native_client_cls.assert_called_once_with(
-            mock_llm_client_google.config,
-            provider_name=mock_llm_client_google.provider_name
-        )
-        
         # Verify generate was called
         mock_native_client.generate.assert_called_once()
         
@@ -201,14 +196,12 @@ class TestNativeThinkingController:
         assert call_args.kwargs['thinking_level'] == "high"
     
     @pytest.mark.asyncio
-    @patch('tarsy.agents.iteration_controllers.native_thinking_controller.GeminiNativeThinkingClient')
     async def test_execute_analysis_loop_with_tool_calls(
-        self, mock_native_client_cls, mock_llm_manager_google, mock_llm_client_google, mock_prompt_builder, sample_context
+        self, mock_llm_manager_google, mock_prompt_builder, sample_context
     ):
         """Test analysis loop with tool calls followed by final answer."""
-        # Setup mock for the native thinking client
-        mock_native_client = Mock()
-        mock_native_client_cls.return_value = mock_native_client
+        # Setup mock native client via LLM manager
+        mock_native_client = mock_llm_manager_google.get_native_thinking_client.return_value
         
         # First response has tool calls
         response_with_tool = NativeThinkingResponse(

@@ -21,7 +21,7 @@ tool combination. The NEW SDK types (google.genai.types) are required.
 import asyncio
 import pprint
 import traceback
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import httpx
 import urllib3
@@ -43,6 +43,8 @@ from tarsy.hooks.hook_context import llm_interaction_context
 # Apply url_context patch for Gemini models
 # This enables url_context tool support which is not yet natively supported in LangChain
 from tarsy.integrations.llm.gemini_url_context_patch import apply_url_context_patch
+from tarsy.integrations.llm.native_tools import NativeToolsHelper
+from tarsy.integrations.llm.streaming import StreamingPublisher
 from tarsy.models.constants import LLMInteractionType, StreamingEventType
 from tarsy.models.llm_models import GoogleNativeTool, LLMProviderConfig, LLMProviderType
 from tarsy.models.mcp_selection_models import NativeToolsConfig
@@ -50,6 +52,9 @@ from tarsy.models.processing_context import ToolWithServer
 from tarsy.models.unified_interactions import LLMConversation, MessageRole
 from tarsy.utils.error_details import extract_error_details
 from tarsy.utils.logger import get_module_logger
+
+if TYPE_CHECKING:
+    from tarsy.integrations.llm.gemini_client import GeminiNativeThinkingClient
 
 apply_url_context_patch()
 
@@ -173,7 +178,8 @@ class LLMClient:
         self.llm_client: Optional[BaseChatModel] = None
         self.settings = settings  # Store settings for feature flag access
         self.available: bool = False
-        self._sqlite_warning_logged: bool = False
+        # Use shared streaming publisher utility
+        self._streaming_publisher = StreamingPublisher(settings)
         # Store native tools for Google/Gemini models (GoogleNativeTool enum values)
         self.native_tools: Dict[str, Optional[google_genai_types.Tool]] = {
             GoogleNativeTool.GOOGLE_SEARCH.value: None,
@@ -226,6 +232,8 @@ class LLMClient:
     def _initialize_native_tools(self):
         """Initialize Google/Gemini native tools based on config.
         
+        Uses NativeToolsHelper to build tool objects from provider configuration.
+        
         Supports three native tools (GoogleNativeTool enum):
         - GOOGLE_SEARCH: Web search capability (enabled by default)
         - CODE_EXECUTION: Python code execution in sandbox (disabled by default)
@@ -235,38 +243,17 @@ class LLMClient:
         - google_search and url_context are enabled
         - code_execution is disabled for security reasons
         """
-        enabled_tools = []
+        # Get effective config from provider defaults (no override at init time)
+        effective_config = NativeToolsHelper.get_effective_config(self.config)
         
-        try:
-            # Google Search tool
-            if self.config.get_native_tool_status(GoogleNativeTool.GOOGLE_SEARCH.value):
-                self.native_tools[GoogleNativeTool.GOOGLE_SEARCH.value] = google_genai_types.Tool(
-                    google_search=google_genai_types.GoogleSearch()
-                )
-                enabled_tools.append(GoogleNativeTool.GOOGLE_SEARCH.value)
-        except Exception as e:
-            logger.warning(f"Failed to initialize {GoogleNativeTool.GOOGLE_SEARCH.value} tool for {self.provider_name}: {e}")
+        # Build tool objects
+        self.native_tools = NativeToolsHelper.build_tool_objects(
+            effective_config, 
+            provider_name=self.provider_name
+        )
         
-        try:
-            # Code Execution tool
-            if self.config.get_native_tool_status(GoogleNativeTool.CODE_EXECUTION.value):
-                self.native_tools[GoogleNativeTool.CODE_EXECUTION.value] = google_genai_types.Tool(
-                    code_execution={}
-                )
-                enabled_tools.append(GoogleNativeTool.CODE_EXECUTION.value)
-        except Exception as e:
-            logger.warning(f"Failed to initialize {GoogleNativeTool.CODE_EXECUTION.value} tool for {self.provider_name}: {e}")
-        
-        try:
-            # URL Context tool
-            if self.config.get_native_tool_status(GoogleNativeTool.URL_CONTEXT.value):
-                self.native_tools[GoogleNativeTool.URL_CONTEXT.value] = google_genai_types.Tool(
-                    url_context={}
-                )
-                enabled_tools.append(GoogleNativeTool.URL_CONTEXT.value)
-        except Exception as e:
-            logger.warning(f"Failed to initialize {GoogleNativeTool.URL_CONTEXT.value} tool for {self.provider_name}: {e}")
-        
+        # Log the result
+        enabled_tools = [name for name, tool in self.native_tools.items() if tool is not None]
         if enabled_tools:
             logger.info(f"Successfully initialized native tools for {self.provider_name}: {enabled_tools}")
         else:
@@ -279,7 +266,7 @@ class LLMClient:
         """
         Apply per-session native tools override with tri-state semantics.
         
-        Creates a temporary tools dictionary based on the override configuration.
+        Uses NativeToolsHelper to compute effective config and build tool objects.
         
         **Tri-state behavior per tool:**
         - `None`: Use provider default configuration
@@ -292,67 +279,17 @@ class LLMClient:
         Returns:
             Dictionary of native tools with override applied (tool_name -> Tool or None)
         """
-        overridden_tools = {
-            GoogleNativeTool.GOOGLE_SEARCH.value: None,
-            GoogleNativeTool.CODE_EXECUTION.value: None,
-            GoogleNativeTool.URL_CONTEXT.value: None
-        }
+        # Get effective config with override applied
+        effective_config = NativeToolsHelper.get_effective_config(self.config, override)
         
-        enabled_tools = []
-        enabled_from_defaults = []
+        # Build tool objects
+        overridden_tools = NativeToolsHelper.build_tool_objects(
+            effective_config,
+            provider_name=self.provider_name
+        )
         
-        # Google Search tool
-        should_enable_search = override.google_search if override.google_search is not None else \
-                               self.config.get_native_tool_status(GoogleNativeTool.GOOGLE_SEARCH.value)
-        
-        if should_enable_search:
-            try:
-                overridden_tools[GoogleNativeTool.GOOGLE_SEARCH.value] = google_genai_types.Tool(
-                    google_search=google_genai_types.GoogleSearch()
-                )
-                enabled_tools.append(GoogleNativeTool.GOOGLE_SEARCH.value)
-                if override.google_search is None:
-                    enabled_from_defaults.append(GoogleNativeTool.GOOGLE_SEARCH.value)
-            except Exception as e:
-                logger.warning(f"Failed to create {GoogleNativeTool.GOOGLE_SEARCH.value} tool override: {e}")
-        
-        # Code Execution tool
-        should_enable_code = override.code_execution if override.code_execution is not None else \
-                             self.config.get_native_tool_status(GoogleNativeTool.CODE_EXECUTION.value)
-        
-        if should_enable_code:
-            try:
-                overridden_tools[GoogleNativeTool.CODE_EXECUTION.value] = google_genai_types.Tool(
-                    code_execution={}
-                )
-                enabled_tools.append(GoogleNativeTool.CODE_EXECUTION.value)
-                if override.code_execution is None:
-                    enabled_from_defaults.append(GoogleNativeTool.CODE_EXECUTION.value)
-            except Exception as e:
-                logger.warning(f"Failed to create {GoogleNativeTool.CODE_EXECUTION.value} tool override: {e}")
-        
-        # URL Context tool
-        should_enable_url = override.url_context if override.url_context is not None else \
-                            self.config.get_native_tool_status(GoogleNativeTool.URL_CONTEXT.value)
-        
-        if should_enable_url:
-            try:
-                overridden_tools[GoogleNativeTool.URL_CONTEXT.value] = google_genai_types.Tool(
-                    url_context={}
-                )
-                enabled_tools.append(GoogleNativeTool.URL_CONTEXT.value)
-                if override.url_context is None:
-                    enabled_from_defaults.append(GoogleNativeTool.URL_CONTEXT.value)
-            except Exception as e:
-                logger.warning(f"Failed to create {GoogleNativeTool.URL_CONTEXT.value} tool override: {e}")
-        
-        log_msg = f"Applied native tools override for {self.provider_name}: enabled={enabled_tools}"
-        if enabled_from_defaults:
-            log_msg += f" (from provider defaults: {enabled_from_defaults})"
-        disabled = [name for name, tool in overridden_tools.items() if tool is None]
-        if disabled:
-            log_msg += f", disabled={disabled}"
-        logger.info(log_msg)
+        # Log the override application
+        NativeToolsHelper.log_override_applied(self.provider_name, effective_config, override)
         
         return overridden_tools
 
@@ -584,7 +521,7 @@ class LLMClient:
                                 
                                 # Send final complete thought
                                 if clean_thought:
-                                    await self._publish_stream_chunk(
+                                    await self._streaming_publisher.publish_chunk(
                                         session_id, stage_execution_id,
                                         StreamingEventType.THOUGHT, clean_thought,
                                         is_complete=True,
@@ -592,7 +529,7 @@ class LLMClient:
                                     )
                                 else:
                                     # Send completion marker
-                                    await self._publish_stream_chunk(
+                                    await self._streaming_publisher.publish_chunk(
                                         session_id, stage_execution_id,
                                         StreamingEventType.THOUGHT, "",
                                         is_complete=True,
@@ -636,7 +573,7 @@ class LLMClient:
                                             current_thought = current_thought[:current_thought.find("Final Answer:")].strip()
                                         
                                         if current_thought:
-                                            await self._publish_stream_chunk(
+                                            await self._streaming_publisher.publish_chunk(
                                                 session_id, stage_execution_id,
                                                 StreamingEventType.THOUGHT, current_thought,
                                                 is_complete=False,
@@ -648,7 +585,7 @@ class LLMClient:
                                         current_final_answer = accumulated_content[final_answer_start_idx + len("Final Answer:"):].lstrip()
                                         
                                         if current_final_answer:
-                                            await self._publish_stream_chunk(
+                                            await self._streaming_publisher.publish_chunk(
                                                 session_id, stage_execution_id,
                                                 StreamingEventType.FINAL_ANSWER, current_final_answer,
                                                 is_complete=False,
@@ -658,7 +595,7 @@ class LLMClient:
                                     elif is_streaming_summarization:
                                         # Stream entire accumulated content as plain text
                                         if accumulated_content.strip():
-                                            await self._publish_stream_chunk(
+                                            await self._streaming_publisher.publish_chunk(
                                                 session_id, stage_execution_id,
                                                 StreamingEventType.SUMMARIZATION, accumulated_content.strip(),
                                                 is_complete=False,
@@ -679,7 +616,7 @@ class LLMClient:
                             final_thought = final_thought[:final_thought.find("Final Answer:")].strip()
                         
                         if final_thought:
-                            await self._publish_stream_chunk(
+                            await self._streaming_publisher.publish_chunk(
                                 session_id, stage_execution_id,
                                 StreamingEventType.THOUGHT, final_thought,
                                 is_complete=True,
@@ -687,7 +624,7 @@ class LLMClient:
                             )
                         else:
                             # Send completion marker
-                            await self._publish_stream_chunk(
+                            await self._streaming_publisher.publish_chunk(
                                 session_id, stage_execution_id,
                                 StreamingEventType.THOUGHT, "",
                                 is_complete=True,
@@ -700,7 +637,7 @@ class LLMClient:
                         final_answer = accumulated_content[final_answer_start_idx + len("Final Answer:"):].strip()
                         
                         if final_answer:
-                            await self._publish_stream_chunk(
+                            await self._streaming_publisher.publish_chunk(
                                 session_id, stage_execution_id,
                                 StreamingEventType.FINAL_ANSWER, final_answer,
                                 is_complete=True,
@@ -708,7 +645,7 @@ class LLMClient:
                             )
                         else:
                             # Send completion marker
-                            await self._publish_stream_chunk(
+                            await self._streaming_publisher.publish_chunk(
                                 session_id, stage_execution_id,
                                 StreamingEventType.FINAL_ANSWER, "",
                                 is_complete=True,
@@ -720,7 +657,7 @@ class LLMClient:
                         final_summarization = accumulated_content.strip()
                         
                         if final_summarization:
-                            await self._publish_stream_chunk(
+                            await self._streaming_publisher.publish_chunk(
                                 session_id, stage_execution_id,
                                 StreamingEventType.SUMMARIZATION, final_summarization,
                                 is_complete=True,
@@ -728,7 +665,7 @@ class LLMClient:
                             )
                         else:
                             # Send completion marker
-                            await self._publish_stream_chunk(
+                            await self._streaming_publisher.publish_chunk(
                                 session_id, stage_execution_id,
                                 StreamingEventType.SUMMARIZATION, "",
                                 is_complete=True,
@@ -1038,64 +975,6 @@ class LLMClient:
             else:
                 ctx.interaction.interaction_type = LLMInteractionType.INVESTIGATION.value
     
-    async def _publish_stream_chunk(
-        self,
-        session_id: str,
-        stage_execution_id: Optional[str],
-        stream_type: StreamingEventType,
-        chunk: str,
-        is_complete: bool,
-        mcp_event_id: Optional[str] = None,
-        llm_interaction_id: Optional[str] = None
-    ) -> None:
-        """Publish streaming chunk via transient channel."""
-        # Check if streaming is enabled via config flag
-        if self.settings and not self.settings.enable_llm_streaming:
-            # Streaming disabled by config - return early without warning (expected behavior)
-            return
-        
-        try:
-            from tarsy.database.init_db import get_async_session_factory
-            from tarsy.models.event_models import LLMStreamChunkEvent
-            from tarsy.services.events.publisher import publish_transient_event
-            from tarsy.utils.timestamp import now_us
-            
-            async_session_factory = get_async_session_factory()
-            async with async_session_factory() as session:
-                # Check database dialect to warn about SQLite limitations
-                db_dialect = session.bind.dialect.name
-                
-                if db_dialect != "postgresql":
-                    # Only log warning once per session (on first chunk)
-                    if not self._sqlite_warning_logged:
-                        logger.warning(
-                            f"LLM streaming requested but database is {db_dialect}. "
-                            "Real-time streaming requires PostgreSQL with NOTIFY support. "
-                            "Events will be published but may not be delivered in real time."
-                        )
-                        self._sqlite_warning_logged = True
-                
-                event = LLMStreamChunkEvent(
-                    session_id=session_id,
-                    stage_execution_id=stage_execution_id,
-                    chunk=chunk,
-                    stream_type=stream_type.value,
-                    is_complete=is_complete,
-                    mcp_event_id=mcp_event_id,
-                    llm_interaction_id=llm_interaction_id,
-                    timestamp_us=now_us()
-                )
-                
-                await publish_transient_event(
-                    session, 
-                    f"session:{session_id}", 
-                    event
-                )
-                logger.debug(f"Published streaming chunk ({stream_type.value}, complete={is_complete}, mcp_event={mcp_event_id}, llm_interaction={llm_interaction_id}) for {session_id}")
-        except Exception as e:
-            # Don't fail LLM call if streaming fails
-            logger.warning(f"Failed to publish streaming chunk: {e}")
-    
     def _extract_retry_delay(self, error_message: str) -> Optional[int]:
         """Extract retry delay from error message if available."""
         try:
@@ -1142,122 +1021,3 @@ class LLMClient:
             llm_comm_logger.error(f"Could not walk traceback: {e}")
         
         llm_comm_logger.error(f"=== END ERROR DUMP [ID: {request_id}] ===")
-    
-class LLMManager:
-    """Manages multiple LLM providers using LangChain."""
-    
-    def __init__(self, settings: Settings):
-        self.settings = settings
-        self.clients: Dict[str, LLMClient] = {}
-        self.failed_providers: Dict[str, str] = {}  # provider_name -> error_message
-        self._initialize_clients()
-    
-    def _initialize_clients(self):
-        """Initialize LLM clients using unified implementation."""
-        # Initialize each configured LLM provider
-        for provider_name in self.settings.llm_providers.keys():
-            config = None
-            has_api_key = False
-            
-            try:
-                config = self.settings.get_llm_config(provider_name)
-                
-                if not config.api_key:
-                    logger.warning(f"Skipping {provider_name}: No API key provided")
-                    continue  # Don't track as failure - this is expected
-                
-                has_api_key = True  # Mark that we have an API key
-                
-                # Use unified client for all providers
-                client = LLMClient(provider_name, config, self.settings)
-                self.clients[provider_name] = client
-                logger.info(f"Initialized LLM client: {provider_name}")
-                
-            except Exception as e:
-                error_msg = str(e)
-                logger.error(f"Failed to initialize LLM client {provider_name}: {error_msg}")
-                # Track failure only if API key was provided (unexpected failure)
-                if has_api_key:
-                    self.failed_providers[provider_name] = error_msg
-    
-    def get_failed_providers(self) -> Dict[str, str]:
-        """
-        Get dictionary of failed LLM providers.
-        
-        Returns:
-            Dict[provider_name, error_message] for providers that failed to initialize
-        """
-        return self.failed_providers.copy()
-    
-    def get_client(self, provider: str = None) -> Optional[LLMClient]:
-        """Get an LLM client by provider name."""
-        if not provider:
-            provider = self.settings.llm_provider
-        
-        return self.clients.get(provider)
-    
-    async def generate_response(self,
-                              conversation: LLMConversation,
-                              session_id: str,
-                              stage_execution_id: Optional[str] = None,
-                              provider: str = None,
-                              max_tokens: Optional[int] = None,
-                              interaction_type: Optional[str] = None,
-                              mcp_event_id: Optional[str] = None,
-                              native_tools_override: Optional[NativeToolsConfig] = None) -> LLMConversation:
-        """Generate a response using the specified or default LLM provider.
-        
-        Args:
-            conversation: LLMConversation object containing complete message thread
-            session_id: Required session ID for timeline logging and tracking
-            stage_execution_id: Optional stage execution ID for tracking
-            provider: Optional provider override (uses default if not specified)
-            max_tokens: Optional max tokens configuration for LLM
-            interaction_type: Optional interaction type (investigation, summarization, final_analysis).
-                            If None, auto-detects based on response content.
-            mcp_event_id: Optional MCP event ID if summarizing a tool result
-            native_tools_override: Optional per-session native tools configuration override
-            
-        Returns:
-            Updated LLMConversation with new assistant message appended
-        """
-        client = self.get_client(provider)
-        if not client:
-            available = list(self.clients.keys())
-            raise Exception(f"LLM provider not available. Available: {available}")
-
-        return await client.generate_response(
-            conversation, 
-            session_id, 
-            stage_execution_id, 
-            max_tokens, 
-            interaction_type, 
-            mcp_event_id=mcp_event_id,
-            native_tools_override=native_tools_override
-        )
-
-    def list_available_providers(self) -> List[str]:
-        """List available LLM providers."""
-        return list(self.clients.keys())
-    
-    def is_available(self) -> bool:
-        """Check if any LLM provider is available."""
-        return len(self.clients) > 0 and any(client.available for client in self.clients.values())
-    
-    def get_availability_status(self) -> Dict:
-        """Get detailed availability status for all providers."""
-        return {
-            provider: client.available 
-            for provider, client in self.clients.items()
-        }
-    
-    def get_max_tool_result_tokens(self) -> int:
-        """Return the maximum tool result tokens for the default provider."""
-        default_client = self.get_client()
-        if default_client:
-            return default_client.get_max_tool_result_tokens()
-        
-        # Fallback to safe default if no client available
-        default_limit = 150000  # Conservative limit that works for most providers
-        logger.info(f"No LLM client available, using default tool result limit: {default_limit:,} tokens")
-        return default_limit

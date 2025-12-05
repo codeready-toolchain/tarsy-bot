@@ -122,6 +122,7 @@ def test_get_system_warnings_without_details(client: TestClient) -> None:
 async def test_get_mcp_servers_success_with_cache(client: TestClient) -> None:
     """Test successfully retrieving MCP servers and their tools from cache."""
     from unittest.mock import Mock, patch
+
     from mcp.types import Tool
     
     # Create mock alert_service with cached tools
@@ -201,6 +202,7 @@ async def test_get_mcp_servers_success_with_cache(client: TestClient) -> None:
 async def test_get_mcp_servers_fallback_to_direct_query(client: TestClient) -> None:
     """Test fallback to direct MCP queries when cache is empty (startup period)."""
     from unittest.mock import AsyncMock, Mock, patch
+
     from mcp.types import Tool
     
     # Create mock alert_service with empty cache
@@ -309,6 +311,7 @@ async def test_get_mcp_servers_empty_registry(client: TestClient) -> None:
 async def test_get_mcp_servers_with_disabled_server(client: TestClient) -> None:
     """Test retrieving MCP servers including disabled ones."""
     from unittest.mock import Mock, patch
+
     from mcp.types import Tool
     
     mock_alert_service = Mock()
@@ -372,6 +375,7 @@ async def test_get_mcp_servers_with_disabled_server(client: TestClient) -> None:
 async def test_get_mcp_servers_partial_cache(client: TestClient) -> None:
     """Test handling when some servers have cached tools and others don't."""
     from unittest.mock import Mock, patch
+
     from mcp.types import Tool
     
     mock_alert_service = Mock()

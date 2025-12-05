@@ -9,11 +9,11 @@ import pytest
 from pydantic import ValidationError
 
 from tarsy.agents.parsers.react_parser import (
-    ReActParser, 
-    ReActResponse, 
-    ToolCall, 
+    ReActParser,
+    ReActResponse,
     ResponseType,
-    UnknownToolError
+    ToolCall,
+    UnknownToolError,
 )
 
 
@@ -989,8 +989,9 @@ class TestContinuationPrompts:
     
     def test_format_unknown_tool_error(self):
         """Test unknown tool error formatting with available tools."""
-        from tarsy.models.processing_context import ToolWithServer
         from mcp.types import Tool
+
+        from tarsy.models.processing_context import ToolWithServer
         
         # Create mock tools
         tools = [
@@ -1036,8 +1037,9 @@ Available tools:
     
     def test_format_unknown_tool_error_lists_all_tools(self):
         """Test that unknown tool error formatting lists ALL tools without truncation."""
-        from tarsy.models.processing_context import ToolWithServer
         from mcp.types import Tool
+
+        from tarsy.models.processing_context import ToolWithServer
         
         # Create 15 mock tools to verify no truncation
         tools = [

@@ -10,10 +10,13 @@ import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from tarsy.models.constants import AlertSessionStatus, StageStatus
-from tarsy.models.db_models import AlertSession, StageExecution, SQLModel
+from tarsy.models.db_models import AlertSession, SQLModel, StageExecution
 from tarsy.repositories.event_repository import EventRepository
 from tarsy.services.events.channels import EventChannel
-from tarsy.services.events.event_helpers import publish_session_paused, publish_session_resumed
+from tarsy.services.events.event_helpers import (
+    publish_session_paused,
+    publish_session_resumed,
+)
 from tarsy.utils.timestamp import now_us
 
 
@@ -520,8 +523,9 @@ class TestPauseResumeIntegration:
         """Test that pause_metadata is cleared when session transitions from PAUSED to IN_PROGRESS."""
         session_id = "cleared-metadata-test"
         
-        from tarsy.models.pause_metadata import PauseMetadata, PauseReason
         from sqlmodel import select
+
+        from tarsy.models.pause_metadata import PauseMetadata, PauseReason
         
         # Step 1: Create session with PAUSED status and pause_metadata
         pause_meta = PauseMetadata(
@@ -582,8 +586,9 @@ class TestPauseResumeIntegration:
         """Test that pause_metadata is cleared when session completes after being paused."""
         session_id = "cleared-on-complete-test"
         
-        from tarsy.models.pause_metadata import PauseMetadata, PauseReason
         from sqlmodel import select
+
+        from tarsy.models.pause_metadata import PauseMetadata, PauseReason
         
         # Create session with PAUSED status and pause_metadata
         pause_meta = PauseMetadata(
@@ -640,8 +645,8 @@ class TestPauseResumeIntegration:
         This test exercises the actual service layer logic (not just ORM) to ensure
         the production code path for clearing pause_metadata works correctly.
         """
-        from tarsy.models.pause_metadata import PauseMetadata, PauseReason
         from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.pause_metadata import PauseMetadata, PauseReason
         
         history_service = history_service_with_test_db
         session_id = "service-test-resume"
@@ -695,8 +700,8 @@ class TestPauseResumeIntegration:
         This test exercises the actual service layer logic (not just ORM) to ensure
         the production code path for clearing pause_metadata works correctly.
         """
-        from tarsy.models.pause_metadata import PauseMetadata, PauseReason
         from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.pause_metadata import PauseMetadata, PauseReason
         
         history_service = history_service_with_test_db
         session_id = "service-test-complete"
@@ -751,8 +756,8 @@ class TestPauseResumeIntegration:
         
         This test verifies the complete pause/resume cycle through the service layer.
         """
-        from tarsy.models.pause_metadata import PauseMetadata, PauseReason
         from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.pause_metadata import PauseMetadata, PauseReason
         
         history_service = history_service_with_test_db
         session_id = "service-test-pause-cycle"
@@ -829,8 +834,8 @@ class TestPauseResumeIntegration:
         - pause_metadata is cleared when not paused
         - Session completes successfully after multiple cycles
         """
-        from tarsy.models.pause_metadata import PauseMetadata, PauseReason
         from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.pause_metadata import PauseMetadata, PauseReason
         
         history_service = history_service_with_test_db
         session_id = "multi-cycle-test"

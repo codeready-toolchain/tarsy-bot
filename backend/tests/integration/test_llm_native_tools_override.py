@@ -5,11 +5,12 @@ Tests the end-to-end flow of native tools configuration from alert submission
 through to LLM client application.
 """
 
+from unittest.mock import AsyncMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, AsyncMock, patch, MagicMock
 
 from tarsy.integrations.llm.client import LLMClient
-from tarsy.models.llm_models import LLMProviderConfig, LLMProviderType, GoogleNativeTool
+from tarsy.models.llm_models import GoogleNativeTool, LLMProviderConfig, LLMProviderType
 from tarsy.models.mcp_selection_models import NativeToolsConfig
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 

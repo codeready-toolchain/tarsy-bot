@@ -19,7 +19,11 @@ from tarsy.models.alert import ProcessingAlert
 from tarsy.models.constants import StageStatus
 from tarsy.models.db_models import Chat, ChatUserMessage, StageExecution
 from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
-from tarsy.models.processing_context import ChainContext, ChatMessageContext, SessionContextData
+from tarsy.models.processing_context import (
+    ChainContext,
+    ChatMessageContext,
+    SessionContextData,
+)
 from tarsy.models.unified_interactions import LLMInteraction
 from tarsy.services.agent_factory import AgentFactory
 from tarsy.services.history_service import HistoryService

@@ -154,7 +154,6 @@ class TestHistoryCleanupServiceCleanup:
     @pytest.mark.asyncio
     async def test_cleanup_deletes_old_sessions(self, service, mock_session):
         """Test that cleanup deletes sessions older than retention period."""
-        from tarsy.models.db_models import AlertSession
 
         # Mock repository delete method
         with patch(
@@ -397,7 +396,6 @@ class TestHistoryCleanupServiceDualOperation:
     @pytest.mark.asyncio
     async def test_retention_cleanup_timing_tracked_correctly(self, service):
         """Test that retention cleanup time is tracked and prevents premature runs."""
-        import time
 
         # Initially, last_retention_cleanup_time is 0
         assert service.last_retention_cleanup_time == 0.0

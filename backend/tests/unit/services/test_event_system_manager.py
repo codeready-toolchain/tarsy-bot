@@ -4,8 +4,9 @@ Unit tests for EventSystemManager.
 This module tests the event system lifecycle and channel management.
 """
 
-import pytest
 from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 
 from tarsy.services.events.manager import (
     EventSystemManager,

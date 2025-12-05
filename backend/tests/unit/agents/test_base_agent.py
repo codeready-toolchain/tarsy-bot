@@ -8,6 +8,7 @@ proper interface implementation and parameter handling.
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from mcp.types import Tool
 
 from tarsy.agents.base_agent import BaseAgent
 from tarsy.agents.exceptions import ConfigurationError, ToolSelectionError
@@ -18,7 +19,6 @@ from tarsy.models.processing_context import ChainContext
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tarsy.utils.timestamp import now_us
-from mcp.types import Tool
 
 
 class TestConcreteAgent(BaseAgent):
@@ -43,11 +43,11 @@ class TestBaseAgentAbstractInterface:
     """Test abstract method requirements and concrete implementation."""
 
     @pytest.fixture
-    def mock_llm_client(self):
+    def mock_llm_manager(self):
         """Create mock LLM client."""
         client = Mock(spec=LLMClient)
         
-        async def mock_generate_response(conversation, session_id, stage_execution_id=None, native_tools_override=None):
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None, **kwargs):
             # Create a new conversation with the assistant response added
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
             updated_conversation.append_assistant_message("Final Answer: Test analysis result")
@@ -77,19 +77,19 @@ class TestBaseAgentAbstractInterface:
 
     @pytest.mark.unit
     def test_cannot_instantiate_incomplete_agent(
-        self, mock_llm_client, mock_mcp_client, mock_mcp_registry
+        self, mock_llm_manager, mock_mcp_client, mock_mcp_registry
     ):
         """Test that BaseAgent cannot be instantiated without implementing
         abstract methods."""
         with pytest.raises(TypeError, match="Can't instantiate abstract class"):
-            IncompleteAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
+            IncompleteAgent(mock_llm_manager, mock_mcp_client, mock_mcp_registry)
 
     @pytest.mark.unit
     def test_concrete_agent_implements_abstract_methods(
-        self, mock_llm_client, mock_mcp_client, mock_mcp_registry
+        self, mock_llm_manager, mock_mcp_client, mock_mcp_registry
     ):
         """Test that concrete agent properly implements abstract methods."""
-        agent = TestConcreteAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
+        agent = TestConcreteAgent(mock_llm_manager, mock_mcp_client, mock_mcp_registry)
 
         # Test mcp_servers returns list
         servers = agent.mcp_servers()
@@ -103,16 +103,16 @@ class TestBaseAgentAbstractInterface:
 
     @pytest.mark.unit
     def test_agent_initialization_with_dependencies(
-        self, mock_llm_client, mock_mcp_client, mock_mcp_registry
+        self, mock_llm_manager, mock_mcp_client, mock_mcp_registry
     ):
         """Test proper initialization with all required dependencies."""
         agent = TestConcreteAgent(
-            llm_client=mock_llm_client,
+            llm_manager=mock_llm_manager,
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry,
         )
 
-        assert agent.llm_client == mock_llm_client
+        assert agent.llm_manager == mock_llm_manager
         assert agent.mcp_client == mock_mcp_client
         assert agent.mcp_registry == mock_mcp_registry
         assert agent._configured_servers is None
@@ -127,7 +127,7 @@ class TestBaseAgentUtilityMethods:
     """Test utility and helper methods."""
 
     @pytest.fixture
-    def mock_llm_client(self):
+    def mock_llm_manager(self):
         """Create mock LLM client."""
         return Mock(spec=LLMClient)
 
@@ -148,9 +148,9 @@ class TestBaseAgentUtilityMethods:
         return registry
 
     @pytest.fixture
-    def base_agent(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    def base_agent(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Create base agent instance."""
-        return TestConcreteAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
+        return TestConcreteAgent(mock_llm_manager, mock_mcp_client, mock_mcp_registry)
 
     @pytest.fixture
     def sample_alert(self):
@@ -175,7 +175,7 @@ class TestBaseAgentInstructionComposition:
     """Test instruction composition and prompt building."""
 
     @pytest.fixture
-    def mock_llm_client(self):
+    def mock_llm_manager(self):
         return Mock(spec=LLMClient)
 
     @pytest.fixture
@@ -193,8 +193,8 @@ class TestBaseAgentInstructionComposition:
         return registry
 
     @pytest.fixture
-    def base_agent(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
-        return TestConcreteAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
+    def base_agent(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
+        return TestConcreteAgent(mock_llm_manager, mock_mcp_client, mock_mcp_registry)
 
     @pytest.mark.unit
     @patch("tarsy.agents.base_agent.get_prompt_builder")
@@ -224,7 +224,7 @@ class TestBaseAgentInstructionComposition:
     def test_compose_instructions_no_custom(
         self,
         mock_get_prompt_builder,
-        mock_llm_client,
+        mock_llm_manager,
         mock_mcp_client,
         mock_mcp_registry,
     ):
@@ -245,7 +245,7 @@ class TestBaseAgentInstructionComposition:
         )
         mock_get_prompt_builder.return_value = mock_prompt_builder
 
-        agent = NoCustomAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
+        agent = NoCustomAgent(mock_llm_manager, mock_mcp_client, mock_mcp_registry)
         agent._prompt_builder = mock_prompt_builder
 
         instructions = agent._compose_instructions()
@@ -262,7 +262,7 @@ class TestBaseAgentMCPIntegration:
     """Test MCP client configuration and tool execution."""
 
     @pytest.fixture
-    def mock_llm_client(self):
+    def mock_llm_manager(self):
         return Mock(spec=LLMClient)
 
     @pytest.fixture
@@ -322,8 +322,8 @@ class TestBaseAgentMCPIntegration:
         return registry
 
     @pytest.fixture
-    def base_agent(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
-        return TestConcreteAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
+    def base_agent(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
+        return TestConcreteAgent(mock_llm_manager, mock_mcp_client, mock_mcp_registry)
 
     @pytest.mark.unit
     @pytest.mark.asyncio
@@ -400,7 +400,10 @@ class TestBaseAgentMCPIntegration:
         self, base_agent, mock_mcp_client, mock_mcp_registry
     ):
         """Test getting tools with user-provided server selection (all tools from servers)."""
-        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
+        from tarsy.models.mcp_selection_models import (
+            MCPSelectionConfig,
+            MCPServerSelection,
+        )
         
         base_agent._configured_servers = ["default-server"]
         
@@ -455,7 +458,10 @@ class TestBaseAgentMCPIntegration:
         self, base_agent, mock_mcp_client, mock_mcp_registry
     ):
         """Test getting tools with specific tool filtering."""
-        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
+        from tarsy.models.mcp_selection_models import (
+            MCPSelectionConfig,
+            MCPServerSelection,
+        )
         
         base_agent._configured_servers = ["default-server"]
         
@@ -511,7 +517,10 @@ class TestBaseAgentMCPIntegration:
         self, base_agent, mock_mcp_client, mock_mcp_registry
     ):
         """Test mixed selection: all tools from one server, specific tools from another."""
-        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
+        from tarsy.models.mcp_selection_models import (
+            MCPSelectionConfig,
+            MCPServerSelection,
+        )
         
         base_agent._configured_servers = ["default-server"]
         
@@ -560,8 +569,11 @@ class TestBaseAgentMCPIntegration:
         self, base_agent, mock_mcp_client, mock_mcp_registry
     ):
         """Test error when selected server doesn't exist."""
-        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
         from tarsy.agents.exceptions import MCPServerSelectionError
+        from tarsy.models.mcp_selection_models import (
+            MCPSelectionConfig,
+            MCPServerSelection,
+        )
         
         base_agent._configured_servers = ["default-server"]
         
@@ -591,8 +603,11 @@ class TestBaseAgentMCPIntegration:
         self, base_agent, mock_mcp_client, mock_mcp_registry
     ):
         """Test error when selected tool doesn't exist on server."""
-        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
         from tarsy.agents.exceptions import MCPToolSelectionError
+        from tarsy.models.mcp_selection_models import (
+            MCPSelectionConfig,
+            MCPServerSelection,
+        )
         
         base_agent._configured_servers = ["default-server"]
         
@@ -633,8 +648,11 @@ class TestBaseAgentMCPIntegration:
         self, base_agent, mock_mcp_client, mock_mcp_registry
     ):
         """Test error message when multiple servers are invalid."""
-        from tarsy.models.mcp_selection_models import MCPSelectionConfig, MCPServerSelection
         from tarsy.agents.exceptions import MCPServerSelectionError
+        from tarsy.models.mcp_selection_models import (
+            MCPSelectionConfig,
+            MCPServerSelection,
+        )
         
         base_agent._configured_servers = ["default-server"]
         
@@ -733,10 +751,10 @@ class TestBaseAgentErrorHandling:
     """Test comprehensive error handling scenarios."""
 
     @pytest.fixture
-    def mock_llm_client(self):
+    def mock_llm_manager(self):
         client = Mock(spec=LLMClient)
         
-        async def mock_generate_response(conversation, session_id, stage_execution_id=None, native_tools_override=None):
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None, **kwargs):
             # Create a new conversation with the assistant response added
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
             updated_conversation.append_assistant_message("Final Answer: Test analysis result")
@@ -754,8 +772,8 @@ class TestBaseAgentErrorHandling:
         return Mock(spec=MCPServerRegistry)
 
     @pytest.fixture
-    def base_agent(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
-        return TestConcreteAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
+    def base_agent(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
+        return TestConcreteAgent(mock_llm_manager, mock_mcp_client, mock_mcp_registry)
 
     @pytest.fixture
     def sample_alert(self):
@@ -781,9 +799,8 @@ class TestBaseAgentErrorHandling:
             "MCP config error"
         )
 
-        from tarsy.models.processing_context import ChainContext
-
         from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.processing_context import ChainContext
         from tarsy.utils.timestamp import now_us
         
         processing_alert = ProcessingAlert(
@@ -806,7 +823,7 @@ class TestBaseAgentErrorHandling:
 
     @pytest.mark.asyncio
     async def test_process_alert_success_flow(
-        self, base_agent, mock_mcp_client, mock_llm_client, sample_alert
+        self, base_agent, mock_mcp_client, mock_llm_manager, sample_alert
     ):
         """Test successful process_alert flow."""
         # Mock successful flow
@@ -827,9 +844,8 @@ class TestBaseAgentErrorHandling:
         base_agent.analyze_alert = AsyncMock(return_value="Success analysis")
 
         # Create ChainContext for new interface
-        from tarsy.models.processing_context import ChainContext
-
         from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.processing_context import ChainContext
         from tarsy.utils.timestamp import now_us
         
         processing_alert = ProcessingAlert(
@@ -859,11 +875,11 @@ class TestBaseAgent:
     """Test BaseAgent with session ID parameter validation."""
 
     @pytest.fixture
-    def mock_llm_client(self):
+    def mock_llm_manager(self):
         """Create mock LLM client."""
         client = Mock(spec=LLMClient)
         
-        async def mock_generate_response(conversation, session_id, stage_execution_id=None, native_tools_override=None):
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None, **kwargs):
             # Create a new conversation with the assistant response added
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
             updated_conversation.append_assistant_message("Final Answer: Test analysis result")
@@ -881,10 +897,10 @@ class TestBaseAgent:
         return client
 
     @pytest.fixture
-    def base_agent(self, mock_llm_client, mock_mcp_client):
+    def base_agent(self, mock_llm_manager, mock_mcp_client):
         """Create BaseAgent with mocked dependencies."""
         agent = TestConcreteAgent(
-            mock_llm_client, Mock(spec=MCPClient), Mock(spec=MCPServerRegistry)
+            mock_llm_manager, Mock(spec=MCPClient), Mock(spec=MCPServerRegistry)
         )
         agent.mcp_client = mock_mcp_client
         return agent
@@ -1002,10 +1018,10 @@ class TestPhase3ProcessAlertOverload:
     """Test the new overloaded process_alert method from Phase 3."""
 
     @pytest.fixture
-    def mock_llm_client(self):
+    def mock_llm_manager(self):
         client = Mock(spec=LLMClient)
         
-        async def mock_generate_response(conversation, session_id, stage_execution_id=None, native_tools_override=None):
+        async def mock_generate_response(conversation, session_id, stage_execution_id=None, **kwargs):
             # Create a new conversation with the assistant response added
             updated_conversation = LLMConversation(messages=conversation.messages.copy())
             updated_conversation.append_assistant_message("Final Answer: Test analysis result from Phase 3")
@@ -1021,9 +1037,9 @@ class TestPhase3ProcessAlertOverload:
         return client
 
     @pytest.fixture
-    def base_agent(self, mock_llm_client, mock_mcp_client):
+    def base_agent(self, mock_llm_manager, mock_mcp_client):
         agent = TestConcreteAgent(
-            mock_llm_client, mock_mcp_client, Mock(spec=MCPServerRegistry)
+            mock_llm_manager, mock_mcp_client, Mock(spec=MCPServerRegistry)
         )
         # Mock registry for successful flow
         mock_config = Mock()
@@ -1098,14 +1114,14 @@ class TestPhase4PromptSystemOverload:
     async def test_prompt_builder_with_stage_context(self):
         """Test that prompt builders can accept StageContext directly."""
         from tarsy.agents.prompts import get_prompt_builder
+
+        # Create test contexts
+        from tarsy.models.alert import ProcessingAlert
         from tarsy.models.processing_context import (
             AvailableTools,
             ChainContext,
             StageContext,
         )
-
-        # Create test contexts
-        from tarsy.models.alert import ProcessingAlert
         from tarsy.utils.timestamp import now_us
         
         processing_alert = ProcessingAlert(
@@ -1155,7 +1171,7 @@ class TestBaseAgentSummarization:
     """Test BaseAgent summarization integration (EP-0015)."""
     
     @pytest.fixture
-    def mock_llm_client(self):
+    def mock_llm_manager(self):
         """Create mock LLM client."""
         client = Mock(spec=LLMClient)
         client.generate_response = AsyncMock()
@@ -1181,9 +1197,9 @@ class TestBaseAgentSummarization:
         return registry
     
     @pytest.mark.asyncio
-    async def test_execute_mcp_tools_with_investigation_conversation(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    async def test_execute_mcp_tools_with_investigation_conversation(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Test execute_mcp_tools passes investigation conversation for summarization."""
-        agent = TestConcreteAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
+        agent = TestConcreteAgent(mock_llm_manager, mock_mcp_client, mock_mcp_registry)
         agent._configured_servers = ["test-server"]
         
         # Create sample investigation conversation
@@ -1218,9 +1234,9 @@ class TestBaseAgentSummarization:
         )
 
     @pytest.mark.asyncio
-    async def test_configure_mcp_client_creates_summarizer(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    async def test_configure_mcp_client_creates_summarizer(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Test that configure_mcp_client creates and injects summarizer when LLM client available."""
-        agent = TestConcreteAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
+        agent = TestConcreteAgent(mock_llm_manager, mock_mcp_client, mock_mcp_registry)
         
         # Act
         await agent._configure_mcp_client()
@@ -1237,7 +1253,7 @@ class TestBaseAgentSummarization:
         """Test that configure_mcp_client works without LLM client (no summarizer injection)."""
         # Create agent without LLM client
         agent = TestConcreteAgent(
-            llm_client=None,  # No LLM client
+            llm_manager=None,  # No LLM client
             mcp_client=mock_mcp_client,
             mcp_registry=mock_mcp_registry
         )
@@ -1251,9 +1267,9 @@ class TestBaseAgentSummarization:
         assert summarizer is None
 
     @pytest.mark.asyncio
-    async def test_execute_mcp_tools_backward_compatibility_no_conversation(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+    async def test_execute_mcp_tools_backward_compatibility_no_conversation(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
         """Test execute_mcp_tools maintains backward compatibility without investigation conversation."""
-        agent = TestConcreteAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
+        agent = TestConcreteAgent(mock_llm_manager, mock_mcp_client, mock_mcp_registry)
         agent._configured_servers = ["test-server"]
         
         tools_to_call = [

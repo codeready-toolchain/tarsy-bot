@@ -5,15 +5,17 @@ Tests the new failure detection functionality that marks stages and sessions as 
 when max iterations is reached with the last interaction failing.
 """
 
-import pytest
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock
 
-from tarsy.agents.exceptions import MaxIterationsFailureError, AgentError
+import pytest
+
+from tarsy.agents.exceptions import AgentError, MaxIterationsFailureError
 from tarsy.agents.iteration_controllers.react_controller import SimpleReActController
-from tarsy.agents.iteration_controllers.react_final_analysis_controller import ReactFinalAnalysisController
-from tarsy.models.constants import StageStatus
+from tarsy.agents.iteration_controllers.react_final_analysis_controller import (
+    ReactFinalAnalysisController,
+)
 from tarsy.models.processing_context import AvailableTools, ChainContext, StageContext
-from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
+from tarsy.models.unified_interactions import LLMConversation
 
 
 @pytest.mark.unit
@@ -74,7 +76,7 @@ class TestReactControllerMaxIterationsFailure:
     """Test ReactController failure detection for max iterations + last interaction failed."""
     
     @pytest.fixture
-    def mock_llm_client(self):
+    def mock_llm_manager(self):
         """Create mock LLM client that always fails."""
         client = Mock()
         client.generate_response = AsyncMock(side_effect=Exception("LLM connection error"))
@@ -121,15 +123,15 @@ class TestReactControllerMaxIterationsFailure:
         )
     
     @pytest.fixture
-    def controller(self, mock_llm_client, mock_prompt_builder):
+    def controller(self, mock_llm_manager, mock_prompt_builder):
         """Create ReactController instance."""
-        return SimpleReActController(mock_llm_client, mock_prompt_builder)
+        return SimpleReActController(mock_llm_manager, mock_prompt_builder)
     
     @pytest.mark.asyncio
-    async def test_max_iterations_with_all_failed_interactions(self, controller, sample_context, mock_llm_client):
+    async def test_max_iterations_with_all_failed_interactions(self, controller, sample_context, mock_llm_manager):
         """Test that MaxIterationsFailureError is raised when max iterations reached with all failed interactions."""
         # Ensure all LLM calls fail
-        mock_llm_client.generate_response.side_effect = Exception("LLM connection error")
+        mock_llm_manager.generate_response.side_effect = Exception("LLM connection error")
         
         with pytest.raises(MaxIterationsFailureError) as exc_info:
             await controller.execute_analysis_loop(sample_context)
@@ -141,10 +143,10 @@ class TestReactControllerMaxIterationsFailure:
         assert error.context["stage_execution_id"] == "stage-123"
         
         # Verify LLM was called max_iterations times
-        assert mock_llm_client.generate_response.call_count == 2
+        assert mock_llm_manager.generate_response.call_count == 2
     
     @pytest.mark.asyncio
-    async def test_max_iterations_with_last_interaction_successful(self, controller, sample_context, mock_llm_client):
+    async def test_max_iterations_with_last_interaction_successful(self, controller, sample_context, mock_llm_manager):
         """Test that SessionPaused is raised when max iterations reached without final answer."""
         from tarsy.agents.exceptions import SessionPaused
         
@@ -160,7 +162,7 @@ class TestReactControllerMaxIterationsFailure:
                 updated_conversation.append_assistant_message("Thought: Working now")
                 return updated_conversation
         
-        mock_llm_client.generate_response.side_effect = mock_generate_with_final_success
+        mock_llm_manager.generate_response.side_effect = mock_generate_with_final_success
         
         # Should raise SessionPaused exception at max iterations
         with pytest.raises(SessionPaused) as exc_info:
@@ -168,10 +170,10 @@ class TestReactControllerMaxIterationsFailure:
         
         assert "maximum iterations" in str(exc_info.value)
         assert exc_info.value.iteration == 2
-        assert mock_llm_client.generate_response.call_count == 2
+        assert mock_llm_manager.generate_response.call_count == 2
     
     @pytest.mark.asyncio 
-    async def test_successful_completion_before_max_iterations(self, controller, sample_context, mock_llm_client):
+    async def test_successful_completion_before_max_iterations(self, controller, sample_context, mock_llm_manager):
         """Test that successful completion works normally before hitting max iterations."""
         # Mock LLM to succeed with Final Answer
         async def mock_generate_success(conversation, session_id, stage_execution_id=None, **kwargs):
@@ -179,14 +181,14 @@ class TestReactControllerMaxIterationsFailure:
             updated_conversation.append_assistant_message("Thought: Analysis complete\nFinal Answer: Success")
             return updated_conversation
         
-        mock_llm_client.generate_response.side_effect = mock_generate_success
+        mock_llm_manager.generate_response.side_effect = mock_generate_success
         
         result = await controller.execute_analysis_loop(sample_context)
         
         # Should complete successfully
         assert "Thought: Analysis complete" in result
         assert "Final Answer: Success" in result
-        assert mock_llm_client.generate_response.call_count == 1  # Only one call needed
+        assert mock_llm_manager.generate_response.call_count == 1  # Only one call needed
 
 
 @pytest.mark.unit
@@ -194,7 +196,7 @@ class TestReactFinalAnalysisControllerFailureDetection:
     """Test ReactFinalAnalysisController failure detection for any LLM errors."""
     
     @pytest.fixture
-    def mock_llm_client(self):
+    def mock_llm_manager(self):
         """Create mock LLM client."""
         return Mock()
     
@@ -239,14 +241,14 @@ class TestReactFinalAnalysisControllerFailureDetection:
         )
     
     @pytest.fixture
-    def controller(self, mock_llm_client, mock_prompt_builder):
+    def controller(self, mock_llm_manager, mock_prompt_builder):
         """Create ReactFinalAnalysisController instance."""
-        return ReactFinalAnalysisController(mock_llm_client, mock_prompt_builder)
+        return ReactFinalAnalysisController(mock_llm_manager, mock_prompt_builder)
     
     @pytest.mark.asyncio
-    async def test_llm_exception_raises_max_iterations_failure(self, controller, sample_context, mock_llm_client):
+    async def test_llm_exception_raises_max_iterations_failure(self, controller, sample_context, mock_llm_manager):
         """Test that any LLM exception raises MaxIterationsFailureError."""
-        mock_llm_client.generate_response = AsyncMock(side_effect=Exception("LLM service unavailable"))
+        mock_llm_manager.generate_response = AsyncMock(side_effect=Exception("LLM service unavailable"))
         
         with pytest.raises(MaxIterationsFailureError) as exc_info:
             await controller.execute_analysis_loop(sample_context)
@@ -260,13 +262,13 @@ class TestReactFinalAnalysisControllerFailureDetection:
         assert error.context["original_error"] == "LLM service unavailable"
     
     @pytest.mark.asyncio
-    async def test_no_response_raises_max_iterations_failure(self, controller, sample_context, mock_llm_client):
+    async def test_no_response_raises_max_iterations_failure(self, controller, sample_context, mock_llm_manager):
         """Test that no LLM response raises MaxIterationsFailureError."""
         # Mock LLM to return conversation with no assistant message
         async def mock_generate_no_response(conversation, session_id, stage_execution_id=None, **kwargs):
             return LLMConversation(messages=conversation.messages.copy())  # No assistant message added
         
-        mock_llm_client.generate_response = AsyncMock(side_effect=mock_generate_no_response)
+        mock_llm_manager.generate_response = AsyncMock(side_effect=mock_generate_no_response)
         
         with pytest.raises(MaxIterationsFailureError) as exc_info:
             await controller.execute_analysis_loop(sample_context)
@@ -277,7 +279,7 @@ class TestReactFinalAnalysisControllerFailureDetection:
         assert error.context["stage_type"] == "final_analysis"
     
     @pytest.mark.asyncio
-    async def test_successful_response_returns_content(self, controller, sample_context, mock_llm_client):
+    async def test_successful_response_returns_content(self, controller, sample_context, mock_llm_manager):
         """Test that successful LLM response returns content normally."""
         # Mock successful LLM response
         async def mock_generate_success(conversation, session_id, stage_execution_id=None, **kwargs):
@@ -285,17 +287,17 @@ class TestReactFinalAnalysisControllerFailureDetection:
             updated_conversation.append_assistant_message("Final analysis complete")
             return updated_conversation
         
-        mock_llm_client.generate_response = AsyncMock(side_effect=mock_generate_success)
+        mock_llm_manager.generate_response = AsyncMock(side_effect=mock_generate_success)
         
         result = await controller.execute_analysis_loop(sample_context)
         
         assert result == "Final analysis complete"
     
     @pytest.mark.asyncio
-    async def test_max_iterations_failure_error_re_raised(self, controller, sample_context, mock_llm_client):
+    async def test_max_iterations_failure_error_re_raised(self, controller, sample_context, mock_llm_manager):
         """Test that MaxIterationsFailureError from LLM client is re-raised as-is."""
         original_error = MaxIterationsFailureError("Original error", max_iterations=5)
-        mock_llm_client.generate_response = AsyncMock(side_effect=original_error)
+        mock_llm_manager.generate_response = AsyncMock(side_effect=original_error)
         
         with pytest.raises(MaxIterationsFailureError) as exc_info:
             await controller.execute_analysis_loop(sample_context)

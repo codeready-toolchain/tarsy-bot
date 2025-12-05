@@ -37,11 +37,12 @@ class TestLLMClientStreamingWithMCPEventID:
             new_callable=AsyncMock
         ) as mock_publish:
             mock_session = AsyncMock()
+            mock_session.bind.dialect.name = "postgresql"
             mock_session_context = AsyncMock()
             mock_session_context.__aenter__.return_value = mock_session
             mock_factory.return_value.return_value = mock_session_context
             
-            await client._publish_stream_chunk(
+            await client._streaming_publisher.publish_chunk(
                 session_id="test-session",
                 stage_execution_id="stage-123",
                 stream_type=StreamingEventType.SUMMARIZATION,
@@ -51,8 +52,7 @@ class TestLLMClientStreamingWithMCPEventID:
             )
             
             mock_publish.assert_called_once()
-            call_args = mock_publish.call_args
-            event = call_args[0][2]
+            event = mock_publish.call_args.kwargs["event"]
             
             assert event.stream_type == StreamingEventType.SUMMARIZATION.value
             assert event.chunk == "Summary of kubectl get pods result"
@@ -69,11 +69,12 @@ class TestLLMClientStreamingWithMCPEventID:
             new_callable=AsyncMock
         ) as mock_publish:
             mock_session = AsyncMock()
+            mock_session.bind.dialect.name = "postgresql"
             mock_session_context = AsyncMock()
             mock_session_context.__aenter__.return_value = mock_session
             mock_factory.return_value.return_value = mock_session_context
             
-            await client._publish_stream_chunk(
+            await client._streaming_publisher.publish_chunk(
                 session_id="test-session",
                 stage_execution_id=None,
                 stream_type=StreamingEventType.SUMMARIZATION,
@@ -82,7 +83,7 @@ class TestLLMClientStreamingWithMCPEventID:
             )
             
             mock_publish.assert_called_once()
-            event = mock_publish.call_args[0][2]
+            event = mock_publish.call_args.kwargs["event"]
             
             assert event.stream_type == StreamingEventType.SUMMARIZATION.value
             assert event.mcp_event_id is None
@@ -97,7 +98,7 @@ class TestLLMClientStreamingWithMCPEventID:
             mock_factory.side_effect = Exception("Event system failure")
             
             # Should not raise exception even with mcp_event_id
-            await client._publish_stream_chunk(
+            await client._streaming_publisher.publish_chunk(
                 session_id="test-session",
                 stage_execution_id=None,
                 stream_type=StreamingEventType.SUMMARIZATION,

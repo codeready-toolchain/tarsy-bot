@@ -9,7 +9,7 @@ import asyncio
 import time
 from typing import Annotated
 
-from fastapi import APIRouter, Body, HTTPException, Path, Query, Request, Depends
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, Request
 
 from tarsy.models.api_models import (
     ChatAvailabilityResponse,

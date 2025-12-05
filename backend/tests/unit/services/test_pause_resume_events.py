@@ -4,16 +4,17 @@ Unit tests for pause/resume event publishing.
 Tests that session.paused and session.resumed events are correctly published.
 """
 
-import pytest
 from unittest.mock import AsyncMock, patch
 
-from tarsy.services.events.event_helpers import (
-    publish_session_paused,
-    publish_session_resumed
-)
+import pytest
+
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.models.event_models import SessionPausedEvent, SessionResumedEvent
 from tarsy.models.pause_metadata import PauseReason
+from tarsy.services.events.event_helpers import (
+    publish_session_paused,
+    publish_session_resumed,
+)
 
 
 class TestPauseResumeEvents:

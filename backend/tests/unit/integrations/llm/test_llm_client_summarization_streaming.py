@@ -55,9 +55,9 @@ class TestLLMClientSummarizationStreaming:
         
         async def capture_publish(*args, **kwargs):
             """Capture published streaming chunks."""
-            # Args: session, channel, event
-            if len(args) >= 3:
-                event = args[2]
+            # publish_transient_event is called with keyword args: session, channel, event
+            if "event" in kwargs:
+                event = kwargs["event"]
                 published_chunks.append({
                     "stream_type": event.stream_type,
                     "chunk": event.chunk,
@@ -68,6 +68,7 @@ class TestLLMClientSummarizationStreaming:
         with patch("tarsy.database.init_db.get_async_session_factory") as mock_factory, \
              patch("tarsy.services.events.publisher.publish_transient_event", new_callable=AsyncMock, side_effect=capture_publish):
             mock_session = AsyncMock()
+            mock_session.bind.dialect.name = "postgresql"
             mock_session_context = AsyncMock()
             mock_session_context.__aenter__.return_value = mock_session
             mock_factory.return_value.return_value = mock_session_context
@@ -119,8 +120,8 @@ class TestLLMClientSummarizationStreaming:
         published_chunks = []
         
         async def capture_publish(*args, **kwargs):
-            if len(args) >= 3:
-                event = args[2]
+            if "event" in kwargs:
+                event = kwargs["event"]
                 published_chunks.append({
                     "stream_type": event.stream_type,
                     "chunk": event.chunk,
@@ -129,6 +130,7 @@ class TestLLMClientSummarizationStreaming:
         with patch("tarsy.database.init_db.get_async_session_factory") as mock_factory, \
              patch("tarsy.services.events.publisher.publish_transient_event", new_callable=AsyncMock, side_effect=capture_publish):
             mock_session = AsyncMock()
+            mock_session.bind.dialect.name = "postgresql"
             mock_session_context = AsyncMock()
             mock_session_context.__aenter__.return_value = mock_session
             mock_factory.return_value.return_value = mock_session_context
@@ -166,12 +168,13 @@ class TestLLMClientSummarizationStreaming:
         published_events = []
         
         async def capture_publish(*args, **kwargs):
-            if len(args) >= 3:
-                published_events.append(args[2])
+            if "event" in kwargs:
+                published_events.append(kwargs["event"])
         
         with patch("tarsy.database.init_db.get_async_session_factory") as mock_factory, \
              patch("tarsy.services.events.publisher.publish_transient_event", new_callable=AsyncMock, side_effect=capture_publish):
             mock_session = AsyncMock()
+            mock_session.bind.dialect.name = "postgresql"
             mock_session_context = AsyncMock()
             mock_session_context.__aenter__.return_value = mock_session
             mock_factory.return_value.return_value = mock_session_context
@@ -206,12 +209,13 @@ class TestLLMClientSummarizationStreaming:
         published_events = []
         
         async def capture_publish(*args, **kwargs):
-            if len(args) >= 3:
-                published_events.append(args[2])
+            if "event" in kwargs:
+                published_events.append(kwargs["event"])
         
         with patch("tarsy.database.init_db.get_async_session_factory") as mock_factory, \
              patch("tarsy.services.events.publisher.publish_transient_event", new_callable=AsyncMock, side_effect=capture_publish):
             mock_session = AsyncMock()
+            mock_session.bind.dialect.name = "postgresql"
             mock_session_context = AsyncMock()
             mock_session_context.__aenter__.return_value = mock_session
             mock_factory.return_value.return_value = mock_session_context
@@ -247,8 +251,8 @@ class TestLLMClientSummarizationStreaming:
         published_chunks = []
         
         async def capture_publish(*args, **kwargs):
-            if len(args) >= 3:
-                event = args[2]
+            if "event" in kwargs:
+                event = kwargs["event"]
                 published_chunks.append({
                     "stream_type": event.stream_type,
                 })
@@ -256,6 +260,7 @@ class TestLLMClientSummarizationStreaming:
         with patch("tarsy.database.init_db.get_async_session_factory") as mock_factory, \
              patch("tarsy.services.events.publisher.publish_transient_event", new_callable=AsyncMock, side_effect=capture_publish):
             mock_session = AsyncMock()
+            mock_session.bind.dialect.name = "postgresql"
             mock_session_context = AsyncMock()
             mock_session_context.__aenter__.return_value = mock_session
             mock_factory.return_value.return_value = mock_session_context

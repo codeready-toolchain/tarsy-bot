@@ -5,7 +5,7 @@ Tests the native thinking iteration controller for chat conversations,
 which builds initial conversation with historical context from completed
 investigations.
 """
-from unittest.mock import MagicMock, Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
@@ -48,6 +48,9 @@ class TestChatNativeThinkingControllerInit:
         """Create mock LLM manager that returns Google client."""
         manager = Mock()
         manager.get_client.return_value = mock_llm_client_google
+        # Mock get_native_thinking_client to return a valid native client
+        mock_native_client = Mock()
+        manager.get_native_thinking_client.return_value = mock_native_client
         return manager
     
     @pytest.fixture
@@ -62,10 +65,8 @@ class TestChatNativeThinkingControllerInit:
         )
         return builder
     
-    @patch('tarsy.agents.iteration_controllers.native_thinking_controller.GeminiNativeThinkingClient')
     def test_init_creates_controller(
         self,
-        mock_native_client_cls: MagicMock,
         mock_llm_manager_google: Mock,
         mock_prompt_builder: Mock
     ) -> None:
@@ -77,8 +78,8 @@ class TestChatNativeThinkingControllerInit:
         
         assert controller.llm_manager == mock_llm_manager_google
         assert controller.prompt_builder == mock_prompt_builder
-        # Native client created via parent class
-        mock_native_client_cls.assert_called_once()
+        # Verify get_native_thinking_client was called to validate provider
+        mock_llm_manager_google.get_native_thinking_client.assert_called()
         
     def test_init_with_non_google_provider_raises(
         self,
@@ -94,6 +95,8 @@ class TestChatNativeThinkingControllerInit:
         
         manager = Mock()
         manager.get_client.return_value = non_google_client
+        # Return None for non-Google provider
+        manager.get_native_thinking_client.return_value = None
         
         with pytest.raises(ValueError, match="requires Google/Gemini provider"):
             ChatNativeThinkingController(manager, mock_prompt_builder)
@@ -120,6 +123,9 @@ class TestChatNativeThinkingControllerBuildInitialConversation:
         client.provider_name = "gemini"
         manager = Mock()
         manager.get_client.return_value = client
+        # Mock get_native_thinking_client to return a valid native client
+        mock_native_client = Mock()
+        manager.get_native_thinking_client.return_value = mock_native_client
         return manager
     
     @pytest.fixture
@@ -205,10 +211,8 @@ class TestChatNativeThinkingControllerBuildInitialConversation:
             agent=mock_agent
         )
     
-    @patch('tarsy.agents.iteration_controllers.native_thinking_controller.GeminiNativeThinkingClient')
     def test_build_initial_conversation_with_chat_context(
         self,
-        mock_native_client_cls: MagicMock,
         mock_llm_manager: Mock,
         mock_prompt_builder: Mock,
         context_with_chat: StageContext
@@ -240,10 +244,8 @@ class TestChatNativeThinkingControllerBuildInitialConversation:
             user_question="What should we do next?"
         )
     
-    @patch('tarsy.agents.iteration_controllers.native_thinking_controller.GeminiNativeThinkingClient')
     def test_build_initial_conversation_without_chat_context_raises(
         self,
-        mock_native_client_cls: MagicMock,
         mock_llm_manager: Mock,
         mock_prompt_builder: Mock,
         context_without_chat: StageContext
@@ -257,10 +259,8 @@ class TestChatNativeThinkingControllerBuildInitialConversation:
         with pytest.raises(ValueError, match="Chat context missing"):
             controller._build_initial_conversation(context_without_chat)
     
-    @patch('tarsy.agents.iteration_controllers.native_thinking_controller.GeminiNativeThinkingClient')
     def test_build_initial_conversation_uses_agent_instructions(
         self,
-        mock_native_client_cls: MagicMock,
         mock_llm_manager: Mock,
         mock_prompt_builder: Mock,
         context_with_chat: StageContext
@@ -303,6 +303,9 @@ class TestChatNativeThinkingControllerExtractFinalAnalysis:
         client.provider_name = "gemini"
         manager = Mock()
         manager.get_client.return_value = client
+        # Mock get_native_thinking_client to return a valid native client
+        mock_native_client = Mock()
+        manager.get_native_thinking_client.return_value = mock_native_client
         return manager
     
     @pytest.fixture
@@ -336,10 +339,8 @@ class TestChatNativeThinkingControllerExtractFinalAnalysis:
             agent=None
         )
     
-    @patch('tarsy.agents.iteration_controllers.native_thinking_controller.GeminiNativeThinkingClient')
     def test_extract_final_analysis_returns_content(
         self,
-        mock_native_client_cls: MagicMock,
         mock_llm_manager: Mock,
         mock_prompt_builder: Mock,
         sample_context: StageContext
@@ -356,10 +357,8 @@ class TestChatNativeThinkingControllerExtractFinalAnalysis:
         
         assert result == analysis
     
-    @patch('tarsy.agents.iteration_controllers.native_thinking_controller.GeminiNativeThinkingClient')
     def test_extract_final_analysis_empty_returns_default(
         self,
-        mock_native_client_cls: MagicMock,
         mock_llm_manager: Mock,
         mock_prompt_builder: Mock,
         sample_context: StageContext
@@ -374,10 +373,8 @@ class TestChatNativeThinkingControllerExtractFinalAnalysis:
         
         assert result == "No response generated"
     
-    @patch('tarsy.agents.iteration_controllers.native_thinking_controller.GeminiNativeThinkingClient')
     def test_extract_final_analysis_none_returns_default(
         self,
-        mock_native_client_cls: MagicMock,
         mock_llm_manager: Mock,
         mock_prompt_builder: Mock,
         sample_context: StageContext
@@ -402,10 +399,8 @@ class TestChatNativeThinkingControllerExtractFinalAnalysis:
             ("Special chars: <>&\"'", "Special chars: <>&\"'"),
         ],
     )
-    @patch('tarsy.agents.iteration_controllers.native_thinking_controller.GeminiNativeThinkingClient')
     def test_extract_final_analysis_preserves_content(
         self,
-        mock_native_client_cls: MagicMock,
         mock_llm_manager: Mock,
         mock_prompt_builder: Mock,
         sample_context: StageContext,
@@ -444,12 +439,13 @@ class TestChatNativeThinkingControllerNeedsMcpTools:
         client.provider_name = "gemini"
         manager = Mock()
         manager.get_client.return_value = client
+        # Mock get_native_thinking_client to return a valid native client
+        mock_native_client = Mock()
+        manager.get_native_thinking_client.return_value = mock_native_client
         return manager
     
-    @patch('tarsy.agents.iteration_controllers.native_thinking_controller.GeminiNativeThinkingClient')
     def test_needs_mcp_tools_returns_true(
         self,
-        mock_native_client_cls: MagicMock,
         mock_llm_manager: Mock
     ) -> None:
         """Test that controller indicates it needs MCP tools."""

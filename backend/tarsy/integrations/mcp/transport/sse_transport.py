@@ -2,12 +2,14 @@
 
 from contextlib import AsyncExitStack
 from typing import Optional
+
 from mcp import ClientSession
 from mcp.client.sse import sse_client
 
-from .factory import MCPTransport
 from tarsy.models.mcp_transport_config import SSETransportConfig
 from tarsy.utils.logger import get_module_logger
+
+from .factory import MCPTransport
 
 logger = get_module_logger(__name__)
 

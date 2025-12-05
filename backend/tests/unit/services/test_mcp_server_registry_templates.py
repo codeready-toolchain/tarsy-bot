@@ -13,9 +13,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from tarsy.config.settings import Settings
-from tarsy.utils.template_resolver import TemplateResolver
 from tarsy.models.agent_config import MCPServerConfigModel
 from tarsy.services.mcp_server_registry import MCPServerRegistry
+from tarsy.utils.template_resolver import TemplateResolver
 from tests.utils import MCPServerMaskingFactory
 
 
@@ -25,8 +25,8 @@ class TestMCPServerRegistryTemplateResolution:
     
     def test_builtin_kubernetes_server_template_resolution_with_env(self):
         """Test built-in kubernetes-server template resolution with environment variable."""
-        import tempfile
         import os
+        import tempfile
         from unittest.mock import patch
         
         # Create temporary .env file with known KUBECONFIG value
@@ -67,9 +67,8 @@ class TestMCPServerRegistryTemplateResolution:
     
     def test_builtin_kubernetes_server_template_resolution_with_default(self):
         """Test built-in kubernetes-server template resolution with settings default."""
-        import tempfile
         import os
-        from unittest.mock import patch
+        import tempfile
         
         # Save current state
         original_cwd = os.getcwd()
@@ -181,8 +180,8 @@ class TestMCPServerRegistryTemplateResolution:
     def test_settings_integration_without_settings(self):
         """Test that registry works without Settings parameter (backwards compatibility)."""
         # Create a test .env file with the desired KUBECONFIG
-        import tempfile
         import os
+        import tempfile
         
         env_content = "KUBECONFIG=/env/kubeconfig\n"
         
@@ -209,8 +208,8 @@ class TestMCPServerRegistryTemplateResolution:
     def test_complex_template_resolution(self):
         """Test complex template resolution scenarios."""
         # Create a test .env file with the desired variables
-        import tempfile
         import os
+        import tempfile
         
         env_vars = MCPServerMaskingFactory.create_template_environment_vars()
         env_content = "\n".join([f"{k}={v}" for k, v in env_vars.items()]) + "\n"
@@ -254,8 +253,8 @@ class TestMCPServerRegistryTemplateSettings:
     def test_custom_settings_defaults(self):
         """Test that custom Settings defaults are used."""
         # Create an empty .env file to force fallback to settings defaults
-        import tempfile
         import os
+        import tempfile
         
         with tempfile.NamedTemporaryFile(mode='w', suffix='.env', delete=False) as f:
             f.write("# Empty .env file for testing settings defaults\n")

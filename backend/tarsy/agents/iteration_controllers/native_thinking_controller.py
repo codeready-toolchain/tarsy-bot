@@ -13,11 +13,10 @@ Key features:
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Optional
 
 from tarsy.config.settings import get_settings
 from tarsy.integrations.llm.gemini_client import GeminiNativeThinkingClient
-from tarsy.models.llm_models import LLMProviderType
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.utils.logger import get_module_logger
 
@@ -53,37 +52,28 @@ class NativeThinkingController(IterationController):
         Initialize the native thinking controller.
         
         Args:
-            llm_manager: LLM manager (default client must be Google/Gemini provider)
+            llm_manager: LLM manager for accessing native thinking clients
             prompt_builder: Prompt builder for creating system/user prompts
             
         Raises:
-            ValueError: If default LLM client is not Google/Gemini provider
+            ValueError: If default LLM provider is not Google/Gemini
         """
         self.llm_manager = llm_manager
         self.prompt_builder = prompt_builder
         self.logger = logger
         self._llm_provider_name: Optional[str] = None
         
-        # Cache of native thinking clients per provider (created lazily)
-        self._native_clients: Dict[str, GeminiNativeThinkingClient] = {}
-        
-        # Validate that default provider is Google/Gemini
-        actual_client = llm_manager.get_client()
-        if actual_client is None:
-            raise ValueError("No default LLM client available in manager")
-        
-        if actual_client.config.type != LLMProviderType.GOOGLE:
+        # Validate that default provider supports native thinking (is Google/Gemini)
+        # Use get_native_thinking_client() to check - it returns None for non-Google providers
+        native_client = llm_manager.get_native_thinking_client()
+        if native_client is None:
+            # Get default client to provide better error message
+            default_client = llm_manager.get_client()
+            provider_type = default_client.config.type.value if default_client else "unknown"
             raise ValueError(
                 f"NativeThinkingController requires Google/Gemini provider as default, "
-                f"got {actual_client.config.type.value}"
+                f"got {provider_type}"
             )
-        
-        # Create native thinking client for default provider
-        self._default_provider_name = actual_client.provider_name
-        self._native_clients[actual_client.provider_name] = GeminiNativeThinkingClient(
-            actual_client.config,
-            provider_name=actual_client.provider_name
-        )
         
         logger.info("Initialized NativeThinkingController for Gemini native thinking")
     
@@ -105,7 +95,8 @@ class NativeThinkingController(IterationController):
         """
         Get the native thinking client for the current provider.
         
-        Creates new clients lazily when a new provider is requested.
+        Uses LLMManager.get_native_thinking_client() which handles lazy creation
+        and caching of native thinking clients.
         
         Returns:
             GeminiNativeThinkingClient for the current provider
@@ -113,34 +104,18 @@ class NativeThinkingController(IterationController):
         Raises:
             ValueError: If requested provider is not Google/Gemini type
         """
-        # Determine which provider to use
-        provider_name = self._llm_provider_name or self._default_provider_name
+        # Use LLM manager to get native thinking client (handles caching internally)
+        client = self.llm_manager.get_native_thinking_client(self._llm_provider_name)
         
-        # Return cached client if available
-        if provider_name in self._native_clients:
-            return self._native_clients[provider_name]
-        
-        # Create new client for this provider
-        llm_client = self.llm_manager.get_client(provider_name)
-        if llm_client is None:
-            raise ValueError(f"LLM provider '{provider_name}' not found")
-        
-        if llm_client.config.type != LLMProviderType.GOOGLE:
+        if client is None:
+            provider_name = self._llm_provider_name or "default"
             raise ValueError(
                 f"NativeThinkingController requires Google/Gemini provider, "
-                f"but '{provider_name}' is {llm_client.config.type.value}. "
+                f"but '{provider_name}' is not a Google provider. "
                 f"Use a different iteration strategy for non-Google providers."
             )
         
-        # Create and cache the native client
-        native_client = GeminiNativeThinkingClient(
-            llm_client.config,
-            provider_name=provider_name
-        )
-        self._native_clients[provider_name] = native_client
-        logger.info(f"Created native thinking client for provider: {provider_name}")
-        
-        return native_client
+        return client
     
     def needs_mcp_tools(self) -> bool:
         """Native thinking controller uses tools via native function calling."""

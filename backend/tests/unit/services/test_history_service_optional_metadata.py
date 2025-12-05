@@ -9,8 +9,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from tarsy.models.alert import Alert, ProcessingAlert
 from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+from tarsy.models.alert import Alert, ProcessingAlert
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.models.db_models import AlertSession
 from tarsy.models.processing_context import ChainContext

@@ -966,6 +966,7 @@ data:
     def test_integration_with_mask_response(self):
         """Test code-based masker integration with full mask_response flow."""
         from unittest.mock import Mock
+
         from tarsy.models.agent_config import MaskingConfig
         
         # Setup mock registry

@@ -5,9 +5,9 @@ stdio and HTTP transports with proper validation and type safety. Uses discrimin
 unions to automatically handle transport type resolution.
 """
 
-from typing import Dict, Optional, List, Literal
-from pydantic import BaseModel, Field, HttpUrl, field_validator
+from typing import Dict, List, Literal, Optional
 
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
 # Transport type constants
 TRANSPORT_STDIO = "stdio"
