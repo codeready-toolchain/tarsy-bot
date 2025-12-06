@@ -28,7 +28,7 @@ import {
   Build,
   CallSplit,
 } from '@mui/icons-material';
-import type { StageExecution } from '../types';
+import type { StageExecution, InteractionDetail } from '../types';
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
 import { STAGE_STATUS, getStageStatusDisplayName } from '../utils/statusConstants';
 import {
@@ -42,8 +42,7 @@ import {
 } from '../utils/parallelStageHelpers';
 import { PARALLEL_TYPE } from '../utils/parallelConstants';
 import TokenUsageDisplay from './TokenUsageDisplay';
-import LLMInteractionPreview from './LLMInteractionPreview';
-import MCPInteractionPreview from './MCPInteractionPreview';
+import InteractionCard from './InteractionCard';
 
 interface ParallelStageExecutionTabsProps {
   stage: StageExecution;
@@ -109,6 +108,7 @@ const ParallelStageExecutionTabs: React.FC<ParallelStageExecutionTabsProps> = ({
 }) => {
   const [selectedTab, setSelectedTab] = useState(0);
   const [metadataExpanded, setMetadataExpanded] = useState(false);
+  const [expandedInteractionDetails, setExpandedInteractionDetails] = useState<Record<string, boolean>>({});
 
   // Safety check
   if (!isParallelStage(stage) || !stage.parallel_executions || stage.parallel_executions.length === 0) {
@@ -131,6 +131,13 @@ const ParallelStageExecutionTabs: React.FC<ParallelStageExecutionTabsProps> = ({
 
   const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
     setSelectedTab(newValue);
+  };
+
+  const toggleInteractionDetails = (itemId: string) => {
+    setExpandedInteractionDetails(prev => ({
+      ...prev,
+      [itemId]: !prev[itemId]
+    }));
   };
 
   return (
@@ -457,49 +464,42 @@ const ParallelStageExecutionTabs: React.FC<ParallelStageExecutionTabsProps> = ({
                 </Alert>
               )}
 
-              {/* Interactions */}
+              {/* Interactions Timeline */}
               {(execution.llm_interactions.length > 0 || execution.mcp_communications.length > 0) && (
                 <Box>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Interactions ({execution.total_interactions})
+                  <Typography variant="subtitle2" gutterBottom sx={{ mb: 2 }}>
+                    Interactions Timeline ({execution.total_interactions})
                   </Typography>
 
-                  {/* LLM Interactions */}
-                  {execution.llm_interactions.length > 0 && (
-                    <Box mb={2}>
-                      <Typography variant="caption" color="text.secondary" gutterBottom>
-                        LLM Interactions ({execution.llm_interactions.length})
-                      </Typography>
-                      {execution.llm_interactions.map((interaction) => (
-                        <Box key={interaction.event_id} mb={1}>
-                          <LLMInteractionPreview interaction={interaction.details} />
-                        </Box>
-                      ))}
-                    </Box>
-                  )}
-
-                  {/* MCP Communications */}
-                  {execution.mcp_communications.length > 0 && (
-                    <Box>
-                      <Typography variant="caption" color="text.secondary" gutterBottom>
-                        MCP Communications ({execution.mcp_communications.length})
-                      </Typography>
-                      {execution.mcp_communications.map((interaction) => (
-                        <Box key={interaction.event_id} mb={1}>
-                          <MCPInteractionPreview interaction={interaction.details} />
-                        </Box>
-                      ))}
-                    </Box>
-                  )}
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {/* Merge and sort all interactions by timestamp */}
+                    {[...execution.llm_interactions, ...execution.mcp_communications]
+                      .sort((a, b) => a.timestamp_us - b.timestamp_us)
+                      .map((interaction: InteractionDetail, interactionIndex: number) => {
+                        const itemKey = interaction.event_id || `interaction-${interactionIndex}`;
+                        const isDetailsExpanded = expandedInteractionDetails[itemKey];
+                        
+                        return (
+                          <InteractionCard
+                            key={itemKey}
+                            interaction={interaction}
+                            isExpanded={isDetailsExpanded}
+                            onToggle={() => toggleInteractionDetails(itemKey)}
+                          />
+                        );
+                      })}
+                  </Box>
                 </Box>
               )}
 
               {/* No Interactions Message */}
               {execution.llm_interactions.length === 0 && 
                execution.mcp_communications.length === 0 && (
-                <Typography variant="body2" color="text.secondary" fontStyle="italic">
-                  No interactions recorded for this execution
-                </Typography>
+                <Card variant="outlined" sx={{ p: 3, textAlign: 'center', bgcolor: 'grey.50' }}>
+                  <Typography variant="body2" color="text.secondary" fontStyle="italic">
+                    No interactions recorded for this execution
+                  </Typography>
+                </Card>
               )}
             </CardContent>
           </TabPanel>
