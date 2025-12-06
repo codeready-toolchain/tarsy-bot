@@ -7,19 +7,11 @@ import {
   Tab,
   Typography,
   Chip,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
   Divider,
   Alert,
   alpha,
 } from '@mui/material';
 import {
-  ExpandMore,
   CheckCircle,
   Error as ErrorIcon,
   Schedule,
@@ -107,7 +99,6 @@ const ParallelStageExecutionTabs: React.FC<ParallelStageExecutionTabsProps> = ({
   stage,
 }) => {
   const [selectedTab, setSelectedTab] = useState(0);
-  const [metadataExpanded, setMetadataExpanded] = useState(false);
   const [expandedInteractionDetails, setExpandedInteractionDetails] = useState<Record<string, boolean>>({});
 
   // Safety check
@@ -285,65 +276,6 @@ const ParallelStageExecutionTabs: React.FC<ParallelStageExecutionTabsProps> = ({
         </Box>
       </Box>
 
-      {/* Expandable Metadata Section */}
-      <Accordion
-        expanded={metadataExpanded}
-        onChange={() => setMetadataExpanded(!metadataExpanded)}
-        sx={{ mb: 2 }}
-      >
-        <AccordionSummary expandIcon={<ExpandMore />}>
-          <Typography variant="subtitle2">Execution Metadata</Typography>
-        </AccordionSummary>
-        <AccordionDetails>
-          <List dense>
-            {parallelExecutions.map((execution, index) => (
-              <ListItem key={execution.execution_id} sx={{ pl: 0 }}>
-                <ListItemIcon sx={{ minWidth: 36 }}>
-                  {getStatusIcon(execution.status)}
-                </ListItemIcon>
-                <ListItemText
-                  primary={
-                    <Box display="flex" gap={1} alignItems="center">
-                      <Typography variant="body2" fontWeight={600}>
-                        {getParallelStageLabel(execution, index, parallelType)}
-                      </Typography>
-                      <Chip
-                        label={getStageStatusDisplayName(execution.status)}
-                        size="small"
-                        color={getStatusColor(execution.status) as any}
-                      />
-                    </Box>
-                  }
-                  secondary={
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">
-                        Agent: {execution.agent}
-                      </Typography>
-                      {execution.duration_ms && (
-                        <>
-                          {' • '}
-                          <Typography variant="caption" color="text.secondary">
-                            Duration: {formatDurationMs(execution.duration_ms)}
-                          </Typography>
-                        </>
-                      )}
-                      {execution.stage_total_tokens && (
-                        <>
-                          {' • '}
-                          <Typography variant="caption" color="text.secondary">
-                            Tokens: {execution.stage_total_tokens}
-                          </Typography>
-                        </>
-                      )}
-                    </Box>
-                  }
-                />
-              </ListItem>
-            ))}
-          </List>
-        </AccordionDetails>
-      </Accordion>
-
       {/* Tabs for Individual Executions */}
       <Card variant="outlined">
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
@@ -361,6 +293,11 @@ const ParallelStageExecutionTabs: React.FC<ParallelStageExecutionTabsProps> = ({
                   <Box display="flex" alignItems="center" gap={1}>
                     {getStatusIcon(execution.status)}
                     <span>{getParallelStageLabel(execution, index, parallelType)}</span>
+                    <Chip
+                      label={getStageStatusDisplayName(execution.status)}
+                      size="small"
+                      color={getStatusColor(execution.status) as any}
+                    />
                   </Box>
                 }
                 id={`parallel-tab-${index}`}
