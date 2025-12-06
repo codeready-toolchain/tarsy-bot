@@ -201,9 +201,11 @@ class AgentFactory:
             # Validate dependencies before creation
             self._validate_dependencies_for_traditional_agent(agent_class_name)
             
+            # All built-in agents now extend BaseAgent with standard constructor
             # Get iteration strategy from built-in configuration
             agent_config = get_builtin_agent_config(agent_class_name)
             strategy_value = agent_config.get("iteration_strategy", IterationStrategy.REACT)
+            
             # Convert string from builtin config to IterationStrategy enum and validate
             try:
                 iteration_strategy = IterationStrategy(strategy_value)

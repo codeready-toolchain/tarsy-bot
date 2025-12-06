@@ -676,44 +676,43 @@ class AlertService:
                     
                 logger.info(f"Executing stage {i+1}/{len(chain_definition.stages)}: '{stage.name}' with agent '{stage.agent}'")
                 
-                # For resumed sessions, reuse existing stage execution ID for the paused stage
-                # For new sessions or subsequent stages, create new stage execution record
-                if i == start_from_stage and chain_context.current_stage_name:
-                    # Resuming - find existing stage execution ID from history
-                    stage_executions = await self.history_service.get_stage_executions(chain_context.session_id)
-                    paused_stage_exec = next((s for s in stage_executions if s.stage_name == stage.name and s.status == StageStatus.PAUSED.value), None)
-                    if paused_stage_exec:
-                        stage_execution_id = paused_stage_exec.execution_id
-                        logger.info(f"Reusing existing stage execution ID {stage_execution_id} for resumed stage '{stage.name}'")
+                # Check if this is a parallel stage BEFORE creating execution record
+                # Parallel stages create their own parent execution record with correct parallel_type
+                is_parallel = stage.agents is not None or stage.replicas > 1
+                
+                # For parallel stages, skip creating stage execution here - the parallel execution method will do it
+                # For non-parallel stages, create execution record now
+                if not is_parallel:
+                    # For resumed sessions, reuse existing stage execution ID for the paused stage
+                    # For new sessions or subsequent stages, create new stage execution record
+                    if i == start_from_stage and chain_context.current_stage_name:
+                        # Resuming - find existing stage execution ID from history
+                        stage_executions = await self.history_service.get_stage_executions(chain_context.session_id)
+                        paused_stage_exec = next((s for s in stage_executions if s.stage_name == stage.name and s.status == StageStatus.PAUSED.value), None)
+                        if paused_stage_exec:
+                            stage_execution_id = paused_stage_exec.execution_id
+                            logger.info(f"Reusing existing stage execution ID {stage_execution_id} for resumed stage '{stage.name}'")
+                        else:
+                            # Fallback: create new if not found (shouldn't happen)
+                            logger.warning(f"Could not find paused stage execution for '{stage.name}', creating new")
+                            stage_execution_id = await self._create_stage_execution(chain_context.session_id, stage, i)
                     else:
-                        # Fallback: create new if not found (shouldn't happen)
-                        logger.warning(f"Could not find paused stage execution for '{stage.name}', creating new")
+                        # Create new stage execution record
                         stage_execution_id = await self._create_stage_execution(chain_context.session_id, stage, i)
+                    
+                    # Update session current stage
+                    await self._update_session_current_stage(chain_context.session_id, i, stage_execution_id)
                 else:
-                    # Create new stage execution record
-                    stage_execution_id = await self._create_stage_execution(chain_context.session_id, stage, i)
-                
-                # Update session current stage
-                await self._update_session_current_stage(chain_context.session_id, i, stage_execution_id)
-                
-                # Record stage transition as interaction (non-blocking)
-                if self.history_service and hasattr(self.history_service, "record_session_interaction"):
-                    rec = self.history_service.record_session_interaction
-                    # If async, await directly; if sync, offload to thread
-                    if asyncio.iscoroutinefunction(rec):
-                        await rec(chain_context.session_id)
-                    else:
-                        await asyncio.to_thread(rec, chain_context.session_id)
+                    # For parallel stages, we'll update session current stage after parallel execution completes
+                    stage_execution_id = None  # Will be set by parallel execution method
                 
                 try:
-                    # Detect parallel stages
-                    is_parallel = stage.agents is not None or stage.replicas > 1
-                    
+                    # is_parallel already checked above
                     if is_parallel:
                         # Execute parallel stage
                         logger.info(f"Stage '{stage.name}' is a parallel stage")
                         
-                        # Route to appropriate parallel executor
+                        # Route to appropriate parallel executor (these methods create parent execution record)
                         if stage.agents:
                             # Multi-agent parallelism
                             stage_result = await self._execute_parallel_agents(
@@ -724,6 +723,21 @@ class AlertService:
                             stage_result = await self._execute_replicated_agent(
                                 stage, chain_context, session_mcp_client, chain_definition, i
                             )
+                        
+                        # Get parent stage execution ID from result metadata
+                        parent_execution_id = stage_result.metadata.parent_stage_execution_id if stage_result.metadata else None
+                        
+                        # Update session current stage with parent execution ID
+                        if parent_execution_id:
+                            await self._update_session_current_stage(chain_context.session_id, i, parent_execution_id)
+                        
+                        # Record stage transition as interaction (non-blocking)
+                        if self.history_service and hasattr(self.history_service, "record_session_interaction"):
+                            rec = self.history_service.record_session_interaction
+                            if asyncio.iscoroutinefunction(rec):
+                                await rec(chain_context.session_id)
+                            else:
+                                await asyncio.to_thread(rec, chain_context.session_id)
                         
                         # Add parallel result to ChainContext
                         chain_context.add_stage_result(stage.name, stage_result)
@@ -737,6 +751,15 @@ class AlertService:
                             logger.error(f"Parallel stage '{stage.name}' failed")
                     else:
                         # Single-agent execution (existing logic)
+                        
+                        # Record stage transition as interaction (non-blocking)
+                        if self.history_service and hasattr(self.history_service, "record_session_interaction"):
+                            rec = self.history_service.record_session_interaction
+                            if asyncio.iscoroutinefunction(rec):
+                                await rec(chain_context.session_id)
+                            else:
+                                await asyncio.to_thread(rec, chain_context.session_id)
+                        
                         # Mark stage as started
                         await self._update_stage_execution_started(stage_execution_id)
                         
@@ -1736,6 +1759,7 @@ class AlertService:
         # Create stage metadata
         stage_completed_at_us = now_us()
         stage_metadata = ParallelStageMetadata(
+            parent_stage_execution_id=parent_stage_execution_id,
             parallel_type=parallel_type,
             failure_policy=stage.failure_policy,
             started_at_us=stage_started_at_us,
@@ -1761,7 +1785,8 @@ class AlertService:
         parallel_result = ParallelStageResult(
             results=results,
             metadata=stage_metadata,
-            status=overall_status
+            status=overall_status,
+            timestamp_us=stage_metadata.completed_at_us
         )
         
         # Update parent stage execution with result

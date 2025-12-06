@@ -399,8 +399,8 @@ class HistoryRepository:
                             s for s in all_stages 
                             if s.parent_stage_execution_id == stage.execution_id
                         ]
-                        # Add parallel_executions as a dynamic attribute
-                        stage.parallel_executions = children
+                        # Add parallel_executions as a dynamic attribute (bypass Pydantic validation)
+                        object.__setattr__(stage, 'parallel_executions', children)
                     result.append(stage)
             
             return result

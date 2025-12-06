@@ -179,6 +179,9 @@ class StageExecution(SQLModel, table=True):
     
     __tablename__ = "stage_executions"
     
+    # Allow dynamic attribute assignment for parallel_executions
+    model_config = {"arbitrary_types_allowed": True}
+    
     execution_id: str = Field(
         default_factory=lambda: str(uuid.uuid4()),
         primary_key=True,

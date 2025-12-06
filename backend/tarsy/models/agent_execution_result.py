@@ -97,6 +97,12 @@ class ParallelStageMetadata(BaseModel):
     
     model_config = ConfigDict(extra="forbid")
     
+    # Stage identification
+    parent_stage_execution_id: str = Field(
+        ...,
+        description="Execution ID of the parent stage that contains the parallel executions"
+    )
+    
     # Configuration
     parallel_type: Literal["multi_agent", "replica"] = Field(
         ...,
@@ -160,4 +166,8 @@ class ParallelStageResult(BaseModel):
     status: StageStatus = Field(
         ...,
         description="Aggregated stage status based on failure policy and individual results"
+    )
+    timestamp_us: int = Field(
+        ...,
+        description="Completion timestamp in microseconds (from metadata.completed_at_us)"
     )
