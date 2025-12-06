@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import {
   Box,
-  Tabs,
-  Tab,
   Typography,
   Chip,
   Alert,
@@ -127,90 +125,96 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
     );
   }
 
-  const handleTabChange = (_event: React.SyntheticEvent, newValue: number) => {
-    setSelectedTab(newValue);
-  };
-
   return (
     <Box>
-      {/* Tabs with integrated parallel indicator */}
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          borderBottom: 1,
-          borderColor: 'divider',
-          mb: 2,
-          backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.03),
-        }}
-      >
-        {/* Parallel Indicator */}
+      {/* Parallel Agent Selector - Card Style */}
+      <Box sx={{ mb: 3 }}>
+        {/* Header with Parallel Indicator */}
         <Box
           sx={{
             display: 'flex',
             alignItems: 'center',
             gap: 1,
-            px: 2,
-            py: 1,
-            borderRight: 1,
-            borderColor: 'divider',
+            mb: 1.5,
           }}
         >
           <CallSplit color="primary" fontSize="small" />
-          <Typography variant="caption" color="primary" fontWeight={600} sx={{ whiteSpace: 'nowrap' }}>
-            PARALLEL
+          <Typography variant="caption" color="primary" fontWeight={600} sx={{ letterSpacing: 0.5 }}>
+            PARALLEL EXECUTION
           </Typography>
           <Chip
-            label={`${executions.length}`}
+            label={`${executions.length} agent${executions.length > 1 ? 's' : ''}`}
             size="small"
             color="primary"
             variant="outlined"
-            sx={{ height: 20, fontSize: '0.7rem', minWidth: 28 }}
+            sx={{ height: 20, fontSize: '0.7rem' }}
           />
         </Box>
-        
-        {/* Tabs */}
-        <Tabs 
-          value={selectedTab} 
-          onChange={handleTabChange}
-          variant="scrollable"
-          scrollButtons="auto"
-          sx={{ 
-            flex: 1,
-            px: 1,
+
+        {/* Agent Cards */}
+        <Box
+          sx={{
+            display: 'flex',
+            gap: 1.5,
+            flexWrap: 'wrap',
           }}
         >
-        {executions.map((execution, tabIndex) => {
-          const statusColor = getStatusColor(execution.items);
-          const statusIcon = getStatusIcon(execution.items);
-          const label = getParallelStageLabel(
-            execution.stageExecution,
-            execution.index,
-            stage.parallel_type
-          );
-          
-          return (
-            <Tab
-              key={execution.executionId}
-              label={
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                  {statusIcon}
-                  <span>{label}</span>
-                  <Chip 
-                    label={`${execution.items.filter(i => i.type === 'thought').length} thoughts`}
+          {executions.map((execution, tabIndex) => {
+            const statusColor = getStatusColor(execution.items);
+            const statusIcon = getStatusIcon(execution.items);
+            const label = getParallelStageLabel(
+              execution.stageExecution,
+              execution.index,
+              stage.parallel_type
+            );
+            const thoughtCount = execution.items.filter(i => i.type === 'thought').length;
+            const isSelected = selectedTab === tabIndex;
+
+            return (
+              <Box
+                key={execution.executionId}
+                onClick={() => setSelectedTab(tabIndex)}
+                sx={{
+                  flex: 1,
+                  minWidth: 180,
+                  p: 1.5,
+                  border: 2,
+                  borderColor: isSelected ? 'primary.main' : 'divider',
+                  borderRadius: 1.5,
+                  backgroundColor: isSelected
+                    ? (theme) => alpha(theme.palette.primary.main, 0.05)
+                    : 'background.paper',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  '&:hover': {
+                    borderColor: isSelected ? 'primary.main' : 'primary.light',
+                    backgroundColor: isSelected
+                      ? (theme) => alpha(theme.palette.primary.main, 0.05)
+                      : (theme) => alpha(theme.palette.primary.main, 0.02),
+                  },
+                }}
+              >
+                <Box display="flex" alignItems="center" justifyContent="space-between" mb={0.5}>
+                  <Typography variant="body2" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    {statusIcon}
+                    {label}
+                  </Typography>
+                </Box>
+                <Box display="flex" alignItems="center" gap={1}>
+                  <Typography variant="caption" color="text.secondary">
+                    {thoughtCount} thought{thoughtCount !== 1 ? 's' : ''}
+                  </Typography>
+                  <Chip
+                    label={statusColor === 'success' ? 'Complete' : statusColor === 'error' ? 'Failed' : 'Running'}
                     size="small"
                     color={statusColor as any}
-                    variant="outlined"
+                    sx={{ height: 18, fontSize: '0.65rem' }}
                   />
                 </Box>
-              }
-              id={`reasoning-tab-${tabIndex}`}
-              aria-controls={`reasoning-tabpanel-${tabIndex}`}
-              sx={{ textTransform: 'none' }}
-            />
-          );
-        })}
-      </Tabs>
+              </Box>
+            );
+          })}
+        </Box>
       </Box>
 
       {/* Tab panels */}
