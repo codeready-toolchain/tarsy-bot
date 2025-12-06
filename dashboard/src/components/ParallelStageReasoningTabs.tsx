@@ -138,14 +138,14 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
             mb: 1.5,
           }}
         >
-          <CallSplit color="primary" fontSize="small" />
-          <Typography variant="caption" color="primary" fontWeight={600} sx={{ letterSpacing: 0.5 }}>
+          <CallSplit color="secondary" fontSize="small" />
+          <Typography variant="caption" color="secondary" fontWeight={600} letterSpacing={0.5}>
             PARALLEL EXECUTION
           </Typography>
           <Chip
             label={`${executions.length} agent${executions.length > 1 ? 's' : ''}`}
             size="small"
-            color="primary"
+            color="secondary"
             variant="outlined"
             sx={{ height: 20, fontSize: '0.7rem' }}
           />
@@ -179,18 +179,18 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
                   minWidth: 180,
                   p: 1.5,
                   border: 2,
-                  borderColor: isSelected ? 'primary.main' : 'divider',
+                  borderColor: isSelected ? 'secondary.main' : 'divider',
                   borderRadius: 1.5,
                   backgroundColor: isSelected
-                    ? (theme) => alpha(theme.palette.primary.main, 0.05)
+                    ? (theme) => alpha(theme.palette.secondary.main, 0.08)
                     : 'background.paper',
                   cursor: 'pointer',
                   transition: 'all 0.2s',
                   '&:hover': {
-                    borderColor: isSelected ? 'primary.main' : 'primary.light',
+                    borderColor: isSelected ? 'secondary.main' : (theme) => alpha(theme.palette.secondary.main, 0.4),
                     backgroundColor: isSelected
-                      ? (theme) => alpha(theme.palette.primary.main, 0.05)
-                      : (theme) => alpha(theme.palette.primary.main, 0.02),
+                      ? (theme) => alpha(theme.palette.secondary.main, 0.08)
+                      : (theme) => alpha(theme.palette.secondary.main, 0.03),
                   },
                 }}
               >
