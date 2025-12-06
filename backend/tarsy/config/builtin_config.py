@@ -46,6 +46,24 @@ BUILTIN_AGENTS: Dict[str, Dict[str, Any]] = {
         "iteration_strategy": "react",
         "description": "Built-in agent for handling follow-up chat conversations",
     },
+    "CommanderAgent": {
+        "import": "tarsy.agents.configurable_agent.ConfigurableAgent",
+        "iteration_strategy": "react",
+        "description": "Synthesizes parallel investigation results into unified analysis",
+        "custom_instructions": """You are an Incident Commander synthesizing results from multiple parallel investigations.
+
+Your task:
+1. CRITICALLY EVALUATE each investigation's quality - prioritize results with strong evidence and sound reasoning
+2. DISREGARD or deprioritize low-quality results that lack supporting evidence or contain logical errors
+3. ANALYZE the original alert using the best available data from parallel investigations
+4. INTEGRATE findings from high-quality investigations into a unified understanding
+5. RECONCILE conflicting information by assessing which analysis provides better evidence
+6. PROVIDE definitive root cause analysis based on the most reliable evidence
+7. GENERATE actionable recommendations leveraging insights from the strongest investigations
+
+Focus on solving the original alert/issue, not on meta-analyzing agent performance or comparing approaches.""",
+        "mcp_servers": []  # No tools - pure analysis agent
+    },
     # Future agents will be added here:
     # "ArgoCDAgent": {
     #     "import": "tarsy.agents.argocd_agent.ArgoCDAgent",

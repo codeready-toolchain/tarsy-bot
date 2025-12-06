@@ -114,6 +114,9 @@ class ConfigurationLoader:
             logger.debug("Validating configuration completeness")
             self._validate_configuration_completeness(config)
             
+            logger.debug("Validating parallel stage configurations")
+            self._validate_parallel_stage_configurations(config)
+            
             logger.info("Configuration validation completed successfully")
             return config
             
@@ -166,6 +169,16 @@ class ConfigurationLoader:
                         {
                             "name": stage.name,
                             "agent": stage.agent,
+                            "agents": [
+                                {
+                                    "name": agent.name,
+                                    "llm_provider": agent.llm_provider,
+                                    "iteration_strategy": agent.iteration_strategy
+                                }
+                                for agent in stage.agents
+                            ] if stage.agents else None,
+                            "replicas": stage.replicas,
+                            "failure_policy": stage.failure_policy,
                             "iteration_strategy": stage.iteration_strategy,
                             "llm_provider": stage.llm_provider
                         }
@@ -393,6 +406,88 @@ class ConfigurationLoader:
                     )
         
         logger.debug("Configuration completeness validation passed")
+    
+    def _validate_parallel_stage_configurations(self, config: CombinedConfigModel) -> None:
+        """
+        Validate parallel stage configurations in agent chains.
+        
+        Checks that:
+        - All agent names in 'agents' lists exist (either as built-ins or configured)
+        - Single agent references in 'agent' field exist (for replica parallelism)
+        - Parallel configurations are valid
+        
+        Args:
+            config: The parsed configuration to validate
+            
+        Raises:
+            ConfigurationError: If parallel stage configurations are invalid
+        """
+        # Get all available agents (built-in + configured)
+        available_agents = set(self.BUILTIN_AGENT_CLASSES)
+        available_agents.update(config.agents.keys())
+        
+        logger.debug(f"Available agents for parallel stage validation: {available_agents}")
+        
+        # Validate each chain's stages
+        for chain_id, chain_config in config.agent_chains.items():
+            for stage_idx, stage in enumerate(chain_config.stages, 1):
+                stage_name = stage.name
+                
+                # Validate multi-agent parallelism (agents list)
+                if stage.agents is not None:
+                    logger.debug(
+                        f"Chain '{chain_id}', stage '{stage_name}': Validating multi-agent parallelism "
+                        f"with {len(stage.agents)} agents"
+                    )
+                    
+                    for agent_idx, parallel_agent in enumerate(stage.agents, 1):
+                        agent_name = parallel_agent.name
+                        
+                        # Handle ConfigurableAgent references
+                        if agent_name.startswith("ConfigurableAgent:"):
+                            actual_agent_name = agent_name[len("ConfigurableAgent:"):]
+                            if actual_agent_name not in config.agents:
+                                raise ConfigurationError(
+                                    f"Chain '{chain_id}', stage '{stage_name}', agent {agent_idx}: "
+                                    f"References missing configurable agent '{actual_agent_name}'. "
+                                    f"Available configured agents: {sorted(config.agents.keys())}"
+                                )
+                        # Check if agent exists in available agents
+                        elif agent_name not in available_agents:
+                            raise ConfigurationError(
+                                f"Chain '{chain_id}', stage '{stage_name}', agent {agent_idx}: "
+                                f"References unknown agent '{agent_name}'. "
+                                f"Available agents: {sorted(available_agents)}"
+                            )
+                
+                # Validate single-agent parallelism (replicas)
+                elif stage.agent is not None:
+                    agent_name = stage.agent
+                    
+                    if stage.replicas > 1:
+                        logger.debug(
+                            f"Chain '{chain_id}', stage '{stage_name}': Validating replica parallelism "
+                            f"with {stage.replicas} replicas of agent '{agent_name}'"
+                        )
+                    
+                    # Handle ConfigurableAgent references
+                    if agent_name.startswith("ConfigurableAgent:"):
+                        actual_agent_name = agent_name[len("ConfigurableAgent:"):]
+                        if actual_agent_name not in config.agents:
+                            raise ConfigurationError(
+                                f"Chain '{chain_id}', stage '{stage_name}': "
+                                f"References missing configurable agent '{actual_agent_name}'. "
+                                f"Available configured agents: {sorted(config.agents.keys())}"
+                            )
+                    # Check if agent exists in available agents
+                    elif agent_name not in available_agents:
+                        raise ConfigurationError(
+                            f"Chain '{chain_id}', stage '{stage_name}': "
+                            f"References unknown agent '{agent_name}'. "
+                            f"Available agents: {sorted(available_agents)}"
+                        )
+        
+        logger.debug("Parallel stage configuration validation passed")
     
     def _format_yaml_error(self, error: yaml.YAMLError) -> str:
         """

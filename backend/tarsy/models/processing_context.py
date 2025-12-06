@@ -5,12 +5,12 @@ This module contains the context models.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from mcp.types import Tool
 from pydantic import BaseModel, ConfigDict, Field
 
-from .agent_execution_result import AgentExecutionResult
+from .agent_execution_result import AgentExecutionResult, ParallelStageResult
 from .alert import ProcessingAlert
 from .constants import StageStatus
 from .mcp_selection_models import MCPSelectionConfig
@@ -80,9 +80,9 @@ class ChainContext(BaseModel):
     # === Session state ===
     session_id: str = Field(..., description="Processing session ID", min_length=1)
     current_stage_name: str = Field(..., description="Currently executing stage name", min_length=1)
-    stage_outputs: Dict[str, AgentExecutionResult] = Field(
+    stage_outputs: Dict[str, Union[AgentExecutionResult, ParallelStageResult]] = Field(
         default_factory=dict,
-        description="Results from completed stages"
+        description="Results from completed stages (single or parallel)"
     )
     author: Optional[str] = Field(
         None, 
@@ -139,21 +139,56 @@ class ChainContext(BaseModel):
         """Get downloaded runbook content."""
         return self.runbook_content or ""
     
-    def get_previous_stages_results(self) -> List[tuple[str, AgentExecutionResult]]:
+    def get_previous_stages_results(self) -> List[tuple[str, Union[AgentExecutionResult, ParallelStageResult]]]:
         """
         Get completed stage results in execution order.
         
         Returns results as ordered list of (stage_name, result) tuples.
         Dict preserves insertion order (Python 3.7+) so iteration order = execution order.
+        Includes both single agent and parallel stage results.
         """
         return [
             (stage_name, result)
             for stage_name, result in self.stage_outputs.items()
-            if isinstance(result, AgentExecutionResult) and result.status is StageStatus.COMPLETED
+            if (isinstance(result, AgentExecutionResult) and result.status is StageStatus.COMPLETED)
+            or (isinstance(result, ParallelStageResult) and result.status is StageStatus.COMPLETED)
         ]
     
-    def add_stage_result(self, stage_name: str, result: AgentExecutionResult):
-        """Add result from a completed stage."""
+    def get_previous_stage_results(self) -> List[tuple[str, Union[AgentExecutionResult, ParallelStageResult]]]:
+        """
+        Alias for get_previous_stages_results() for consistency.
+        
+        This method name matches the naming pattern used in the EP document.
+        """
+        return self.get_previous_stages_results()
+    
+    def is_parallel_stage(self, stage_name: str) -> bool:
+        """
+        Check if a stage has parallel execution.
+        
+        Args:
+            stage_name: Name of the stage to check
+            
+        Returns:
+            True if the stage result is a ParallelStageResult, False otherwise
+        """
+        result = self.stage_outputs.get(stage_name)
+        return isinstance(result, ParallelStageResult)
+    
+    def get_last_stage_result(self) -> Optional[Union[AgentExecutionResult, ParallelStageResult]]:
+        """
+        Get the most recent stage result for automatic synthesis.
+        
+        Returns:
+            The last stage result or None if no stages have completed
+        """
+        if not self.stage_outputs:
+            return None
+        # Dict preserves insertion order (Python 3.7+), so last item is most recent
+        return list(self.stage_outputs.values())[-1]
+    
+    def add_stage_result(self, stage_name: str, result: Union[AgentExecutionResult, ParallelStageResult]):
+        """Add result from a completed stage (single or parallel)."""
         self.stage_outputs[stage_name] = result
     
     def set_chain_context(self, chain_id: str, stage_name: Optional[str] = None):
@@ -210,8 +245,8 @@ class StageContext:
         return self.agent.mcp_servers()
     
     @property
-    def previous_stages_results(self) -> List[tuple[str, AgentExecutionResult]]:
-        """Previous stage results in execution order."""
+    def previous_stages_results(self) -> List[tuple[str, Union[AgentExecutionResult, ParallelStageResult]]]:
+        """Previous stage results in execution order (includes parallel stages)."""
         return self.chain_context.get_previous_stages_results()
     
     def has_previous_stages(self) -> bool:
@@ -221,6 +256,7 @@ class StageContext:
     def format_previous_stages_context(self) -> str:
         """
         Format previous stage results for prompts in execution order.
+        Handles both single agent and parallel stage results.
         """
         results = self.previous_stages_results
         if not results:
@@ -228,35 +264,62 @@ class StageContext:
         
         sections = []
         for stage_name, result in results:  # Iterating over ordered list
-            stage_title = result.stage_description or stage_name
-            sections.append(f"### Results from '{stage_title}' stage:")
-            sections.append("")
-            sections.append("#### Analysis Result")
-            sections.append("")
-            
-            # Use complete conversation history if available, otherwise fall back to result_summary
-            # Default to empty string to ensure content is never None
-            content = result.complete_conversation_history or result.result_summary or ""
-            
-            # Remove existing "## Analysis Result" header from content if present
-            # Check for header after stripping leading whitespace to handle indented content
-            stripped_content = content.lstrip()
-            if stripped_content.startswith("## Analysis Result"):
-                # Split by lines and skip the header line
-                lines = content.split('\n')
-                lines = lines[1:]  # Skip the "## Analysis Result" header line
+            if isinstance(result, ParallelStageResult):
+                # Format parallel stage results
+                sections.append(f"### Results from parallel stage '{stage_name}':")
+                sections.append("")
+                sections.append(f"**Parallel Execution Summary**: {result.metadata.successful_count}/{result.metadata.total_count} agents succeeded")
+                sections.append("")
                 
-                # Skip empty line after header if present
-                if lines and lines[0].strip() == "":
-                    lines = lines[1:]
+                # Format each parallel agent's result
+                for idx, agent_result in enumerate(result.results, 1):
+                    agent_meta = result.metadata.agent_metadatas[idx - 1]
+                    sections.append(f"#### Agent {idx}: {agent_meta.agent_name} ({agent_meta.llm_provider}, {agent_meta.iteration_strategy})")
+                    sections.append(f"**Status**: {agent_meta.status.value}")
+                    if agent_meta.error_message:
+                        sections.append(f"**Error**: {agent_meta.error_message}")
+                    sections.append("")
+                    
+                    # Use complete conversation history if available, otherwise fall back to result_summary
+                    content = agent_result.complete_conversation_history or agent_result.result_summary or ""
+                    
+                    # Wrap the analysis result content with HTML comment boundaries
+                    sections.append("<!-- Analysis Result START -->")
+                    escaped_content = content.replace("-->", "--&gt;").replace("<!--", "&lt;!--")
+                    sections.append(escaped_content)
+                    sections.append("<!-- Analysis Result END -->")
+                    sections.append("")
+            else:
+                # Format single agent result (existing logic)
+                stage_title = result.stage_description or stage_name
+                sections.append(f"### Results from '{stage_title}' stage:")
+                sections.append("")
+                sections.append("#### Analysis Result")
+                sections.append("")
                 
-                content = '\n'.join(lines)
-            
-            # Wrap the analysis result content with HTML comment boundaries
-            sections.append("<!-- Analysis Result START -->")
-            escaped_content = content.replace("-->", "--&gt;").replace("<!--", "&lt;!--")
-            sections.append(escaped_content)
-            sections.append("<!-- Analysis Result END -->")
-            sections.append("")
+                # Use complete conversation history if available, otherwise fall back to result_summary
+                # Default to empty string to ensure content is never None
+                content = result.complete_conversation_history or result.result_summary or ""
+                
+                # Remove existing "## Analysis Result" header from content if present
+                # Check for header after stripping leading whitespace to handle indented content
+                stripped_content = content.lstrip()
+                if stripped_content.startswith("## Analysis Result"):
+                    # Split by lines and skip the header line
+                    lines = content.split('\n')
+                    lines = lines[1:]  # Skip the "## Analysis Result" header line
+                    
+                    # Skip empty line after header if present
+                    if lines and lines[0].strip() == "":
+                        lines = lines[1:]
+                    
+                    content = '\n'.join(lines)
+                
+                # Wrap the analysis result content with HTML comment boundaries
+                sections.append("<!-- Analysis Result START -->")
+                escaped_content = content.replace("-->", "--&gt;").replace("<!--", "&lt;!--")
+                sections.append(escaped_content)
+                sections.append("<!-- Analysis Result END -->")
+                sections.append("")
         
         return "\n".join(sections)
