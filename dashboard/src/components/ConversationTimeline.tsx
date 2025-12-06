@@ -14,6 +14,7 @@ import type { DetailedSession } from '../types';
 import ChatFlowItem from './ChatFlowItem';
 import CopyButton from './CopyButton';
 import StreamingContentRenderer, { type StreamingItem } from './StreamingContentRenderer';
+import ParallelStageReasoningTabs from './ParallelStageReasoningTabs';
 import { websocketService } from '../services/websocketService';
 import { isTerminalSessionStatus, SESSION_STATUS, STAGE_STATUS } from '../utils/statusConstants';
 import { 
@@ -266,23 +267,56 @@ function ConversationTimeline({
     return getChatFlowStats(chatFlow);
   }, [chatFlow]);
   
-  // Filter chat flow items based on collapse state
-  // Always show stage_start items; hide content for collapsed stages
-  const filteredChatFlow = useMemo(() => {
-    return chatFlow.filter(item => {
-      // Always show stage_start items (they contain the collapse/expand control)
+  // Group chat flow items by stage for rendering
+  // This allows us to detect parallel stages and render them with tabs
+  const groupedChatFlow = useMemo(() => {
+    const groups: Array<{
+      stageId: string | undefined;
+      isParallel: boolean;
+      items: ChatFlowItemData[];
+    }> = [];
+    
+    let currentGroup: ChatFlowItemData[] = [];
+    let currentStageId: string | undefined;
+    let currentIsParallel = false;
+    
+    for (const item of chatFlow) {
       if (item.type === 'stage_start') {
-        return true;
+        // Save previous group if exists
+        if (currentGroup.length > 0) {
+          groups.push({
+            stageId: currentStageId,
+            isParallel: currentIsParallel,
+            items: currentGroup,
+          });
+        }
+        
+        // Start new group
+        currentGroup = [item];
+        currentStageId = item.stageId;
+        currentIsParallel = false; // Will be set to true if we encounter parallel items
+      } else {
+        // Add to current group
+        currentGroup.push(item);
+        
+        // Check if this is a parallel stage item
+        if (item.isParallelStage) {
+          currentIsParallel = true;
+        }
       }
-      
-      // For other items, hide if their stage is collapsed
-      if (item.stageId && collapsedStages.get(item.stageId)) {
-        return false;
-      }
-      
-      return true;
-    });
-  }, [chatFlow, collapsedStages]);
+    }
+    
+    // Save last group
+    if (currentGroup.length > 0) {
+      groups.push({
+        stageId: currentStageId,
+        isParallel: currentIsParallel,
+        items: currentGroup,
+      });
+    }
+    
+    return groups;
+  }, [chatFlow]);
   
   // Memoize formatSessionForCopy to prevent recalculation on every render
   const formatSessionForCopy = useMemo((): string => {
@@ -840,14 +874,58 @@ function ConversationTimeline({
         ) : (
           // Chat flow has items - render them
           <>
-            {filteredChatFlow.map((item) => (
-              <ChatFlowItem 
-                key={`${item.type}-${item.timestamp_us}`} 
-                item={item}
-                isCollapsed={item.stageId ? collapsedStages.get(item.stageId) || false : false}
-                onToggleCollapse={item.stageId ? () => handleToggleStage(item.stageId!) : undefined}
-              />
-            ))}
+            {groupedChatFlow.map((group, groupIndex) => {
+              const isCollapsed = group.stageId ? collapsedStages.get(group.stageId) || false : false;
+              
+              // Filter group items based on collapse state
+              const visibleItems = group.items.filter(item => {
+                // Always show stage_start items
+                if (item.type === 'stage_start') return true;
+                // Hide other items if stage is collapsed
+                if (isCollapsed) return false;
+                return true;
+              });
+              
+              // Find stage_start item (should be first)
+              const stageStartItem = visibleItems.find(item => item.type === 'stage_start');
+              const nonStageStartItems = visibleItems.filter(item => item.type !== 'stage_start');
+              
+              return (
+                <Box key={`group-${groupIndex}-${group.stageId || 'unknown'}`}>
+                  {/* Render stage_start item first */}
+                  {stageStartItem && (
+                    <ChatFlowItem
+                      key={`${stageStartItem.type}-${stageStartItem.timestamp_us}`}
+                      item={stageStartItem}
+                      isCollapsed={isCollapsed}
+                      onToggleCollapse={group.stageId ? () => handleToggleStage(group.stageId!) : undefined}
+                    />
+                  )}
+                  
+                  {/* Render stage content if not collapsed */}
+                  {!isCollapsed && nonStageStartItems.length > 0 && (
+                    group.isParallel ? (
+                      // Render parallel stage with tabs
+                      <ParallelStageReasoningTabs
+                        items={nonStageStartItems}
+                        collapsedStages={collapsedStages}
+                        onToggleStage={handleToggleStage}
+                      />
+                    ) : (
+                      // Render normal stage items
+                      nonStageStartItems.map((item) => (
+                        <ChatFlowItem
+                          key={`${item.type}-${item.timestamp_us}`}
+                          item={item}
+                          isCollapsed={false}
+                          onToggleCollapse={undefined}
+                        />
+                      ))
+                    )
+                  )}
+                </Box>
+              );
+            })}
             
             {/* Show streaming items at the end (will be cleared by deduplication when DB data arrives) */}
             {displayedStreamingItems.map(([entryKey, entryValue]) => (
