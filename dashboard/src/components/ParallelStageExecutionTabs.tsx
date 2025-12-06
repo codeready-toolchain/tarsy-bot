@@ -365,6 +365,7 @@ const ParallelStageExecutionTabs: React.FC<ParallelStageExecutionTabsProps> = ({
                 }
                 id={`parallel-tab-${index}`}
                 aria-controls={`parallel-tabpanel-${index}`}
+                sx={{ textTransform: 'none' }}
               />
             ))}
           </Tabs>

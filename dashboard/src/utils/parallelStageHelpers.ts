@@ -36,21 +36,16 @@ export function isParallelStage(stage: ParallelStageBase): boolean {
 
 /**
  * Generate tab label for a parallel execution
- * Format: "{agent_name} ({llm_provider})" for multi-agent
- * Format: "{agent_name}-{index}" for replicas
+ * Uses the backend agent name directly - backend controls naming strategy
  */
 export function getParallelStageLabel(
   stage: ParallelStageBase, 
-  index: number, 
-  parallelType: string = PARALLEL_TYPE.MULTI_AGENT
+  _index: number, 
+  _parallelType: string = PARALLEL_TYPE.MULTI_AGENT
 ): string {
-  if (parallelType === PARALLEL_TYPE.REPLICA) {
-    return `${stage.agent}-${index + 1}`;
-  }
-  
-  // For multi-agent, try to show provider if available from metadata
-  // For now, just show agent name with index
-  return `${stage.agent}`;
+  // Simply return the agent name from backend
+  // Backend is the single source of truth for naming
+  return stage.agent;
 }
 
 /**

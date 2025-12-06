@@ -906,11 +906,22 @@ function ConversationTimeline({
                   {!isCollapsed && nonStageStartItems.length > 0 && (
                     group.isParallel ? (
                       // Render parallel stage with tabs
-                      <ParallelStageReasoningTabs
-                        items={nonStageStartItems}
-                        collapsedStages={collapsedStages}
-                        onToggleStage={handleToggleStage}
-                      />
+                      // Find the stage object to pass for correct execution order
+                      (() => {
+                        const stage = session.stages?.find(s => s.execution_id === group.stageId);
+                        return stage ? (
+                          <ParallelStageReasoningTabs
+                            items={nonStageStartItems}
+                            stage={stage}
+                            collapsedStages={collapsedStages}
+                            onToggleStage={handleToggleStage}
+                          />
+                        ) : (
+                          <Box sx={{ p: 2, color: 'error.main' }}>
+                            Stage not found
+                          </Box>
+                        );
+                      })()
                     ) : (
                       // Render normal stage items
                       nonStageStartItems.map((item) => (

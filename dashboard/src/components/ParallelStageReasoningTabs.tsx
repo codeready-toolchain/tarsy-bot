@@ -13,10 +13,13 @@ import {
   PlayArrow,
 } from '@mui/icons-material';
 import type { ChatFlowItemData } from '../utils/chatFlowParser';
+import type { StageExecution } from '../types';
 import ChatFlowItem from './ChatFlowItem';
+import { getParallelStageLabel } from '../utils/parallelStageHelpers';
 
 interface ParallelStageReasoningTabsProps {
   items: ChatFlowItemData[];
+  stage: StageExecution; // Stage object to get correct execution order
   collapsedStages: Map<string, boolean>;
   onToggleStage: (stageId: string) => void;
 }
@@ -69,6 +72,7 @@ const getStatusColor = (items: ChatFlowItemData[]) => {
  */
 const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
   items,
+  stage,
   collapsedStages,
   onToggleStage,
 }) => {
@@ -93,12 +97,22 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
     }
   }
 
-  // Convert to array for rendering
-  const executions = Array.from(executionGroups.entries()).map(([executionId, items]) => ({
-    executionId,
-    agent: executionAgents.get(executionId) || 'Unknown Agent',
-    items,
-  }));
+  // Convert to array and sort by the same order as stage.parallel_executions
+  // This ensures the tabs match the Debug view order
+  // Also map to include the full stage execution object for proper labeling
+  const parallelExecutions = stage.parallel_executions || [];
+  const executions = parallelExecutions
+    .map((stageExecution, index) => {
+      const executionId = stageExecution.execution_id;
+      const items = executionGroups.get(executionId) || [];
+      return {
+        executionId,
+        stageExecution,
+        index,
+        items,
+      };
+    })
+    .filter(exec => exec.items.length > 0); // Only show executions that have items
 
   // Safety check
   if (executions.length === 0) {
@@ -129,9 +143,14 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
           mb: 2
         }}
       >
-        {executions.map((execution, index) => {
+        {executions.map((execution, tabIndex) => {
           const statusColor = getStatusColor(execution.items);
           const statusIcon = getStatusIcon(execution.items);
+          const label = getParallelStageLabel(
+            execution.stageExecution,
+            execution.index,
+            stage.parallel_type
+          );
           
           return (
             <Tab
@@ -139,7 +158,7 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
               label={
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   {statusIcon}
-                  <span>{execution.agent}</span>
+                  <span>{label}</span>
                   <Chip 
                     label={`${execution.items.filter(i => i.type === 'thought').length} thoughts`}
                     size="small"
@@ -148,8 +167,8 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
                   />
                 </Box>
               }
-              id={`reasoning-tab-${index}`}
-              aria-controls={`reasoning-tabpanel-${index}`}
+              id={`reasoning-tab-${tabIndex}`}
+              aria-controls={`reasoning-tabpanel-${tabIndex}`}
               sx={{ textTransform: 'none' }}
             />
           );
