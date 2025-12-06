@@ -426,7 +426,7 @@ const ParallelStageExecutionTabs: React.FC<ParallelStageExecutionTabsProps> = ({
                           />
                         );
                       })}
-                  </Box>
+                    </Box>
                 </Box>
               )}
 
@@ -434,9 +434,9 @@ const ParallelStageExecutionTabs: React.FC<ParallelStageExecutionTabsProps> = ({
               {execution.llm_interactions.length === 0 && 
                execution.mcp_communications.length === 0 && (
                 <Card variant="outlined" sx={{ p: 3, textAlign: 'center', bgcolor: 'grey.50' }}>
-                  <Typography variant="body2" color="text.secondary" fontStyle="italic">
-                    No interactions recorded for this execution
-                  </Typography>
+                <Typography variant="body2" color="text.secondary" fontStyle="italic">
+                  No interactions recorded for this execution
+                </Typography>
                 </Card>
               )}
             </CardContent>

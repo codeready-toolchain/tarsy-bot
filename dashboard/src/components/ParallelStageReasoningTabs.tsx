@@ -6,11 +6,13 @@ import {
   Typography,
   Chip,
   Alert,
+  alpha,
 } from '@mui/material';
 import {
   CheckCircle,
   Error as ErrorIcon,
   PlayArrow,
+  CallSplit,
 } from '@mui/icons-material';
 import type { ChatFlowItemData } from '../utils/chatFlowParser';
 import type { StageExecution } from '../types';
@@ -131,18 +133,53 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
 
   return (
     <Box>
-      {/* Tabs for each parallel execution */}
-      <Tabs 
-        value={selectedTab} 
-        onChange={handleTabChange}
-        variant="scrollable"
-        scrollButtons="auto"
-        sx={{ 
-          borderBottom: 1, 
+      {/* Tabs with integrated parallel indicator */}
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          borderBottom: 1,
           borderColor: 'divider',
-          mb: 2
+          mb: 2,
+          backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.03),
         }}
       >
+        {/* Parallel Indicator */}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            px: 2,
+            py: 1,
+            borderRight: 1,
+            borderColor: 'divider',
+          }}
+        >
+          <CallSplit color="primary" fontSize="small" />
+          <Typography variant="caption" color="primary" fontWeight={600} sx={{ whiteSpace: 'nowrap' }}>
+            PARALLEL
+          </Typography>
+          <Chip
+            label={`${executions.length}`}
+            size="small"
+            color="primary"
+            variant="outlined"
+            sx={{ height: 20, fontSize: '0.7rem', minWidth: 28 }}
+          />
+        </Box>
+        
+        {/* Tabs */}
+        <Tabs 
+          value={selectedTab} 
+          onChange={handleTabChange}
+          variant="scrollable"
+          scrollButtons="auto"
+          sx={{ 
+            flex: 1,
+            px: 1,
+          }}
+        >
         {executions.map((execution, tabIndex) => {
           const statusColor = getStatusColor(execution.items);
           const statusIcon = getStatusIcon(execution.items);
@@ -174,6 +211,7 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
           );
         })}
       </Tabs>
+      </Box>
 
       {/* Tab panels */}
       {executions.map((execution, index) => (

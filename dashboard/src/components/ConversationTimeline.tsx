@@ -289,8 +289,8 @@ function ConversationTimeline({
             isParallel: currentIsParallel,
             items: currentGroup,
           });
-        }
-        
+      }
+      
         // Start new group
         currentGroup = [item];
         currentStageId = item.stageId;
@@ -313,8 +313,8 @@ function ConversationTimeline({
         isParallel: currentIsParallel,
         items: currentGroup,
       });
-    }
-    
+      }
+      
     return groups;
   }, [chatFlow]);
   
@@ -925,12 +925,12 @@ function ConversationTimeline({
                     ) : (
                       // Render normal stage items
                       nonStageStartItems.map((item) => (
-                        <ChatFlowItem
-                          key={`${item.type}-${item.timestamp_us}`}
-                          item={item}
+              <ChatFlowItem 
+                key={`${item.type}-${item.timestamp_us}`} 
+                item={item}
                           isCollapsed={false}
                           onToggleCollapse={undefined}
-                        />
+              />
                       ))
                     )
                   )}
