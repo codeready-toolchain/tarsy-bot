@@ -1655,6 +1655,9 @@ class AlertService:
                     llm_provider=config["llm_provider"]
                 )
                 
+                # Set current stage execution ID for interaction tagging (hooks need this!)
+                agent.set_current_stage_execution_id(child_execution_id)
+                
                 # Execute agent
                 result = await agent.process_alert(chain_context)
                 
