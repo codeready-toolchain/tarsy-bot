@@ -799,9 +799,9 @@ class HistoryRepository:
                 stage_id = mcp_db.stage_execution_id or SESSION_LEVEL_STAGE_ID
                 interactions_by_stage[stage_id].append(mcp_interaction)
             
-            # Build DetailedStage objects
-            detailed_stages = []
-            for stage_db in stage_executions_db:
+            # Helper function to convert StageExecution to DetailedStage
+            def convert_stage_to_detailed(stage_db: StageExecution) -> DetailedStage:
+                """Convert a StageExecution DB model to DetailedStage API model."""
                 stage_interactions = interactions_by_stage.get(stage_db.execution_id, [])
                 
                 # Separate LLM and MCP interactions and sort chronologically
@@ -825,7 +825,14 @@ class HistoryRepository:
                         created_at_us=user_msg.created_at_us
                     )
                 
-                detailed_stage = DetailedStage(
+                # Convert nested children if they exist
+                parallel_executions_detailed = None
+                if hasattr(stage_db, 'parallel_executions') and stage_db.parallel_executions:
+                    parallel_executions_detailed = [
+                        convert_stage_to_detailed(child) for child in stage_db.parallel_executions
+                    ]
+                
+                return DetailedStage(
                     execution_id=stage_db.execution_id,
                     session_id=stage_db.session_id,
                     stage_id=stage_db.stage_id,
@@ -844,32 +851,16 @@ class HistoryRepository:
                     parent_stage_execution_id=stage_db.parent_stage_execution_id,
                     parallel_index=stage_db.parallel_index,
                     parallel_type=stage_db.parallel_type,
-                    parallel_executions=None,  # Will be populated below for parent stages
+                    parallel_executions=parallel_executions_detailed,  # Nested children already converted
                     llm_interactions=llm_stage_interactions,
                     mcp_communications=mcp_stage_interactions,
                     llm_interaction_count=len(llm_stage_interactions),
                     mcp_communication_count=len(mcp_stage_interactions),
                     total_interactions=len(llm_stage_interactions) + len(mcp_stage_interactions)
                 )
-                detailed_stages.append(detailed_stage)
             
-            # Group children under parents for parallel stages
-            top_level_stages = []
-            
-            for stage in detailed_stages:
-                if stage.parent_stage_execution_id is None:
-                    # Top-level stage (parent or single)
-                    # Attach children if parallel type
-                    if stage.parallel_type in ParallelType.parallel_values():
-                        children = [
-                            s for s in detailed_stages
-                            if s.parent_stage_execution_id == stage.execution_id
-                        ]
-                        stage.parallel_executions = children if children else None
-                    top_level_stages.append(stage)
-            
-            # Replace detailed_stages with only top-level stages (children are nested)
-            detailed_stages = top_level_stages
+            # Build DetailedStage objects (stage_executions_db already has children nested)
+            detailed_stages = [convert_stage_to_detailed(stage_db) for stage_db in stage_executions_db]
             
             # Extract session-level interactions (not associated with any stage)
             session_level_interactions = interactions_by_stage.get(SESSION_LEVEL_STAGE_ID, [])
