@@ -13,7 +13,7 @@ from tarsy.config.builtin_config import (
     DEFAULT_ALERT_TYPE,
     get_builtin_chain_definitions,
 )
-from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel, ParallelAgentConfig
 from tarsy.utils.logger import get_module_logger
 
 logger = get_module_logger(__name__)
@@ -104,6 +104,16 @@ class ChainRegistry:
                             ChainStageConfigModel(
                                 name=stage["name"],
                                 agent=stage["agent"],
+                                agents=[
+                                    ParallelAgentConfig(
+                                        name=agent["name"],
+                                        llm_provider=agent.get("llm_provider"),
+                                        iteration_strategy=agent.get("iteration_strategy")
+                                    )
+                                    for agent in stage["agents"]
+                                ] if stage.get("agents") else None,
+                                replicas=stage.get("replicas", 1),
+                                failure_policy=stage.get("failure_policy", "all"),
                                 iteration_strategy=stage.get("iteration_strategy"),
                                 llm_provider=stage.get("llm_provider")
                             )
