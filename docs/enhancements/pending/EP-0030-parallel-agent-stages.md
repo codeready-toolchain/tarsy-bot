@@ -408,22 +408,24 @@ stages:
 
 ---
 
-### Phase 4: API Layer
+### Phase 4: Dashboard UI
 
-**Goal**: Expose parallel stage results via REST API
+**Goal**: Display parallel stage executions in the dashboard
 
 **Tasks**:
-- ✅ TODO `api-response`: Update `get_stage_executions()` API endpoint
-  - Return nested structure with `parallel_executions` field
-  - Include metadata for parent and child executions
+- ✅ TODO `dashboard-tabs`: Create `ParallelStageExecutionTabs` component
+  - Tab-based interface for parallel executions
+  - Display agent names, LLM providers, iteration strategies
+  - Show timing, status, and metadata for each execution
+  - Handle both multi-agent and replica scenarios
 
-**Dependencies**: Phase 3 (database schema and queries available)
+**Dependencies**: Phases 1-3
 
 **Deliverables**:
-- Updated `backend/tarsy/controllers/history_controller.py`
-- API response models with nested parallel executions
+- `dashboard/src/components/AlertHistory/ParallelStageExecutionTabs.tsx`
+- Updated stage detail views to integrate tabs component
 
-**Impact on Tests**: ⚠️ Will break existing API integration tests - **do not fix yet**
+**Impact on Tests**: ⚠️ Dashboard component tests may need updates
 
 ---
 
@@ -439,7 +441,7 @@ stages:
   - **E2E tests**: Full chain execution with parallel stages (both replicas and multi-agent)
   - **Dashboard tests**: Component tests for `ParallelStageExecutionTabs`
 
-**Dependencies**: Phases 1-4 (all backend implementation complete, now we fix and extend tests)
+**Dependencies**: Phases 1-4 (all implementation complete, now we fix and extend tests)
 
 **Deliverables**:
 - All existing tests passing
@@ -452,28 +454,7 @@ stages:
 
 ---
 
-### Phase 6: Dashboard UI
-
-**Goal**: Display parallel stage executions in the dashboard
-
-**Tasks**:
-- ✅ TODO `dashboard-tabs`: Create `ParallelStageExecutionTabs` component
-  - Tab-based interface for parallel executions
-  - Display agent names, LLM providers, iteration strategies
-  - Show timing, status, and metadata for each execution
-  - Handle both multi-agent and replica scenarios
-
-**Dependencies**: Phase 1-5
-
-**Deliverables**:
-- `dashboard/src/components/AlertHistory/ParallelStageExecutionTabs.tsx`
-- Updated stage detail views to integrate tabs component
-
-**Impact on Tests**: ⚠️ Dashboard component tests may need updates
-
----
-
-### Phase 7: Documentation & Examples
+### Phase 6: Documentation & Examples
 
 **Goal**: Complete user-facing documentation and configuration examples
 
@@ -484,7 +465,7 @@ stages:
   - README examples for common use cases (replicas vs multi-agent)
   - Update API documentation for nested parallel responses
 
-**Dependencies**: Phase 6 (feature is tested and stable)
+**Dependencies**: Phases 1-5 (feature is tested and stable)
 
 **Deliverables**:
 - Updated configuration examples demonstrating both parallelism modes

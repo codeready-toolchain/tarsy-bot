@@ -98,6 +98,12 @@ export interface StageExecution {
   stage_input_tokens?: number | null;
   stage_output_tokens?: number | null;
   stage_total_tokens?: number | null;
+  
+  // Parallel execution tracking
+  parent_stage_execution_id?: string | null;
+  parallel_index?: number;
+  parallel_type?: string; // "single" | "multi_agent" | "replica"
+  parallel_executions?: StageExecution[]; // Nested children for parallel stages
 }
 
 export interface DetailedSession extends Session {

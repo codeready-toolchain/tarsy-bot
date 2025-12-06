@@ -29,6 +29,7 @@ import {
   Timeline as TimelineIcon,
   NavigateNext,
   NavigateBefore,
+  CallSplit,
 } from '@mui/icons-material';
 import type { ChainExecution, TimelineItem, LLMInteraction, MCPInteraction } from '../types';
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
@@ -44,7 +45,10 @@ import MCPInteractionPreview from './MCPInteractionPreview';
 import CopyButton from './CopyButton';
 import InteractionCountBadges from './InteractionCountBadges';
 import TypingIndicator from './TypingIndicator';
+import ParallelStageExecutionTabs from './ParallelStageExecutionTabs';
 import { STAGE_STATUS } from '../utils/statusConstants';
+import { isParallelStage, getAggregateStatus } from '../utils/parallelStageHelpers';
+import { PARALLEL_TYPE } from '../utils/parallelConstants';
 // Auto-scroll is now handled by the centralized system in SessionDetailPageBase
 
 interface NestedAccordionTimelineProps {
@@ -364,6 +368,12 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
           const stageInteractions = getStageInteractions(stage.execution_id);
           const isExpanded = expandedStages.has(stage.execution_id);
           const isCurrentStage = stageIndex === currentStageIndex;
+          
+          // Check if this is a parallel stage
+          const isParallel = isParallelStage(stage);
+          const aggregateStatusLabel = isParallel && stage.parallel_executions
+            ? getAggregateStatus(stage.parallel_executions)
+            : null;
 
           return (
             <Accordion
@@ -403,15 +413,29 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                   </Avatar>
                   
                   <Box flex={1}>
-                    <Typography variant="h6" fontWeight={600}>
-                      {stage.chat_id 
-                        ? `Chat: ${stage.stage_name}`
-                        : `Stage ${stage.stage_index + 1}: ${stage.stage_name}`
-                      }
-                    </Typography>
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <Typography variant="h6" fontWeight={600}>
+                        {stage.chat_id 
+                          ? `Chat: ${stage.stage_name}`
+                          : `Stage ${stage.stage_index + 1}: ${stage.stage_name}`
+                        }
+                      </Typography>
+                      {isParallel && stage.parallel_executions && (
+                        <Chip
+                          icon={<CallSplit fontSize="small" />}
+                          label={`${stage.parallel_executions.length}x`}
+                          size="small"
+                          color="primary"
+                          variant="outlined"
+                        />
+                      )}
+                    </Box>
                     <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
                       <Typography variant="body2" color="text.secondary">
-                        {stage.agent}
+                        {isParallel 
+                          ? `Parallel Execution (${stage.parallel_type === PARALLEL_TYPE.REPLICA ? 'Replica Mode' : 'Multi-Agent Mode'})`
+                          : stage.agent
+                        }
                       </Typography>
                       
                       {/* Interaction count badges similar to session summary */}
@@ -452,7 +476,7 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
 
                   <Box display="flex" gap={1} alignItems="center">
                     <Chip 
-                      label={stage.status} 
+                      label={isParallel && aggregateStatusLabel ? aggregateStatusLabel : stage.status} 
                       color={getStageStatusColor(stage.status)}
                       size="small"
                     />
@@ -468,23 +492,30 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
               </AccordionSummary>
 
               <AccordionDetails sx={{ pt: 1, px: 1 }}>
-                {/* Stage Metadata */}
-                <Card
-                  variant="outlined"
-                  sx={{ mb: 1, bgcolor: (theme) => theme.palette.grey[50] }}
-                >
-                  <CardContent>
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                      <Typography variant="subtitle2">
-                        Stage Information
-                      </Typography>
-                      <CopyButton
-                        text={formatStageForCopy(stage, stageIndex, stageInteractions)}
-                        variant="icon"
-                        size="small"
-                        tooltip="Copy stage timeline to clipboard"
-                      />
-                    </Box>
+                {/* Parallel Stage Tabs */}
+                {isParallel && stage.parallel_executions && stage.parallel_executions.length > 0 ? (
+                  <ParallelStageExecutionTabs 
+                    stage={stage}
+                  />
+                ) : (
+                  <>
+                    {/* Stage Metadata */}
+                    <Card
+                      variant="outlined"
+                      sx={{ mb: 1, bgcolor: (theme) => theme.palette.grey[50] }}
+                    >
+                      <CardContent>
+                        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                          <Typography variant="subtitle2">
+                            Stage Information
+                          </Typography>
+                          <CopyButton
+                            text={formatStageForCopy(stage, stageIndex, stageInteractions)}
+                            variant="icon"
+                            size="small"
+                            tooltip="Copy stage timeline to clipboard"
+                          />
+                        </Box>
                     <Box display="flex" gap={1} flexWrap="wrap" alignItems="center">
                       {(() => {
                         const metadataItems = [
@@ -754,44 +785,46 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                   </Card>
                 )}
 
-                {/* Show typing indicator for active or pending stages */}
-                {(() => {
-                  const shouldShow = stage.status === STAGE_STATUS.ACTIVE || stage.status === STAGE_STATUS.PENDING;
-                  
-                  if (shouldShow) {
-                    return (
-                      <Box sx={{ mt: 2 }}>
-                        <TypingIndicator
-                          dotsOnly={true}
-                          size="small"
-                        />
-                      </Box>
-                    );
-                  }
-                  return null;
-                })()}
+                    {/* Show typing indicator for active or pending stages */}
+                    {(() => {
+                      const shouldShow = stage.status === STAGE_STATUS.ACTIVE || stage.status === STAGE_STATUS.PENDING;
+                      
+                      if (shouldShow) {
+                        return (
+                          <Box sx={{ mt: 2 }}>
+                            <TypingIndicator
+                              dotsOnly={true}
+                              size="small"
+                            />
+                          </Box>
+                        );
+                      }
+                      return null;
+                    })()}
 
-                {/* Stage Summary/Next Steps */}
-                <Box mt={1.5} display="flex" justifyContent="space-between" alignItems="center">
-                  <Typography variant="body2" color="text.secondary">
-                    {stage.status === STAGE_STATUS.COMPLETED 
-                      ? `Stage completed in ${formatDurationMs(stage.duration_ms || 0)}`
-                      : stage.status === STAGE_STATUS.ACTIVE
-                      ? 'Stage in progress...'
-                      : 'Waiting for stage to begin'
-                    }
-                  </Typography>
-                  
-                  {stageIndex < chainExecution.stages.length - 1 && (
-                    <Chip 
-                      label={`Next: ${chainExecution.stages[stageIndex + 1].stage_name}`}
-                      variant="outlined"
-                      size="small"
-                      onClick={() => navigateToStage('next')}
-                      clickable
-                    />
-                  )}
-                </Box>
+                    {/* Stage Summary/Next Steps */}
+                    <Box mt={1.5} display="flex" justifyContent="space-between" alignItems="center">
+                      <Typography variant="body2" color="text.secondary">
+                        {stage.status === STAGE_STATUS.COMPLETED 
+                          ? `Stage completed in ${formatDurationMs(stage.duration_ms || 0)}`
+                          : stage.status === STAGE_STATUS.ACTIVE
+                          ? 'Stage in progress...'
+                          : 'Waiting for stage to begin'
+                        }
+                      </Typography>
+                      
+                      {stageIndex < chainExecution.stages.length - 1 && (
+                        <Chip 
+                          label={`Next: ${chainExecution.stages[stageIndex + 1].stage_name}`}
+                          variant="outlined"
+                          size="small"
+                          onClick={() => navigateToStage('next')}
+                          clickable
+                        />
+                      )}
+                    </Box>
+                  </>
+                )}
               </AccordionDetails>
             </Accordion>
           );

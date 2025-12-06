@@ -27,11 +27,15 @@ import {
   Build,
   Timeline as TimelineIcon,
   Info,
+  CallSplit,
 } from '@mui/icons-material';
 import TokenUsageDisplay from './TokenUsageDisplay';
+import ParallelStageExecutionTabs from './ParallelStageExecutionTabs';
 import type { StageCardProps, TimelineItem } from '../types';
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
 import { STAGE_STATUS, getStageStatusDisplayName } from '../utils/statusConstants';
+import { isParallelStage, getAggregateStatus, getAggregateInteractionCounts, getTotalTokenUsage } from '../utils/parallelStageHelpers';
+import { PARALLEL_TYPE } from '../utils/parallelConstants';
 
 // Helper function to get stage status configuration
 const getStageStatusConfig = (status: string) => {
@@ -89,12 +93,29 @@ const StageCard: React.FC<StageCardProps> = ({
 }) => {
   const statusConfig = getStageStatusConfig(stage.status);
   
+  // Check if this is a parallel stage
+  const isParallel = isParallelStage(stage);
+  
+  // For parallel stages, aggregate data from all executions
+  const aggregateInteractions = isParallel && stage.parallel_executions 
+    ? getAggregateInteractionCounts(stage.parallel_executions)
+    : null;
+  const aggregateTotalTokens = isParallel && stage.parallel_executions
+    ? getTotalTokenUsage(stage.parallel_executions)
+    : null;
+  const aggregateStatusLabel = isParallel && stage.parallel_executions
+    ? getAggregateStatus(stage.parallel_executions)
+    : null;
+  
   const stageInteractions = [...(stage.llm_interactions || []), ...(stage.mcp_communications || [])].sort((a, b) => a.timestamp_us - b.timestamp_us);
-  const hasInteractions = stageInteractions.length > 0;
+  const hasInteractions = isParallel 
+    ? (aggregateInteractions?.total_count ?? 0) > 0
+    : stageInteractions.length > 0;
   const hasOutput = stage.stage_output !== null && stage.stage_output !== undefined;
-  const hasTokenData =
-    [stage.stage_input_tokens, stage.stage_output_tokens, stage.stage_total_tokens]
-      .some((v) => v !== null && v !== undefined);
+  const hasTokenData = isParallel
+    ? (aggregateTotalTokens?.total_tokens !== null)
+    : [stage.stage_input_tokens, stage.stage_output_tokens, stage.stage_total_tokens]
+        .some((v) => v !== null && v !== undefined);
   const hasError =
     stage.error_message != null &&
     String(stage.error_message).trim().length > 0;
@@ -121,15 +142,27 @@ const StageCard: React.FC<StageCardProps> = ({
                   : `Stage ${stage.stage_index + 1}: ${stage.stage_name}`
                 }
               </Typography>
+              {isParallel && stage.parallel_executions && (
+                <Chip
+                  icon={<CallSplit fontSize="small" />}
+                  label={`${stage.parallel_executions.length}x`}
+                  size="small"
+                  color="primary"
+                  variant="outlined"
+                />
+              )}
               <Chip
-                label={statusConfig.label}
+                label={isParallel && aggregateStatusLabel ? aggregateStatusLabel : statusConfig.label}
                 color={statusConfig.color}
                 size="small"
                 variant="filled"
               />
             </Box>
             <Typography variant="body2" color="text.secondary">
-              Agent: {stage.agent}
+              {isParallel 
+                ? `Parallel Execution (${stage.parallel_type === PARALLEL_TYPE.REPLICA ? 'Replica Mode' : 'Multi-Agent Mode'})`
+                : `Agent: ${stage.agent}`
+              }
               {/* iteration_strategy removed in EP-0010 */}
             </Typography>
           </Box>
@@ -209,7 +242,10 @@ const StageCard: React.FC<StageCardProps> = ({
             {hasInteractions && (
               <Chip
                 icon={<TimelineIcon />}
-                label={`${stageInteractions.length} interactions`}
+                label={isParallel && aggregateInteractions 
+                  ? `${aggregateInteractions.total_count} interactions`
+                  : `${stageInteractions.length} interactions`
+                }
                 size="small"
                 variant="outlined"
               />
@@ -226,11 +262,14 @@ const StageCard: React.FC<StageCardProps> = ({
             {/* EP-0009: Stage token usage chip in collapsed view */}
             {hasTokenData && (
               <TokenUsageDisplay
-                tokenData={{
-                  input_tokens: stage.stage_input_tokens,
-                  output_tokens: stage.stage_output_tokens,
-                  total_tokens: stage.stage_total_tokens
-                }}
+                tokenData={isParallel && aggregateTotalTokens 
+                  ? aggregateTotalTokens
+                  : {
+                      input_tokens: stage.stage_input_tokens,
+                      output_tokens: stage.stage_output_tokens,
+                      total_tokens: stage.stage_total_tokens
+                    }
+                }
                 variant="badge"
                 size="small"
                 color="success"
@@ -244,39 +283,46 @@ const StageCard: React.FC<StageCardProps> = ({
       <Collapse in={expanded}>
         <Divider />
         <CardContent sx={{ pt: 2 }}>
-          {/* Stage output */}
-          {hasOutput && (
-            <Box mb={2}>
-              <Typography variant="subtitle2" gutterBottom>
-                Stage Output
-              </Typography>
-              <Box
-                sx={{ 
-                  p: 1,
-                  backgroundColor: "grey.50",
-                  borderRadius: 1,
-                  maxHeight: 200, 
-                  overflow: 'auto' 
-                }}
-              >
-                <pre style={{ 
-                  margin: 0, 
-                  fontSize: '0.75rem', 
-                  fontFamily: 'monospace',
-                  whiteSpace: 'pre-wrap',
-                  wordBreak: 'break-all',
-                }}>
-                  {typeof stage.stage_output === 'string' 
-                    ? stage.stage_output 
-                    : JSON.stringify(stage.stage_output, null, 2)
-                  }
-                </pre>
-              </Box>
-            </Box>
-          )}
+          {/* Parallel Stage Tabs */}
+          {isParallel && stage.parallel_executions && stage.parallel_executions.length > 0 ? (
+            <ParallelStageExecutionTabs 
+              stage={stage}
+            />
+          ) : (
+            <>
+              {/* Stage output */}
+              {hasOutput && (
+                <Box mb={2}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Stage Output
+                  </Typography>
+                  <Box
+                    sx={{ 
+                      p: 1,
+                      backgroundColor: "grey.50",
+                      borderRadius: 1,
+                      maxHeight: 200, 
+                      overflow: 'auto' 
+                    }}
+                  >
+                    <pre style={{ 
+                      margin: 0, 
+                      fontSize: '0.75rem', 
+                      fontFamily: 'monospace',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-all',
+                    }}>
+                      {typeof stage.stage_output === 'string' 
+                        ? stage.stage_output 
+                        : JSON.stringify(stage.stage_output, null, 2)
+                      }
+                    </pre>
+                  </Box>
+                </Box>
+              )}
 
-          {/* Related interactions */}
-          {hasInteractions && (
+              {/* Related interactions */}
+              {hasInteractions && (
             <Box>
               <Box display="flex" alignItems="center" gap={1} mb={1} flexWrap="wrap">
                 <Typography variant="subtitle2">
@@ -423,11 +469,13 @@ const StageCard: React.FC<StageCardProps> = ({
             </Box>
           )}
 
-          {/* No additional data */}
-          {!hasInteractions && !hasOutput && (
-            <Typography variant="body2" color="text.secondary" fontStyle="italic">
-              No additional data available for this stage
-            </Typography>
+              {/* No additional data */}
+              {!hasInteractions && !hasOutput && (
+                <Typography variant="body2" color="text.secondary" fontStyle="italic">
+                  No additional data available for this stage
+                </Typography>
+              )}
+            </>
           )}
         </CardContent>
       </Collapse>

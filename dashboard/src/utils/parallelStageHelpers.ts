@@ -1,0 +1,198 @@
+import { STAGE_STATUS } from './statusConstants';
+import { PARALLEL_TYPE, isParallelType } from './parallelConstants';
+
+/**
+ * Utility functions for working with parallel stage executions
+ */
+
+/**
+ * Minimal interface for stages with parallel execution support
+ * Can be satisfied by both StageExecution and StageConversation
+ */
+interface ParallelStageBase {
+  agent: string;
+  status: string;
+  parallel_type?: string;
+  parallel_executions?: ParallelStageBase[];
+  stage_input_tokens?: number | null;
+  stage_output_tokens?: number | null;
+  stage_total_tokens?: number | null;
+  duration_ms?: number | null;
+  llm_interaction_count?: number;
+  mcp_communication_count?: number;
+}
+
+/**
+ * Check if a stage has parallel executions
+ */
+export function isParallelStage(stage: ParallelStageBase): boolean {
+  return (
+    (stage.parallel_executions !== undefined && 
+     stage.parallel_executions !== null && 
+     stage.parallel_executions.length > 0) ||
+    isParallelType(stage.parallel_type)
+  );
+}
+
+/**
+ * Generate tab label for a parallel execution
+ * Format: "{agent_name} ({llm_provider})" for multi-agent
+ * Format: "{agent_name}-{index}" for replicas
+ */
+export function getParallelStageLabel(
+  stage: ParallelStageBase, 
+  index: number, 
+  parallelType: string = PARALLEL_TYPE.MULTI_AGENT
+): string {
+  if (parallelType === PARALLEL_TYPE.REPLICA) {
+    return `${stage.agent}-${index + 1}`;
+  }
+  
+  // For multi-agent, try to show provider if available from metadata
+  // For now, just show agent name with index
+  return `${stage.agent}`;
+}
+
+/**
+ * Calculate aggregate status from parallel executions
+ * Returns a human-readable status like "2/3 Completed" or "All Succeeded"
+ */
+export function getAggregateStatus(parallelExecutions: ParallelStageBase[]): string {
+  if (!parallelExecutions || parallelExecutions.length === 0) {
+    return 'No executions';
+  }
+  
+  const counts = getSuccessFailureCounts(parallelExecutions);
+  const total = parallelExecutions.length;
+  
+  if (counts.completed === total) {
+    return 'All Completed';
+  } else if (counts.failed === total) {
+    return 'All Failed';
+  } else if (counts.completed > 0) {
+    return `${counts.completed}/${total} Completed`;
+  } else if (counts.active > 0) {
+    return `${counts.active}/${total} Running`;
+  } else {
+    return `${counts.pending}/${total} Pending`;
+  }
+}
+
+/**
+ * Get success and failure counts from parallel executions
+ */
+export function getSuccessFailureCounts(parallelExecutions: ParallelStageBase[]): {
+  completed: number;
+  failed: number;
+  active: number;
+  pending: number;
+  total: number;
+} {
+  const counts = {
+    completed: 0,
+    failed: 0,
+    active: 0,
+    pending: 0,
+    total: parallelExecutions.length
+  };
+  
+  for (const execution of parallelExecutions) {
+    switch (execution.status) {
+      case STAGE_STATUS.COMPLETED:
+        counts.completed++;
+        break;
+      case STAGE_STATUS.FAILED:
+        counts.failed++;
+        break;
+      case STAGE_STATUS.ACTIVE:
+        counts.active++;
+        break;
+      case STAGE_STATUS.PENDING:
+        counts.pending++;
+        break;
+    }
+  }
+  
+  return counts;
+}
+
+/**
+ * Calculate total token usage across all parallel executions
+ */
+export function getTotalTokenUsage(parallelExecutions: ParallelStageBase[]): {
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens: number | null;
+} {
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let totalTokens = 0;
+  let hasAnyTokenData = false;
+  
+  for (const execution of parallelExecutions) {
+    if (execution.stage_input_tokens !== null && execution.stage_input_tokens !== undefined) {
+      inputTokens += execution.stage_input_tokens;
+      hasAnyTokenData = true;
+    }
+    if (execution.stage_output_tokens !== null && execution.stage_output_tokens !== undefined) {
+      outputTokens += execution.stage_output_tokens;
+      hasAnyTokenData = true;
+    }
+    if (execution.stage_total_tokens !== null && execution.stage_total_tokens !== undefined) {
+      totalTokens += execution.stage_total_tokens;
+      hasAnyTokenData = true;
+    }
+  }
+  
+  return hasAnyTokenData ? {
+    input_tokens: inputTokens > 0 ? inputTokens : null,
+    output_tokens: outputTokens > 0 ? outputTokens : null,
+    total_tokens: totalTokens > 0 ? totalTokens : null
+  } : {
+    input_tokens: null,
+    output_tokens: null,
+    total_tokens: null
+  };
+}
+
+/**
+ * Get aggregate duration from parallel executions
+ * Returns the maximum duration (parallel executions run concurrently)
+ */
+export function getAggregateDuration(parallelExecutions: ParallelStageBase[]): number | null {
+  let maxDuration = 0;
+  let hasAnyDuration = false;
+  
+  for (const execution of parallelExecutions) {
+    if (execution.duration_ms !== null && execution.duration_ms !== undefined) {
+      maxDuration = Math.max(maxDuration, execution.duration_ms);
+      hasAnyDuration = true;
+    }
+  }
+  
+  return hasAnyDuration ? maxDuration : null;
+}
+
+/**
+ * Get aggregate interaction counts from parallel executions
+ */
+export function getAggregateInteractionCounts(parallelExecutions: ParallelStageBase[]): {
+  llm_count: number;
+  mcp_count: number;
+  total_count: number;
+} {
+  let llmCount = 0;
+  let mcpCount = 0;
+  
+  for (const execution of parallelExecutions) {
+    llmCount += execution.llm_interaction_count || 0;
+    mcpCount += execution.mcp_communication_count || 0;
+  }
+  
+  return {
+    llm_count: llmCount,
+    mcp_count: mcpCount,
+    total_count: llmCount + mcpCount
+  };
+}
+
