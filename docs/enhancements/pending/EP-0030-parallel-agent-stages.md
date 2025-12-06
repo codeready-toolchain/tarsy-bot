@@ -370,4 +370,172 @@ stages:
 
 ### Configuration & Documentation
 
-- TBD
+- [`config/agents.yaml`](config/agents.yaml) - Add example parallel stage configurations
+- [`docs/architecture/agent-chains.md`](docs/architecture/agent-chains.md) - Document parallel execution
+- [`README.md`](README.md) - Update with parallel stage examples
+
+### Testing
+
+- Unit tests for all new models and validation logic
+- Integration tests for parallel execution in `AlertService`
+- E2E tests for full chain execution with parallel stages
+- Dashboard component tests for `ParallelStageExecutionTabs`
+
+## Implementation Phases
+
+### Phase 1: Core Data Models & Configuration
+
+**Goal**: Establish foundational data structures and CommanderAgent configuration
+
+**Tasks**:
+- ✅ TODO `data-models`: Add `ParallelAgentConfig`, `ParallelStageConfig` models and validation
+- ✅ TODO `parallel-result`: Create `ParallelStageResult`, `AgentExecutionMetadata`, `ParallelStageMetadata` models
+- ✅ TODO `context-updates`: Update `ChainContext` to handle `ParallelStageResult` in previous stages
+- ✅ TODO `config-validation`: Add YAML schema validation for parallel stage configurations
+- ✅ TODO `commander-agent`: Add `CommanderAgent` entry to `BUILTIN_AGENTS` in `builtin_config.py`
+
+**Dependencies**: None (foundational work)
+
+**Deliverables**:
+- Data models in `backend/tarsy/models/agent_config.py` and `agent_execution_result.py`
+- Updated `ChainContext` in `backend/tarsy/models/processing_context.py`
+- Configuration validation logic
+- `CommanderAgent` configuration in `backend/tarsy/config/builtin_config.py`
+
+**Impact on Tests**: ⚠️ Will break existing tests that depend on `ChainContext` structure - **do not fix yet**
+
+---
+
+### Phase 2: Parallel Execution Engine & Prompts
+
+**Goal**: Implement concurrent agent execution with result formatting
+
+**Tasks**:
+- ✅ TODO `execute-parallel`: Implement parallel execution logic in `AlertService`
+  - Detect parallel vs single-agent stages
+  - Execute agents concurrently using asyncio
+  - Aggregate results into `ParallelStageResult`
+  - Handle partial success policies
+- ✅ TODO `auto-commander`: Add automatic CommanderAgent invocation for final parallel stages
+- ✅ TODO `prompt-updates`: Update `PromptBuilder` to format `ParallelStageResult`
+  - Implement `format_parallel_stage_results()` method
+  - Add CommanderAgent prompt template
+
+**Dependencies**: Phase 1 (data models, CommanderAgent config)
+
+**Deliverables**:
+- Updated `AlertService._execute_stage()` with parallel execution support
+- Automatic CommanderAgent synthesis logic
+- Updated `backend/tarsy/agents/prompts/prompt_builder.py`
+
+**Impact on Tests**: ⚠️ Will break existing `AlertService` and `PromptBuilder` tests - **do not fix yet**
+
+---
+
+### Phase 3: Database Schema & Persistence
+
+**Goal**: Persist parallel execution results with parent-child relationships
+
+**Tasks**:
+- ✅ TODO `db-schema`: Add parent-child stage execution schema
+  - Add `parent_execution_id` foreign key to `stage_executions` table
+  - Create database migration
+- ✅ TODO `history-service`: Update `HistoryService` to support parallel stages
+  - Save parent stage execution
+  - Save child executions with parent reference
+  - Query methods for retrieving parent-child hierarchies
+
+**Dependencies**: Phase 2 (parallel execution generates data to persist)
+
+**Deliverables**:
+- Database migration for `stage_executions` table
+- Updated `HistoryService` with parent-child support
+- Updated `HistoryRepository` query methods
+
+**Impact on Tests**: ⚠️ Will break existing `HistoryService` and repository tests - **do not fix yet**
+
+---
+
+### Phase 4: API Layer
+
+**Goal**: Expose parallel stage results via REST API
+
+**Tasks**:
+- ✅ TODO `api-response`: Update `get_stage_executions()` API endpoint
+  - Return nested structure with `parallel_executions` field
+  - Include metadata for parent and child executions
+
+**Dependencies**: Phase 3 (database schema and queries available)
+
+**Deliverables**:
+- Updated `backend/tarsy/controllers/history_controller.py`
+- API response models with nested parallel executions
+
+**Impact on Tests**: ⚠️ Will break existing API integration tests - **do not fix yet**
+
+---
+
+### Phase 5: Fix Tests & Add Coverage
+
+**Goal**: Fix all broken tests and add comprehensive test coverage for parallel execution
+
+**Tasks**:
+- ✅ TODO `testing`: Fix broken tests and add coverage for parallel execution
+  - **Fix broken tests**: `ChainContext`, `AlertService`, `PromptBuilder`, `HistoryService`, API controllers
+  - **Unit tests**: Model validation, serialization, configuration validation, prompt formatting
+  - **Integration tests**: Parallel execution in `AlertService`, database operations, API endpoints
+  - **E2E tests**: Full chain execution with parallel stages (both replicas and multi-agent)
+  - **Dashboard tests**: Component tests for `ParallelStageExecutionTabs`
+
+**Dependencies**: Phases 1-4 (all backend implementation complete, now we fix and extend tests)
+
+**Deliverables**:
+- All existing tests passing
+- Comprehensive test coverage for new parallel execution functionality (>80% coverage)
+
+**Testing Strategy**:
+- Start by fixing tests broken by `ChainContext` changes (Phase 1 impact)
+- Then fix `AlertService`, `PromptBuilder`, `HistoryService` tests
+- Finally add new tests for parallel-specific functionality
+
+---
+
+### Phase 6: Dashboard UI
+
+**Goal**: Display parallel stage executions in the dashboard
+
+**Tasks**:
+- ✅ TODO `dashboard-tabs`: Create `ParallelStageExecutionTabs` component
+  - Tab-based interface for parallel executions
+  - Display agent names, LLM providers, iteration strategies
+  - Show timing, status, and metadata for each execution
+  - Handle both multi-agent and replica scenarios
+
+**Dependencies**: Phase 1-5
+
+**Deliverables**:
+- `dashboard/src/components/AlertHistory/ParallelStageExecutionTabs.tsx`
+- Updated stage detail views to integrate tabs component
+
+**Impact on Tests**: ⚠️ Dashboard component tests may need updates
+
+---
+
+### Phase 7: Documentation & Examples
+
+**Goal**: Complete user-facing documentation and configuration examples
+
+**Tasks**:
+- ✅ TODO `documentation`: Update project documentation
+  - Configuration examples in `config/agents.yaml`
+  - Architecture documentation for parallel execution
+  - README examples for common use cases (replicas vs multi-agent)
+  - Update API documentation for nested parallel responses
+
+**Dependencies**: Phase 6 (feature is tested and stable)
+
+**Deliverables**:
+- Updated configuration examples demonstrating both parallelism modes
+- Architecture documentation explaining parallel execution design
+- README with practical use cases (redundancy, A/B testing, multi-perspective analysis)
+- API documentation updates
