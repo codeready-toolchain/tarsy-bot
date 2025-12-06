@@ -19,8 +19,8 @@ from tarsy.config.settings import Settings
 from tarsy.integrations.llm.manager import LLMManager
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.integrations.notifications.summarizer import ExecutiveSummaryAgent
-from tarsy.models.agent_config import ChainConfigModel
-from tarsy.models.agent_execution_result import AgentExecutionResult
+from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel, ParallelAgentConfig
+from tarsy.models.agent_execution_result import AgentExecutionResult, ParallelStageResult
 from tarsy.models.api_models import ChainExecutionResult
 from tarsy.models.constants import AlertSessionStatus, ChainStatus, StageStatus
 from tarsy.models.pause_metadata import PauseMetadata, PauseReason
@@ -706,55 +706,86 @@ class AlertService:
                         await asyncio.to_thread(rec, chain_context.session_id)
                 
                 try:
-                    # Mark stage as started
-                    await self._update_stage_execution_started(stage_execution_id)
+                    # Detect parallel stages
+                    is_parallel = stage.agents is not None or stage.replicas > 1
                     
-                    # Resolve effective LLM provider for this stage
-                    # Precedence: stage.llm_provider > chain.llm_provider > global (None)
-                    effective_provider = stage.llm_provider or chain_definition.llm_provider
-                    if effective_provider:
-                        logger.debug(f"Stage '{stage.name}' using LLM provider: {effective_provider}")
-                    
-                    # Get agent instance with stage-specific strategy and provider
-                    # Pass session-scoped MCP client for isolation
-                    agent = self.agent_factory.get_agent(
-                        agent_identifier=stage.agent,
-                        mcp_client=session_mcp_client,
-                        iteration_strategy=stage.iteration_strategy,
-                        llm_provider=effective_provider
-                    )
-                    
-                    # Set current stage execution ID for interaction tagging
-                    agent.set_current_stage_execution_id(stage_execution_id)
-                    
-                    # Update chain context for current stage
-                    chain_context.current_stage_name = stage.name
-                    
-                    # Execute stage with ChainContext
-                    logger.info(f"Executing stage '{stage.name}' with ChainContext")
-                    stage_result = await agent.process_alert(chain_context)
-                    
-                    # Validate stage result format
-                    if not isinstance(stage_result, AgentExecutionResult):
-                        raise ValueError(f"Invalid stage result format from agent '{stage.agent}': expected AgentExecutionResult, got {type(stage_result)}")
-                    
-                    # Add stage result to ChainContext
-                    chain_context.add_stage_result(stage.name, stage_result)
-                    
-                    # Check if stage actually succeeded or failed based on status
-                    if stage_result.status == StageStatus.COMPLETED:
-                        # Update stage execution as completed
-                        await self._update_stage_execution_completed(stage_execution_id, stage_result)
-                        successful_stages += 1
-                        logger.info(f"Stage '{stage.name}' completed successfully with agent '{stage_result.agent_name}'")
-                    else:
-                        # Stage failed - treat as failed even though no exception was thrown
-                        error_msg = stage_result.error_message or f"Stage '{stage.name}' failed with status {stage_result.status.value}"
-                        logger.error(f"Stage '{stage.name}' failed: {error_msg}")
+                    if is_parallel:
+                        # Execute parallel stage
+                        logger.info(f"Stage '{stage.name}' is a parallel stage")
                         
-                        # Update stage execution as failed
-                        await self._update_stage_execution_failed(stage_execution_id, error_msg)
-                        failed_stages += 1
+                        # Route to appropriate parallel executor
+                        if stage.agents:
+                            # Multi-agent parallelism
+                            stage_result = await self._execute_parallel_agents(
+                                stage, chain_context, session_mcp_client, chain_definition, i
+                            )
+                        else:
+                            # Replica parallelism (stage.replicas > 1)
+                            stage_result = await self._execute_replicated_agent(
+                                stage, chain_context, session_mcp_client, chain_definition, i
+                            )
+                        
+                        # Add parallel result to ChainContext
+                        chain_context.add_stage_result(stage.name, stage_result)
+                        
+                        # Check parallel stage status
+                        if stage_result.status == StageStatus.COMPLETED:
+                            successful_stages += 1
+                            logger.info(f"Parallel stage '{stage.name}' completed successfully")
+                        else:
+                            failed_stages += 1
+                            logger.error(f"Parallel stage '{stage.name}' failed")
+                    else:
+                        # Single-agent execution (existing logic)
+                        # Mark stage as started
+                        await self._update_stage_execution_started(stage_execution_id)
+                        
+                        # Resolve effective LLM provider for this stage
+                        # Precedence: stage.llm_provider > chain.llm_provider > global (None)
+                        effective_provider = stage.llm_provider or chain_definition.llm_provider
+                        if effective_provider:
+                            logger.debug(f"Stage '{stage.name}' using LLM provider: {effective_provider}")
+                        
+                        # Get agent instance with stage-specific strategy and provider
+                        # Pass session-scoped MCP client for isolation
+                        agent = self.agent_factory.get_agent(
+                            agent_identifier=stage.agent,
+                            mcp_client=session_mcp_client,
+                            iteration_strategy=stage.iteration_strategy,
+                            llm_provider=effective_provider
+                        )
+                        
+                        # Set current stage execution ID for interaction tagging
+                        agent.set_current_stage_execution_id(stage_execution_id)
+                        
+                        # Update chain context for current stage
+                        chain_context.current_stage_name = stage.name
+                        
+                        # Execute stage with ChainContext
+                        logger.info(f"Executing stage '{stage.name}' with ChainContext")
+                        stage_result = await agent.process_alert(chain_context)
+                        
+                        # Validate stage result format
+                        if not isinstance(stage_result, AgentExecutionResult):
+                            raise ValueError(f"Invalid stage result format from agent '{stage.agent}': expected AgentExecutionResult, got {type(stage_result)}")
+                        
+                        # Add stage result to ChainContext
+                        chain_context.add_stage_result(stage.name, stage_result)
+                        
+                        # Check if stage actually succeeded or failed based on status
+                        if stage_result.status == StageStatus.COMPLETED:
+                            # Update stage execution as completed
+                            await self._update_stage_execution_completed(stage_execution_id, stage_result)
+                            successful_stages += 1
+                            logger.info(f"Stage '{stage.name}' completed successfully with agent '{stage_result.agent_name}'")
+                        else:
+                            # Stage failed - treat as failed even though no exception was thrown
+                            error_msg = stage_result.error_message or f"Stage '{stage.name}' failed with status {stage_result.status.value}"
+                            logger.error(f"Stage '{stage.name}' failed: {error_msg}")
+                            
+                            # Update stage execution as failed
+                            await self._update_stage_execution_failed(stage_execution_id, error_msg)
+                            failed_stages += 1
                     
                 except Exception as e:
                     # Check if this is a pause signal (SessionPaused)
@@ -832,6 +863,29 @@ class AlertService:
                     # DECISION: Continue to next stage even if this one failed
                     # This allows data collection stages to fail while analysis stages still run
                     logger.warning(f"Continuing chain execution despite stage failure: {error_msg}")
+            
+            # Check if we need automatic synthesis for final parallel stage
+            if self._is_final_stage_parallel(chain_definition):
+                from tarsy.models.agent_execution_result import ParallelStageResult
+                
+                last_result = chain_context.get_last_stage_result()
+                if isinstance(last_result, ParallelStageResult):
+                    logger.info("Final stage is parallel - invoking automatic CommanderAgent synthesis")
+                    try:
+                        synthesis_result = await self._synthesize_parallel_results(
+                            last_result, chain_context, session_mcp_client, chain_definition
+                        )
+                        # Add synthesis result as final stage
+                        chain_context.add_stage_result("synthesis", synthesis_result)
+                        
+                        # Update stage counters based on synthesis result
+                        if synthesis_result.status == StageStatus.COMPLETED:
+                            successful_stages += 1
+                        else:
+                            failed_stages += 1
+                    except Exception as e:
+                        logger.error(f"Automatic synthesis failed: {e}", exc_info=True)
+                        failed_stages += 1
             
             # Extract final analysis from stages
             final_analysis = self._extract_final_analysis_from_stages(chain_context)
@@ -1412,6 +1466,375 @@ class AlertService:
             
         except Exception as e:
             logger.warning(f"Failed to update stage execution as started: {str(e)}")
+    
+    async def _execute_parallel_agents(
+        self,
+        stage: "ChainStageConfigModel",
+        chain_context: ChainContext,
+        session_mcp_client: MCPClient,
+        chain_definition: "ChainConfigModel",
+        stage_index: int
+    ) -> ParallelStageResult:
+        """Execute multiple different agents in parallel for independent domain investigation."""
+        from tarsy.models.agent_execution_result import ParallelStageResult
+        
+        logger.info(f"Executing parallel stage '{stage.name}' with {len(stage.agents)} agents")
+        
+        # Build execution configs for each agent
+        execution_configs = [
+            {
+                "agent_name": agent_config.name,
+                "llm_provider": agent_config.llm_provider or stage.llm_provider or chain_definition.llm_provider,
+                "iteration_strategy": agent_config.iteration_strategy,
+            }
+            for agent_config in stage.agents
+        ]
+        
+        return await self._execute_parallel_stage(
+            stage=stage,
+            chain_context=chain_context,
+            session_mcp_client=session_mcp_client,
+            chain_definition=chain_definition,
+            stage_index=stage_index,
+            execution_configs=execution_configs,
+            parallel_type="multi_agent"
+        )
+    
+    async def _execute_replicated_agent(
+        self,
+        stage: "ChainStageConfigModel",
+        chain_context: ChainContext,
+        session_mcp_client: MCPClient,
+        chain_definition: "ChainConfigModel",
+        stage_index: int
+    ) -> ParallelStageResult:
+        """Run same agent N times with identical configuration for accuracy via redundancy."""
+        from tarsy.models.agent_execution_result import ParallelStageResult
+        
+        logger.info(f"Executing replicated stage '{stage.name}' with {stage.replicas} replicas of agent '{stage.agent}'")
+        
+        # Resolve stage-level provider and strategy (same for all replicas)
+        effective_provider = stage.llm_provider or chain_definition.llm_provider
+        effective_strategy = stage.iteration_strategy
+        
+        # Build execution configs for each replica
+        execution_configs = [
+            {
+                "agent_name": f"{stage.agent}-{idx + 1}",  # Replica naming
+                "base_agent_name": stage.agent,  # Original agent name
+                "llm_provider": effective_provider,
+                "iteration_strategy": effective_strategy,
+            }
+            for idx in range(stage.replicas)
+        ]
+        
+        return await self._execute_parallel_stage(
+            stage=stage,
+            chain_context=chain_context,
+            session_mcp_client=session_mcp_client,
+            chain_definition=chain_definition,
+            stage_index=stage_index,
+            execution_configs=execution_configs,
+            parallel_type="replica"
+        )
+    
+    async def _execute_parallel_stage(
+        self,
+        stage: "ChainStageConfigModel",
+        chain_context: ChainContext,
+        session_mcp_client: MCPClient,
+        chain_definition: "ChainConfigModel",
+        stage_index: int,
+        execution_configs: list,
+        parallel_type: str
+    ) -> ParallelStageResult:
+        """
+        Common execution logic for parallel stages (multi-agent or replica).
+        
+        Args:
+            stage: Stage configuration
+            chain_context: Chain context for this session
+            session_mcp_client: Session-scoped MCP client
+            chain_definition: Full chain definition
+            stage_index: Index of this stage in the chain
+            execution_configs: List of dicts with agent_name, llm_provider, iteration_strategy (and optionally base_agent_name)
+            parallel_type: "multi_agent" or "replica"
+            
+        Returns:
+            ParallelStageResult with aggregated results and metadata
+        """
+        from tarsy.models.agent_execution_result import (
+            AgentExecutionMetadata,
+            ParallelStageMetadata,
+            ParallelStageResult,
+        )
+        
+        stage_started_at_us = now_us()
+        
+        # Create parent stage execution record
+        parent_stage_execution_id = await self._create_stage_execution(
+            chain_context.session_id, stage, stage_index
+        )
+        await self._update_stage_execution_started(parent_stage_execution_id)
+        
+        # Prepare parallel executions
+        async def execute_single(config: dict, idx: int):
+            """Execute a single agent/replica and return (result, metadata) tuple."""
+            agent_started_at_us = now_us()
+            agent_name = config["agent_name"]
+            base_agent = config.get("base_agent_name", agent_name)  # For replicas
+            
+            try:
+                logger.debug(f"Executing {parallel_type} {idx+1}/{len(execution_configs)}: '{agent_name}'")
+                
+                # Get agent instance from factory
+                agent = self.agent_factory.get_agent(
+                    agent_identifier=base_agent,
+                    mcp_client=session_mcp_client,
+                    iteration_strategy=config["iteration_strategy"],
+                    llm_provider=config["llm_provider"]
+                )
+                
+                # Execute agent
+                result = await agent.process_alert(chain_context)
+                
+                # Override agent_name for replicas
+                if parallel_type == "replica":
+                    result.agent_name = agent_name
+                
+                # Create metadata
+                agent_completed_at_us = now_us()
+                metadata = AgentExecutionMetadata(
+                    agent_name=agent_name,
+                    llm_provider=config["llm_provider"] or self.settings.llm_provider,
+                    iteration_strategy=config["iteration_strategy"] or agent.iteration_strategy.value,
+                    started_at_us=agent_started_at_us,
+                    completed_at_us=agent_completed_at_us,
+                    status=result.status,
+                    error_message=result.error_message,
+                    token_usage=None
+                )
+                
+                return (result, metadata)
+                
+            except Exception as e:
+                logger.error(f"{parallel_type} '{agent_name}' failed: {e}", exc_info=True)
+                
+                agent_completed_at_us = now_us()
+                
+                # Create failed result
+                error_result = AgentExecutionResult(
+                    status=StageStatus.FAILED,
+                    agent_name=agent_name,
+                    stage_name=stage.name,
+                    timestamp_us=agent_completed_at_us,
+                    result_summary=f"Execution failed: {str(e)}",
+                    error_message=str(e)
+                )
+                
+                # Create metadata for failed execution
+                metadata = AgentExecutionMetadata(
+                    agent_name=agent_name,
+                    llm_provider=config["llm_provider"] or self.settings.llm_provider,
+                    iteration_strategy=config["iteration_strategy"] or "unknown",
+                    started_at_us=agent_started_at_us,
+                    completed_at_us=agent_completed_at_us,
+                    status=StageStatus.FAILED,
+                    error_message=str(e),
+                    token_usage=None
+                )
+                
+                return (error_result, metadata)
+        
+        # Execute all concurrently
+        tasks = [execute_single(config, idx) for idx, config in enumerate(execution_configs)]
+        results_and_metadata = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Separate results and metadata, handling exceptions
+        results = []
+        metadatas = []
+        
+        for idx, item in enumerate(results_and_metadata):
+            if isinstance(item, Exception):
+                logger.error(f"Unexpected exception in {parallel_type} {idx+1}: {item}")
+                agent_name = execution_configs[idx]["agent_name"]
+                
+                error_result = AgentExecutionResult(
+                    status=StageStatus.FAILED,
+                    agent_name=agent_name,
+                    stage_name=stage.name,
+                    timestamp_us=now_us(),
+                    result_summary=f"Unexpected error: {str(item)}",
+                    error_message=str(item)
+                )
+                error_metadata = AgentExecutionMetadata(
+                    agent_name=agent_name,
+                    llm_provider=execution_configs[idx]["llm_provider"] or self.settings.llm_provider,
+                    iteration_strategy=execution_configs[idx]["iteration_strategy"] or "unknown",
+                    started_at_us=stage_started_at_us,
+                    completed_at_us=now_us(),
+                    status=StageStatus.FAILED,
+                    error_message=str(item),
+                    token_usage=None
+                )
+                results.append(error_result)
+                metadatas.append(error_metadata)
+            else:
+                result, metadata = item
+                results.append(result)
+                metadatas.append(metadata)
+        
+        # Create stage metadata
+        stage_completed_at_us = now_us()
+        stage_metadata = ParallelStageMetadata(
+            parallel_type=parallel_type,
+            failure_policy=stage.failure_policy,
+            started_at_us=stage_started_at_us,
+            completed_at_us=stage_completed_at_us,
+            agent_metadatas=metadatas
+        )
+        
+        # Determine overall stage status based on failure policy
+        successful_count = sum(1 for m in metadatas if m.status == StageStatus.COMPLETED)
+        failed_count = len(metadatas) - successful_count
+        
+        if stage.failure_policy == "all":
+            overall_status = StageStatus.COMPLETED if failed_count == 0 else StageStatus.FAILED
+        else:  # "any"
+            overall_status = StageStatus.COMPLETED if successful_count > 0 else StageStatus.FAILED
+        
+        logger.info(
+            f"{parallel_type.capitalize()} stage '{stage.name}' completed: {successful_count}/{len(metadatas)} succeeded, "
+            f"policy={stage.failure_policy}, status={overall_status.value}"
+        )
+        
+        # Create parallel stage result
+        parallel_result = ParallelStageResult(
+            results=results,
+            metadata=stage_metadata,
+            status=overall_status
+        )
+        
+        # Update parent stage execution with result
+        if overall_status == StageStatus.COMPLETED:
+            await self._update_stage_execution_completed(parent_stage_execution_id, parallel_result)
+        else:
+            error_msg = f"{parallel_type.capitalize()} stage failed: {failed_count}/{len(metadatas)} executions failed (policy: {stage.failure_policy})"
+            await self._update_stage_execution_failed(parent_stage_execution_id, error_msg)
+        
+        return parallel_result
+    
+    def _is_final_stage_parallel(self, chain_definition: "ChainConfigModel") -> bool:
+        """
+        Check if the last stage in the chain is a parallel stage.
+        
+        Args:
+            chain_definition: Chain definition to check
+            
+        Returns:
+            True if the last stage is parallel, False otherwise
+        """
+        if not chain_definition.stages:
+            return False
+        
+        last_stage = chain_definition.stages[-1]
+        return last_stage.agents is not None or last_stage.replicas > 1
+    
+    async def _synthesize_parallel_results(
+        self,
+        parallel_result: "ParallelStageResult",
+        chain_context: ChainContext,
+        session_mcp_client: MCPClient,
+        chain_definition: "ChainConfigModel"
+    ) -> AgentExecutionResult:
+        """
+        Automatically invoke built-in CommanderAgent to synthesize parallel results.
+        
+        Called when parallel stage is the final stage (no follow-up stage).
+        Creates a synthetic stage execution for CommanderAgent.
+        Returns synthesized final analysis.
+        
+        Args:
+            parallel_result: The parallel stage result to synthesize
+            chain_context: Chain context for this session
+            session_mcp_client: Session-scoped MCP client
+            chain_definition: Full chain definition
+            
+        Returns:
+            Synthesized AgentExecutionResult from CommanderAgent
+        """
+        logger.info("Invoking automatic CommanderAgent synthesis for final parallel stage")
+        
+        # Create synthetic stage for CommanderAgent
+        from tarsy.models.agent_config import ChainStageConfigModel
+        
+        synthesis_stage = ChainStageConfigModel(
+            name="synthesis",
+            agent="CommanderAgent",
+            llm_provider=chain_definition.llm_provider  # Use chain-level provider if set
+        )
+        
+        # Create stage execution record for synthesis
+        synthesis_stage_index = len(chain_definition.stages)  # After all defined stages
+        synthesis_stage_execution_id = await self._create_stage_execution(
+            chain_context.session_id,
+            synthesis_stage,
+            synthesis_stage_index
+        )
+        
+        try:
+            # Mark synthesis stage as started
+            await self._update_stage_execution_started(synthesis_stage_execution_id)
+            
+            # Resolve effective LLM provider for CommanderAgent
+            effective_provider = chain_definition.llm_provider
+            
+            # Get CommanderAgent from factory
+            commander = self.agent_factory.get_agent(
+                agent_identifier="CommanderAgent",
+                mcp_client=session_mcp_client,
+                iteration_strategy=None,  # Uses CommanderAgent's default (react)
+                llm_provider=effective_provider
+            )
+            
+            # Set stage execution ID for interaction tagging
+            commander.set_current_stage_execution_id(synthesis_stage_execution_id)
+            
+            # Update chain context to reflect synthesis stage
+            original_stage = chain_context.current_stage_name
+            chain_context.current_stage_name = "synthesis"
+            
+            # Execute CommanderAgent with parallel results already in context
+            logger.info("Executing CommanderAgent to synthesize parallel investigation results")
+            synthesis_result = await commander.process_alert(chain_context)
+            
+            # Restore original stage name (for proper context)
+            chain_context.current_stage_name = original_stage
+            
+            # Update synthesis stage execution as completed
+            await self._update_stage_execution_completed(synthesis_stage_execution_id, synthesis_result)
+            
+            logger.info("CommanderAgent synthesis completed successfully")
+            return synthesis_result
+            
+        except Exception as e:
+            error_msg = f"CommanderAgent synthesis failed: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            
+            # Update synthesis stage as failed
+            await self._update_stage_execution_failed(synthesis_stage_execution_id, error_msg)
+            
+            # Create error result
+            error_result = AgentExecutionResult(
+                status=StageStatus.FAILED,
+                agent_name="CommanderAgent",
+                stage_name="synthesis",
+                timestamp_us=now_us(),
+                result_summary=f"Synthesis failed: {str(e)}",
+                error_message=error_msg
+            )
+            
+            return error_result
 
     async def close(self):
         """
