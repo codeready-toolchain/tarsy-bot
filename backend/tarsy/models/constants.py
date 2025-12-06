@@ -63,6 +63,24 @@ class StageStatus(Enum):
     PARTIAL = "partial"  # Some results but with warnings/issues
 
 
+class ParallelType(str, Enum):
+    """Types of parallel execution for stage executions (EP-0030)."""
+    
+    SINGLE = "single"  # Non-parallel (regular) stage execution
+    MULTI_AGENT = "multi_agent"  # Different agents running in parallel
+    REPLICA = "replica"  # Same agent running multiple times for redundancy
+    
+    @classmethod
+    def values(cls) -> List[str]:
+        """All parallel type values as strings."""
+        return [ptype.value for ptype in cls]
+    
+    @classmethod
+    def parallel_values(cls) -> List[str]:
+        """Parallel execution type values (excluding SINGLE)."""
+        return [cls.MULTI_AGENT.value, cls.REPLICA.value]
+
+
 class ChainStatus(Enum):
     """Status values for overall chain execution progress (calculated from stage statuses)."""
     

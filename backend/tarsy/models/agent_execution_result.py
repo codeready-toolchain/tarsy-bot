@@ -100,7 +100,7 @@ class ParallelStageMetadata(BaseModel):
     # Configuration
     parallel_type: Literal["multi_agent", "replica"] = Field(
         ...,
-        description="Type of parallelism: 'multi_agent' for different agents, 'replica' for same agent"
+        description="Type of parallelism (ParallelType.MULTI_AGENT or ParallelType.REPLICA)"
     )
     failure_policy: Literal["all", "any"] = Field(
         ...,

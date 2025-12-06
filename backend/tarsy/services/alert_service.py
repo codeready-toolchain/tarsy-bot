@@ -22,7 +22,7 @@ from tarsy.integrations.notifications.summarizer import ExecutiveSummaryAgent
 from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel, ParallelAgentConfig
 from tarsy.models.agent_execution_result import AgentExecutionResult, ParallelStageResult
 from tarsy.models.api_models import ChainExecutionResult
-from tarsy.models.constants import AlertSessionStatus, ChainStatus, StageStatus
+from tarsy.models.constants import AlertSessionStatus, ChainStatus, ParallelType, StageStatus
 from tarsy.models.pause_metadata import PauseMetadata, PauseReason
 from tarsy.models.processing_context import ChainContext
 from tarsy.services.agent_factory import AgentFactory
@@ -1215,14 +1215,25 @@ class AlertService:
         logger.debug("clear_caches called (no-op, caches removed)")
     
     # Stage execution helper methods
-    async def _create_stage_execution(self, session_id: str, stage, stage_index: int) -> str:
+    async def _create_stage_execution(
+        self,
+        session_id: str,
+        stage,
+        stage_index: int,
+        parent_stage_execution_id: Optional[str] = None,
+        parallel_index: int = 0,
+        parallel_type: str = ParallelType.SINGLE.value,
+    ) -> str:
         """
-        Create a stage execution record.
+        Create a stage execution record with optional parallel execution tracking.
         
         Args:
             session_id: Session ID
             stage: Stage definition
             stage_index: Stage index in chain
+            parent_stage_execution_id: Parent stage execution ID for parallel child stages
+            parallel_index: Position in parallel group (0 for single/parent, 1-N for children)
+            parallel_type: Execution type (ParallelType.SINGLE, MULTI_AGENT, or REPLICA)
             
         Returns:
             Stage execution ID
@@ -1243,7 +1254,10 @@ class AlertService:
             stage_index=stage_index,
             stage_name=stage.name,
             agent=stage.agent,
-            status=StageStatus.PENDING.value
+            status=StageStatus.PENDING.value,
+            parent_stage_execution_id=parent_stage_execution_id,
+            parallel_index=parallel_index,
+            parallel_type=parallel_type,
         )
         
         # Trigger stage execution hooks (history + dashboard) via context manager
@@ -1497,7 +1511,7 @@ class AlertService:
             chain_definition=chain_definition,
             stage_index=stage_index,
             execution_configs=execution_configs,
-            parallel_type="multi_agent"
+            parallel_type=ParallelType.MULTI_AGENT.value
         )
     
     async def _execute_replicated_agent(
@@ -1535,7 +1549,7 @@ class AlertService:
             chain_definition=chain_definition,
             stage_index=stage_index,
             execution_configs=execution_configs,
-            parallel_type="replica"
+            parallel_type=ParallelType.REPLICA.value
         )
     
     async def _execute_parallel_stage(
@@ -1571,9 +1585,14 @@ class AlertService:
         
         stage_started_at_us = now_us()
         
-        # Create parent stage execution record
+        # Create parent stage execution record with parallel_type
         parent_stage_execution_id = await self._create_stage_execution(
-            chain_context.session_id, stage, stage_index
+            chain_context.session_id,
+            stage,
+            stage_index,
+            parent_stage_execution_id=None,  # This is the parent
+            parallel_index=0,  # Parent is always index 0
+            parallel_type=parallel_type,  # "multi_agent" or "replica"
         )
         await self._update_stage_execution_started(parent_stage_execution_id)
         
@@ -1583,6 +1602,24 @@ class AlertService:
             agent_started_at_us = now_us()
             agent_name = config["agent_name"]
             base_agent = config.get("base_agent_name", agent_name)  # For replicas
+            
+            # Create a mock stage object for child stage creation
+            from types import SimpleNamespace
+            child_stage = SimpleNamespace(
+                name=f"{stage.name} - {agent_name}",
+                agent=agent_name
+            )
+            
+            # Create child stage execution record
+            child_execution_id = await self._create_stage_execution(
+                session_id=chain_context.session_id,
+                stage=child_stage,
+                stage_index=stage_index,
+                parent_stage_execution_id=parent_stage_execution_id,
+                parallel_index=idx + 1,  # 1-based indexing for children
+                parallel_type=parallel_type,
+            )
+            await self._update_stage_execution_started(child_execution_id)
             
             try:
                 logger.debug(f"Executing {parallel_type} {idx+1}/{len(execution_configs)}: '{agent_name}'")
@@ -1601,6 +1638,15 @@ class AlertService:
                 # Override agent_name for replicas
                 if parallel_type == "replica":
                     result.agent_name = agent_name
+                
+                # Update child stage execution with result
+                if result.status == StageStatus.COMPLETED:
+                    await self._update_stage_execution_completed(child_execution_id, result)
+                else:
+                    await self._update_stage_execution_failed(
+                        child_execution_id,
+                        result.error_message or "Execution failed"
+                    )
                 
                 # Create metadata
                 agent_completed_at_us = now_us()
@@ -1621,6 +1667,9 @@ class AlertService:
                 logger.error(f"{parallel_type} '{agent_name}' failed: {e}", exc_info=True)
                 
                 agent_completed_at_us = now_us()
+                
+                # Update child stage execution with failure
+                await self._update_stage_execution_failed(child_execution_id, str(e))
                 
                 # Create failed result
                 error_result = AgentExecutionResult(

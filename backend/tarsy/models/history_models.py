@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, Field, computed_field, model_validator
 
 # Import existing enums and models
-from tarsy.models.constants import AlertSessionStatus, StageStatus
+from tarsy.models.constants import AlertSessionStatus, ParallelType, StageStatus
 from tarsy.models.mcp_selection_models import MCPSelectionConfig
 from tarsy.models.unified_interactions import LLMInteraction
 
@@ -257,6 +257,12 @@ class DetailedStage(BaseModel):
     chat_id: Optional[str] = None
     chat_user_message_id: Optional[str] = None
     chat_user_message: Optional[ChatUserMessageData] = None  # Full user message data (populated when chat_user_message_id exists)
+    
+    # Parallel execution tracking
+    parent_stage_execution_id: Optional[str] = None
+    parallel_index: int = 0
+    parallel_type: str = ParallelType.SINGLE.value
+    parallel_executions: Optional[List['DetailedStage']] = None  # Nested children for parallel stages
     
     # ALL interactions that happened during this stage (FULL objects with complete details)
     llm_interactions: List[LLMTimelineEvent] = Field(default_factory=list)  # Complete LLM interactions with full details

@@ -225,6 +225,21 @@ class StageExecution(SQLModel, table=True):
         description="User message ID this execution is responding to"
     )
     
+    # Parallel execution tracking
+    parent_stage_execution_id: Optional[str] = Field(
+        default=None,
+        sa_column=Column[Any](String, ForeignKey("stage_executions.execution_id")),
+        description="Parent stage execution ID for parallel execution grouping"
+    )
+    parallel_index: int = Field(
+        default=0,
+        description="Position in parallel group (0 for single/parent, 1-N for parallel children)"
+    )
+    parallel_type: str = Field(
+        default="single",
+        description="Execution type: 'single', 'multi_agent', or 'replica' (use ParallelType constants)"
+    )
+    
     # Note: Relationship to AlertSession would be: session: AlertSession = Relationship(back_populates="stage_executions")
     # Omitted to avoid circular imports - use session_id for queries instead
 
