@@ -136,6 +136,7 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
             alignItems: 'center',
             gap: 1,
             mb: 1.5,
+            ml: 4,  // Align with agent cards and tool cards
           }}
         >
           <CallSplit color="secondary" fontSize="small" />
@@ -157,6 +158,8 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
             display: 'flex',
             gap: 1.5,
             flexWrap: 'wrap',
+            ml: 4,  // Match tool card left margin for alignment
+            mr: 1,  // Match tool card right margin
           }}
         >
           {executions.map((execution, tabIndex) => {
