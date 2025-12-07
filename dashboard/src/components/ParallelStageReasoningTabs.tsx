@@ -127,8 +127,8 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
 
   return (
     <Box>
-      {/* Parallel Agent Selector - Card Style */}
-      <Box sx={{ mb: 3 }}>
+      {/* Parallel Agent Selector - Card Style with Container-Level Padding */}
+      <Box sx={{ mb: 3, pl: 4, pr: 1 }}>
         {/* Header with Parallel Indicator */}
         <Box
           sx={{
@@ -136,7 +136,6 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
             alignItems: 'center',
             gap: 1,
             mb: 1.5,
-            ml: 4,  // Align with agent cards and tool cards
           }}
         >
           <CallSplit color="secondary" fontSize="small" />
@@ -158,8 +157,6 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
             display: 'flex',
             gap: 1.5,
             flexWrap: 'wrap',
-            ml: 4,  // Match tool card left margin for alignment
-            mr: 1,  // Match tool card right margin
           }}
         >
           {executions.map((execution, tabIndex) => {
