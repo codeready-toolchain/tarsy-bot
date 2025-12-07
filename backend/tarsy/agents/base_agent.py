@@ -230,7 +230,9 @@ class BaseAgent(ABC):
                 timestamp_us=now_us(),
                 result_summary=result_summary,
                 complete_conversation_history=analysis_result,
-                final_analysis=final_analysis
+                final_analysis=final_analysis,
+                iteration_strategy=self._iteration_strategy.value,
+                llm_provider=self._llm_provider_name
             )
             
         except AgentError as e:
@@ -247,7 +249,9 @@ class BaseAgent(ABC):
                 agent_name=self.__class__.__name__,
                 timestamp_us=now_us(),
                 result_summary=f"Agent execution failed: {str(e)}",
-                error_message=str(e)
+                error_message=str(e),
+                iteration_strategy=self._iteration_strategy.value,
+                llm_provider=self._llm_provider_name
             )
         except Exception as e:
             # Handle unexpected errors
@@ -259,7 +263,9 @@ class BaseAgent(ABC):
                 agent_name=self.__class__.__name__,
                 timestamp_us=now_us(),
                 result_summary=f"Agent execution failed with unexpected error: {str(e)}",
-                error_message=error_msg
+                error_message=error_msg,
+                iteration_strategy=self._iteration_strategy.value,
+                llm_provider=self._llm_provider_name
             )
 
     def _compose_instructions(self) -> str:

@@ -99,6 +99,10 @@ export interface StageExecution {
   stage_output_tokens?: number | null;
   stage_total_tokens?: number | null;
   
+  // Execution configuration (computed from stage_output)
+  iteration_strategy?: string | null;
+  llm_provider?: string | null;
+  
   // Parallel execution tracking
   parent_stage_execution_id?: string | null;
   parallel_index?: number;

@@ -167,8 +167,13 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
               execution.index,
               stage.parallel_type
             );
-            const thoughtCount = execution.items.filter(i => i.type === 'thought').length;
             const isSelected = selectedTab === tabIndex;
+            
+            // Extract model and iteration strategy from the execution
+            // These are now provided directly from the backend via computed fields
+            const llmInteractions = execution.stageExecution.llm_interactions || [];
+            const modelName = llmInteractions.length > 0 ? llmInteractions[0].details.model_name : null;
+            const iterationStrategy = execution.stageExecution.iteration_strategy;
 
             return (
               <Box
@@ -200,10 +205,17 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
                     {label}
                   </Typography>
                 </Box>
-                <Box display="flex" alignItems="center" gap={1}>
-                  <Typography variant="caption" color="text.secondary">
-                    {thoughtCount} thought{thoughtCount !== 1 ? 's' : ''}
-                  </Typography>
+                <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+                  {modelName && (
+                    <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace' }}>
+                      {modelName}
+                    </Typography>
+                  )}
+                  {iterationStrategy && (
+                    <Typography variant="caption" color="text.secondary">
+                      {iterationStrategy}
+                    </Typography>
+                  )}
                   <Chip
                     label={statusColor === 'success' ? 'Complete' : statusColor === 'error' ? 'Failed' : 'Running'}
                     size="small"

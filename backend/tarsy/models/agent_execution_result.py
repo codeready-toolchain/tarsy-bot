@@ -51,6 +51,8 @@ class AgentExecutionResult(BaseModel):
     
     # Optional metadata
     duration_ms: Optional[int] = Field(None, description="Execution duration in milliseconds")
+    iteration_strategy: Optional[str] = Field(None, description="Iteration strategy used (e.g., 'react', 'native-thinking')")
+    llm_provider: Optional[str] = Field(None, description="LLM provider used for this execution")
     
     @field_validator('paused_conversation_state')
     @classmethod
