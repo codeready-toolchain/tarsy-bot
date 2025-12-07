@@ -397,12 +397,23 @@ class CombinedConfigModel(BaseModel):
         """Validate that ConfigurableAgent references in chain stages exist in agents config."""
         for chain_id, chain_config in self.agent_chains.items():
             for stage in chain_config.stages:
-                if stage.agent.startswith("ConfigurableAgent:"):
+                # Handle single agent case
+                if stage.agent and stage.agent.startswith("ConfigurableAgent:"):
                     agent_name = stage.agent[len("ConfigurableAgent:"):]
                     if agent_name not in self.agents:
                         raise ValueError(
                             f"Chain '{chain_id}' stage '{stage.name}' references missing configurable agent '{agent_name}'"
                         )
+                
+                # Handle parallel agents case
+                if stage.agents:
+                    for parallel_agent in stage.agents:
+                        if parallel_agent.name.startswith("ConfigurableAgent:"):
+                            agent_name = parallel_agent.name[len("ConfigurableAgent:"):]
+                            if agent_name not in self.agents:
+                                raise ValueError(
+                                    f"Chain '{chain_id}' stage '{stage.name}' references missing configurable agent '{agent_name}'"
+                                )
         return self
 
     @model_validator(mode='after')

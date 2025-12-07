@@ -893,7 +893,7 @@ class AlertService:
                 
                 last_result = chain_context.get_last_stage_result()
                 if isinstance(last_result, ParallelStageResult):
-                    logger.info("Final stage is parallel - invoking automatic CommanderAgent synthesis")
+                    logger.info("Final stage is parallel - invoking automatic SynthesisAgent synthesis")
                     try:
                         synthesis_result = await self._synthesize_parallel_results(
                             last_result, chain_context, session_mcp_client, chain_definition
@@ -1290,7 +1290,7 @@ class AlertService:
                 # Context automatically triggers hooks when exiting
                 # History hook will create DB record and set execution_id on the model
                 pass
-            logger.debug(f"Successfully created stage execution {stage_index}: {stage.name}")
+            logger.debug(f"Successfully triggered hooks for stage execution {stage_index}: {stage.name}")
         except Exception as e:
             logger.error(f"Critical failure creating stage execution for '{stage.name}': {str(e)}")
             raise RuntimeError(
@@ -1304,6 +1304,40 @@ class AlertService:
                 f"Stage execution record for '{stage.name}' was created but execution_id is missing. "
                 "This indicates a critical bug in the history service or database layer."
             )
+        
+        # CRITICAL: Verify the stage execution was actually created in the database
+        # The hooks use safe_execute which catches exceptions and returns False instead of propagating
+        # We need to explicitly verify the record exists in the database
+        if self.history_service:
+            try:
+                # Query the database to confirm the record exists
+                from tarsy.models.db_models import StageExecution as DBStageExecution
+                def _verify_stage_operation():
+                    with self.history_service.get_repository() as repo:
+                        if repo:
+                            return repo.session.get(DBStageExecution, stage_execution.execution_id) is not None
+                        return False
+                
+                exists = await self.history_service._retry_database_operation_async(
+                    "verify_stage_execution",
+                    _verify_stage_operation,
+                    treat_none_as_success=False
+                )
+                
+                if not exists:
+                    raise RuntimeError(
+                        f"Stage execution {stage_execution.execution_id} for '{stage.name}' was not found in database after creation. "
+                        "The history hook may have failed silently. Check history service logs for errors."
+                    )
+                    
+                logger.debug(f"Verified stage execution {stage_execution.execution_id} exists in database")
+                
+            except Exception as e:
+                logger.error(f"Failed to verify stage execution in database: {e}")
+                raise RuntimeError(
+                    f"Cannot verify stage execution {stage_execution.execution_id} was created in database. "
+                    f"Chain processing cannot continue without confirmation. Error: {str(e)}"
+                ) from e
         
         return stage_execution.execution_id
     
@@ -1608,10 +1642,18 @@ class AlertService:
         
         stage_started_at_us = now_us()
         
+        # Create a synthetic stage object for parent stage creation
+        # Parent stages need an agent value for the database schema (NOT NULL constraint)
+        from types import SimpleNamespace
+        parent_stage = SimpleNamespace(
+            name=stage.name,
+            agent=f"parallel-{parallel_type}"  # Synthetic agent name for parent record
+        )
+        
         # Create parent stage execution record with parallel_type
         parent_stage_execution_id = await self._create_stage_execution(
             chain_context.session_id,
-            stage,
+            parent_stage,
             stage_index,
             parent_stage_execution_id=None,  # This is the parent
             parallel_index=0,  # Parent is always index 0
@@ -1825,10 +1867,10 @@ class AlertService:
         chain_definition: "ChainConfigModel"
     ) -> AgentExecutionResult:
         """
-        Automatically invoke built-in CommanderAgent to synthesize parallel results.
+        Automatically invoke built-in SynthesisAgent to synthesize parallel results.
         
         Called when parallel stage is the final stage (no follow-up stage).
-        Creates a synthetic stage execution for CommanderAgent.
+        Creates a synthetic stage execution for SynthesisAgent.
         Returns synthesized final analysis.
         
         Args:
@@ -1838,16 +1880,16 @@ class AlertService:
             chain_definition: Full chain definition
             
         Returns:
-            Synthesized AgentExecutionResult from CommanderAgent
+            Synthesized AgentExecutionResult from SynthesisAgent
         """
-        logger.info("Invoking automatic CommanderAgent synthesis for final parallel stage")
+        logger.info("Invoking automatic SynthesisAgent synthesis for final parallel stage")
         
-        # Create synthetic stage for CommanderAgent
+        # Create synthetic stage for SynthesisAgent
         from tarsy.models.agent_config import ChainStageConfigModel
         
         synthesis_stage = ChainStageConfigModel(
             name="synthesis",
-            agent="CommanderAgent",
+            agent="SynthesisAgent",
             llm_provider=chain_definition.llm_provider  # Use chain-level provider if set
         )
         
@@ -1863,27 +1905,27 @@ class AlertService:
             # Mark synthesis stage as started
             await self._update_stage_execution_started(synthesis_stage_execution_id)
             
-            # Resolve effective LLM provider for CommanderAgent
+            # Resolve effective LLM provider for SynthesisAgent
             effective_provider = chain_definition.llm_provider
             
-            # Get CommanderAgent from factory
-            commander = self.agent_factory.get_agent(
-                agent_identifier="CommanderAgent",
+            # Get SynthesisAgent from factory
+            synthesis_agent = self.agent_factory.get_agent(
+                agent_identifier="SynthesisAgent",
                 mcp_client=session_mcp_client,
-                iteration_strategy=None,  # Uses CommanderAgent's default (react)
+                iteration_strategy=None,  # Uses SynthesisAgent's default (react)
                 llm_provider=effective_provider
             )
             
             # Set stage execution ID for interaction tagging
-            commander.set_current_stage_execution_id(synthesis_stage_execution_id)
+            synthesis_agent.set_current_stage_execution_id(synthesis_stage_execution_id)
             
             # Update chain context to reflect synthesis stage
             original_stage = chain_context.current_stage_name
             chain_context.current_stage_name = "synthesis"
             
-            # Execute CommanderAgent with parallel results already in context
-            logger.info("Executing CommanderAgent to synthesize parallel investigation results")
-            synthesis_result = await commander.process_alert(chain_context)
+            # Execute SynthesisAgent with parallel results already in context
+            logger.info("Executing SynthesisAgent to synthesize parallel investigation results")
+            synthesis_result = await synthesis_agent.process_alert(chain_context)
             
             # Restore original stage name (for proper context)
             chain_context.current_stage_name = original_stage
@@ -1891,11 +1933,11 @@ class AlertService:
             # Update synthesis stage execution as completed
             await self._update_stage_execution_completed(synthesis_stage_execution_id, synthesis_result)
             
-            logger.info("CommanderAgent synthesis completed successfully")
+            logger.info("SynthesisAgent synthesis completed successfully")
             return synthesis_result
             
         except Exception as e:
-            error_msg = f"CommanderAgent synthesis failed: {str(e)}"
+            error_msg = f"SynthesisAgent synthesis failed: {str(e)}"
             logger.error(error_msg, exc_info=True)
             
             # Update synthesis stage as failed
@@ -1904,7 +1946,7 @@ class AlertService:
             # Create error result
             error_result = AgentExecutionResult(
                 status=StageStatus.FAILED,
-                agent_name="CommanderAgent",
+                agent_name="SynthesisAgent",
                 stage_name="synthesis",
                 timestamp_us=now_us(),
                 result_summary=f"Synthesis failed: {str(e)}",

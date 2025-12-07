@@ -624,7 +624,7 @@ Executive Summary (1-4 lines, facts only):"""
     
     def format_parallel_stage_results(self, parallel_result: 'ParallelStageResult') -> str:
         """
-        Format ParallelStageResult for CommanderAgent or next stage consumption.
+        Format ParallelStageResult for SynthesisAgent or next stage consumption.
         
         Presents raw investigation results with clear sections and metadata.
         NO pre-analysis or synthesis - that's the next agent's job.

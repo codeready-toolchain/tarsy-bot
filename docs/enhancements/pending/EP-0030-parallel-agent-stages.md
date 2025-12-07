@@ -10,7 +10,7 @@ Add parallel execution capabilities to agent chains, supporting:
 4. **Per-agent configuration**: Each agent in `agents` list can specify its own LLM provider and iteration strategy
 5. **Partial success**: Continue chain if at least one parallel execution succeeds
 6. **Structured results**: Raw parallel outputs packaged for next stage consumption
-7. **Automatic synthesis**: Built-in CommanderAgent synthesizes results when parallel stage is final
+7. **Automatic synthesis**: Built-in SynthesisAgent synthesizes results when parallel stage is final
 
 ## Configuration Syntax
 
@@ -29,7 +29,7 @@ stages:
     failure_policy: "any"                  # Continue if any succeeds (default: "all")
   
   - name: "command"
-    agent: "CommanderAgent"                # Final analysis from parallel results (built-in)
+    agent: "SynthesisAgent"                # Final analysis from parallel results (built-in)
 ```
 
 ### Replica Parallelism (Simple Redundancy)
@@ -43,7 +43,7 @@ stages:
     iteration_strategy: "react"
   
   - name: "command"
-    agent: "CommanderAgent"        # Final analysis from all 3 parallel results
+    agent: "SynthesisAgent"        # Final analysis from all 3 parallel results
 ```
 
 ### Replica Parallelism (Comparison - Use agents list instead)
@@ -63,7 +63,7 @@ stages:
         iteration_strategy: "native-thinking"
   
   - name: "command"
-    agent: "CommanderAgent"
+    agent: "SynthesisAgent"
 ```
 
 ### Automatic Synthesis (No Explicit Judge)
@@ -74,7 +74,7 @@ stages:
     agents:
       - name: "kubernetes"
       - name: "vm"
-  # No follow-up stage → built-in CommanderAgent automatically synthesizes results
+  # No follow-up stage → built-in SynthesisAgent automatically synthesizes results
 ```
 
 ```yaml
@@ -82,7 +82,7 @@ stages:
   - name: "investigation"
     agent: "kubernetes"
     replicas: 3
-  # No follow-up stage → built-in CommanderAgent automatically synthesizes results
+  # No follow-up stage → built-in SynthesisAgent automatically synthesizes results
 ```
 
 ## Result Handling Logic
@@ -94,7 +94,7 @@ stages:
 
 ### Case 2: Parallel Stage is Final Stage
 
-- Automatically invoke built-in `CommanderAgent` to synthesize results
+- Automatically invoke built-in `SynthesisAgent` to synthesize results
 - Generates unified final analysis from multiple parallel investigations
 
 ### Case 3: Single Agent Final Stage (Existing Behavior)
@@ -138,9 +138,9 @@ stages:
   - `status: StageStatus` - aggregated stage status based on failure policy
   - **No `aggregated_summary` field** - synthesis happens in judge agent, not here
 
-### 3. Built-in CommanderAgent Configuration ([backend/tarsy/config/builtin_config.py](backend/tarsy/config/builtin_config.py))
+### 3. Built-in SynthesisAgent Configuration ([backend/tarsy/config/builtin_config.py](backend/tarsy/config/builtin_config.py))
 
-- Add `CommanderAgent` entry to `BUILTIN_AGENTS` dictionary:
+- Add `SynthesisAgent` entry to `BUILTIN_AGENTS` dictionary:
   - Uses `ConfigurableAgent` (no custom class needed - pure analysis agent)
   - Define custom instructions for synthesizing parallel investigation results:
     - **Critically evaluate** the quality and reliability of each investigation result
@@ -184,8 +184,8 @@ stages:
   - Handle `ParallelStageResult` status aggregation
 - Add `_is_final_stage_parallel()` helper to check if last stage is parallel
 - Add `_synthesize_parallel_results()` method:
-  - Automatically invoke built-in `CommanderAgent` when parallel stage is final
-  - Pass `ParallelStageResult` to CommanderAgent for synthesis
+  - Automatically invoke built-in `SynthesisAgent` when parallel stage is final
+  - Pass `ParallelStageResult` to SynthesisAgent for synthesis
   - Return synthesized final analysis
 - Update `_extract_final_analysis_from_stages()`:
   - Check if final stage is parallel
@@ -219,8 +219,8 @@ stages:
   - For multi-agent: Organize with clear sections and headers (e.g., "## Kubernetes Investigation", "## VM Investigation")
   - For replicas: Label clearly (e.g., "## Run 1 (openai)", "## Run 2 (anthropic)", "## Run 3 (gemini)") - NO pre-analysis
   - Include metadata for each execution: timing, status, LLM provider, iteration strategy
-  - Present raw results - let the next agent (CommanderAgent) do all analysis and comparison
-- Add specific prompt template for `CommanderAgent`:
+  - Present raw results - let the next agent (SynthesisAgent) do all analysis and comparison
+- Add specific prompt template for `SynthesisAgent`:
   - "You are the Incident Commander analyzing the alert using data from N parallel investigations..."
   - "Critically evaluate the quality of each investigation - prioritize results with strong evidence and reasoning"
   - "Your task: synthesize the best findings into a unified analysis of the original issue..."
@@ -282,8 +282,8 @@ stages:
 4. **No Array Configs**: Removed `llm_providers` and `iteration_strategies` arrays - use `agents` list for variety
 5. **Partial Success**: Default to `all` policy (strict), but allow `any` for resilient pipelines
 6. **Pure Data Container**: `ParallelStageResult` is raw data only, no synthesis (Option B)
-7. **Automatic Commander**: Built-in `CommanderAgent` auto-invoked for final parallel stages, critically evaluates result quality
-8. **User-Accessible Commander**: Built-in `CommanderAgent` can also be explicitly used in chains
+7. **Automatic Synthesis**: Built-in `SynthesisAgent` auto-invoked for final parallel stages, critically evaluates result quality
+8. **User-Accessible Synthesis**: Built-in `SynthesisAgent` can also be explicitly used in chains
 9. **Database Hierarchy**: Parent-child relationship for stage executions enables clean queries and UI grouping
 10. **Consistent Naming**: Use `name` field in `ParallelAgentConfig` (not `agent`) for consistency with stage naming
 11. **Metadata Separation**: Configuration metadata vs execution metadata clearly separated in `ParallelStageMetadata`
@@ -299,7 +299,7 @@ stages:
 
 ### Configuration
 
-- Update [`backend/tarsy/config/builtin_config.py`](backend/tarsy/config/builtin_config.py) - Add CommanderAgent definition
+- Update [`backend/tarsy/config/builtin_config.py`](backend/tarsy/config/builtin_config.py) - Add SynthesisAgent definition
 
 ### Services
 
@@ -337,14 +337,14 @@ stages:
 
 ### Phase 1: Core Data Models & Configuration
 
-**Goal**: Establish foundational data structures and CommanderAgent configuration
+**Goal**: Establish foundational data structures and SynthesisAgent configuration
 
 **Tasks**:
 - ✅ TODO `data-models`: Add `ParallelAgentConfig`, `ParallelStageConfig` models and validation
 - ✅ TODO `parallel-result`: Create `ParallelStageResult`, `AgentExecutionMetadata`, `ParallelStageMetadata` models
 - ✅ TODO `context-updates`: Update `ChainContext` to handle `ParallelStageResult` in previous stages
 - ✅ TODO `config-validation`: Add YAML schema validation for parallel stage configurations
-- ✅ TODO `commander-agent`: Add `CommanderAgent` entry to `BUILTIN_AGENTS` in `builtin_config.py`
+- ✅ TODO `synthesis-agent`: Add `SynthesisAgent` entry to `BUILTIN_AGENTS` in `builtin_config.py`
 
 **Dependencies**: None (foundational work)
 
@@ -352,7 +352,7 @@ stages:
 - Data models in `backend/tarsy/models/agent_config.py` and `agent_execution_result.py`
 - Updated `ChainContext` in `backend/tarsy/models/processing_context.py`
 - Configuration validation logic
-- `CommanderAgent` configuration in `backend/tarsy/config/builtin_config.py`
+- `SynthesisAgent` configuration in `backend/tarsy/config/builtin_config.py`
 
 **Impact on Tests**: ⚠️ Will break existing tests that depend on `ChainContext` structure - **do not fix yet**
 
@@ -368,16 +368,16 @@ stages:
   - Execute agents concurrently using asyncio
   - Aggregate results into `ParallelStageResult`
   - Handle partial success policies
-- ✅ TODO `auto-commander`: Add automatic CommanderAgent invocation for final parallel stages
+- ✅ TODO `auto-synthesis`: Add automatic SynthesisAgent invocation for final parallel stages
 - ✅ TODO `prompt-updates`: Update `PromptBuilder` to format `ParallelStageResult`
   - Implement `format_parallel_stage_results()` method
-  - Add CommanderAgent prompt template
+  - Add SynthesisAgent prompt template
 
-**Dependencies**: Phase 1 (data models, CommanderAgent config)
+**Dependencies**: Phase 1 (data models, SynthesisAgent config)
 
 **Deliverables**:
 - Updated `AlertService._execute_stage()` with parallel execution support
-- Automatic CommanderAgent synthesis logic
+- Automatic SynthesisAgent synthesis logic
 - Updated `backend/tarsy/agents/prompts/prompt_builder.py`
 
 **Impact on Tests**: ⚠️ Will break existing `AlertService` and `PromptBuilder` tests - **do not fix yet**

@@ -152,7 +152,7 @@ class ParallelStageResult(BaseModel):
     
     This is a pure data container that packages multiple agent execution results
     along with metadata. Synthesis of results is handled by subsequent stages
-    (e.g., CommanderAgent) or automatically when parallel stage is final.
+    (e.g., SynthesisAgent) or automatically when parallel stage is final.
     """
     
     model_config = ConfigDict(extra="forbid")

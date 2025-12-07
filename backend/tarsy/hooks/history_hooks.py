@@ -167,17 +167,20 @@ class StageExecutionHistoryHook(BaseHook[StageExecution]):
             # Check if this is an initial creation (no started_at_us means it hasn't started yet)
             if stage_execution.started_at_us is None:
                 # This is a new stage execution being created
+                logger.debug(f"Creating stage execution {stage_execution.execution_id} for stage '{stage_execution.stage_name}' (parallel_index={stage_execution.parallel_index}, parent={stage_execution.parent_stage_execution_id})")
                 execution_id = await self.history_service.create_stage_execution(stage_execution)
-                logger.debug(f"Created stage execution {execution_id} in history")
+                logger.info(f"Created stage execution {execution_id} in history for stage '{stage_execution.stage_name}'")
             else:
                 # This is an update to an existing stage execution (has started/completed times)
                 success = await self.history_service.update_stage_execution(stage_execution)
                 if not success:
+                    logger.warning(f"Update failed for stage execution {stage_execution.execution_id}, attempting fallback creation")
                     execution_id = await self.history_service.create_stage_execution(stage_execution)
-                    logger.debug(f"Created (via fallback) stage execution {execution_id} in history")
+                    logger.info(f"Created (via fallback) stage execution {execution_id} in history")
                 else:
                     logger.debug(f"Updated stage execution {stage_execution.execution_id} in history")
                 
         except Exception as e:
-            logger.error(f"Failed to log stage execution to history: {e}")
+            logger.error(f"CRITICAL: Failed to log stage execution {stage_execution.execution_id} for stage '{stage_execution.stage_name}' to history: {e}", exc_info=True)
+            # Re-raise to propagate the error - stage execution creation MUST succeed
             raise

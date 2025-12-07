@@ -1,8 +1,8 @@
 """
-Commander Agent for synthesizing parallel investigation results.
+Synthesis Agent for synthesizing parallel investigation results.
 
-This agent acts as an Incident Commander, analyzing and synthesizing results
-from multiple parallel agent investigations into a unified analysis.
+This agent analyzes and synthesizes results from multiple parallel agent
+investigations into a unified analysis with quality-based filtering.
 """
 
 from typing import List
@@ -17,9 +17,9 @@ from tarsy.utils.logger import get_module_logger
 logger = get_module_logger(__name__)
 
 
-class CommanderAgent(BaseAgent):
+class SynthesisAgent(BaseAgent):
     """
-    Incident Commander agent for synthesizing parallel investigation results.
+    Synthesis agent for combining parallel investigation results.
     
     This agent analyzes results from multiple parallel investigations and
     produces a unified root cause analysis and recommendations. It focuses
@@ -34,7 +34,7 @@ class CommanderAgent(BaseAgent):
         iteration_strategy: IterationStrategy = IterationStrategy.REACT
     ):
         """
-        Initialize the Commander Agent.
+        Initialize the Synthesis Agent.
 
         Args:
             llm_manager: LLM manager for accessing LLM clients
@@ -53,7 +53,7 @@ class CommanderAgent(BaseAgent):
         """
         Define MCP servers for this agent.
         
-        CommanderAgent performs pure analysis and doesn't need tools.
+        SynthesisAgent performs pure analysis and doesn't need tools.
         
         Returns:
             Empty list - no MCP servers needed
@@ -62,7 +62,7 @@ class CommanderAgent(BaseAgent):
 
     def custom_instructions(self) -> str:
         """
-        Custom instructions for the Commander Agent.
+        Custom instructions for the Synthesis Agent.
         
         Returns:
             Instructions for synthesizing parallel investigation results
