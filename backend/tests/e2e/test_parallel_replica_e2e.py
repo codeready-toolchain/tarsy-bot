@@ -20,7 +20,14 @@ from unittest.mock import patch
 import pytest
 
 from .conftest import create_mock_stream
-from .e2e_utils import E2ETestUtils
+from .e2e_utils import E2ETestUtils, assert_conversation_messages
+from .expected_parallel_conversations import (
+    EXPECTED_REPLICA_1_CONVERSATION,
+    EXPECTED_REPLICA_2_CONVERSATION,
+    EXPECTED_REPLICA_3_CONVERSATION,
+    EXPECTED_REPLICA_SYNTHESIS_CONVERSATION,
+    EXPECTED_REPLICA_STAGES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +39,7 @@ class TestParallelReplicaE2E:
 
     @pytest.mark.e2e
     async def test_replica_parallel_stage(
-        self, e2e_parallel_test_client, e2e_replica_alert
+        self, e2e_test_client, e2e_replica_alert
     ):
         """
         Test replica parallel stage with automatic synthesis.
@@ -57,7 +64,7 @@ class TestParallelReplicaE2E:
         async def run_test():
             print("🚀 Starting replica parallel test...")
             result = await self._execute_replica_test(
-                e2e_parallel_test_client, e2e_replica_alert
+                e2e_test_client, e2e_replica_alert
             )
             print("✅ Replica parallel test completed!")
             return result
@@ -85,39 +92,40 @@ class TestParallelReplicaE2E:
         all_llm_interactions = []
         
         # Define mock responses for replica parallel execution
+        # Token counts must match EXPECTED_REPLICA_STAGES in expected_parallel_conversations.py
         # Replica-1: interactions 1-2, Replica-2: interactions 3-4, Replica-3: interactions 5-6, Synthesis: interaction 7
         mock_response_map = {
-            1: {  # Replica 1 - Initial check
+            1: {  # Replica 1 - Initial check (LLM position 1)
                 "response_content": """Thought: I should check the deployment status to understand the issue.
 Action: kubernetes-server.kubectl_get
 Action Input: {"resource": "deployment", "name": "web-app"}""",
-                "input_tokens": 190, "output_tokens": 75, "total_tokens": 265
+                "input_tokens": 245, "output_tokens": 85, "total_tokens": 330
             },
-            2: {  # Replica 1 - Final answer
+            2: {  # Replica 1 - Final answer (LLM position 2)
                 "response_content": """Final Answer: Deployment web-app has no ready replicas (0/3). This indicates a critical availability issue. All pods may be failing to start or pass health checks.""",
-                "input_tokens": 170, "output_tokens": 90, "total_tokens": 260
+                "input_tokens": 180, "output_tokens": 65, "total_tokens": 245
             },
-            3: {  # Replica 2 - Check events
+            3: {  # Replica 2 - Check events (LLM position 1)
                 "response_content": """Thought: I should check the pod events to see why replicas aren't ready.
 Action: kubernetes-server.kubectl_get
 Action Input: {"resource": "events", "field_selector": "involvedObject.name=web-app"}""",
-                "input_tokens": 195, "output_tokens": 80, "total_tokens": 275
+                "input_tokens": 235, "output_tokens": 80, "total_tokens": 315
             },
-            4: {  # Replica 2 - Final answer
+            4: {  # Replica 2 - Final answer (LLM position 2)
                 "response_content": """Final Answer: Events show ImagePullBackOff for web-app:v2.0.0. The deployment cannot start because the specified container image cannot be pulled. This is the root cause of the 0/3 ready replicas.""",
-                "input_tokens": 175, "output_tokens": 95, "total_tokens": 270
+                "input_tokens": 185, "output_tokens": 70, "total_tokens": 255
             },
-            5: {  # Replica 3 - Describe deployment
+            5: {  # Replica 3 - Describe deployment (LLM position 1)
                 "response_content": """Thought: Let me verify the image availability issue.
 Action: kubernetes-server.kubectl_describe
 Action Input: {"resource": "deployment", "name": "web-app"}""",
-                "input_tokens": 185, "output_tokens": 70, "total_tokens": 255
+                "input_tokens": 240, "output_tokens": 82, "total_tokens": 322
             },
-            6: {  # Replica 3 - Final answer
+            6: {  # Replica 3 - Final answer (LLM position 2)
                 "response_content": """Final Answer: Image web-app:v2.0.0 not found in container registry. The deployment is referencing a non-existent image version. Recommend verifying the image tag or rolling back to a known-good version.""",
-                "input_tokens": 180, "output_tokens": 100, "total_tokens": 280
+                "input_tokens": 188, "output_tokens": 72, "total_tokens": 260
             },
-            7: {  # Synthesis
+            7: {  # Synthesis (LLM position 1)
                 "response_content": """Final Answer: **Synthesis of Replica Investigations**
 
 All three replicas converged on consistent findings with increasing detail. Replica-1 identified the symptom (0/3 ready), Replica-2 found the error (ImagePullBackOff), and Replica-3 confirmed root cause (image not in registry).
@@ -135,7 +143,7 @@ All three replicas converged on consistent findings with increasing detail. Repl
 - Set up alerts for failed image pulls
 
 **Priority:** Critical - Complete service outage""",
-                "input_tokens": 600, "output_tokens": 250, "total_tokens": 850
+                "input_tokens": 450, "output_tokens": 190, "total_tokens": 640
             }
         }
         
@@ -209,26 +217,13 @@ All three replicas converged on consistent findings with increasing detail. Repl
                         # Verify session metadata
                         self._verify_session_metadata(detail_data, "replica-parallel-chain")
                         
-                        # Verify stage structure
+                        # Get stages
                         stages = detail_data.get("stages", [])
-                        assert len(stages) == 2, f"Expected 2 stages (analysis + synthesis), got {len(stages)}"
                         
-                        # Verify parallel stage with replicas
-                        analysis_stage = stages[0]
-                        assert analysis_stage["stage_name"] == "analysis"
-                        assert analysis_stage["parallel_type"] == "replica"
-                        assert analysis_stage["parallel_executions"] is not None
-                        assert len(analysis_stage["parallel_executions"]) == 3
-                        
-                        # Verify replica naming
-                        replica_names = [exec["agent"] for exec in analysis_stage["parallel_executions"]]
-                        assert "KubernetesAgent-1" in replica_names
-                        assert "KubernetesAgent-2" in replica_names
-                        assert "KubernetesAgent-3" in replica_names
-                        
-                        # Verify synthesis stage
-                        synthesis_stage = stages[1]
-                        assert synthesis_stage["stage_name"] == "synthesis"
+                        # Comprehensive verification
+                        print("🔍 Step 4: Comprehensive result verification...")
+                        self._verify_stage_structure(stages, EXPECTED_REPLICA_STAGES)
+                        self._verify_complete_interaction_flow(stages)
                         
                         print("✅ Replica parallel test passed!")
                         return detail_data
@@ -239,4 +234,208 @@ All three replicas converged on consistent findings with increasing detail. Repl
         assert detail_data["chain_id"] == expected_chain_id
         assert detail_data["started_at_us"] is not None
         assert detail_data["completed_at_us"] is not None
+
+    def _verify_stage_structure(self, stages, expected_stages_spec):
+        """Verify the structure of stages matches expectations."""
+        print("  📋 Verifying stage structure...")
+        
+        expected_stage_names = list(expected_stages_spec.keys())
+        actual_stage_names = [stage["stage_name"] for stage in stages]
+        
+        assert len(stages) == len(expected_stage_names), (
+            f"Stage count mismatch: expected {len(expected_stage_names)}, got {len(stages)}"
+        )
+        
+        for expected_name, actual_name in zip(expected_stage_names, actual_stage_names):
+            assert actual_name == expected_name, (
+                f"Stage name mismatch: expected '{expected_name}', got '{actual_name}'"
+            )
+        
+        print(f"    ✅ Stage structure verified ({len(stages)} stages)")
+
+    def _verify_parallel_stage_interactions(self, stage, expected_stage_spec):
+        """Verify interactions for a parallel stage."""
+        stage_name = stage["stage_name"]
+        print(f"  🔍 Verifying parallel stage '{stage_name}' interactions...")
+        
+        # Verify parallel type
+        assert stage["parallel_type"] == expected_stage_spec["parallel_type"], (
+            f"Stage '{stage_name}' parallel_type mismatch"
+        )
+        
+        # Verify parallel executions exist
+        parallel_executions = stage.get("parallel_executions")
+        assert parallel_executions is not None, f"Stage '{stage_name}' missing parallel_executions"
+        
+        expected_agents = expected_stage_spec["agents"]
+        assert len(parallel_executions) == expected_stage_spec["agent_count"], (
+            f"Stage '{stage_name}' agent count mismatch: expected {expected_stage_spec['agent_count']}, "
+            f"got {len(parallel_executions)}"
+        )
+        
+        # Verify each agent's execution
+        for agent_name, expected_agent_spec in expected_agents.items():
+            # Find the matching parallel execution
+            agent_execution = None
+            for execution in parallel_executions:
+                if execution["agent_name"] == agent_name:
+                    agent_execution = execution
+                    break
+            
+            assert agent_execution is not None, (
+                f"Stage '{stage_name}' missing execution for agent '{agent_name}'"
+            )
+            
+            print(f"    🔍 Verifying agent '{agent_name}'...")
+            
+            # Verify interactions for this agent
+            interactions = agent_execution.get("interactions", [])
+            expected_interactions = expected_agent_spec["interactions"]
+            
+            assert len(interactions) == len(expected_interactions), (
+                f"Agent '{agent_name}' interaction count mismatch: "
+                f"expected {len(expected_interactions)}, got {len(interactions)}"
+            )
+            
+            # Get expected conversation for this replica
+            if agent_name == "KubernetesAgent-1":
+                expected_conversation = EXPECTED_REPLICA_1_CONVERSATION
+            elif agent_name == "KubernetesAgent-2":
+                expected_conversation = EXPECTED_REPLICA_2_CONVERSATION
+            elif agent_name == "KubernetesAgent-3":
+                expected_conversation = EXPECTED_REPLICA_3_CONVERSATION
+            else:
+                expected_conversation = None
+            
+            # Verify each interaction
+            for i, expected_interaction in enumerate(expected_interactions):
+                actual_interaction = interactions[i]
+                interaction_type = expected_interaction["type"]
+                
+                assert actual_interaction["type"] == interaction_type, (
+                    f"Agent '{agent_name}' interaction {i+1} type mismatch"
+                )
+                
+                details = actual_interaction["details"]
+                assert details["success"] == expected_interaction["success"], (
+                    f"Agent '{agent_name}' interaction {i+1} success mismatch"
+                )
+                
+                if interaction_type == "llm":
+                    # Verify conversation content
+                    actual_conversation = details["conversation"]
+                    actual_messages = actual_conversation["messages"]
+                    
+                    if "conversation_index" in expected_interaction:
+                        conversation_index = expected_interaction["conversation_index"]
+                        assert_conversation_messages(
+                            expected_conversation, actual_messages, conversation_index
+                        )
+                    
+                    # Verify token usage
+                    if "input_tokens" in expected_interaction:
+                        assert details["input_tokens"] == expected_interaction["input_tokens"], (
+                            f"Agent '{agent_name}' LLM interaction {i+1} input_tokens mismatch"
+                        )
+                        assert details["output_tokens"] == expected_interaction["output_tokens"], (
+                            f"Agent '{agent_name}' LLM interaction {i+1} output_tokens mismatch"
+                        )
+                        assert details["total_tokens"] == expected_interaction["total_tokens"], (
+                            f"Agent '{agent_name}' LLM interaction {i+1} total_tokens mismatch"
+                        )
+                
+                elif interaction_type == "mcp":
+                    # Verify MCP interaction details
+                    if "server_name" in expected_interaction:
+                        assert details.get("server_name") == expected_interaction["server_name"], (
+                            f"Agent '{agent_name}' MCP interaction {i+1} server_name mismatch"
+                        )
+                    if "tool_name" in expected_interaction:
+                        assert details.get("tool_name") == expected_interaction["tool_name"], (
+                            f"Agent '{agent_name}' MCP interaction {i+1} tool_name mismatch"
+                        )
+            
+            print(f"      ✅ Agent '{agent_name}' verified ({len(interactions)} interactions)")
+        
+        print(f"    ✅ Parallel stage '{stage_name}' verified")
+
+    def _verify_single_stage_interactions(self, stage, expected_stage_spec):
+        """Verify interactions for a single (non-parallel) stage."""
+        stage_name = stage["stage_name"]
+        print(f"  🔍 Verifying single stage '{stage_name}' interactions...")
+        
+        # Verify stage type
+        assert stage["parallel_type"] == "single", (
+            f"Stage '{stage_name}' should be single type, got {stage['parallel_type']}"
+        )
+        
+        # Get interactions
+        interactions = stage.get("interactions", [])
+        expected_interactions = expected_stage_spec["interactions"]
+        
+        assert len(interactions) == len(expected_interactions), (
+            f"Stage '{stage_name}' interaction count mismatch: "
+            f"expected {len(expected_interactions)}, got {len(interactions)}"
+        )
+        
+        # Get expected conversation for synthesis stage
+        expected_conversation = EXPECTED_REPLICA_SYNTHESIS_CONVERSATION
+        
+        # Verify each interaction
+        for i, expected_interaction in enumerate(expected_interactions):
+            actual_interaction = interactions[i]
+            interaction_type = expected_interaction["type"]
+            
+            assert actual_interaction["type"] == interaction_type, (
+                f"Stage '{stage_name}' interaction {i+1} type mismatch"
+            )
+            
+            details = actual_interaction["details"]
+            assert details["success"] == expected_interaction["success"], (
+                f"Stage '{stage_name}' interaction {i+1} success mismatch"
+            )
+            
+            if interaction_type == "llm":
+                # Verify conversation content
+                actual_conversation = details["conversation"]
+                actual_messages = actual_conversation["messages"]
+                
+                if "conversation_index" in expected_interaction:
+                    conversation_index = expected_interaction["conversation_index"]
+                    assert_conversation_messages(
+                        expected_conversation, actual_messages, conversation_index
+                    )
+                
+                # Verify token usage
+                if "input_tokens" in expected_interaction:
+                    assert details["input_tokens"] == expected_interaction["input_tokens"], (
+                        f"Stage '{stage_name}' LLM interaction {i+1} input_tokens mismatch"
+                    )
+                    assert details["output_tokens"] == expected_interaction["output_tokens"], (
+                        f"Stage '{stage_name}' LLM interaction {i+1} output_tokens mismatch"
+                    )
+                    assert details["total_tokens"] == expected_interaction["total_tokens"], (
+                        f"Stage '{stage_name}' LLM interaction {i+1} total_tokens mismatch"
+                    )
+        
+        print(f"    ✅ Single stage '{stage_name}' verified ({len(interactions)} interactions)")
+
+    def _verify_complete_interaction_flow(self, stages):
+        """Verify complete interaction flow for all stages."""
+        print("  🔍 Verifying complete interaction flow...")
+        
+        for stage in stages:
+            stage_name = stage["stage_name"]
+            expected_stage_spec = EXPECTED_REPLICA_STAGES.get(stage_name)
+            
+            assert expected_stage_spec is not None, (
+                f"No expected spec found for stage '{stage_name}'"
+            )
+            
+            if expected_stage_spec["type"] == "parallel":
+                self._verify_parallel_stage_interactions(stage, expected_stage_spec)
+            else:
+                self._verify_single_stage_interactions(stage, expected_stage_spec)
+        
+        print("    ✅ Complete interaction flow verified")
 

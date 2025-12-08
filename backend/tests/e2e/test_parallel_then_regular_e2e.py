@@ -19,7 +19,13 @@ from unittest.mock import patch
 import pytest
 
 from .conftest import create_mock_stream
-from .e2e_utils import E2ETestUtils
+from .e2e_utils import E2ETestUtils, assert_conversation_messages
+from .expected_parallel_conversations import (
+    EXPECTED_PARALLEL_NO_SYNTHESIS_AGENT_1_CONVERSATION,
+    EXPECTED_PARALLEL_NO_SYNTHESIS_AGENT_2_CONVERSATION,
+    EXPECTED_REGULAR_AFTER_PARALLEL_CONVERSATION,
+    EXPECTED_PARALLEL_REGULAR_STAGES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +37,7 @@ class TestParallelThenRegularE2E:
 
     @pytest.mark.e2e
     async def test_parallel_then_regular_stage(
-        self, e2e_parallel_test_client, e2e_parallel_regular_alert
+        self, e2e_test_client, e2e_parallel_regular_alert
     ):
         """
         Test parallel stage followed by regular stage (no automatic synthesis).
@@ -54,7 +60,7 @@ class TestParallelThenRegularE2E:
         async def run_test():
             print("🚀 Starting parallel + regular test...")
             result = await self._execute_parallel_regular_test(
-                e2e_parallel_test_client, e2e_parallel_regular_alert
+                e2e_test_client, e2e_parallel_regular_alert
             )
             print("✅ Parallel + regular test completed!")
             return result
@@ -82,29 +88,30 @@ class TestParallelThenRegularE2E:
         all_llm_interactions = []
         
         # Define mock responses
+        # Token counts must match EXPECTED_PARALLEL_REGULAR_STAGES in expected_parallel_conversations.py
         # Agent1: interactions 1-2, Agent2: interactions 3-4, Command stage: interaction 5
         mock_response_map = {
-            1: {  # Agent1 (KubernetesAgent) - Initial analysis
+            1: {  # Agent1 (KubernetesAgent) - Initial analysis (LLM position 1)
                 "response_content": """Thought: I should check the pod status in the test-namespace to understand any issues.
 Action: kubernetes-server.kubectl_get
 Action Input: {"resource": "pods", "namespace": "test-namespace"}""",
-                "input_tokens": 200, "output_tokens": 80, "total_tokens": 280
+                "input_tokens": 245, "output_tokens": 85, "total_tokens": 330
             },
-            2: {  # Agent1 - Final answer
+            2: {  # Agent1 - Final answer (LLM position 2)
                 "response_content": """Final Answer: Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause.""",
-                "input_tokens": 180, "output_tokens": 100, "total_tokens": 280
+                "input_tokens": 180, "output_tokens": 65, "total_tokens": 245
             },
-            3: {  # Agent2 (LogAgent) - Log analysis
+            3: {  # Agent2 (LogAgent) - Log analysis (LLM position 1)
                 "response_content": """Thought: I should analyze the application logs to find error patterns.
 Action: log-server.get_logs
 Action Input: {"namespace": "test-namespace", "pod": "pod-1"}""",
                 "input_tokens": 200, "output_tokens": 75, "total_tokens": 275
             },
-            4: {  # Agent2 - Final answer
+            4: {  # Agent2 - Final answer (LLM position 2)
                 "response_content": """Final Answer: Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity.""",
-                "input_tokens": 185, "output_tokens": 105, "total_tokens": 290
+                "input_tokens": 190, "output_tokens": 70, "total_tokens": 260
             },
-            5: {  # Command agent (uses parallel results)
+            5: {  # Command agent (uses parallel results) (LLM position 1)
                 "response_content": """Final Answer: **Remediation Commands**
 
 Based on parallel investigations showing database connectivity issues causing CrashLoopBackOff:
@@ -134,7 +141,7 @@ kubectl exec -n test-namespace pod-1 -- nc -zv db.example.com 5432
 # If needed, rollback to previous working version
 kubectl rollout undo deployment/app -n test-namespace
 ```""",
-                "input_tokens": 400, "output_tokens": 180, "total_tokens": 580
+                "input_tokens": 400, "output_tokens": 170, "total_tokens": 570
             }
         }
         
@@ -209,19 +216,16 @@ kubectl rollout undo deployment/app -n test-namespace
                             test_client, session_id, max_retries=3, retry_delay=0.5
                         )
                         
-                        # Verify session metadata - should match one of the parallel chains
-                        assert detail_data["status"] == "completed"
+                        # Verify session metadata
+                        self._verify_session_metadata(detail_data, "parallel-then-regular-chain")
                         
-                        # Verify stage structure - for this test we expect 2 stages (investigation + synthesis OR investigation + command)
-                        # Since both chains match "test-parallel-execution", first match wins (multi-agent-parallel-chain)
-                        # We need a different approach - let's just verify the parallel structure exists
+                        # Get stages
                         stages = detail_data.get("stages", [])
-                        assert len(stages) >= 2, f"Expected at least 2 stages, got {len(stages)}"
                         
-                        # Verify first stage is parallel
-                        first_stage = stages[0]
-                        assert first_stage["parallel_type"] in ["multi_agent", "replica"]
-                        assert first_stage["parallel_executions"] is not None
+                        # Comprehensive verification
+                        print("🔍 Step 4: Comprehensive result verification...")
+                        self._verify_stage_structure(stages, EXPECTED_PARALLEL_REGULAR_STAGES)
+                        self._verify_complete_interaction_flow(stages)
                         
                         print("✅ Parallel + regular stage test passed!")
                         return detail_data
@@ -232,4 +236,206 @@ kubectl rollout undo deployment/app -n test-namespace
         assert detail_data["chain_id"] == expected_chain_id
         assert detail_data["started_at_us"] is not None
         assert detail_data["completed_at_us"] is not None
+
+    def _verify_stage_structure(self, stages, expected_stages_spec):
+        """Verify the structure of stages matches expectations."""
+        print("  📋 Verifying stage structure...")
+        
+        expected_stage_names = list(expected_stages_spec.keys())
+        actual_stage_names = [stage["stage_name"] for stage in stages]
+        
+        assert len(stages) == len(expected_stage_names), (
+            f"Stage count mismatch: expected {len(expected_stage_names)}, got {len(stages)}"
+        )
+        
+        for expected_name, actual_name in zip(expected_stage_names, actual_stage_names):
+            assert actual_name == expected_name, (
+                f"Stage name mismatch: expected '{expected_name}', got '{actual_name}'"
+            )
+        
+        print(f"    ✅ Stage structure verified ({len(stages)} stages)")
+
+    def _verify_parallel_stage_interactions(self, stage, expected_stage_spec):
+        """Verify interactions for a parallel stage."""
+        stage_name = stage["stage_name"]
+        print(f"  🔍 Verifying parallel stage '{stage_name}' interactions...")
+        
+        # Verify parallel type
+        assert stage["parallel_type"] == expected_stage_spec["parallel_type"], (
+            f"Stage '{stage_name}' parallel_type mismatch"
+        )
+        
+        # Verify parallel executions exist
+        parallel_executions = stage.get("parallel_executions")
+        assert parallel_executions is not None, f"Stage '{stage_name}' missing parallel_executions"
+        
+        expected_agents = expected_stage_spec["agents"]
+        assert len(parallel_executions) == expected_stage_spec["agent_count"], (
+            f"Stage '{stage_name}' agent count mismatch: expected {expected_stage_spec['agent_count']}, "
+            f"got {len(parallel_executions)}"
+        )
+        
+        # Verify each agent's execution
+        for agent_name, expected_agent_spec in expected_agents.items():
+            # Find the matching parallel execution
+            agent_execution = None
+            for execution in parallel_executions:
+                if execution["agent_name"] == agent_name:
+                    agent_execution = execution
+                    break
+            
+            assert agent_execution is not None, (
+                f"Stage '{stage_name}' missing execution for agent '{agent_name}'"
+            )
+            
+            print(f"    🔍 Verifying agent '{agent_name}'...")
+            
+            # Verify interactions for this agent
+            interactions = agent_execution.get("interactions", [])
+            expected_interactions = expected_agent_spec["interactions"]
+            
+            assert len(interactions) == len(expected_interactions), (
+                f"Agent '{agent_name}' interaction count mismatch: "
+                f"expected {len(expected_interactions)}, got {len(interactions)}"
+            )
+            
+            # Get expected conversation for this agent
+            if agent_name == "KubernetesAgent":
+                expected_conversation = EXPECTED_PARALLEL_NO_SYNTHESIS_AGENT_1_CONVERSATION
+            elif agent_name == "LogAgent":
+                expected_conversation = EXPECTED_PARALLEL_NO_SYNTHESIS_AGENT_2_CONVERSATION
+            else:
+                expected_conversation = None
+            
+            # Verify each interaction
+            for i, expected_interaction in enumerate(expected_interactions):
+                actual_interaction = interactions[i]
+                interaction_type = expected_interaction["type"]
+                
+                assert actual_interaction["type"] == interaction_type, (
+                    f"Agent '{agent_name}' interaction {i+1} type mismatch"
+                )
+                
+                details = actual_interaction["details"]
+                assert details["success"] == expected_interaction["success"], (
+                    f"Agent '{agent_name}' interaction {i+1} success mismatch"
+                )
+                
+                if interaction_type == "llm":
+                    # Verify conversation content
+                    actual_conversation = details["conversation"]
+                    actual_messages = actual_conversation["messages"]
+                    
+                    if "conversation_index" in expected_interaction:
+                        conversation_index = expected_interaction["conversation_index"]
+                        assert_conversation_messages(
+                            expected_conversation, actual_messages, conversation_index
+                        )
+                    
+                    # Verify token usage
+                    if "input_tokens" in expected_interaction:
+                        assert details["input_tokens"] == expected_interaction["input_tokens"], (
+                            f"Agent '{agent_name}' LLM interaction {i+1} input_tokens mismatch"
+                        )
+                        assert details["output_tokens"] == expected_interaction["output_tokens"], (
+                            f"Agent '{agent_name}' LLM interaction {i+1} output_tokens mismatch"
+                        )
+                        assert details["total_tokens"] == expected_interaction["total_tokens"], (
+                            f"Agent '{agent_name}' LLM interaction {i+1} total_tokens mismatch"
+                        )
+                
+                elif interaction_type == "mcp":
+                    # Verify MCP interaction details
+                    if "server_name" in expected_interaction:
+                        assert details.get("server_name") == expected_interaction["server_name"], (
+                            f"Agent '{agent_name}' MCP interaction {i+1} server_name mismatch"
+                        )
+                    if "tool_name" in expected_interaction:
+                        assert details.get("tool_name") == expected_interaction["tool_name"], (
+                            f"Agent '{agent_name}' MCP interaction {i+1} tool_name mismatch"
+                        )
+            
+            print(f"      ✅ Agent '{agent_name}' verified ({len(interactions)} interactions)")
+        
+        print(f"    ✅ Parallel stage '{stage_name}' verified")
+
+    def _verify_single_stage_interactions(self, stage, expected_stage_spec):
+        """Verify interactions for a single (non-parallel) stage."""
+        stage_name = stage["stage_name"]
+        print(f"  🔍 Verifying single stage '{stage_name}' interactions...")
+        
+        # Verify stage type
+        assert stage["parallel_type"] == "single", (
+            f"Stage '{stage_name}' should be single type, got {stage['parallel_type']}"
+        )
+        
+        # Get interactions
+        interactions = stage.get("interactions", [])
+        expected_interactions = expected_stage_spec["interactions"]
+        
+        assert len(interactions) == len(expected_interactions), (
+            f"Stage '{stage_name}' interaction count mismatch: "
+            f"expected {len(expected_interactions)}, got {len(interactions)}"
+        )
+        
+        # Get expected conversation for command stage
+        expected_conversation = EXPECTED_REGULAR_AFTER_PARALLEL_CONVERSATION
+        
+        # Verify each interaction
+        for i, expected_interaction in enumerate(expected_interactions):
+            actual_interaction = interactions[i]
+            interaction_type = expected_interaction["type"]
+            
+            assert actual_interaction["type"] == interaction_type, (
+                f"Stage '{stage_name}' interaction {i+1} type mismatch"
+            )
+            
+            details = actual_interaction["details"]
+            assert details["success"] == expected_interaction["success"], (
+                f"Stage '{stage_name}' interaction {i+1} success mismatch"
+            )
+            
+            if interaction_type == "llm":
+                # Verify conversation content
+                actual_conversation = details["conversation"]
+                actual_messages = actual_conversation["messages"]
+                
+                if "conversation_index" in expected_interaction:
+                    conversation_index = expected_interaction["conversation_index"]
+                    assert_conversation_messages(
+                        expected_conversation, actual_messages, conversation_index
+                    )
+                
+                # Verify token usage
+                if "input_tokens" in expected_interaction:
+                    assert details["input_tokens"] == expected_interaction["input_tokens"], (
+                        f"Stage '{stage_name}' LLM interaction {i+1} input_tokens mismatch"
+                    )
+                    assert details["output_tokens"] == expected_interaction["output_tokens"], (
+                        f"Stage '{stage_name}' LLM interaction {i+1} output_tokens mismatch"
+                    )
+                    assert details["total_tokens"] == expected_interaction["total_tokens"], (
+                        f"Stage '{stage_name}' LLM interaction {i+1} total_tokens mismatch"
+                    )
+        
+        print(f"    ✅ Single stage '{stage_name}' verified ({len(interactions)} interactions)")
+
+    def _verify_complete_interaction_flow(self, stages):
+        """Verify complete interaction flow for all stages."""
+        print("  🔍 Verifying complete interaction flow...")
+        
+        for stage in stages:
+            stage_name = stage["stage_name"]
+            expected_stage_spec = EXPECTED_PARALLEL_REGULAR_STAGES.get(stage_name)
+            
+            assert expected_stage_spec is not None, (
+                f"No expected spec found for stage '{stage_name}'"
+            )
+            
+            if expected_stage_spec["type"] == "parallel":
+                self._verify_parallel_stage_interactions(stage, expected_stage_spec)
+            else:
+                self._verify_single_stage_interactions(stage, expected_stage_spec)
+        
+        print("    ✅ Complete interaction flow verified")
 
