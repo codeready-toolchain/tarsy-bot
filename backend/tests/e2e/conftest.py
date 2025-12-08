@@ -639,9 +639,17 @@ def create_gemini_client_mock(response_map: dict):
     Returns:
         A function that creates MockGeminiClient instances
     """
+    # IMPORTANT: Shared call counter across all client instances
+    # This ensures call_num increments properly even when new Client() is called multiple times
+    shared_state = {"call_count": 0}
+    
     def response_generator(call_num: int, model: str, contents: list, config: Any):
         """Generate response based on call number."""
-        response_data = response_map.get(call_num, {
+        # Increment shared counter instead of using the per-instance counter
+        shared_state["call_count"] += 1
+        actual_call_num = shared_state["call_count"]
+        
+        response_data = response_map.get(actual_call_num, {
             "text_content": "",
             "thinking_content": None,
             "function_calls": None,
@@ -800,12 +808,14 @@ current-context: test-context
     test_agents_path = current_dir / "test_parallel_agents.yaml"
     
     # Set isolated environment variables
+    # Use google-default to support mixed iteration strategies (native-thinking + react)
     e2e_isolation.set_isolated_env("DATABASE_URL", test_db_url)
     e2e_isolation.set_isolated_env("HISTORY_ENABLED", "true")
     e2e_isolation.set_isolated_env("AGENT_CONFIG_PATH", str(test_agents_path))
+    e2e_isolation.set_isolated_env("GOOGLE_API_KEY", "test-google-key-123")
     e2e_isolation.set_isolated_env("OPENAI_API_KEY", "test-openai-key-123")
     e2e_isolation.set_isolated_env("ANTHROPIC_API_KEY", "test-anthropic-key-123")
-    e2e_isolation.set_isolated_env("LLM_PROVIDER", "openai-default")
+    e2e_isolation.set_isolated_env("LLM_PROVIDER", "google-default")  # Default to Google for native thinking support
     e2e_isolation.set_isolated_env("KUBECONFIG", kubeconfig_path)
     
     # Create real Settings object with isolated environment
@@ -815,9 +825,10 @@ current-context: test-context
     settings.database_url = test_db_url
     settings.history_enabled = True
     settings.agent_config_path = str(test_agents_path)
+    settings.google_api_key = "test-google-key-123"
     settings.openai_api_key = "test-openai-key-123"
     settings.anthropic_api_key = "test-anthropic-key-123"
-    settings.llm_provider = "openai-default"
+    settings.llm_provider = "google-default"  # Default to Google for native thinking support
     
     # Patch global settings
     e2e_isolation.patch_settings(settings)

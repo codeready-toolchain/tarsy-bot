@@ -87,29 +87,53 @@ class TestParallelMultiAgentE2E:
         """Execute multi-agent parallel test."""
         print("🔧 Starting multi-agent parallel test execution")
 
-        # Agent-specific interaction counters
+        # ============================================================================
+        # NATIVE THINKING MOCK (for KubernetesAgent using Gemini)
+        # ============================================================================
+        # Gemini SDK responses for native thinking (function calling)
+        gemini_response_map = {
+            1: {  # First call - tool call with thinking
+                "text_content": "",  # Empty for tool calls
+                "thinking_content": "I should check the pod status in test-namespace to understand the issue.",
+                "function_calls": [{"name": "kubernetes-server__kubectl_get", "args": {"resource": "pods", "namespace": "test-namespace"}}],
+                "input_tokens": 245,
+                "output_tokens": 85,
+                "total_tokens": 330
+            },
+            2: {  # Second call - final answer after tool result
+                "text_content": "Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause.",
+                "thinking_content": "I have identified the pod status. This provides enough information for initial analysis.",
+                "function_calls": None,
+                "input_tokens": 180,
+                "output_tokens": 65,
+                "total_tokens": 245
+            }
+        }
+        
+        # Import create_gemini_client_mock from conftest
+        from .conftest import create_gemini_client_mock
+        gemini_mock_factory = create_gemini_client_mock(gemini_response_map)
+        
+        # Wrap the factory to add debugging
+        original_factory = gemini_mock_factory
+        def debug_gemini_factory(*args, **kwargs):
+            print(f"[DEBUG Gemini Mock] Factory called with args={args}, kwargs={kwargs}")
+            result = original_factory(*args, **kwargs)
+            print(f"[DEBUG Gemini Mock] Factory returning: {result}")
+            return result
+        gemini_mock_factory = debug_gemini_factory
+        
+        # ============================================================================
+        # LANGCHAIN MOCK (for LogAgent using ReAct + for SynthesisAgent)
+        # ============================================================================
+        # Agent-specific interaction counters for LangChain-based agents
         agent_counters = {
-            "KubernetesAgent": 0,
             "LogAgent": 0,
             "SynthesisAgent": 0
         }
         
-        # Define mock responses per agent
-        # Each agent has its own sequence of responses
+        # Define mock responses per LangChain agent (ReAct format)
         agent_responses = {
-            "KubernetesAgent": [
-                {  # Interaction 1 - Initial analysis with kubectl_get action
-                    "response_content": """Thought: I should check the pod status in the test-namespace to understand any issues.
-Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "pods", "namespace": "test-namespace"}""",
-                    "input_tokens": 245, "output_tokens": 85, "total_tokens": 330
-                },
-                {  # Interaction 2 - Final answer
-                    "response_content": """Thought: I have identified the pod status. This provides enough information for initial analysis.
-Final Answer: Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause.""",
-                    "input_tokens": 180, "output_tokens": 65, "total_tokens": 245
-                }
-            ],
             "LogAgent": [
                 {  # Interaction 1 - Log analysis with get_logs action
                     "response_content": """Thought: I should analyze the application logs to find error patterns.
@@ -124,7 +148,7 @@ Final Answer: Log analysis reveals database connection timeout errors. The pod i
                 }
             ],
             "SynthesisAgent": [
-                {  # Interaction 1 - Synthesis final answer
+                {  # Interaction 1 - Synthesis final answer  
                     "response_content": """Final Answer: **Synthesis of Parallel Investigations**
 
 Both investigations provide complementary evidence. The Kubernetes agent identified the symptom (CrashLoopBackOff), while the log agent uncovered the root cause (database connection timeout).
@@ -143,6 +167,10 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
             ]
         }
         
+        # ============================================================================
+        # LANGCHAIN STREAMING MOCK CREATOR
+        # ============================================================================
+        
         # Create agent-aware streaming mock for LLM client
         def create_streaming_mock():
             """Create a mock astream function that identifies the agent and returns appropriate responses."""
@@ -160,6 +188,7 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
                     messages = args[0]
                 
                 # Look for agent-specific instructions in the system message
+                # Note: KubernetesAgent uses Gemini SDK (not LangChain), so we only identify LogAgent and SynthesisAgent here
                 for msg in messages:
                         # Handle both dict and Message object formats
                         content = ""
@@ -174,9 +203,7 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
                         
                         # Check if this is a system message  
                         if msg_type in ["system", "systemmessage"]:
-                            if "Kubernetes specialist" in content:
-                                agent_name = "KubernetesAgent"
-                            elif "log analysis specialist" in content:
+                            if "log analysis specialist" in content:
                                 agent_name = "LogAgent"
                             elif "Incident Commander synthesizing" in content:
                                 agent_name = "SynthesisAgent"
@@ -186,9 +213,9 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
                 if agent_name in agent_counters:
                     agent_interaction_num = agent_counters[agent_name]
                     agent_counters[agent_name] += 1
-                    
+                
                     print(f"\n🔍 LLM REQUEST from {agent_name} (interaction #{agent_interaction_num + 1})")
-                    
+                
                     # Get response for this agent's interaction
                     agent_response_list = agent_responses.get(agent_name, [])
                     if agent_interaction_num < len(agent_response_list):
@@ -202,10 +229,10 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
                         }
                 else:
                     response_data = {
-                        "response_content": "Default response",
-                        "input_tokens": 100,
-                        "output_tokens": 50,
-                        "total_tokens": 150
+                    "response_content": "Default response",
+                    "input_tokens": 100,
+                    "output_tokens": 50,
+                    "total_tokens": 150
                     }
                 
                 content = response_data["response_content"]
@@ -240,15 +267,15 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
             # Return tools that both agents can use
             mock_tools = [
                 Tool(
-                    name="kubectl_get",
-                    description="Get Kubernetes resources",
-                    inputSchema={"type": "object", "properties": {}}
+                name="kubectl_get",
+                description="Get Kubernetes resources",
+                inputSchema={"type": "object", "properties": {}}
                 ),
                 Tool(
-                    name="get_logs",
+                name="get_logs",
                     description="Get pod logs",
-                    inputSchema={"type": "object", "properties": {}}
-                )
+                inputSchema={"type": "object", "properties": {}}
+            )
             ]
             mock_result = Mock()
             mock_result.tools = mock_tools
@@ -273,8 +300,10 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
         from langchain_openai import ChatOpenAI
         from langchain_xai import ChatXAI
         
-        # Patch all the things - use LangChain client patching like working E2E test
-        with patch.object(ChatOpenAI, 'astream', streaming_mock), \
+        # Patch both Gemini SDK (for native thinking) and LangChain clients (for ReAct)
+        # IMPORTANT: Patch where genai.Client is USED, not where it's defined
+        with patch("tarsy.integrations.llm.gemini_client.genai.Client", gemini_mock_factory), \
+             patch.object(ChatOpenAI, 'astream', streaming_mock), \
              patch.object(ChatAnthropic, 'astream', streaming_mock), \
              patch.object(ChatXAI, 'astream', streaming_mock), \
              patch.object(ChatGoogleGenerativeAI, 'astream', streaming_mock):
@@ -289,6 +318,19 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
                         session_id, final_status = await E2ETestUtils.wait_for_session_completion(
                             test_client, max_wait_seconds=20
                         )
+                        
+                        # Debug: if failed, print session details
+                        if final_status != "completed":
+                            import json
+                            detail_data = await E2ETestUtils.get_session_details_async(
+                                test_client, session_id, max_retries=3, retry_delay=0.5
+                            )
+                            debug_file = "/tmp/failed_session_details.json"
+                            with open(debug_file, "w") as f:
+                                json.dump(detail_data, f, indent=2, default=str)
+                            print(f"\n❌ Session failed! Status: {final_status}")
+                            print(f"   Error: {detail_data.get('error_message')}")
+                            print(f"   Full session details written to: {debug_file}")
                         
                         assert final_status == "completed", f"Session failed with status: {final_status}"
                         
@@ -547,7 +589,7 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
                     assert details.get("total_tokens") == expected_interaction["total_tokens"], (
                         f"Stage '{stage_name}' LLM interaction {i+1} total_tokens mismatch"
                     )
-            
+        
             elif interaction_type == "mcp":
                 # Verify success
                 assert details.get("success", True) == expected_interaction["success"], (

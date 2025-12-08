@@ -104,7 +104,7 @@ class ChainRegistry:
                         stages=[
                             ChainStageConfigModel(
                                 name=stage["name"],
-                                agent=stage["agent"],
+                                agent=stage.get("agent"),
                                 agents=[
                                     ParallelAgentConfig(
                                         name=agent["name"],

@@ -1701,8 +1701,8 @@ class AlertService:
                 agent = self.agent_factory.get_agent(
                     agent_identifier=base_agent,
                     mcp_client=session_mcp_client,
-                    iteration_strategy=config["iteration_strategy"],
-                    llm_provider=config["llm_provider"]
+                    iteration_strategy=config.get("iteration_strategy"),
+                    llm_provider=config.get("llm_provider")
                 )
                 
                 # Set current stage execution ID for interaction tagging (hooks need this!)

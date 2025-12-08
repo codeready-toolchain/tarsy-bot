@@ -54,88 +54,19 @@ For Kubernetes operations:
 You are a Kubernetes specialist analyzing pod health and resource issues.
 Focus on pod status, events, and resource constraints.
 
-You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
+You are an SRE agent analyzing incidents. Use the available tools to investigate and provide actionable recommendations.
 
-REQUIRED FORMAT:
-
-Question: [the incident question]
-Thought: [your step-by-step reasoning]
-Action: [tool name from available tools]
-Action Input: [parameters as key: value pairs]
-
-⚠️ STOP immediately after Action Input. The system provides Observations.
-
-Continue the cycle. Conclude when you have sufficient information:
-
-Thought: [final reasoning]
-Final Answer: [complete structured response]
-
-CRITICAL RULES:
-1. Always use colons after headers: "Thought:", "Action:", "Action Input:"
-2. Start each section on a NEW LINE (never continue on same line as previous text)
-3. Stop after Action Input—never generate fake Observations
-4. Parameters: one per line for multiple values, or inline for single value
-5. Conclude when you have actionable insights (perfect information not required)
-
-PARAMETER FORMATS:
-
-Multiple parameters:
-Action Input: apiVersion: v1
-kind: Namespace
-name: superman-dev
-
-Single parameter:
-Action Input: namespace: default
-
-EXAMPLE CYCLE:
-
-Question: Why is namespace 'superman-dev' stuck in terminating state?
-
-Thought: I need to check the namespace status first to identify any blocking resources or finalizers.
-
-Action: kubernetes-server.resources_get
-Action Input: apiVersion: v1
-kind: Namespace
-name: superman-dev
-
-[System provides: Observation: {"status": {"phase": "Terminating", "finalizers": ["kubernetes"]}}]
-
-Thought: A finalizer is blocking deletion. I should check for any remaining resources in the namespace.
-
-Action: kubernetes-server.resources_list
-Action Input: apiVersion: v1
-kind: Pod
-namespace: superman-dev
-
-[System provides: Observation: No pods found]
-
-Thought: No pods remain, but the finalizer persists. This is an orphaned finalizer that needs manual removal.
-
-Final Answer: 
-**Root Cause:** Orphaned 'kubernetes' finalizer blocking namespace deletion after all resources were cleaned up.
-
-**Resolution Steps:**
-1. Remove the finalizer: `kubectl patch namespace superman-dev -p '{"spec":{"finalizers":null}}' --type=merge`
-2. Verify deletion: `kubectl get namespace superman-dev`
-3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
-
-**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically.
+When you have gathered sufficient information, provide your final analysis with:
+1. Root cause analysis
+2. Current system state assessment
+3. Specific remediation steps for human operators
+4. Prevention recommendations
 
 Focus on investigation and providing recommendations for human operators to execute."""
         },
         {
             "role": "user",
-            "content": """Answer the following question using the available tools.
-
-Available tools:
-
-1. **kubernetes-server.kubectl_get**: Get Kubernetes resources
-    **Parameters**: None
-
-2. **kubernetes-server.get_logs**: Get pod logs
-    **Parameters**: None
-
-Question: Analyze this test-parallel-execution alert and provide actionable recommendations.
+            "content": """Analyze this test-parallel-execution alert and provide actionable recommendations.
 
 ## Alert Details
 
@@ -165,32 +96,24 @@ This is a test runbook for parallel execution testing.
 No previous stage data is available for this alert. This is the first stage of analysis.
 
 ## Your Task
-Use the available tools to investigate this alert and provide:
-1. Root cause analysis
-2. Current system state assessment  
+Investigate this alert using the available tools and provide:
+1. Root cause analysis based on your investigation
+2. Current system state assessment from tool observations
 3. Specific remediation steps for human operators
 4. Prevention recommendations
 
-Be thorough in your investigation before providing the final answer.
-
-Begin!"""
-        },
-        {
-            "role": "assistant",
-            "content": """Thought: I should check the pod status in the test-namespace to understand any issues.
-Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "pods", "namespace": "test-namespace"}"""
+Use tools as needed to gather information. When you have sufficient data, provide your complete analysis."""
         },
         {
             "role": "user",
-            "content": """Observation: kubernetes-server.kubectl_get: {
+            "content": """Tool result from kubernetes-server__kubectl_get:
+{
   "result": "{\\\"result\\\": \\\"Pod pod-1 is in CrashLoopBackOff state\\\"}"
 }"""
         },
         {
             "role": "assistant",
-            "content": """Thought: I have identified the pod status. This provides enough information for initial analysis.
-Final Answer: Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause."""
+            "content": """Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause."""
         }
     ]
 }
@@ -519,12 +442,11 @@ This is a test runbook for parallel execution testing.
 
 **Parallel Execution Summary**: 2/2 agents succeeded
 
-#### Agent 1: KubernetesAgent (openai-default, react)
+#### Agent 1: KubernetesAgent (google-default, native-thinking)
 **Status**: completed
 
 <!-- Analysis Result START -->
-Thought: I have identified the pod status. This provides enough information for initial analysis.
-Final Answer: Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause.
+Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause.
 <!-- Analysis Result END -->
 
 #### Agent 2: LogAgent (anthropic-default, react)
@@ -1706,12 +1628,12 @@ EXPECTED_MULTI_AGENT_STAGES = {
                 "interactions": [
                     # MCP 1 - Tool list discovery
                     {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
-                    # LLM 1 - Initial ReAct iteration
-                    {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 245, 'output_tokens': 85, 'total_tokens': 330, 'interaction_type': 'investigation'},
+                    # LLM 1 - Native thinking with function call (no assistant message added when text_content is empty)
+                    {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 2, 'input_tokens': 245, 'output_tokens': 85, 'total_tokens': 330, 'interaction_type': 'investigation'},
                     # MCP 2 - kubectl_get tool call
                     {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
-                    # LLM 2 - Final answer
-                    {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 180, 'output_tokens': 65, 'total_tokens': 245, 'interaction_type': 'final_analysis'}
+                    # LLM 2 - Final answer after tool result
+                    {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 4, 'input_tokens': 180, 'output_tokens': 65, 'total_tokens': 245, 'interaction_type': 'final_analysis'}
                 ]
             },
             "LogAgent": {
