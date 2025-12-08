@@ -20,7 +20,7 @@ from unittest.mock import patch
 import pytest
 
 from .conftest import create_mock_stream
-from .e2e_utils import E2ETestUtils, assert_conversation_messages
+from .e2e_utils import E2ETestUtils
 from .expected_parallel_conversations import (
     EXPECTED_REPLICA_1_CONVERSATION,
     EXPECTED_REPLICA_2_CONVERSATION,
@@ -28,13 +28,14 @@ from .expected_parallel_conversations import (
     EXPECTED_REPLICA_SYNTHESIS_CONVERSATION,
     EXPECTED_REPLICA_STAGES,
 )
+from .parallel_test_base import ParallelTestBase
 
 logger = logging.getLogger(__name__)
 
 
 @pytest.mark.asyncio
 @pytest.mark.e2e
-class TestParallelReplicaE2E:
+class TestParallelReplicaE2E(ParallelTestBase):
     """E2E test for replica parallel execution."""
 
     @pytest.mark.e2e
@@ -244,239 +245,19 @@ All three replicas converged on consistent findings with increasing detail. Repl
                         # Comprehensive verification
                         print("🔍 Step 4: Comprehensive result verification...")
                         self._verify_stage_structure(stages, EXPECTED_REPLICA_STAGES)
-                        self._verify_complete_interaction_flow(stages)
+                        
+                        # Create conversation map
+                        conversation_map = {
+                            "analysis": {
+                                "KubernetesAgent-1": EXPECTED_REPLICA_1_CONVERSATION,
+                                "KubernetesAgent-2": EXPECTED_REPLICA_2_CONVERSATION,
+                                "KubernetesAgent-3": EXPECTED_REPLICA_3_CONVERSATION
+                            },
+                            "synthesis": EXPECTED_REPLICA_SYNTHESIS_CONVERSATION
+                        }
+                        
+                        self._verify_complete_interaction_flow(stages, EXPECTED_REPLICA_STAGES, conversation_map)
                         
                         print("✅ Replica parallel test passed!")
                         return detail_data
-
-    def _verify_session_metadata(self, detail_data, expected_chain_id):
-        """Verify session metadata."""
-        assert detail_data["status"] == "completed"
-        assert detail_data["chain_id"] == expected_chain_id
-        assert detail_data["started_at_us"] is not None
-        assert detail_data["completed_at_us"] is not None
-
-    def _verify_stage_structure(self, stages, expected_stages_spec):
-        """Verify the structure of stages matches expectations."""
-        print("  📋 Verifying stage structure...")
-        
-        expected_stage_names = list(expected_stages_spec.keys())
-        actual_stage_names = [stage["stage_name"] for stage in stages]
-        
-        assert len(stages) == len(expected_stage_names), (
-            f"Stage count mismatch: expected {len(expected_stage_names)}, got {len(stages)}"
-        )
-        
-        for expected_name, actual_name in zip(expected_stage_names, actual_stage_names):
-            assert actual_name == expected_name, (
-                f"Stage name mismatch: expected '{expected_name}', got '{actual_name}'"
-            )
-        
-        print(f"    ✅ Stage structure verified ({len(stages)} stages)")
-
-    def _verify_parallel_stage_interactions(self, stage, expected_stage_spec):
-        """Verify interactions for a parallel stage."""
-        stage_name = stage["stage_name"]
-        print(f"  🔍 Verifying parallel stage '{stage_name}' interactions...")
-        
-        # Verify parallel type
-        assert stage["parallel_type"] == expected_stage_spec["parallel_type"], (
-            f"Stage '{stage_name}' parallel_type mismatch"
-        )
-        
-        # Verify parallel executions exist
-        parallel_executions = stage.get("parallel_executions")
-        assert parallel_executions is not None, f"Stage '{stage_name}' missing parallel_executions"
-        
-        expected_agents = expected_stage_spec["agents"]
-        assert len(parallel_executions) == expected_stage_spec["agent_count"], (
-            f"Stage '{stage_name}' agent count mismatch: expected {expected_stage_spec['agent_count']}, "
-            f"got {len(parallel_executions)}"
-        )
-        
-        # Verify each agent's execution
-        for agent_name, expected_agent_spec in expected_agents.items():
-            # Find the matching parallel execution
-            agent_execution = None
-            for execution in parallel_executions:
-                if execution["agent"] == agent_name:
-                    agent_execution = execution
-                    break
-            
-            assert agent_execution is not None, (
-                f"Stage '{stage_name}' missing execution for agent '{agent_name}'"
-            )
-            
-            print(f"    🔍 Verifying agent '{agent_name}'...")
-            
-            # Build unified interactions list from llm_interactions and mcp_communications
-            llm_interactions = agent_execution.get("llm_interactions", [])
-            mcp_communications = agent_execution.get("mcp_communications", [])
-            
-            # Convert to unified format sorted by timestamp
-            unified_interactions = []
-            for llm in llm_interactions:
-                unified_interactions.append({
-                    "type": "llm",
-                    "timestamp_us": llm["timestamp_us"],
-                    "details": llm["details"]
-                })
-            for mcp in mcp_communications:
-                unified_interactions.append({
-                    "type": "mcp",
-                    "timestamp_us": mcp["timestamp_us"],
-                    "details": mcp["details"]
-                })
-            
-            # Sort by timestamp to get chronological order
-            unified_interactions.sort(key=lambda x: x["timestamp_us"])
-            
-            expected_interactions = expected_agent_spec["interactions"]
-            
-            assert len(unified_interactions) == len(expected_interactions), (
-                f"Agent '{agent_name}' interaction count mismatch: "
-                f"expected {len(expected_interactions)}, got {len(unified_interactions)}"
-            )
-            
-            # Get expected conversation for this replica
-            if agent_name == "KubernetesAgent-1":
-                expected_conversation = EXPECTED_REPLICA_1_CONVERSATION
-            elif agent_name == "KubernetesAgent-2":
-                expected_conversation = EXPECTED_REPLICA_2_CONVERSATION
-            elif agent_name == "KubernetesAgent-3":
-                expected_conversation = EXPECTED_REPLICA_3_CONVERSATION
-            else:
-                expected_conversation = None
-            
-            # Verify each interaction
-            for i, expected_interaction in enumerate(expected_interactions):
-                actual_interaction = unified_interactions[i]
-                interaction_type = expected_interaction["type"]
-                
-                assert actual_interaction["type"] == interaction_type, (
-                    f"Agent '{agent_name}' interaction {i+1} type mismatch"
-                )
-                
-                details = actual_interaction["details"]
-                assert details["success"] == expected_interaction["success"], (
-                    f"Agent '{agent_name}' interaction {i+1} success mismatch"
-                )
-                
-                if interaction_type == "llm":
-                    # Verify conversation content
-                    actual_conversation = details["conversation"]
-                    actual_messages = actual_conversation["messages"]
-                    
-                    if "conversation_index" in expected_interaction:
-                        conversation_index = expected_interaction["conversation_index"]
-                        assert_conversation_messages(
-                            expected_conversation, actual_messages, conversation_index
-                        )
-                    
-                    # Verify token usage
-                    if "input_tokens" in expected_interaction:
-                        assert details["input_tokens"] == expected_interaction["input_tokens"], (
-                            f"Agent '{agent_name}' LLM interaction {i+1} input_tokens mismatch"
-                        )
-                        assert details["output_tokens"] == expected_interaction["output_tokens"], (
-                            f"Agent '{agent_name}' LLM interaction {i+1} output_tokens mismatch"
-                        )
-                        assert details["total_tokens"] == expected_interaction["total_tokens"], (
-                            f"Agent '{agent_name}' LLM interaction {i+1} total_tokens mismatch"
-                        )
-                
-                elif interaction_type == "mcp":
-                    # Verify MCP interaction details
-                    if "server_name" in expected_interaction:
-                        assert details.get("server_name") == expected_interaction["server_name"], (
-                            f"Agent '{agent_name}' MCP interaction {i+1} server_name mismatch"
-                        )
-                    if "tool_name" in expected_interaction:
-                        assert details.get("tool_name") == expected_interaction["tool_name"], (
-                            f"Agent '{agent_name}' MCP interaction {i+1} tool_name mismatch"
-                        )
-            
-            print(f"      ✅ Agent '{agent_name}' verified ({len(unified_interactions)} interactions)")
-        
-        print(f"    ✅ Parallel stage '{stage_name}' verified")
-
-    def _verify_single_stage_interactions(self, stage, expected_stage_spec):
-        """Verify interactions for a single (non-parallel) stage."""
-        stage_name = stage["stage_name"]
-        print(f"  🔍 Verifying single stage '{stage_name}' interactions...")
-        
-        # Verify stage type
-        assert stage["parallel_type"] == "single", (
-            f"Stage '{stage_name}' should be single type, got {stage['parallel_type']}"
-        )
-        
-        # Get interactions
-        interactions = stage.get("interactions", [])
-        expected_interactions = expected_stage_spec["interactions"]
-        
-        assert len(interactions) == len(expected_interactions), (
-            f"Stage '{stage_name}' interaction count mismatch: "
-            f"expected {len(expected_interactions)}, got {len(interactions)}"
-        )
-        
-        # Get expected conversation for synthesis stage
-        expected_conversation = EXPECTED_REPLICA_SYNTHESIS_CONVERSATION
-        
-        # Verify each interaction
-        for i, expected_interaction in enumerate(expected_interactions):
-            actual_interaction = interactions[i]
-            interaction_type = expected_interaction["type"]
-            
-            assert actual_interaction["type"] == interaction_type, (
-                f"Stage '{stage_name}' interaction {i+1} type mismatch"
-            )
-            
-            details = actual_interaction["details"]
-            assert details["success"] == expected_interaction["success"], (
-                f"Stage '{stage_name}' interaction {i+1} success mismatch"
-            )
-            
-            if interaction_type == "llm":
-                # Verify conversation content
-                actual_conversation = details["conversation"]
-                actual_messages = actual_conversation["messages"]
-                
-                if "conversation_index" in expected_interaction:
-                    conversation_index = expected_interaction["conversation_index"]
-                    assert_conversation_messages(
-                        expected_conversation, actual_messages, conversation_index
-                    )
-                
-                # Verify token usage
-                if "input_tokens" in expected_interaction:
-                    assert details["input_tokens"] == expected_interaction["input_tokens"], (
-                        f"Stage '{stage_name}' LLM interaction {i+1} input_tokens mismatch"
-                    )
-                    assert details["output_tokens"] == expected_interaction["output_tokens"], (
-                        f"Stage '{stage_name}' LLM interaction {i+1} output_tokens mismatch"
-                    )
-                    assert details["total_tokens"] == expected_interaction["total_tokens"], (
-                        f"Stage '{stage_name}' LLM interaction {i+1} total_tokens mismatch"
-                    )
-        
-        print(f"    ✅ Single stage '{stage_name}' verified ({len(interactions)} interactions)")
-
-    def _verify_complete_interaction_flow(self, stages):
-        """Verify complete interaction flow for all stages."""
-        print("  🔍 Verifying complete interaction flow...")
-        
-        for stage in stages:
-            stage_name = stage["stage_name"]
-            expected_stage_spec = EXPECTED_REPLICA_STAGES.get(stage_name)
-            
-            assert expected_stage_spec is not None, (
-                f"No expected spec found for stage '{stage_name}'"
-            )
-            
-            if expected_stage_spec["type"] == "parallel":
-                self._verify_parallel_stage_interactions(stage, expected_stage_spec)
-            else:
-                self._verify_single_stage_interactions(stage, expected_stage_spec)
-        
-        print("    ✅ Complete interaction flow verified")
 
