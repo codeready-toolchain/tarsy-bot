@@ -305,3 +305,343 @@ class TestChainExecutionErrorHandling:
         
         # This demonstrates that the chain execution preserves successful stage results
         # even when later stages fail - which is important for debugging and recovery
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+class TestParallelStageChainExecution:
+    """Integration tests for chains with parallel stages."""
+    
+    @pytest.fixture
+    def parallel_stage_followed_by_single_chain(self):
+        """Create chain with parallel stage followed by single-agent stage."""
+        from tarsy.models.agent_config import ParallelAgentConfig
+        
+        return ChainConfigModel(
+            chain_id="parallel-then-single-chain",
+            alert_types=["parallel-integration"],
+            stages=[
+                ChainStageConfigModel(
+                    name="investigation",
+                    agents=[
+                        ParallelAgentConfig(name="InvestigatorAgent1"),
+                        ParallelAgentConfig(name="InvestigatorAgent2")
+                    ]
+                ),
+                ChainStageConfigModel(
+                    name="synthesis",
+                    agent="SynthesisAgent"
+                )
+            ]
+        )
+    
+    @pytest.fixture
+    def parallel_stage_as_final_chain(self):
+        """Create chain with parallel stage as final stage (auto-synthesis)."""
+        from tarsy.models.agent_config import ParallelAgentConfig
+        
+        return ChainConfigModel(
+            chain_id="parallel-final-chain",
+            alert_types=["parallel-final"],
+            stages=[
+                ChainStageConfigModel(
+                    name="investigation",
+                    agents=[
+                        ParallelAgentConfig(name="Agent1"),
+                        ParallelAgentConfig(name="Agent2")
+                    ]
+                )
+            ]
+        )
+    
+    @pytest.fixture
+    def mixed_single_and_parallel_chain(self):
+        """Create chain mixing single-agent and parallel stages."""
+        from tarsy.models.agent_config import ParallelAgentConfig
+        
+        return ChainConfigModel(
+            chain_id="mixed-chain",
+            alert_types=["mixed-test"],
+            stages=[
+                ChainStageConfigModel(
+                    name="data-collection",
+                    agent="DataCollectorAgent"
+                ),
+                ChainStageConfigModel(
+                    name="parallel-analysis",
+                    agents=[
+                        ParallelAgentConfig(name="Analyzer1"),
+                        ParallelAgentConfig(name="Analyzer2")
+                    ]
+                ),
+                ChainStageConfigModel(
+                    name="reporting",
+                    agent="ReportAgent"
+                )
+            ]
+        )
+    
+    @pytest.mark.asyncio
+    async def test_chain_with_parallel_stage_followed_by_single_stage(
+        self, parallel_stage_followed_by_single_chain
+    ) -> None:
+        """Test chain with parallel stage followed by single-agent stage."""
+        from tarsy.models.agent_execution_result import (
+            AgentExecutionMetadata,
+            AgentExecutionResult,
+            ParallelStageMetadata,
+            ParallelStageResult,
+        )
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.constants import FailurePolicy, StageStatus
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
+            alert_type="parallel-integration",
+            severity="high",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"test": "data"}
+        )
+        
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-parallel-session",
+            current_stage_name="investigation"
+        )
+        
+        timestamp = now_us()
+        
+        parallel_result = ParallelStageResult(
+            results=[
+                AgentExecutionResult(
+                    status=StageStatus.COMPLETED,
+                    agent_name="InvestigatorAgent1",
+                    timestamp_us=timestamp,
+                    result_summary="Investigation 1 completed"
+                ),
+                AgentExecutionResult(
+                    status=StageStatus.COMPLETED,
+                    agent_name="InvestigatorAgent2",
+                    timestamp_us=timestamp,
+                    result_summary="Investigation 2 completed"
+                )
+            ],
+            metadata=ParallelStageMetadata(
+                parent_stage_execution_id="exec-parallel",
+                parallel_type="multi_agent",
+                failure_policy=FailurePolicy.ALL,
+                started_at_us=timestamp - 5_000_000,
+                completed_at_us=timestamp,
+                agent_metadatas=[
+                    AgentExecutionMetadata(
+                        agent_name="InvestigatorAgent1",
+                        llm_provider="openai",
+                        iteration_strategy="react",
+                        started_at_us=timestamp - 5_000_000,
+                        completed_at_us=timestamp,
+                        status=StageStatus.COMPLETED
+                    ),
+                    AgentExecutionMetadata(
+                        agent_name="InvestigatorAgent2",
+                        llm_provider="anthropic",
+                        iteration_strategy="react",
+                        started_at_us=timestamp - 5_000_000,
+                        completed_at_us=timestamp,
+                        status=StageStatus.COMPLETED
+                    )
+                ]
+            ),
+            status=StageStatus.COMPLETED,
+            timestamp_us=timestamp
+        )
+        
+        chain_context.add_stage_result("investigation", parallel_result)
+        
+        assert chain_context.is_parallel_stage("investigation")
+        assert len(chain_context.stage_outputs) == 1
+        
+        previous_results = chain_context.get_previous_stage_results()
+        assert len(previous_results) == 1
+        assert isinstance(previous_results[0][1], ParallelStageResult)
+    
+    @pytest.mark.asyncio
+    async def test_chain_with_parallel_stage_as_final(
+        self, parallel_stage_as_final_chain
+    ) -> None:
+        """Test chain with parallel stage as final stage (requires auto-synthesis)."""
+        from tarsy.models.agent_execution_result import (
+            AgentExecutionMetadata,
+            AgentExecutionResult,
+            ParallelStageMetadata,
+            ParallelStageResult,
+        )
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.constants import FailurePolicy, StageStatus
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
+            alert_type="parallel-final",
+            severity="high",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"test": "data"}
+        )
+        
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-final-parallel",
+            current_stage_name="investigation"
+        )
+        
+        timestamp = now_us()
+        
+        parallel_result = ParallelStageResult(
+            results=[
+                AgentExecutionResult(
+                    status=StageStatus.COMPLETED,
+                    agent_name="Agent1",
+                    timestamp_us=timestamp,
+                    result_summary="Agent1 analysis"
+                ),
+                AgentExecutionResult(
+                    status=StageStatus.COMPLETED,
+                    agent_name="Agent2",
+                    timestamp_us=timestamp,
+                    result_summary="Agent2 analysis"
+                )
+            ],
+            metadata=ParallelStageMetadata(
+                parent_stage_execution_id="exec-final",
+                parallel_type="multi_agent",
+                failure_policy=FailurePolicy.ALL,
+                started_at_us=timestamp - 5_000_000,
+                completed_at_us=timestamp,
+                agent_metadatas=[
+                    AgentExecutionMetadata(
+                        agent_name="Agent1",
+                        llm_provider="openai",
+                        iteration_strategy="react",
+                        started_at_us=timestamp - 5_000_000,
+                        completed_at_us=timestamp,
+                        status=StageStatus.COMPLETED
+                    ),
+                    AgentExecutionMetadata(
+                        agent_name="Agent2",
+                        llm_provider="anthropic",
+                        iteration_strategy="react",
+                        started_at_us=timestamp - 5_000_000,
+                        completed_at_us=timestamp,
+                        status=StageStatus.COMPLETED
+                    )
+                ]
+            ),
+            status=StageStatus.COMPLETED,
+            timestamp_us=timestamp
+        )
+        
+        chain_context.add_stage_result("investigation", parallel_result)
+        
+        last_result = chain_context.get_last_stage_result()
+        assert isinstance(last_result, ParallelStageResult)
+        assert last_result.metadata.parallel_type == "multi_agent"
+    
+    @pytest.mark.asyncio
+    async def test_chain_mixing_single_and_parallel_stages(
+        self, mixed_single_and_parallel_chain
+    ) -> None:
+        """Test chain with both single-agent and parallel stages."""
+        from tarsy.models.agent_execution_result import (
+            AgentExecutionMetadata,
+            AgentExecutionResult,
+            ParallelStageMetadata,
+            ParallelStageResult,
+        )
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.constants import FailurePolicy, StageStatus
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
+            alert_type="mixed-test",
+            severity="high",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"test": "data"}
+        )
+        
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-mixed-session",
+            current_stage_name="data-collection"
+        )
+        
+        timestamp = now_us()
+        
+        single_result = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="DataCollectorAgent",
+            timestamp_us=timestamp,
+            result_summary="Data collected"
+        )
+        chain_context.add_stage_result("data-collection", single_result)
+        
+        parallel_result = ParallelStageResult(
+            results=[
+                AgentExecutionResult(
+                    status=StageStatus.COMPLETED,
+                    agent_name="Analyzer1",
+                    timestamp_us=timestamp,
+                    result_summary="Analysis 1"
+                ),
+                AgentExecutionResult(
+                    status=StageStatus.COMPLETED,
+                    agent_name="Analyzer2",
+                    timestamp_us=timestamp,
+                    result_summary="Analysis 2"
+                )
+            ],
+            metadata=ParallelStageMetadata(
+                parent_stage_execution_id="exec-parallel-analysis",
+                parallel_type="multi_agent",
+                failure_policy=FailurePolicy.ALL,
+                started_at_us=timestamp - 5_000_000,
+                completed_at_us=timestamp,
+                agent_metadatas=[
+                    AgentExecutionMetadata(
+                        agent_name="Analyzer1",
+                        llm_provider="openai",
+                        iteration_strategy="react",
+                        started_at_us=timestamp - 5_000_000,
+                        completed_at_us=timestamp,
+                        status=StageStatus.COMPLETED
+                    ),
+                    AgentExecutionMetadata(
+                        agent_name="Analyzer2",
+                        llm_provider="anthropic",
+                        iteration_strategy="react",
+                        started_at_us=timestamp - 5_000_000,
+                        completed_at_us=timestamp,
+                        status=StageStatus.COMPLETED
+                    )
+                ]
+            ),
+            status=StageStatus.COMPLETED,
+            timestamp_us=timestamp
+        )
+        chain_context.add_stage_result("parallel-analysis", parallel_result)
+        
+        final_result = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="ReportAgent",
+            timestamp_us=timestamp,
+            result_summary="Report generated"
+        )
+        chain_context.add_stage_result("reporting", final_result)
+        
+        assert len(chain_context.stage_outputs) == 3
+        assert not chain_context.is_parallel_stage("data-collection")
+        assert chain_context.is_parallel_stage("parallel-analysis")
+        assert not chain_context.is_parallel_stage("reporting")
+        
+        previous_results = chain_context.get_previous_stage_results()
+        assert len(previous_results) == 3
