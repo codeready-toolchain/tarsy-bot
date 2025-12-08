@@ -187,9 +187,18 @@ Analyze alerts thoroughly and provide actionable insights based on:
 Always be specific, reference actual data, and provide clear next steps.
 Focus on root cause analysis and sustainable solutions.
 
-## Custom Server Instructions
+## Kubernetes Server Instructions
 
-Log analysis server for investigating application logs and debugging issues
+For Kubernetes operations:
+- **IMPORTANT: In multi-cluster environments** (when the 'configuration_contexts_list' tool is available):
+  * ALWAYS start by calling 'configuration_contexts_list' to see all available contexts and their server URLs
+  * Use this information to determine which context to target before performing any operations
+  * This prevents working on the wrong cluster and helps you understand the environment
+- Be careful with cluster-scoped resource listings in large clusters
+- Always prefer namespaced queries when possible
+- If you get "server could not find the requested resource" error, check if you're using the namespace parameter correctly:
+  * Cluster-scoped resources (Namespace, Node, ClusterRole, PersistentVolume) should NOT have a namespace parameter
+  * Namespace-scoped resources (Pod, Deployment, Service, ConfigMap) REQUIRE a namespace parameter
 
 ## Agent-Specific Instructions
 
@@ -292,12 +301,12 @@ Investigate this alert using available tools and provide a comprehensive analysi
         {
             "role": "assistant",
             "content": """Thought: I should analyze the application logs to find error patterns.
-Action: log-server.get_logs
+Action: kubernetes-server.get_logs
 Action Input: {"namespace": "test-namespace", "pod": "pod-1"}"""
         },
         {
             "role": "user",
-            "content": """Observation: log-server.get_logs: {
+            "content": """Observation: kubernetes-server.get_logs: {
   "logs": "Error: Failed to connect to database at db.example.com:5432 - connection timeout"
 }"""
         },
@@ -1611,11 +1620,11 @@ EXPECTED_MULTI_AGENT_STAGES = {
                 "mcp_count": 2,  # 1 tool discovery + 1 tool call
                 "interactions": [
                     # MCP 1 - Tool list discovery
-                    {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'log-server'},
+                    {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
                     # LLM 1 - Initial ReAct iteration
                     {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 200, 'output_tokens': 75, 'total_tokens': 275, 'interaction_type': 'investigation'},
                     # MCP 2 - get_logs tool call
-                    {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'get_logs', 'server_name': 'log-server'},
+                    {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'get_logs', 'server_name': 'kubernetes-server'},
                     # LLM 2 - Final answer
                     {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 190, 'output_tokens': 70, 'total_tokens': 260, 'interaction_type': 'final_analysis'}
                 ]
@@ -1721,11 +1730,11 @@ EXPECTED_PARALLEL_REGULAR_STAGES = {
                 "mcp_count": 2,  # 1 tool discovery + 1 tool call
                 "interactions": [
                     # MCP 1 - Tool list discovery
-                    {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'log-server'},
+                    {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
                     # LLM 1 - Initial ReAct iteration
                     {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 200, 'output_tokens': 75, 'total_tokens': 275, 'interaction_type': 'investigation'},
                     # MCP 2 - get_logs tool call
-                    {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'get_logs', 'server_name': 'log-server'},
+                    {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'get_logs', 'server_name': 'kubernetes-server'},
                     # LLM 2 - Final answer
                     {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 190, 'output_tokens': 70, 'total_tokens': 260, 'interaction_type': 'final_analysis'}
                 ]
@@ -1769,11 +1778,11 @@ EXPECTED_PARALLEL_CHAT_STAGES = {
                 "mcp_count": 2,  # 1 tool discovery + 1 tool call
                 "interactions": [
                     # MCP 1 - Tool list discovery
-                    {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'log-server'},
+                    {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
                     # LLM 1 - Initial ReAct iteration
                     {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 200, 'output_tokens': 75, 'total_tokens': 275, 'interaction_type': 'investigation'},
                     # MCP 2 - get_logs tool call
-                    {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'get_logs', 'server_name': 'log-server'},
+                    {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'get_logs', 'server_name': 'kubernetes-server'},
                     # LLM 2 - Final answer
                     {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 190, 'output_tokens': 70, 'total_tokens': 260, 'interaction_type': 'final_analysis'}
                 ]

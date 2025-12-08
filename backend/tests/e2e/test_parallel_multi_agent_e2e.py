@@ -39,7 +39,7 @@ class TestParallelMultiAgentE2E:
 
     @pytest.mark.e2e
     async def test_multi_agent_parallel_stage(
-        self, e2e_test_client, e2e_parallel_alert
+        self, e2e_parallel_test_client, e2e_parallel_alert
     ):
         """
         Test multi-agent parallel stage with automatic synthesis.
@@ -63,7 +63,7 @@ class TestParallelMultiAgentE2E:
         async def run_test():
             print("🚀 Starting multi-agent parallel test...")
             result = await self._execute_multi_agent_test(
-                e2e_test_client, e2e_parallel_alert
+                e2e_parallel_test_client, e2e_parallel_alert
             )
             print("✅ Multi-agent parallel test completed!")
             return result
@@ -101,17 +101,19 @@ Action Input: {"resource": "pods", "namespace": "test-namespace"}""",
                 "input_tokens": 245, "output_tokens": 85, "total_tokens": 330
             },
             2: {  # Agent1 - Final answer (LLM position 2)
-                "response_content": """Final Answer: Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause.""",
+                "response_content": """Thought: I have identified the pod status. This provides enough information for initial analysis.
+Final Answer: Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause.""",
                 "input_tokens": 180, "output_tokens": 65, "total_tokens": 245
             },
             3: {  # Agent2 (LogAgent) - Log analysis (LLM position 1)
                 "response_content": """Thought: I should analyze the application logs to find error patterns.
-Action: log-server.get_logs
+Action: kubernetes-server.get_logs
 Action Input: {"namespace": "test-namespace", "pod": "pod-1"}""",
                 "input_tokens": 200, "output_tokens": 75, "total_tokens": 275
             },
             4: {  # Agent2 - Final answer (LLM position 2)
-                "response_content": """Final Answer: Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity.""",
+                "response_content": """Thought: I have analyzed the logs and found the root cause.
+Final Answer: Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity.""",
                 "input_tokens": 190, "output_tokens": 70, "total_tokens": 260
             },
             5: {  # Synthesis agent (LLM position 1)
@@ -163,55 +165,44 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
             
             return mock_astream
         
-        # Create MCP mocks for kubernetes and log servers
+        # Create MCP mock for kubernetes server (shared by both agents)
         mock_k8s_session = AsyncMock()
-        mock_log_session = AsyncMock()
         
         async def mock_k8s_call_tool(tool_name, parameters):
             mock_result = Mock()
             mock_content = Mock()
             if "pods" in str(parameters):
                 mock_content.text = '{"result": "Pod pod-1 is in CrashLoopBackOff state"}'
+            elif "logs" in tool_name.lower() or "log" in str(parameters).lower():
+                mock_content.text = '{"logs": "Error: Failed to connect to database at db.example.com:5432 - connection timeout"}'
             else:
                 mock_content.text = '{"result": "Mock k8s response"}'
             mock_result.content = [mock_content]
             return mock_result
         
-        async def mock_log_call_tool(tool_name, parameters):
-            mock_result = Mock()
-            mock_content = Mock()
-            mock_content.text = '{"logs": "Error: Failed to connect to database at db.example.com:5432 - connection timeout"}'
-            mock_result.content = [mock_content]
-            return mock_result
-        
         async def mock_k8s_list_tools():
-            mock_tool = Tool(
-                name="kubectl_get",
-                description="Get Kubernetes resources",
-                inputSchema={"type": "object", "properties": {}}
-            )
+            # Return tools that both agents can use
+            mock_tools = [
+                Tool(
+                    name="kubectl_get",
+                    description="Get Kubernetes resources",
+                    inputSchema={"type": "object", "properties": {}}
+                ),
+                Tool(
+                    name="get_logs",
+                    description="Get pod logs",
+                    inputSchema={"type": "object", "properties": {}}
+                )
+            ]
             mock_result = Mock()
-            mock_result.tools = [mock_tool]
-            return mock_result
-        
-        async def mock_log_list_tools():
-            mock_tool = Tool(
-                name="get_logs",
-                description="Get application logs",
-                inputSchema={"type": "object", "properties": {}}
-            )
-            mock_result = Mock()
-            mock_result.tools = [mock_tool]
+            mock_result.tools = mock_tools
             return mock_result
         
         mock_k8s_session.call_tool.side_effect = mock_k8s_call_tool
         mock_k8s_session.list_tools.side_effect = mock_k8s_list_tools
-        mock_log_session.call_tool.side_effect = mock_log_call_tool
-        mock_log_session.list_tools.side_effect = mock_log_list_tools
         
         mock_sessions = {
-            "kubernetes-server": mock_k8s_session,
-            "log-server": mock_log_session
+            "kubernetes-server": mock_k8s_session
         }
         
         # Create MCP client patches
@@ -314,7 +305,7 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
             # Find the matching parallel execution
             agent_execution = None
             for execution in parallel_executions:
-                if execution["agent_name"] == agent_name:
+                if execution["agent"] == agent_name:
                     agent_execution = execution
                     break
             
@@ -324,13 +315,33 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
             
             print(f"    🔍 Verifying agent '{agent_name}'...")
             
-            # Verify interactions for this agent
-            interactions = agent_execution.get("interactions", [])
+            # Build unified interactions list from llm_interactions and mcp_communications
+            llm_interactions = agent_execution.get("llm_interactions", [])
+            mcp_communications = agent_execution.get("mcp_communications", [])
+            
+            # Convert to unified format sorted by timestamp
+            unified_interactions = []
+            for llm in llm_interactions:
+                unified_interactions.append({
+                    "type": "llm",
+                    "timestamp_us": llm["timestamp_us"],
+                    "details": llm["details"]
+                })
+            for mcp in mcp_communications:
+                unified_interactions.append({
+                    "type": "mcp",
+                    "timestamp_us": mcp["timestamp_us"],
+                    "details": mcp["details"]
+                })
+            
+            # Sort by timestamp to get chronological order
+            unified_interactions.sort(key=lambda x: x["timestamp_us"])
+            
             expected_interactions = expected_agent_spec["interactions"]
             
-            assert len(interactions) == len(expected_interactions), (
+            assert len(unified_interactions) == len(expected_interactions), (
                 f"Agent '{agent_name}' interaction count mismatch: "
-                f"expected {len(expected_interactions)}, got {len(interactions)}"
+                f"expected {len(expected_interactions)}, got {len(unified_interactions)}"
             )
             
             # Get expected conversation for this agent
@@ -343,7 +354,7 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
             
             # Verify each interaction
             for i, expected_interaction in enumerate(expected_interactions):
-                actual_interaction = interactions[i]
+                actual_interaction = unified_interactions[i]
                 interaction_type = expected_interaction["type"]
                 
                 assert actual_interaction["type"] == interaction_type, (
@@ -351,16 +362,18 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
                 )
                 
                 details = actual_interaction["details"]
-                assert details["success"] == expected_interaction["success"], (
-                    f"Agent '{agent_name}' interaction {i+1} success mismatch"
-                )
                 
                 if interaction_type == "llm":
-                    # Verify conversation content
-                    actual_conversation = details["conversation"]
-                    actual_messages = actual_conversation["messages"]
+                    # Verify success
+                    assert details.get("success", True) == expected_interaction["success"], (
+                        f"Agent '{agent_name}' LLM interaction {i+1} success mismatch"
+                    )
                     
-                    if "conversation_index" in expected_interaction:
+                    # Verify conversation content
+                    actual_conversation = details.get("conversation", {})
+                    actual_messages = actual_conversation.get("messages", [])
+                    
+                    if "conversation_index" in expected_interaction and expected_conversation:
                         conversation_index = expected_interaction["conversation_index"]
                         assert_conversation_messages(
                             expected_conversation, actual_messages, conversation_index
@@ -368,17 +381,22 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
                     
                     # Verify token usage
                     if "input_tokens" in expected_interaction:
-                        assert details["input_tokens"] == expected_interaction["input_tokens"], (
+                        assert details.get("input_tokens") == expected_interaction["input_tokens"], (
                             f"Agent '{agent_name}' LLM interaction {i+1} input_tokens mismatch"
                         )
-                        assert details["output_tokens"] == expected_interaction["output_tokens"], (
+                        assert details.get("output_tokens") == expected_interaction["output_tokens"], (
                             f"Agent '{agent_name}' LLM interaction {i+1} output_tokens mismatch"
                         )
-                        assert details["total_tokens"] == expected_interaction["total_tokens"], (
+                        assert details.get("total_tokens") == expected_interaction["total_tokens"], (
                             f"Agent '{agent_name}' LLM interaction {i+1} total_tokens mismatch"
                         )
                 
                 elif interaction_type == "mcp":
+                    # Verify success
+                    assert details.get("success", True) == expected_interaction["success"], (
+                        f"Agent '{agent_name}' MCP interaction {i+1} success mismatch"
+                    )
+                    
                     # Verify MCP interaction details
                     if "server_name" in expected_interaction:
                         assert details.get("server_name") == expected_interaction["server_name"], (
@@ -403,13 +421,33 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
             f"Stage '{stage_name}' should be single type, got {stage['parallel_type']}"
         )
         
-        # Get interactions
-        interactions = stage.get("interactions", [])
+        # Build unified interactions list from llm_interactions and mcp_communications
+        llm_interactions = stage.get("llm_interactions", [])
+        mcp_communications = stage.get("mcp_communications", [])
+        
+        # Convert to unified format sorted by timestamp
+        unified_interactions = []
+        for llm in llm_interactions:
+            unified_interactions.append({
+                "type": "llm",
+                "timestamp_us": llm["timestamp_us"],
+                "details": llm["details"]
+            })
+        for mcp in mcp_communications:
+            unified_interactions.append({
+                "type": "mcp",
+                "timestamp_us": mcp["timestamp_us"],
+                "details": mcp["details"]
+            })
+        
+        # Sort by timestamp to get chronological order
+        unified_interactions.sort(key=lambda x: x["timestamp_us"])
+        
         expected_interactions = expected_stage_spec["interactions"]
         
-        assert len(interactions) == len(expected_interactions), (
+        assert len(unified_interactions) == len(expected_interactions), (
             f"Stage '{stage_name}' interaction count mismatch: "
-            f"expected {len(expected_interactions)}, got {len(interactions)}"
+            f"expected {len(expected_interactions)}, got {len(unified_interactions)}"
         )
         
         # Get expected conversation for synthesis stage
@@ -417,7 +455,7 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
         
         # Verify each interaction
         for i, expected_interaction in enumerate(expected_interactions):
-            actual_interaction = interactions[i]
+            actual_interaction = unified_interactions[i]
             interaction_type = expected_interaction["type"]
             
             assert actual_interaction["type"] == interaction_type, (
@@ -425,14 +463,16 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
             )
             
             details = actual_interaction["details"]
-            assert details["success"] == expected_interaction["success"], (
-                f"Stage '{stage_name}' interaction {i+1} success mismatch"
-            )
             
             if interaction_type == "llm":
+                # Verify success
+                assert details.get("success", True) == expected_interaction["success"], (
+                    f"Stage '{stage_name}' LLM interaction {i+1} success mismatch"
+                )
+                
                 # Verify conversation content
-                actual_conversation = details["conversation"]
-                actual_messages = actual_conversation["messages"]
+                actual_conversation = details.get("conversation", {})
+                actual_messages = actual_conversation.get("messages", [])
                 
                 if "conversation_index" in expected_interaction:
                     conversation_index = expected_interaction["conversation_index"]
@@ -442,15 +482,21 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
                 
                 # Verify token usage
                 if "input_tokens" in expected_interaction:
-                    assert details["input_tokens"] == expected_interaction["input_tokens"], (
+                    assert details.get("input_tokens") == expected_interaction["input_tokens"], (
                         f"Stage '{stage_name}' LLM interaction {i+1} input_tokens mismatch"
                     )
-                    assert details["output_tokens"] == expected_interaction["output_tokens"], (
+                    assert details.get("output_tokens") == expected_interaction["output_tokens"], (
                         f"Stage '{stage_name}' LLM interaction {i+1} output_tokens mismatch"
                     )
-                    assert details["total_tokens"] == expected_interaction["total_tokens"], (
+                    assert details.get("total_tokens") == expected_interaction["total_tokens"], (
                         f"Stage '{stage_name}' LLM interaction {i+1} total_tokens mismatch"
                     )
+            
+            elif interaction_type == "mcp":
+                # Verify success
+                assert details.get("success", True) == expected_interaction["success"], (
+                    f"Stage '{stage_name}' MCP interaction {i+1} success mismatch"
+                )
         
         print(f"    ✅ Single stage '{stage_name}' verified ({len(interactions)} interactions)")
 

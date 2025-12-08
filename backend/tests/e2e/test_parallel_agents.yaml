@@ -16,7 +16,7 @@ agents:
       You are a log analysis specialist focusing on application errors and patterns.
       Analyze logs to identify root causes and anomalies.
     mcp_servers:
-      - "log-server"
+      - "kubernetes-server"
   
   # Command agent for formulating remediation steps
   CommandAgent:
@@ -26,18 +26,7 @@ agents:
       - "kubernetes-server"
 
 # MCP servers for test environment
-mcp_servers:
-  log-server:
-    server_id: "log-server"
-    server_type: "custom"
-    enabled: true
-    transport:
-      type: "stdio"
-      command: "echo"
-      args: ["log-server-ready"]
-    instructions: "Log analysis server for investigating application logs and debugging issues"
-    data_masking:
-      enabled: false
+# Note: Using builtin kubernetes-server for all agents to simplify test setup
 
 # Agent chains configuration
 agent_chains:
