@@ -14,6 +14,50 @@ from unittest.mock import AsyncMock, Mock
 from mcp.types import Tool
 
 
+def assert_conversation_messages(
+    expected_conversation: dict, actual_messages: list, n: int
+):
+    """
+    Get the first N messages from expected_conversation['messages'] and compare with actual_messages.
+
+    Args:
+        expected_conversation: Dictionary with 'messages' key containing expected message list
+        actual_messages: List of actual messages from the LLM interaction
+        n: Number of messages to compare (a count)
+    """
+    expected_messages = expected_conversation.get("messages", [])
+    assert (
+        len(actual_messages) == n
+    ), f"Actual messages count mismatch: expected {n}, got {len(actual_messages)}"
+
+    # Extract first N messages
+    first_n_expected = expected_messages[:n]
+
+    # Compare each message
+    for i in range(len(first_n_expected)):
+        assert (
+            i < len(actual_messages)
+        ), f"Missing actual message: Expected {len(first_n_expected)} messages, got {len(actual_messages)}"
+
+        expected_msg = first_n_expected[i]
+        actual_msg = actual_messages[i]
+
+        # Compare role
+        expected_role = expected_msg.get("role", "")
+        actual_role = actual_msg.get("role", "")
+        assert (
+            expected_role == actual_role
+        ), f"Role mismatch: expected {expected_role}, got {actual_role}"
+
+        # Normalize content for comparison
+        expected_content = E2ETestUtils.normalize_content(expected_msg.get("content", ""))
+        actual_content = E2ETestUtils.normalize_content(actual_msg.get("content", ""))
+        
+        assert (
+            expected_content == actual_content
+        ), f"Content mismatch in message {i}: expected length {len(expected_content)}, got {len(actual_content)}"
+
+
 class E2ETestUtils:
     """Shared utility methods for E2E tests."""
 

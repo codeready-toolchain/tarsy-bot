@@ -83,8 +83,17 @@ test-e2e: check-test-deps clean-test-db ## Run end-to-end tests only (one by one
 	@echo "$(YELLOW)Running sixth E2E test (native thinking pause/resume)...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_native_thinking_pause_resume_e2e.py -v --tb=short -m e2e || exit 1
 	@$(MAKE) clean-test-db
-	@echo "$(YELLOW)Running seventh E2E test (parallel stages)...$(NC)"
-	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_parallel_stages_e2e.py -v --tb=short -m e2e || exit 1
+	@echo "$(YELLOW)Running seventh E2E test (parallel multi-agent)...$(NC)"
+	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_parallel_multi_agent_e2e.py -v --tb=short -m e2e || exit 1
+	@$(MAKE) clean-test-db
+	@echo "$(YELLOW)Running eighth E2E test (parallel replica)...$(NC)"
+	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_parallel_replica_e2e.py -v --tb=short -m e2e || exit 1
+	@$(MAKE) clean-test-db
+	@echo "$(YELLOW)Running ninth E2E test (parallel then regular)...$(NC)"
+	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_parallel_then_regular_e2e.py -v --tb=short -m e2e || exit 1
+	@$(MAKE) clean-test-db
+	@echo "$(YELLOW)Running tenth E2E test (parallel chat)...$(NC)"
+	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_parallel_chat_e2e.py -v --tb=short -m e2e || exit 1
 	@echo "$(GREEN)All E2E tests completed successfully!$(NC)"
 
 .PHONY: test-e2e-pause-resume
