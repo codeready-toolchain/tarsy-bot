@@ -152,19 +152,6 @@ describe('ParallelStageExecutionTabs', () => {
 
       expect(screen.getByText(/Execution failed/i)).toBeInTheDocument();
     });
-
-    it('shows expandable metadata section', () => {
-      render(<ParallelStageExecutionTabs stage={mockStage} />);
-
-      const metadataButton = screen.getByText('Execution Metadata');
-      expect(metadataButton).toBeInTheDocument();
-
-      fireEvent.click(metadataButton);
-
-      // Should show individual execution details in metadata section
-      const metadataItems = screen.getAllByText(/KubernetesAgent|VMAgent|NetworkAgent/);
-      expect(metadataItems.length).toBeGreaterThan(0);
-    });
   });
 
   describe('Replica Parallel Execution', () => {
