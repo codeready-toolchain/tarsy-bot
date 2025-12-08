@@ -1684,7 +1684,9 @@ class AlertService:
                 parallel_index=idx + 1,  # 1-based indexing for children
                 parallel_type=parallel_type,
             )
-            await self._update_stage_execution_started(child_execution_id)
+            # Fire-and-forget the status update to avoid SQLite write serialization
+            # This prevents parallel agents from blocking each other on database writes
+            asyncio.create_task(self._update_stage_execution_started(child_execution_id))
             
             try:
                 logger.debug(f"Executing {parallel_type} {idx+1}/{len(execution_configs)}: '{agent_name}'")
