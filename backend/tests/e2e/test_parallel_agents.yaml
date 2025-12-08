@@ -55,7 +55,7 @@ agent_chains:
         agent: "KubernetesAgent"
         replicas: 3
         llm_provider: "openai-default"
-        iteration_strategy: "react"
+        iteration_strategy: "native-thinking"
         failure_policy: "any"  # At least one must succeed
     description: "Replica parallel stage (3 replicas) with automatic synthesis"
   

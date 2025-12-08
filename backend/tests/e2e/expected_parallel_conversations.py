@@ -125,14 +125,27 @@ Focus on investigation and providing recommendations for human operators to exec
         },
         {
             "role": "user",
-            "content": """# Investigation Task
+            "content": """Answer the following question using the available tools.
 
+Available tools:
+
+1. **kubernetes-server.kubectl_get**: Get Kubernetes resources
+    **Parameters**: None
+
+2. **kubernetes-server.get_logs**: Get pod logs
+    **Parameters**: None
+
+Question: Analyze this test-parallel-execution alert and provide actionable recommendations.
+
+## Alert Details
+
+### Alert Metadata
 **Alert Type:** test-parallel-execution
-**Environment:** production
 **Severity:** warning
+**Timestamp:** {TIMESTAMP}
+**Environment:** production
 
-## Alert Data
-
+### Alert Data
 ```json
 {
   "description": "Test parallel execution scenario",
@@ -140,14 +153,27 @@ Focus on investigation and providing recommendations for human operators to exec
 }
 ```
 
-## Runbook
-
+## Runbook Content
+```markdown
+<!-- RUNBOOK START -->
 # Test Runbook
 This is a test runbook for parallel execution testing.
+<!-- RUNBOOK END -->
+```
+
+## Previous Stage Data
+No previous stage data is available for this alert. This is the first stage of analysis.
 
 ## Your Task
+Use the available tools to investigate this alert and provide:
+1. Root cause analysis
+2. Current system state assessment  
+3. Specific remediation steps for human operators
+4. Prevention recommendations
 
-Investigate this alert using available tools and provide a comprehensive analysis."""
+Be thorough in your investigation before providing the final answer.
+
+Begin!"""
         },
         {
             "role": "assistant",
@@ -158,12 +184,13 @@ Action Input: {"resource": "pods", "namespace": "test-namespace"}"""
         {
             "role": "user",
             "content": """Observation: kubernetes-server.kubectl_get: {
-  "result": "Pod pod-1 is in CrashLoopBackOff state"
+  "result": "{\\\"result\\\": \\\"Pod pod-1 is in CrashLoopBackOff state\\\"}"
 }"""
         },
         {
             "role": "assistant",
-            "content": """Final Answer: Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause."""
+            "content": """Thought: I have identified the pod status. This provides enough information for initial analysis.
+Final Answer: Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause."""
         }
     ]
 }
@@ -278,14 +305,27 @@ Focus on investigation and providing recommendations for human operators to exec
         },
         {
             "role": "user",
-            "content": """# Investigation Task
+            "content": """Answer the following question using the available tools.
 
+Available tools:
+
+1. **kubernetes-server.kubectl_get**: Get Kubernetes resources
+    **Parameters**: None
+
+2. **kubernetes-server.get_logs**: Get pod logs
+    **Parameters**: None
+
+Question: Analyze this test-parallel-execution alert and provide actionable recommendations.
+
+## Alert Details
+
+### Alert Metadata
 **Alert Type:** test-parallel-execution
-**Environment:** production
 **Severity:** warning
+**Timestamp:** {TIMESTAMP}
+**Environment:** production
 
-## Alert Data
-
+### Alert Data
 ```json
 {
   "description": "Test parallel execution scenario",
@@ -293,14 +333,27 @@ Focus on investigation and providing recommendations for human operators to exec
 }
 ```
 
-## Runbook
-
+## Runbook Content
+```markdown
+<!-- RUNBOOK START -->
 # Test Runbook
 This is a test runbook for parallel execution testing.
+<!-- RUNBOOK END -->
+```
+
+## Previous Stage Data
+No previous stage data is available for this alert. This is the first stage of analysis.
 
 ## Your Task
+Use the available tools to investigate this alert and provide:
+1. Root cause analysis
+2. Current system state assessment  
+3. Specific remediation steps for human operators
+4. Prevention recommendations
 
-Investigate this alert using available tools and provide a comprehensive analysis."""
+Be thorough in your investigation before providing the final answer.
+
+Begin!"""
         },
         {
             "role": "assistant",
@@ -311,12 +364,13 @@ Action Input: {"namespace": "test-namespace", "pod": "pod-1"}"""
         {
             "role": "user",
             "content": """Observation: kubernetes-server.get_logs: {
-  "logs": "Error: Failed to connect to database at db.example.com:5432 - connection timeout"
+  "result": "{\\\"logs\\\": \\\"Error: Failed to connect to database at db.example.com:5432 - connection timeout\\\"}"
 }"""
         },
         {
             "role": "assistant",
-            "content": """Final Answer: Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity."""
+            "content": """Thought: I have analyzed the logs and found the root cause.
+Final Answer: Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity."""
         }
     ]
 }
@@ -428,14 +482,23 @@ Focus on investigation and providing recommendations for human operators to exec
         },
         {
             "role": "user",
-            "content": """# Synthesis Task
+            "content": """Answer the following question using the available tools.
 
+Available tools:
+
+No tools available.
+
+Question: Analyze this test-parallel-execution alert and provide actionable recommendations.
+
+## Alert Details
+
+### Alert Metadata
 **Alert Type:** test-parallel-execution
-**Environment:** production
 **Severity:** warning
+**Timestamp:** {TIMESTAMP}
+**Environment:** production
 
-## Alert Data
-
+### Alert Data
 ```json
 {
   "description": "Test parallel execution scenario",
@@ -443,26 +506,46 @@ Focus on investigation and providing recommendations for human operators to exec
 }
 ```
 
-## Runbook
-
+## Runbook Content
+```markdown
+<!-- RUNBOOK START -->
 # Test Runbook
 This is a test runbook for parallel execution testing.
+<!-- RUNBOOK END -->
+```
 
-## Previous Stage Results
+## Previous Stage Data
+### Results from parallel stage 'investigation':
 
-### Stage: investigation (Parallel Execution)
+**Parallel Execution Summary**: 2/2 agents succeeded
 
-**Agent: KubernetesAgent**
+#### Agent 1: KubernetesAgent (openai-default, react)
+**Status**: completed
 
-Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause.
+<!-- Analysis Result START -->
+Thought: I have identified the pod status. This provides enough information for initial analysis.
+Final Answer: Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause.
+<!-- Analysis Result END -->
 
-**Agent: LogAgent**
+#### Agent 2: LogAgent (anthropic-default, react)
+**Status**: completed
 
-Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity.
+<!-- Analysis Result START -->
+Thought: I have analyzed the logs and found the root cause.
+Final Answer: Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity.
+<!-- Analysis Result END -->
+
 
 ## Your Task
+Use the available tools to investigate this alert and provide:
+1. Root cause analysis
+2. Current system state assessment  
+3. Specific remediation steps for human operators
+4. Prevention recommendations
 
-Synthesize the parallel investigation results above into a unified root cause analysis and provide actionable recommendations."""
+Be thorough in your investigation before providing the final answer.
+
+Begin!"""
         },
         {
             "role": "assistant",
