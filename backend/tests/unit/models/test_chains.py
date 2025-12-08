@@ -8,6 +8,7 @@ import pytest
 from pydantic import ValidationError
 
 from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+from tarsy.models.constants import FailurePolicy
 
 
 @pytest.mark.unit
@@ -52,7 +53,7 @@ class TestChainStageConfigModel:
     @pytest.mark.parametrize("stage_data,expected_dict", [
         (
             {"name": "test-stage", "agent": "TestAgent", "iteration_strategy": "react"},
-            {'name': 'test-stage', 'agent': 'TestAgent', 'agents': None, 'replicas': 1, 'failure_policy': 'all', 'iteration_strategy': 'react', 'llm_provider': None}
+            {'name': 'test-stage', 'agent': 'TestAgent', 'agents': None, 'replicas': 1, 'failure_policy': FailurePolicy.ALL, 'iteration_strategy': 'react', 'llm_provider': None}
         ),
         (
             {"name": "test-stage", "agent": "TestAgent"},

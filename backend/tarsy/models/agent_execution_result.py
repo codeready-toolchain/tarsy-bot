@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
-from tarsy.models.constants import StageStatus
+from tarsy.models.constants import FailurePolicy, StageStatus
 
 
 class AgentExecutionResult(BaseModel):
@@ -110,7 +110,7 @@ class ParallelStageMetadata(BaseModel):
         ...,
         description="Type of parallelism (ParallelType.MULTI_AGENT or ParallelType.REPLICA)"
     )
-    failure_policy: Literal["all", "any"] = Field(
+    failure_policy: FailurePolicy = Field(
         ...,
         description="Failure policy: 'all' requires all to succeed, 'any' requires at least one"
     )

@@ -81,6 +81,17 @@ class ParallelType(str, Enum):
         return [cls.MULTI_AGENT.value, cls.REPLICA.value]
 
 
+class FailurePolicy(str, Enum):
+    """Failure policy for parallel stage execution (EP-0030).
+    
+    Determines how to handle failures when multiple agents run in parallel:
+    - ALL: All agents must succeed for the stage to succeed (strict)
+    - ANY: At least one agent must succeed for the stage to succeed (resilient)
+    """
+    ALL = "all"
+    ANY = "any"
+
+
 class ChainStatus(Enum):
     """Status values for overall chain execution progress (calculated from stage statuses)."""
     

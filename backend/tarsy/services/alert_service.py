@@ -22,7 +22,13 @@ from tarsy.integrations.notifications.summarizer import ExecutiveSummaryAgent
 from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel, ParallelAgentConfig
 from tarsy.models.agent_execution_result import AgentExecutionResult, ParallelStageResult
 from tarsy.models.api_models import ChainExecutionResult
-from tarsy.models.constants import AlertSessionStatus, ChainStatus, ParallelType, StageStatus
+from tarsy.models.constants import (
+    AlertSessionStatus,
+    ChainStatus,
+    FailurePolicy,
+    ParallelType,
+    StageStatus,
+)
 from tarsy.models.pause_metadata import PauseMetadata, PauseReason
 from tarsy.models.processing_context import ChainContext
 from tarsy.services.agent_factory import AgentFactory
@@ -1818,9 +1824,9 @@ class AlertService:
         successful_count = sum(1 for m in metadatas if m.status == StageStatus.COMPLETED)
         failed_count = len(metadatas) - successful_count
         
-        if stage.failure_policy == "all":
+        if stage.failure_policy == FailurePolicy.ALL:
             overall_status = StageStatus.COMPLETED if failed_count == 0 else StageStatus.FAILED
-        else:  # "any"
+        else:  # FailurePolicy.ANY
             overall_status = StageStatus.COMPLETED if successful_count > 0 else StageStatus.FAILED
         
         logger.info(

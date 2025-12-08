@@ -14,7 +14,7 @@ from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .constants import IterationStrategy
+from .constants import FailurePolicy, IterationStrategy
 from .mcp_transport_config import TransportConfig
 
 # =============================================================================
@@ -290,8 +290,8 @@ class ChainStageConfigModel(BaseModel):
         ge=1,
         description="Number of replicas for simple redundancy (default: 1)"
     )
-    failure_policy: Literal["all", "any"] = Field(
-        default="all",
+    failure_policy: FailurePolicy = Field(
+        default=FailurePolicy.ALL,
         description="Failure policy: 'all' requires all agents to succeed, 'any' requires at least one"
     )
     iteration_strategy: Optional[str] = Field(

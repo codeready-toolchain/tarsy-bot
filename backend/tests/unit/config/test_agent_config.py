@@ -21,6 +21,7 @@ from tarsy.models.agent_config import (
     CombinedConfigModel,
     MCPServerConfigModel,
 )
+from tarsy.models.constants import FailurePolicy
 
 
 @pytest.mark.unit
@@ -642,7 +643,7 @@ class TestGetChainConfigs:
             # Verify EP-0030 parallel agent fields are included with defaults
             assert chain_config["stages"][0]["agents"] is None
             assert chain_config["stages"][0]["replicas"] == 1
-            assert chain_config["stages"][0]["failure_policy"] == "all"
+            assert chain_config["stages"][0]["failure_policy"] == FailurePolicy.ALL
         finally:
             os.unlink(temp_path)
     
