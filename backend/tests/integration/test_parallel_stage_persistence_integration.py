@@ -18,7 +18,7 @@ class TestParallelStagePersistence:
     """Integration tests for parallel stage persistence."""
     
     @pytest.fixture
-    def test_session(self, test_db_session: Session) -> AlertSession:
+    def test_session(self, test_database_session: Session) -> AlertSession:
         """Create a test alert session."""
         session = AlertSession(
             session_id="test-parallel-session",
@@ -28,11 +28,11 @@ class TestParallelStagePersistence:
             status=AlertSessionStatus.IN_PROGRESS.value,
             chain_id="test-chain"
         )
-        test_db_session.add(session)
-        test_db_session.commit()
+        test_database_session.add(session)
+        test_database_session.commit()
         return session
     
-    def test_create_parent_stage_with_parallel_type(self, test_db_session: Session, test_session: AlertSession):
+    def test_create_parent_stage_with_parallel_type(self, test_database_session: Session, test_session: AlertSession):
         """Test creating a parent stage execution with parallel_type."""
         parent_stage = StageExecution(
             session_id=test_session.session_id,
@@ -46,9 +46,9 @@ class TestParallelStagePersistence:
             parallel_type=ParallelType.MULTI_AGENT.value
         )
         
-        test_db_session.add(parent_stage)
-        test_db_session.commit()
-        test_db_session.refresh(parent_stage)
+        test_database_session.add(parent_stage)
+        test_database_session.commit()
+        test_database_session.refresh(parent_stage)
         
         # Verify saved correctly
         assert parent_stage.execution_id is not None
@@ -56,7 +56,7 @@ class TestParallelStagePersistence:
         assert parent_stage.parallel_index == 0
         assert parent_stage.parent_stage_execution_id is None
     
-    def test_create_child_stages_with_parent_reference(self, test_db_session: Session, test_session: AlertSession):
+    def test_create_child_stages_with_parent_reference(self, test_database_session: Session, test_session: AlertSession):
         """Test creating child stage executions with parent reference."""
         # Create parent
         parent_stage = StageExecution(
@@ -68,9 +68,9 @@ class TestParallelStagePersistence:
             status=StageStatus.ACTIVE.value,
             parallel_type=ParallelType.MULTI_AGENT.value
         )
-        test_db_session.add(parent_stage)
-        test_db_session.commit()
-        test_db_session.refresh(parent_stage)
+        test_database_session.add(parent_stage)
+        test_database_session.commit()
+        test_database_session.refresh(parent_stage)
         
         # Create children
         child1 = StageExecution(
@@ -97,16 +97,16 @@ class TestParallelStagePersistence:
             parallel_type=ParallelType.MULTI_AGENT.value
         )
         
-        test_db_session.add(child1)
-        test_db_session.add(child2)
-        test_db_session.commit()
+        test_database_session.add(child1)
+        test_database_session.add(child2)
+        test_database_session.commit()
         
         # Query children
         stmt = select(StageExecution).where(
             StageExecution.parent_stage_execution_id == parent_stage.execution_id
         ).order_by(StageExecution.parallel_index)
         
-        children = test_db_session.exec(stmt).all()
+        children = test_database_session.exec(stmt).all()
         
         assert len(children) == 2
         assert children[0].parallel_index == 1
@@ -114,9 +114,9 @@ class TestParallelStagePersistence:
         assert children[1].parallel_index == 2
         assert children[1].agent == "Agent2"
     
-    def test_repository_get_parallel_stage_children(self, test_db_session: Session, test_session: AlertSession):
+    def test_repository_get_parallel_stage_children(self, test_database_session: Session, test_session: AlertSession):
         """Test repository method for retrieving child stages."""
-        repo = HistoryRepository(test_db_session)
+        repo = HistoryRepository(test_database_session)
         
         # Create parent and children
         parent_stage = StageExecution(
@@ -128,9 +128,9 @@ class TestParallelStagePersistence:
             status=StageStatus.COMPLETED.value,
             parallel_type=ParallelType.REPLICA.value
         )
-        test_db_session.add(parent_stage)
-        test_db_session.commit()
-        test_db_session.refresh(parent_stage)
+        test_database_session.add(parent_stage)
+        test_database_session.commit()
+        test_database_session.refresh(parent_stage)
         
         for i in range(3):
             child = StageExecution(
@@ -144,9 +144,9 @@ class TestParallelStagePersistence:
                 parallel_index=i+1,
                 parallel_type=ParallelType.REPLICA.value
             )
-            test_db_session.add(child)
+            test_database_session.add(child)
         
-        test_db_session.commit()
+        test_database_session.commit()
         
         # Use repository method
         children = repo.get_parallel_stage_children(parent_stage.execution_id)
@@ -155,9 +155,9 @@ class TestParallelStagePersistence:
         assert all(c.parent_stage_execution_id == parent_stage.execution_id for c in children)
         assert [c.parallel_index for c in children] == [1, 2, 3]
     
-    def test_repository_get_stage_executions_nested_structure(self, test_db_session: Session, test_session: AlertSession):
+    def test_repository_get_stage_executions_nested_structure(self, test_database_session: Session, test_session: AlertSession):
         """Test that get_stage_executions_for_session returns nested structure."""
-        repo = HistoryRepository(test_db_session)
+        repo = HistoryRepository(test_database_session)
         
         # Create a regular stage
         regular_stage = StageExecution(
@@ -169,7 +169,7 @@ class TestParallelStagePersistence:
             status=StageStatus.COMPLETED.value,
             parallel_type=ParallelType.SINGLE.value
         )
-        test_db_session.add(regular_stage)
+        test_database_session.add(regular_stage)
         
         # Create a parallel parent stage
         parent_stage = StageExecution(
@@ -181,9 +181,9 @@ class TestParallelStagePersistence:
             status=StageStatus.COMPLETED.value,
             parallel_type=ParallelType.MULTI_AGENT.value
         )
-        test_db_session.add(parent_stage)
-        test_db_session.commit()
-        test_db_session.refresh(parent_stage)
+        test_database_session.add(parent_stage)
+        test_database_session.commit()
+        test_database_session.refresh(parent_stage)
         
         # Create child stages
         child1 = StageExecution(
@@ -208,9 +208,9 @@ class TestParallelStagePersistence:
             parallel_index=2,
             parallel_type=ParallelType.MULTI_AGENT.value
         )
-        test_db_session.add(child1)
-        test_db_session.add(child2)
-        test_db_session.commit()
+        test_database_session.add(child1)
+        test_database_session.add(child2)
+        test_database_session.commit()
         
         # Get stages with nested structure
         stages = repo.get_stage_executions_for_session(test_session.session_id)
@@ -232,7 +232,7 @@ class TestParallelStagePersistence:
         assert stages[1].parallel_executions[0].parallel_index == 1
         assert stages[1].parallel_executions[1].parallel_index == 2
     
-    def test_parallel_type_values(self, test_db_session: Session, test_session: AlertSession):
+    def test_parallel_type_values(self, test_database_session: Session, test_session: AlertSession):
         """Test all parallel_type values persist correctly."""
         parallel_types = ParallelType.values()
         
@@ -246,16 +246,16 @@ class TestParallelStagePersistence:
                 status=StageStatus.COMPLETED.value,
                 parallel_type=ptype
             )
-            test_db_session.add(stage)
+            test_database_session.add(stage)
         
-        test_db_session.commit()
+        test_database_session.commit()
         
         # Query back
         stmt = select(StageExecution).where(
             StageExecution.session_id == test_session.session_id
         ).order_by(StageExecution.stage_index)
         
-        stages = test_db_session.exec(stmt).all()
+        stages = test_database_session.exec(stmt).all()
         
         assert len(stages) == 3
         assert [s.parallel_type for s in stages] == parallel_types

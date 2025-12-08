@@ -52,15 +52,15 @@ class TestChainStageConfigModel:
     @pytest.mark.parametrize("stage_data,expected_dict", [
         (
             {"name": "test-stage", "agent": "TestAgent", "iteration_strategy": "react"},
-            {'name': 'test-stage', 'agent': 'TestAgent', 'iteration_strategy': 'react', 'llm_provider': None}
+            {'name': 'test-stage', 'agent': 'TestAgent', 'agents': None, 'replicas': 1, 'failure_policy': 'all', 'iteration_strategy': 'react', 'llm_provider': None}
         ),
         (
             {"name": "test-stage", "agent": "TestAgent"},
-            {'name': 'test-stage', 'agent': 'TestAgent', 'iteration_strategy': None, 'llm_provider': None}
+            {'name': 'test-stage', 'agent': 'TestAgent', 'agents': None, 'replicas': 1, 'failure_policy': 'all', 'iteration_strategy': None, 'llm_provider': None}
         ),
         (
             {"name": "custom-stage", "agent": "ConfigurableAgent:custom", "iteration_strategy": "react"},
-            {'name': 'custom-stage', 'agent': 'ConfigurableAgent:custom', 'iteration_strategy': 'react', 'llm_provider': None}
+            {'name': 'custom-stage', 'agent': 'ConfigurableAgent:custom', 'agents': None, 'replicas': 1, 'failure_policy': 'all', 'iteration_strategy': 'react', 'llm_provider': None}
         )
     ])
     def test_to_dict_serialization(self, stage_data, expected_dict):
@@ -107,6 +107,9 @@ class TestChainStageConfigModel:
         assert result == {
             'name': 'provider-stage',
             'agent': 'TestAgent',
+            'agents': None,
+            'replicas': 1,
+            'failure_policy': 'all',
             'iteration_strategy': None,
             'llm_provider': 'openai-default'
         }
@@ -221,8 +224,8 @@ class TestChainConfigModel:
             'chain_id': 'serialization-test',
             'alert_types': ['alert1', 'alert2'],
             'stages': [
-                {'name': 'stage1', 'agent': 'Agent1', 'iteration_strategy': None, 'llm_provider': None},
-                {'name': 'stage2', 'agent': 'Agent2', 'iteration_strategy': 'react', 'llm_provider': None}
+                {'name': 'stage1', 'agent': 'Agent1', 'agents': None, 'replicas': 1, 'failure_policy': 'all', 'iteration_strategy': None, 'llm_provider': None},
+                {'name': 'stage2', 'agent': 'Agent2', 'agents': None, 'replicas': 1, 'failure_policy': 'all', 'iteration_strategy': 'react', 'llm_provider': None}
             ],
             'description': 'Test serialization',
             'chat_enabled': True,
@@ -245,7 +248,7 @@ class TestChainConfigModel:
             'chain_id': 'test-chain',
             'alert_types': ['test'],
             'stages': [
-                {'name': 'test-stage', 'agent': 'TestAgent', 'iteration_strategy': None, 'llm_provider': None}
+                {'name': 'test-stage', 'agent': 'TestAgent', 'agents': None, 'replicas': 1, 'failure_policy': 'all', 'iteration_strategy': None, 'llm_provider': None}
             ],
             'description': None,
             'chat_enabled': True,
@@ -318,8 +321,8 @@ class TestChainConfigModel:
             'chain_id': 'provider-serialization-test',
             'alert_types': ['test'],
             'stages': [
-                {'name': 'stage1', 'agent': 'Agent1', 'iteration_strategy': None, 'llm_provider': 'gemini-flash'},
-                {'name': 'stage2', 'agent': 'Agent2', 'iteration_strategy': None, 'llm_provider': None}
+                {'name': 'stage1', 'agent': 'Agent1', 'agents': None, 'replicas': 1, 'failure_policy': 'all', 'iteration_strategy': None, 'llm_provider': 'gemini-flash'},
+                {'name': 'stage2', 'agent': 'Agent2', 'agents': None, 'replicas': 1, 'failure_policy': 'all', 'iteration_strategy': None, 'llm_provider': None}
             ],
             'description': None,
             'chat_enabled': True,

@@ -889,6 +889,38 @@ async def alert_service(ensure_integration_test_isolation, mock_settings, mock_r
     # Replace the agent_factory with our mock AFTER initialization
     service.agent_factory = mock_agent_factory
     
+    # Mock history service for stage execution verification
+    from tarsy.services.history_service import HistoryService
+    mock_history_service = Mock(spec=HistoryService)
+    mock_history_service.is_enabled = True
+    mock_history_service.create_session.return_value = "test-session-id"
+    mock_history_service.update_session_status = Mock()
+    mock_history_service.complete_session = Mock()
+    mock_history_service.record_error = Mock()
+    mock_history_service.create_stage_execution.return_value = "test-stage-execution-id"
+    mock_history_service.get_stage_execution.return_value = Mock(execution_id="test-stage-execution-id")
+    mock_history_service.update_stage_execution = Mock()
+    
+    # Mock get_repository for stage verification - must be a context manager
+    mock_repo = Mock()
+    mock_db_stage_exec = Mock()
+    mock_db_stage_exec.execution_id = "test-stage-execution-id"
+    mock_repo.session.get.return_value = mock_db_stage_exec
+    
+    from unittest.mock import MagicMock
+    mock_context_manager = MagicMock()
+    mock_context_manager.__enter__.return_value = mock_repo
+    mock_context_manager.__exit__.return_value = None
+    mock_history_service.get_repository.return_value = mock_context_manager
+    
+    # Mock _retry_database_operation_async
+    async def mock_retry_db_operation(operation_name, operation, treat_none_as_success=True):
+        result = operation()
+        return result
+    mock_history_service._retry_database_operation_async = mock_retry_db_operation
+    
+    service.history_service = mock_history_service
+    
     yield service
 
 
@@ -933,6 +965,29 @@ def alert_service_with_mocks(
     mock_history_service.update_session_status = Mock()
     mock_history_service.complete_session = Mock()
     mock_history_service.record_error = Mock()
+    # Mock stage execution methods for EP-0030 validation
+    mock_history_service.create_stage_execution.return_value = "test-stage-execution-id"
+    mock_history_service.get_stage_execution.return_value = Mock(execution_id="test-stage-execution-id")
+    mock_history_service.update_stage_execution = Mock()
+    
+    # Mock get_repository to support stage execution verification - must be a context manager
+    mock_repo = Mock()
+    mock_db_stage_exec = Mock()
+    mock_db_stage_exec.execution_id = "test-stage-execution-id"
+    mock_repo.session.get.return_value = mock_db_stage_exec
+    
+    from unittest.mock import MagicMock
+    mock_context_manager = MagicMock()
+    mock_context_manager.__enter__.return_value = mock_repo
+    mock_context_manager.__exit__.return_value = None
+    mock_history_service.get_repository.return_value = mock_context_manager
+    
+    # Mock _retry_database_operation_async for stage verification
+    async def mock_retry_db_operation(operation_name, operation, treat_none_as_success=True):
+        result = operation()
+        return result
+    mock_history_service._retry_database_operation_async = mock_retry_db_operation
+    
     service.history_service = mock_history_service
     
     # Bundle dependencies for easy access in tests
