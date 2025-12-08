@@ -114,15 +114,6 @@ class TestParallelMultiAgentE2E:
         from .conftest import create_gemini_client_mock
         gemini_mock_factory = create_gemini_client_mock(gemini_response_map)
         
-        # Wrap the factory to add debugging
-        original_factory = gemini_mock_factory
-        def debug_gemini_factory(*args, **kwargs):
-            print(f"[DEBUG Gemini Mock] Factory called with args={args}, kwargs={kwargs}")
-            result = original_factory(*args, **kwargs)
-            print(f"[DEBUG Gemini Mock] Factory returning: {result}")
-            return result
-        gemini_mock_factory = debug_gemini_factory
-        
         # ============================================================================
         # LANGCHAIN MOCK (for LogAgent using ReAct + for SynthesisAgent)
         # ============================================================================
@@ -318,19 +309,6 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
                         session_id, final_status = await E2ETestUtils.wait_for_session_completion(
                             test_client, max_wait_seconds=20
                         )
-                        
-                        # Debug: if failed, print session details
-                        if final_status != "completed":
-                            import json
-                            detail_data = await E2ETestUtils.get_session_details_async(
-                                test_client, session_id, max_retries=3, retry_delay=0.5
-                            )
-                            debug_file = "/tmp/failed_session_details.json"
-                            with open(debug_file, "w") as f:
-                                json.dump(detail_data, f, indent=2, default=str)
-                            print(f"\n❌ Session failed! Status: {final_status}")
-                            print(f"   Error: {detail_data.get('error_message')}")
-                            print(f"   Full session details written to: {debug_file}")
                         
                         assert final_status == "completed", f"Session failed with status: {final_status}"
                         

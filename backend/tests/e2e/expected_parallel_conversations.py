@@ -106,7 +106,7 @@ Use tools as needed to gather information. When you have sufficient data, provid
         },
         {
             "role": "user",
-            "content": """Tool result from kubernetes-server__kubectl_get:
+            "content": """Tool Result: kubernetes-server.kubectl_get:
 {
   "result": "{\\\"result\\\": \\\"Pod pod-1 is in CrashLoopBackOff state\\\"}"
 }"""
@@ -530,85 +530,29 @@ For Kubernetes operations:
 
 You are a Kubernetes troubleshooting specialist.
 
-You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
+You are an SRE agent analyzing incidents. Use the available tools to investigate and provide actionable recommendations.
 
-REQUIRED FORMAT:
-
-Question: [the incident question]
-Thought: [your step-by-step reasoning]
-Action: [tool name from available tools]
-Action Input: [parameters as key: value pairs]
-
-⚠️ STOP immediately after Action Input. The system provides Observations.
-
-Continue the cycle. Conclude when you have sufficient information:
-
-Thought: [final reasoning]
-Final Answer: [complete structured response]
-
-CRITICAL RULES:
-1. Always use colons after headers: "Thought:", "Action:", "Action Input:"
-2. Start each section on a NEW LINE (never continue on same line as previous text)
-3. Stop after Action Input—never generate fake Observations
-4. Parameters: one per line for multiple values, or inline for single value
-5. Conclude when you have actionable insights (perfect information not required)
-
-PARAMETER FORMATS:
-
-Multiple parameters:
-Action Input: apiVersion: v1
-kind: Namespace
-name: superman-dev
-
-Single parameter:
-Action Input: namespace: default
-
-EXAMPLE CYCLE:
-
-Question: Why is namespace 'superman-dev' stuck in terminating state?
-
-Thought: I need to check the namespace status first to identify any blocking resources or finalizers.
-
-Action: kubernetes-server.resources_get
-Action Input: apiVersion: v1
-kind: Namespace
-name: superman-dev
-
-[System provides: Observation: {"status": {"phase": "Terminating", "finalizers": ["kubernetes"]}}]
-
-Thought: A finalizer is blocking deletion. I should check for any remaining resources in the namespace.
-
-Action: kubernetes-server.resources_list
-Action Input: apiVersion: v1
-kind: Pod
-namespace: superman-dev
-
-[System provides: Observation: No pods found]
-
-Thought: No pods remain, but the finalizer persists. This is an orphaned finalizer that needs manual removal.
-
-Final Answer: 
-**Root Cause:** Orphaned 'kubernetes' finalizer blocking namespace deletion after all resources were cleaned up.
-
-**Resolution Steps:**
-1. Remove the finalizer: `kubectl patch namespace superman-dev -p '{"spec":{"finalizers":null}}' --type=merge`
-2. Verify deletion: `kubectl get namespace superman-dev`
-3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
-
-**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically.
+When you have gathered sufficient information, provide your final analysis with:
+1. Root cause analysis
+2. Current system state assessment
+3. Specific remediation steps for human operators
+4. Prevention recommendations
 
 Focus on investigation and providing recommendations for human operators to execute."""
         },
         {
             "role": "user",
-            "content": """# Investigation Task
+            "content": """Analyze this test-replica-execution alert and provide actionable recommendations.
 
+## Alert Details
+
+### Alert Metadata
 **Alert Type:** test-replica-execution
-**Environment:** production
 **Severity:** critical
+**Timestamp:** {TIMESTAMP}
+**Environment:** production
 
-## Alert Data
-
+### Alert Data
 ```json
 {
   "description": "Test replica execution scenario",
@@ -616,30 +560,36 @@ Focus on investigation and providing recommendations for human operators to exec
 }
 ```
 
-## Runbook
-
+## Runbook Content
+```markdown
+<!-- RUNBOOK START -->
 # Test Runbook
 This is a test runbook for replica execution testing.
+<!-- RUNBOOK END -->
+```
+
+## Previous Stage Data
+No previous stage data is available for this alert. This is the first stage of analysis.
 
 ## Your Task
+Investigate this alert using the available tools and provide:
+1. Root cause analysis based on your investigation
+2. Current system state assessment from tool observations
+3. Specific remediation steps for human operators
+4. Prevention recommendations
 
-Investigate this alert using available tools and provide a comprehensive analysis."""
-        },
-        {
-            "role": "assistant",
-            "content": """Thought: I should check the deployment status to understand the issue.
-Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "deployment", "name": "web-app"}"""
+Use tools as needed to gather information. When you have sufficient data, provide your complete analysis."""
         },
         {
             "role": "user",
-            "content": """Observation: kubernetes-server.kubectl_get: {
+            "content": """Tool Result: kubernetes-server.kubectl_get:
+{
   "result": "Deployment web-app has 0/3 replicas ready"
 }"""
         },
         {
             "role": "assistant",
-            "content": """Final Answer: Deployment web-app has no ready replicas (0/3). This indicates a critical availability issue. All pods may be failing to start or pass health checks."""
+            "content": """Deployment web-app has no ready replicas (0/3). This indicates a critical availability issue. All pods may be failing to start or pass health checks."""
         }
     ]
 }
@@ -682,85 +632,29 @@ For Kubernetes operations:
 
 You are a Kubernetes troubleshooting specialist.
 
-You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
+You are an SRE agent analyzing incidents. Use the available tools to investigate and provide actionable recommendations.
 
-REQUIRED FORMAT:
-
-Question: [the incident question]
-Thought: [your step-by-step reasoning]
-Action: [tool name from available tools]
-Action Input: [parameters as key: value pairs]
-
-⚠️ STOP immediately after Action Input. The system provides Observations.
-
-Continue the cycle. Conclude when you have sufficient information:
-
-Thought: [final reasoning]
-Final Answer: [complete structured response]
-
-CRITICAL RULES:
-1. Always use colons after headers: "Thought:", "Action:", "Action Input:"
-2. Start each section on a NEW LINE (never continue on same line as previous text)
-3. Stop after Action Input—never generate fake Observations
-4. Parameters: one per line for multiple values, or inline for single value
-5. Conclude when you have actionable insights (perfect information not required)
-
-PARAMETER FORMATS:
-
-Multiple parameters:
-Action Input: apiVersion: v1
-kind: Namespace
-name: superman-dev
-
-Single parameter:
-Action Input: namespace: default
-
-EXAMPLE CYCLE:
-
-Question: Why is namespace 'superman-dev' stuck in terminating state?
-
-Thought: I need to check the namespace status first to identify any blocking resources or finalizers.
-
-Action: kubernetes-server.resources_get
-Action Input: apiVersion: v1
-kind: Namespace
-name: superman-dev
-
-[System provides: Observation: {"status": {"phase": "Terminating", "finalizers": ["kubernetes"]}}]
-
-Thought: A finalizer is blocking deletion. I should check for any remaining resources in the namespace.
-
-Action: kubernetes-server.resources_list
-Action Input: apiVersion: v1
-kind: Pod
-namespace: superman-dev
-
-[System provides: Observation: No pods found]
-
-Thought: No pods remain, but the finalizer persists. This is an orphaned finalizer that needs manual removal.
-
-Final Answer: 
-**Root Cause:** Orphaned 'kubernetes' finalizer blocking namespace deletion after all resources were cleaned up.
-
-**Resolution Steps:**
-1. Remove the finalizer: `kubectl patch namespace superman-dev -p '{"spec":{"finalizers":null}}' --type=merge`
-2. Verify deletion: `kubectl get namespace superman-dev`
-3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
-
-**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically.
+When you have gathered sufficient information, provide your final analysis with:
+1. Root cause analysis
+2. Current system state assessment
+3. Specific remediation steps for human operators
+4. Prevention recommendations
 
 Focus on investigation and providing recommendations for human operators to execute."""
         },
         {
             "role": "user",
-            "content": """# Investigation Task
+            "content": """Analyze this test-replica-execution alert and provide actionable recommendations.
 
+## Alert Details
+
+### Alert Metadata
 **Alert Type:** test-replica-execution
-**Environment:** production
 **Severity:** critical
+**Timestamp:** {TIMESTAMP}
+**Environment:** production
 
-## Alert Data
-
+### Alert Data
 ```json
 {
   "description": "Test replica execution scenario",
@@ -768,30 +662,36 @@ Focus on investigation and providing recommendations for human operators to exec
 }
 ```
 
-## Runbook
-
+## Runbook Content
+```markdown
+<!-- RUNBOOK START -->
 # Test Runbook
 This is a test runbook for replica execution testing.
+<!-- RUNBOOK END -->
+```
+
+## Previous Stage Data
+No previous stage data is available for this alert. This is the first stage of analysis.
 
 ## Your Task
+Investigate this alert using the available tools and provide:
+1. Root cause analysis based on your investigation
+2. Current system state assessment from tool observations
+3. Specific remediation steps for human operators
+4. Prevention recommendations
 
-Investigate this alert using available tools and provide a comprehensive analysis."""
-        },
-        {
-            "role": "assistant",
-            "content": """Thought: I should check the pod events to see why replicas aren't ready.
-Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "events", "field_selector": "involvedObject.name=web-app"}"""
+Use tools as needed to gather information. When you have sufficient data, provide your complete analysis."""
         },
         {
             "role": "user",
-            "content": """Observation: kubernetes-server.kubectl_get: {
+            "content": """Tool Result: kubernetes-server.kubectl_get:
+{
   "result": "Warning: ImagePullBackOff - Failed to pull image 'web-app:v2.0.0'"
 }"""
         },
         {
             "role": "assistant",
-            "content": """Final Answer: Events show ImagePullBackOff for web-app:v2.0.0. The deployment cannot start because the specified container image cannot be pulled. This is the root cause of the 0/3 ready replicas."""
+            "content": """Events show ImagePullBackOff for web-app:v2.0.0. The deployment cannot start because the specified container image cannot be pulled. This is the root cause of the 0/3 ready replicas."""
         }
     ]
 }
@@ -834,85 +734,29 @@ For Kubernetes operations:
 
 You are a Kubernetes troubleshooting specialist.
 
-You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
+You are an SRE agent analyzing incidents. Use the available tools to investigate and provide actionable recommendations.
 
-REQUIRED FORMAT:
-
-Question: [the incident question]
-Thought: [your step-by-step reasoning]
-Action: [tool name from available tools]
-Action Input: [parameters as key: value pairs]
-
-⚠️ STOP immediately after Action Input. The system provides Observations.
-
-Continue the cycle. Conclude when you have sufficient information:
-
-Thought: [final reasoning]
-Final Answer: [complete structured response]
-
-CRITICAL RULES:
-1. Always use colons after headers: "Thought:", "Action:", "Action Input:"
-2. Start each section on a NEW LINE (never continue on same line as previous text)
-3. Stop after Action Input—never generate fake Observations
-4. Parameters: one per line for multiple values, or inline for single value
-5. Conclude when you have actionable insights (perfect information not required)
-
-PARAMETER FORMATS:
-
-Multiple parameters:
-Action Input: apiVersion: v1
-kind: Namespace
-name: superman-dev
-
-Single parameter:
-Action Input: namespace: default
-
-EXAMPLE CYCLE:
-
-Question: Why is namespace 'superman-dev' stuck in terminating state?
-
-Thought: I need to check the namespace status first to identify any blocking resources or finalizers.
-
-Action: kubernetes-server.resources_get
-Action Input: apiVersion: v1
-kind: Namespace
-name: superman-dev
-
-[System provides: Observation: {"status": {"phase": "Terminating", "finalizers": ["kubernetes"]}}]
-
-Thought: A finalizer is blocking deletion. I should check for any remaining resources in the namespace.
-
-Action: kubernetes-server.resources_list
-Action Input: apiVersion: v1
-kind: Pod
-namespace: superman-dev
-
-[System provides: Observation: No pods found]
-
-Thought: No pods remain, but the finalizer persists. This is an orphaned finalizer that needs manual removal.
-
-Final Answer: 
-**Root Cause:** Orphaned 'kubernetes' finalizer blocking namespace deletion after all resources were cleaned up.
-
-**Resolution Steps:**
-1. Remove the finalizer: `kubectl patch namespace superman-dev -p '{"spec":{"finalizers":null}}' --type=merge`
-2. Verify deletion: `kubectl get namespace superman-dev`
-3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
-
-**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically.
+When you have gathered sufficient information, provide your final analysis with:
+1. Root cause analysis
+2. Current system state assessment
+3. Specific remediation steps for human operators
+4. Prevention recommendations
 
 Focus on investigation and providing recommendations for human operators to execute."""
         },
         {
             "role": "user",
-            "content": """# Investigation Task
+            "content": """Analyze this test-replica-execution alert and provide actionable recommendations.
 
+## Alert Details
+
+### Alert Metadata
 **Alert Type:** test-replica-execution
-**Environment:** production
 **Severity:** critical
+**Timestamp:** {TIMESTAMP}
+**Environment:** production
 
-## Alert Data
-
+### Alert Data
 ```json
 {
   "description": "Test replica execution scenario",
@@ -920,30 +764,36 @@ Focus on investigation and providing recommendations for human operators to exec
 }
 ```
 
-## Runbook
-
+## Runbook Content
+```markdown
+<!-- RUNBOOK START -->
 # Test Runbook
 This is a test runbook for replica execution testing.
+<!-- RUNBOOK END -->
+```
+
+## Previous Stage Data
+No previous stage data is available for this alert. This is the first stage of analysis.
 
 ## Your Task
+Investigate this alert using the available tools and provide:
+1. Root cause analysis based on your investigation
+2. Current system state assessment from tool observations
+3. Specific remediation steps for human operators
+4. Prevention recommendations
 
-Investigate this alert using available tools and provide a comprehensive analysis."""
-        },
-        {
-            "role": "assistant",
-            "content": """Thought: Let me verify the image availability issue.
-Action: kubernetes-server.kubectl_describe
-Action Input: {"resource": "deployment", "name": "web-app"}"""
+Use tools as needed to gather information. When you have sufficient data, provide your complete analysis."""
         },
         {
             "role": "user",
-            "content": """Observation: kubernetes-server.kubectl_describe: {
+            "content": """Tool Result: kubernetes-server.kubectl_describe:
+{
   "result": "Image: web-app:v2.0.0, Status: ErrImagePull - Image not found in registry"
 }"""
         },
         {
             "role": "assistant",
-            "content": """Final Answer: Image web-app:v2.0.0 not found in container registry. The deployment is referencing a non-existent image version. Recommend verifying the image tag or rolling back to a known-good version."""
+            "content": """Image web-app:v2.0.0 not found in container registry. The deployment is referencing a non-existent image version. Recommend verifying the image tag or rolling back to a known-good version."""
         }
     ]
 }

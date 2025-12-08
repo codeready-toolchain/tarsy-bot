@@ -39,7 +39,7 @@ class TestParallelReplicaE2E:
 
     @pytest.mark.e2e
     async def test_replica_parallel_stage(
-        self, e2e_test_client, e2e_replica_alert
+        self, e2e_parallel_test_client, e2e_replica_alert
     ):
         """
         Test replica parallel stage with automatic synthesis.
@@ -64,7 +64,7 @@ class TestParallelReplicaE2E:
         async def run_test():
             print("🚀 Starting replica parallel test...")
             result = await self._execute_replica_test(
-                e2e_test_client, e2e_replica_alert
+                e2e_parallel_test_client, e2e_replica_alert
             )
             print("✅ Replica parallel test completed!")
             return result
@@ -88,45 +88,74 @@ class TestParallelReplicaE2E:
         """Execute replica parallel test."""
         print("🔧 Starting replica parallel test execution")
 
-        # Track all LLM interactions
-        all_llm_interactions = []
+        # ============================================================================
+        # NATIVE THINKING MOCK (for KubernetesAgent replicas using Gemini)
+        # ============================================================================
+        # Gemini SDK responses for native thinking (function calling) - all replicas
+        gemini_response_map = {
+            # Replica 1
+            1: {  # First call - tool call with thinking
+                "text_content": "",
+                "thinking_content": "I should check the deployment status to understand the issue.",
+                "function_calls": [{"name": "kubernetes-server__kubectl_get", "args": {"resource": "deployment", "name": "web-app"}}],
+                "input_tokens": 245,
+                "output_tokens": 85,
+                "total_tokens": 330
+            },
+            2: {  # Second call - final answer
+                "text_content": "Deployment web-app has no ready replicas (0/3). This indicates a critical availability issue. All pods may be failing to start or pass health checks.",
+                "thinking_content": "I have identified the deployment status issue.",
+                "function_calls": None,
+                "input_tokens": 180,
+                "output_tokens": 65,
+                "total_tokens": 245
+            },
+            # Replica 2
+            3: {  # First call - tool call with thinking
+                "text_content": "",
+                "thinking_content": "I should check the pod events to see why replicas aren't ready.",
+                "function_calls": [{"name": "kubernetes-server__kubectl_get", "args": {"resource": "events", "field_selector": "involvedObject.name=web-app"}}],
+                "input_tokens": 235,
+                "output_tokens": 80,
+                "total_tokens": 315
+            },
+            4: {  # Second call - final answer
+                "text_content": "Events show ImagePullBackOff for web-app:v2.0.0. The deployment cannot start because the specified container image cannot be pulled. This is the root cause of the 0/3 ready replicas.",
+                "thinking_content": "I have found the specific error causing the issue.",
+                "function_calls": None,
+                "input_tokens": 185,
+                "output_tokens": 70,
+                "total_tokens": 255
+            },
+            # Replica 3
+            5: {  # First call - tool call with thinking
+                "text_content": "",
+                "thinking_content": "Let me verify the image availability issue.",
+                "function_calls": [{"name": "kubernetes-server__kubectl_describe", "args": {"resource": "deployment", "name": "web-app"}}],
+                "input_tokens": 240,
+                "output_tokens": 82,
+                "total_tokens": 322
+            },
+            6: {  # Second call - final answer
+                "text_content": "Image web-app:v2.0.0 not found in container registry. The deployment is referencing a non-existent image version. Recommend verifying the image tag or rolling back to a known-good version.",
+                "thinking_content": "I have confirmed the root cause is the missing image.",
+                "function_calls": None,
+                "input_tokens": 188,
+                "output_tokens": 72,
+                "total_tokens": 260
+            }
+        }
         
-        # Define mock responses for replica parallel execution
-        # Token counts must match EXPECTED_REPLICA_STAGES in expected_parallel_conversations.py
-        # Replica-1: interactions 1-2, Replica-2: interactions 3-4, Replica-3: interactions 5-6, Synthesis: interaction 7
-        mock_response_map = {
-            1: {  # Replica 1 - Initial check (LLM position 1)
-                "response_content": """Thought: I should check the deployment status to understand the issue.
-Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "deployment", "name": "web-app"}""",
-                "input_tokens": 245, "output_tokens": 85, "total_tokens": 330
-            },
-            2: {  # Replica 1 - Final answer (LLM position 2)
-                "response_content": """Final Answer: Deployment web-app has no ready replicas (0/3). This indicates a critical availability issue. All pods may be failing to start or pass health checks.""",
-                "input_tokens": 180, "output_tokens": 65, "total_tokens": 245
-            },
-            3: {  # Replica 2 - Check events (LLM position 1)
-                "response_content": """Thought: I should check the pod events to see why replicas aren't ready.
-Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "events", "field_selector": "involvedObject.name=web-app"}""",
-                "input_tokens": 235, "output_tokens": 80, "total_tokens": 315
-            },
-            4: {  # Replica 2 - Final answer (LLM position 2)
-                "response_content": """Final Answer: Events show ImagePullBackOff for web-app:v2.0.0. The deployment cannot start because the specified container image cannot be pulled. This is the root cause of the 0/3 ready replicas.""",
-                "input_tokens": 185, "output_tokens": 70, "total_tokens": 255
-            },
-            5: {  # Replica 3 - Describe deployment (LLM position 1)
-                "response_content": """Thought: Let me verify the image availability issue.
-Action: kubernetes-server.kubectl_describe
-Action Input: {"resource": "deployment", "name": "web-app"}""",
-                "input_tokens": 240, "output_tokens": 82, "total_tokens": 322
-            },
-            6: {  # Replica 3 - Final answer (LLM position 2)
-                "response_content": """Final Answer: Image web-app:v2.0.0 not found in container registry. The deployment is referencing a non-existent image version. Recommend verifying the image tag or rolling back to a known-good version.""",
-                "input_tokens": 188, "output_tokens": 72, "total_tokens": 260
-            },
-            7: {  # Synthesis (LLM position 1)
-                "response_content": """Final Answer: **Synthesis of Replica Investigations**
+        # Import create_gemini_client_mock from conftest
+        from .conftest import create_gemini_client_mock
+        gemini_mock_factory = create_gemini_client_mock(gemini_response_map)
+        
+        # ============================================================================
+        # LANGCHAIN MOCK (for SynthesisAgent using ReAct)
+        # ============================================================================
+        # Synthesis agent responses
+        synthesis_response = {
+            "response_content": """Final Answer: **Synthesis of Replica Investigations**
 
 All three replicas converged on consistent findings with increasing detail. Replica-1 identified the symptom (0/3 ready), Replica-2 found the error (ImagePullBackOff), and Replica-3 confirmed root cause (image not in registry).
 
@@ -143,30 +172,21 @@ All three replicas converged on consistent findings with increasing detail. Repl
 - Set up alerts for failed image pulls
 
 **Priority:** Critical - Complete service outage""",
-                "input_tokens": 450, "output_tokens": 190, "total_tokens": 640
-            }
+            "input_tokens": 450,
+            "output_tokens": 190,
+            "total_tokens": 640
         }
         
-        # Create streaming mock
+        # Create streaming mock for synthesis agent
         def create_streaming_mock():
             async def mock_astream(*args, **kwargs):
-                interaction_num = len(all_llm_interactions) + 1
-                all_llm_interactions.append(interaction_num)
+                print(f"\n🔍 LLM REQUEST for SynthesisAgent")
                 
-                print(f"\n🔍 LLM REQUEST #{interaction_num}")
-                
-                response_data = mock_response_map.get(interaction_num, {
-                    "response_content": "Default response",
-                    "input_tokens": 100,
-                    "output_tokens": 50,
-                    "total_tokens": 150
-                })
-                
-                content = response_data["response_content"]
+                content = synthesis_response["response_content"]
                 usage_metadata = {
-                    "input_tokens": response_data["input_tokens"],
-                    "output_tokens": response_data["output_tokens"],
-                    "total_tokens": response_data["total_tokens"]
+                    "input_tokens": synthesis_response["input_tokens"],
+                    "output_tokens": synthesis_response["output_tokens"],
+                    "total_tokens": synthesis_response["total_tokens"]
                 }
                 
                 # Yield chunks from the mock stream - must be an async generator
@@ -190,8 +210,9 @@ All three replicas converged on consistent findings with increasing detail. Repl
         from langchain_openai import ChatOpenAI
         from langchain_xai import ChatXAI
         
-        # Patch and execute
-        with patch.object(ChatOpenAI, 'astream', streaming_mock), \
+        # Patch both Gemini SDK (for native thinking replicas) and LangChain clients (for synthesis)
+        with patch("tarsy.integrations.llm.gemini_client.genai.Client", gemini_mock_factory), \
+             patch.object(ChatOpenAI, 'astream', streaming_mock), \
              patch.object(ChatAnthropic, 'astream', streaming_mock), \
              patch.object(ChatXAI, 'astream', streaming_mock), \
              patch.object(ChatGoogleGenerativeAI, 'astream', streaming_mock):
@@ -278,7 +299,7 @@ All three replicas converged on consistent findings with increasing detail. Repl
             # Find the matching parallel execution
             agent_execution = None
             for execution in parallel_executions:
-                if execution["agent_name"] == agent_name:
+                if execution["agent"] == agent_name:
                     agent_execution = execution
                     break
             
@@ -288,13 +309,33 @@ All three replicas converged on consistent findings with increasing detail. Repl
             
             print(f"    🔍 Verifying agent '{agent_name}'...")
             
-            # Verify interactions for this agent
-            interactions = agent_execution.get("interactions", [])
+            # Build unified interactions list from llm_interactions and mcp_communications
+            llm_interactions = agent_execution.get("llm_interactions", [])
+            mcp_communications = agent_execution.get("mcp_communications", [])
+            
+            # Convert to unified format sorted by timestamp
+            unified_interactions = []
+            for llm in llm_interactions:
+                unified_interactions.append({
+                    "type": "llm",
+                    "timestamp_us": llm["timestamp_us"],
+                    "details": llm["details"]
+                })
+            for mcp in mcp_communications:
+                unified_interactions.append({
+                    "type": "mcp",
+                    "timestamp_us": mcp["timestamp_us"],
+                    "details": mcp["details"]
+                })
+            
+            # Sort by timestamp to get chronological order
+            unified_interactions.sort(key=lambda x: x["timestamp_us"])
+            
             expected_interactions = expected_agent_spec["interactions"]
             
-            assert len(interactions) == len(expected_interactions), (
+            assert len(unified_interactions) == len(expected_interactions), (
                 f"Agent '{agent_name}' interaction count mismatch: "
-                f"expected {len(expected_interactions)}, got {len(interactions)}"
+                f"expected {len(expected_interactions)}, got {len(unified_interactions)}"
             )
             
             # Get expected conversation for this replica
@@ -309,7 +350,7 @@ All three replicas converged on consistent findings with increasing detail. Repl
             
             # Verify each interaction
             for i, expected_interaction in enumerate(expected_interactions):
-                actual_interaction = interactions[i]
+                actual_interaction = unified_interactions[i]
                 interaction_type = expected_interaction["type"]
                 
                 assert actual_interaction["type"] == interaction_type, (
@@ -355,7 +396,7 @@ All three replicas converged on consistent findings with increasing detail. Repl
                             f"Agent '{agent_name}' MCP interaction {i+1} tool_name mismatch"
                         )
             
-            print(f"      ✅ Agent '{agent_name}' verified ({len(interactions)} interactions)")
+            print(f"      ✅ Agent '{agent_name}' verified ({len(unified_interactions)} interactions)")
         
         print(f"    ✅ Parallel stage '{stage_name}' verified")
 
