@@ -87,37 +87,45 @@ class TestParallelMultiAgentE2E:
         """Execute multi-agent parallel test."""
         print("🔧 Starting multi-agent parallel test execution")
 
-        # Track all LLM interactions
-        all_llm_interactions = []
+        # Agent-specific interaction counters
+        agent_counters = {
+            "KubernetesAgent": 0,
+            "LogAgent": 0,
+            "SynthesisAgent": 0
+        }
         
-        # Define mock responses for multi-agent parallel execution
-        # Token counts must match EXPECTED_MULTI_AGENT_STAGES in expected_parallel_conversations.py
-        # Agent1 (Kubernetes): interactions 1-2, Agent2 (Log): interactions 3-4, Synthesis: interaction 5
-        mock_response_map = {
-            1: {  # Agent1 (KubernetesAgent) - Initial analysis (LLM position 1)
-                "response_content": """Thought: I should check the pod status in the test-namespace to understand any issues.
+        # Define mock responses per agent
+        # Each agent has its own sequence of responses
+        agent_responses = {
+            "KubernetesAgent": [
+                {  # Interaction 1 - Initial analysis with kubectl_get action
+                    "response_content": """Thought: I should check the pod status in the test-namespace to understand any issues.
 Action: kubernetes-server.kubectl_get
 Action Input: {"resource": "pods", "namespace": "test-namespace"}""",
-                "input_tokens": 245, "output_tokens": 85, "total_tokens": 330
-            },
-            2: {  # Agent1 - Final answer (LLM position 2)
-                "response_content": """Thought: I have identified the pod status. This provides enough information for initial analysis.
+                    "input_tokens": 245, "output_tokens": 85, "total_tokens": 330
+                },
+                {  # Interaction 2 - Final answer
+                    "response_content": """Thought: I have identified the pod status. This provides enough information for initial analysis.
 Final Answer: Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause.""",
-                "input_tokens": 180, "output_tokens": 65, "total_tokens": 245
-            },
-            3: {  # Agent2 (LogAgent) - Log analysis (LLM position 1)
-                "response_content": """Thought: I should analyze the application logs to find error patterns.
+                    "input_tokens": 180, "output_tokens": 65, "total_tokens": 245
+                }
+            ],
+            "LogAgent": [
+                {  # Interaction 1 - Log analysis with get_logs action
+                    "response_content": """Thought: I should analyze the application logs to find error patterns.
 Action: kubernetes-server.get_logs
 Action Input: {"namespace": "test-namespace", "pod": "pod-1"}""",
-                "input_tokens": 200, "output_tokens": 75, "total_tokens": 275
-            },
-            4: {  # Agent2 - Final answer (LLM position 2)
-                "response_content": """Thought: I have analyzed the logs and found the root cause.
+                    "input_tokens": 200, "output_tokens": 75, "total_tokens": 275
+                },
+                {  # Interaction 2 - Final answer
+                    "response_content": """Thought: I have analyzed the logs and found the root cause.
 Final Answer: Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity.""",
-                "input_tokens": 190, "output_tokens": 70, "total_tokens": 260
-            },
-            5: {  # Synthesis agent (LLM position 1)
-                "response_content": """Final Answer: **Synthesis of Parallel Investigations**
+                    "input_tokens": 190, "output_tokens": 70, "total_tokens": 260
+                }
+            ],
+            "SynthesisAgent": [
+                {  # Interaction 1 - Synthesis final answer
+                    "response_content": """Final Answer: **Synthesis of Parallel Investigations**
 
 Both investigations provide complementary evidence. The Kubernetes agent identified the symptom (CrashLoopBackOff), while the log agent uncovered the root cause (database connection timeout).
 
@@ -130,27 +138,75 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
 4. Review database connection timeout settings in application config
 
 **Priority:** High - Application is currently non-functional""",
-                "input_tokens": 420, "output_tokens": 180, "total_tokens": 600
-            }
+                    "input_tokens": 420, "output_tokens": 180, "total_tokens": 600
+                }
+            ]
         }
         
-        # Create streaming mock for LLM client
+        # Create agent-aware streaming mock for LLM client
         def create_streaming_mock():
-            """Create a mock astream function that returns streaming responses."""
+            """Create a mock astream function that identifies the agent and returns appropriate responses."""
             async def mock_astream(*args, **kwargs):
-                # Track this interaction
-                interaction_num = len(all_llm_interactions) + 1
-                all_llm_interactions.append(interaction_num)
+                # Identify which agent is calling by inspecting the conversation
+                agent_name = "Unknown"
                 
-                print(f"\n🔍 LLM REQUEST #{interaction_num}")
+                # Extract messages from args
+                # When patching instance methods, args[0] is 'self', args[1] is the messages
+                messages = []
+                if args and len(args) > 1:
+                    messages = args[1] if isinstance(args[1], list) else []
+                elif args and len(args) > 0 and isinstance(args[0], list):
+                    # Fallback: if args[0] is a list, use it (shouldn't happen with patch.object)
+                    messages = args[0]
                 
-                # Get response for this interaction
-                response_data = mock_response_map.get(interaction_num, {
-                    "response_content": "Default response",
-                    "input_tokens": 100,
-                    "output_tokens": 50,
-                    "total_tokens": 150
-                })
+                # Look for agent-specific instructions in the system message
+                for msg in messages:
+                        # Handle both dict and Message object formats
+                        content = ""
+                        msg_type = ""
+                        
+                        if isinstance(msg, dict):
+                            content = msg.get("content", "")
+                            msg_type = msg.get("role", "") or msg.get("type", "")
+                        elif hasattr(msg, "content"):
+                            content = msg.content if isinstance(msg.content, str) else str(msg.content)
+                            msg_type = getattr(msg, "type", "") or msg.__class__.__name__.lower().replace("message", "")
+                        
+                        # Check if this is a system message  
+                        if msg_type in ["system", "systemmessage"]:
+                            if "Kubernetes specialist" in content:
+                                agent_name = "KubernetesAgent"
+                            elif "log analysis specialist" in content:
+                                agent_name = "LogAgent"
+                            elif "Incident Commander synthesizing" in content:
+                                agent_name = "SynthesisAgent"
+                            break
+                
+                # Get the next response for this agent
+                if agent_name in agent_counters:
+                    agent_interaction_num = agent_counters[agent_name]
+                    agent_counters[agent_name] += 1
+                    
+                    print(f"\n🔍 LLM REQUEST from {agent_name} (interaction #{agent_interaction_num + 1})")
+                    
+                    # Get response for this agent's interaction
+                    agent_response_list = agent_responses.get(agent_name, [])
+                    if agent_interaction_num < len(agent_response_list):
+                        response_data = agent_response_list[agent_interaction_num]
+                    else:
+                        response_data = {
+                            "response_content": f"Default response for {agent_name}",
+                            "input_tokens": 100,
+                            "output_tokens": 50,
+                            "total_tokens": 150
+                        }
+                else:
+                    response_data = {
+                        "response_content": "Default response",
+                        "input_tokens": 100,
+                        "output_tokens": 50,
+                        "total_tokens": 150
+                    }
                 
                 content = response_data["response_content"]
                 usage_metadata = {
@@ -407,7 +463,7 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
                             f"Agent '{agent_name}' MCP interaction {i+1} tool_name mismatch"
                         )
             
-            print(f"      ✅ Agent '{agent_name}' verified ({len(interactions)} interactions)")
+            print(f"      ✅ Agent '{agent_name}' verified ({len(unified_interactions)} interactions)")
         
         print(f"    ✅ Parallel stage '{stage_name}' verified")
 
@@ -498,7 +554,7 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
                     f"Stage '{stage_name}' MCP interaction {i+1} success mismatch"
                 )
         
-        print(f"    ✅ Single stage '{stage_name}' verified ({len(interactions)} interactions)")
+        print(f"    ✅ Single stage '{stage_name}' verified ({len(unified_interactions)} interactions)")
 
     def _verify_complete_interaction_flow(self, stages):
         """Verify complete interaction flow for all stages."""

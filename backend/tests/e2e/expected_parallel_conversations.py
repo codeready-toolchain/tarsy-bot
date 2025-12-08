@@ -119,7 +119,9 @@ Final Answer:
 2. Verify deletion: `kubectl get namespace superman-dev`
 3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
 
-**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically."""
+**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically.
+
+Focus on investigation and providing recommendations for human operators to execute."""
         },
         {
             "role": "user",
@@ -270,7 +272,9 @@ Final Answer:
 2. Verify deletion: `kubectl get namespace superman-dev`
 3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
 
-**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically."""
+**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically.
+
+Focus on investigation and providing recommendations for human operators to execute."""
         },
         {
             "role": "user",
@@ -418,7 +422,9 @@ Final Answer:
 2. Verify deletion: `kubectl get namespace superman-dev`
 3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
 
-**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically."""
+**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically.
+
+Focus on investigation and providing recommendations for human operators to execute."""
         },
         {
             "role": "user",
@@ -584,7 +590,9 @@ Final Answer:
 2. Verify deletion: `kubectl get namespace superman-dev`
 3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
 
-**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically."""
+**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically.
+
+Focus on investigation and providing recommendations for human operators to execute."""
         },
         {
             "role": "user",
@@ -734,7 +742,9 @@ Final Answer:
 2. Verify deletion: `kubectl get namespace superman-dev`
 3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
 
-**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically."""
+**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically.
+
+Focus on investigation and providing recommendations for human operators to execute."""
         },
         {
             "role": "user",
@@ -884,7 +894,9 @@ Final Answer:
 2. Verify deletion: `kubectl get namespace superman-dev`
 3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
 
-**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically."""
+**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically.
+
+Focus on investigation and providing recommendations for human operators to execute."""
         },
         {
             "role": "user",
@@ -1032,7 +1044,9 @@ Final Answer:
 2. Verify deletion: `kubectl get namespace superman-dev`
 3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
 
-**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically."""
+**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically.
+
+Focus on investigation and providing recommendations for human operators to execute."""
         },
         {
             "role": "user",
@@ -1209,7 +1223,9 @@ Final Answer:
 2. Verify deletion: `kubectl get namespace superman-dev`
 3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
 
-**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically."""
+**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically.
+
+Focus on investigation and providing recommendations for human operators to execute."""
         },
         {
             "role": "user",
