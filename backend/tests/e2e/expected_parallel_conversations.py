@@ -1,0 +1,1833 @@
+"""
+Expected conversations for parallel agent E2E tests.
+
+This file contains expected LLM conversations for different parallel execution scenarios:
+- Multi-agent parallel stages
+- Replica parallel stages  
+- Parallel stages followed by regular stages
+- Chat after parallel execution
+
+Each conversation structure defines the exact expected messages including system prompts,
+user messages, assistant responses, and observations from MCP tool calls.
+"""
+
+# ============================================================================
+# MULTI-AGENT PARALLEL STAGE (2 agents in parallel + automatic synthesis)
+# ============================================================================
+
+EXPECTED_PARALLEL_AGENT_1_CONVERSATION = {
+    "messages": [
+        {
+            "role": "system",
+            "content": """## General SRE Agent Instructions
+
+You are an expert Site Reliability Engineer (SRE) with deep knowledge of:
+- Kubernetes and container orchestration
+- Cloud infrastructure and services
+- Incident response and troubleshooting
+- System monitoring and alerting
+- GitOps and deployment practices
+
+Analyze alerts thoroughly and provide actionable insights based on:
+1. Alert information and context
+2. Associated runbook procedures
+3. Real-time system data from available tools
+
+Always be specific, reference actual data, and provide clear next steps.
+Focus on root cause analysis and sustainable solutions.
+
+## Kubernetes Server Instructions
+
+For Kubernetes operations:
+- **IMPORTANT: In multi-cluster environments** (when the 'configuration_contexts_list' tool is available):
+  * ALWAYS start by calling 'configuration_contexts_list' to see all available contexts and their server URLs
+  * Use this information to determine which context to target before performing any operations
+  * This prevents working on the wrong cluster and helps you understand the environment
+- Be careful with cluster-scoped resource listings in large clusters
+- Always prefer namespaced queries when possible
+- If you get "server could not find the requested resource" error, check if you're using the namespace parameter correctly:
+  * Cluster-scoped resources (Namespace, Node, ClusterRole, PersistentVolume) should NOT have a namespace parameter
+  * Namespace-scoped resources (Pod, Deployment, Service, ConfigMap) REQUIRE a namespace parameter
+
+## Agent-Specific Instructions
+
+You are a Kubernetes specialist analyzing pod health and resource issues.
+Focus on pod status, events, and resource constraints.
+
+You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
+
+REQUIRED FORMAT:
+
+Question: [the incident question]
+Thought: [your step-by-step reasoning]
+Action: [tool name from available tools]
+Action Input: [parameters as key: value pairs]
+
+⚠️ STOP immediately after Action Input. The system provides Observations.
+
+Continue the cycle. Conclude when you have sufficient information:
+
+Thought: [final reasoning]
+Final Answer: [complete structured response]
+
+CRITICAL RULES:
+1. Always use colons after headers: "Thought:", "Action:", "Action Input:"
+2. Start each section on a NEW LINE (never continue on same line as previous text)
+3. Stop after Action Input—never generate fake Observations
+4. Parameters: one per line for multiple values, or inline for single value
+5. Conclude when you have actionable insights (perfect information not required)
+
+PARAMETER FORMATS:
+
+Multiple parameters:
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+Single parameter:
+Action Input: namespace: default
+
+EXAMPLE CYCLE:
+
+Question: Why is namespace 'superman-dev' stuck in terminating state?
+
+Thought: I need to check the namespace status first to identify any blocking resources or finalizers.
+
+Action: kubernetes-server.resources_get
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+[System provides: Observation: {"status": {"phase": "Terminating", "finalizers": ["kubernetes"]}}]
+
+Thought: A finalizer is blocking deletion. I should check for any remaining resources in the namespace.
+
+Action: kubernetes-server.resources_list
+Action Input: apiVersion: v1
+kind: Pod
+namespace: superman-dev
+
+[System provides: Observation: No pods found]
+
+Thought: No pods remain, but the finalizer persists. This is an orphaned finalizer that needs manual removal.
+
+Final Answer: 
+**Root Cause:** Orphaned 'kubernetes' finalizer blocking namespace deletion after all resources were cleaned up.
+
+**Resolution Steps:**
+1. Remove the finalizer: `kubectl patch namespace superman-dev -p '{"spec":{"finalizers":null}}' --type=merge`
+2. Verify deletion: `kubectl get namespace superman-dev`
+3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
+
+**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically."""
+        },
+        {
+            "role": "user",
+            "content": """# Investigation Task
+
+**Alert Type:** test-parallel-execution
+**Environment:** production
+**Severity:** warning
+
+## Alert Data
+
+```json
+{
+  "description": "Test parallel execution scenario",
+  "namespace": "test-namespace"
+}
+```
+
+## Runbook
+
+# Test Runbook
+This is a test runbook for parallel execution testing.
+
+## Your Task
+
+Investigate this alert using available tools and provide a comprehensive analysis."""
+        },
+        {
+            "role": "assistant",
+            "content": """Thought: I should check the pod status in the test-namespace to understand any issues.
+Action: kubernetes-server.kubectl_get
+Action Input: {"resource": "pods", "namespace": "test-namespace"}"""
+        },
+        {
+            "role": "user",
+            "content": """Observation: kubernetes-server.kubectl_get: {
+  "result": "Pod pod-1 is in CrashLoopBackOff state"
+}"""
+        },
+        {
+            "role": "assistant",
+            "content": """Final Answer: Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause."""
+        }
+    ]
+}
+
+EXPECTED_PARALLEL_AGENT_2_CONVERSATION = {
+    "messages": [
+        {
+            "role": "system",
+            "content": """## General SRE Agent Instructions
+
+You are an expert Site Reliability Engineer (SRE) with deep knowledge of:
+- Kubernetes and container orchestration
+- Cloud infrastructure and services
+- Incident response and troubleshooting
+- System monitoring and alerting
+- GitOps and deployment practices
+
+Analyze alerts thoroughly and provide actionable insights based on:
+1. Alert information and context
+2. Associated runbook procedures
+3. Real-time system data from available tools
+
+Always be specific, reference actual data, and provide clear next steps.
+Focus on root cause analysis and sustainable solutions.
+
+## Custom Server Instructions
+
+Log analysis server for investigating application logs and debugging issues
+
+## Agent-Specific Instructions
+
+You are a log analysis specialist focusing on application errors and patterns.
+Analyze logs to identify root causes and anomalies.
+
+You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
+
+REQUIRED FORMAT:
+
+Question: [the incident question]
+Thought: [your step-by-step reasoning]
+Action: [tool name from available tools]
+Action Input: [parameters as key: value pairs]
+
+⚠️ STOP immediately after Action Input. The system provides Observations.
+
+Continue the cycle. Conclude when you have sufficient information:
+
+Thought: [final reasoning]
+Final Answer: [complete structured response]
+
+CRITICAL RULES:
+1. Always use colons after headers: "Thought:", "Action:", "Action Input:"
+2. Start each section on a NEW LINE (never continue on same line as previous text)
+3. Stop after Action Input—never generate fake Observations
+4. Parameters: one per line for multiple values, or inline for single value
+5. Conclude when you have actionable insights (perfect information not required)
+
+PARAMETER FORMATS:
+
+Multiple parameters:
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+Single parameter:
+Action Input: namespace: default
+
+EXAMPLE CYCLE:
+
+Question: Why is namespace 'superman-dev' stuck in terminating state?
+
+Thought: I need to check the namespace status first to identify any blocking resources or finalizers.
+
+Action: kubernetes-server.resources_get
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+[System provides: Observation: {"status": {"phase": "Terminating", "finalizers": ["kubernetes"]}}]
+
+Thought: A finalizer is blocking deletion. I should check for any remaining resources in the namespace.
+
+Action: kubernetes-server.resources_list
+Action Input: apiVersion: v1
+kind: Pod
+namespace: superman-dev
+
+[System provides: Observation: No pods found]
+
+Thought: No pods remain, but the finalizer persists. This is an orphaned finalizer that needs manual removal.
+
+Final Answer: 
+**Root Cause:** Orphaned 'kubernetes' finalizer blocking namespace deletion after all resources were cleaned up.
+
+**Resolution Steps:**
+1. Remove the finalizer: `kubectl patch namespace superman-dev -p '{"spec":{"finalizers":null}}' --type=merge`
+2. Verify deletion: `kubectl get namespace superman-dev`
+3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
+
+**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically."""
+        },
+        {
+            "role": "user",
+            "content": """# Investigation Task
+
+**Alert Type:** test-parallel-execution
+**Environment:** production
+**Severity:** warning
+
+## Alert Data
+
+```json
+{
+  "description": "Test parallel execution scenario",
+  "namespace": "test-namespace"
+}
+```
+
+## Runbook
+
+# Test Runbook
+This is a test runbook for parallel execution testing.
+
+## Your Task
+
+Investigate this alert using available tools and provide a comprehensive analysis."""
+        },
+        {
+            "role": "assistant",
+            "content": """Thought: I should analyze the application logs to find error patterns.
+Action: log-server.get_logs
+Action Input: {"namespace": "test-namespace", "pod": "pod-1"}"""
+        },
+        {
+            "role": "user",
+            "content": """Observation: log-server.get_logs: {
+  "logs": "Error: Failed to connect to database at db.example.com:5432 - connection timeout"
+}"""
+        },
+        {
+            "role": "assistant",
+            "content": """Final Answer: Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity."""
+        }
+    ]
+}
+
+EXPECTED_SYNTHESIS_CONVERSATION = {
+    "messages": [
+        {
+            "role": "system",
+            "content": """## General SRE Agent Instructions
+
+You are an expert Site Reliability Engineer (SRE) with deep knowledge of:
+- Kubernetes and container orchestration
+- Cloud infrastructure and services
+- Incident response and troubleshooting
+- System monitoring and alerting
+- GitOps and deployment practices
+
+Analyze alerts thoroughly and provide actionable insights based on:
+1. Alert information and context
+2. Associated runbook procedures
+3. Real-time system data from available tools
+
+Always be specific, reference actual data, and provide clear next steps.
+Focus on root cause analysis and sustainable solutions.
+
+## Agent-Specific Instructions
+
+You are an Incident Commander synthesizing results from multiple parallel investigations.
+
+Your task:
+1. CRITICALLY EVALUATE each investigation's quality - prioritize results with strong evidence and sound reasoning
+2. DISREGARD or deprioritize low-quality results that lack supporting evidence or contain logical errors
+3. ANALYZE the original alert using the best available data from parallel investigations
+4. INTEGRATE findings from high-quality investigations into a unified understanding
+5. RECONCILE conflicting information by assessing which analysis provides better evidence
+6. PROVIDE definitive root cause analysis based on the most reliable evidence
+7. GENERATE actionable recommendations leveraging insights from the strongest investigations
+
+Focus on solving the original alert/issue, not on meta-analyzing agent performance or comparing approaches.
+
+You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
+
+REQUIRED FORMAT:
+
+Question: [the incident question]
+Thought: [your step-by-step reasoning]
+Action: [tool name from available tools]
+Action Input: [parameters as key: value pairs]
+
+⚠️ STOP immediately after Action Input. The system provides Observations.
+
+Continue the cycle. Conclude when you have sufficient information:
+
+Thought: [final reasoning]
+Final Answer: [complete structured response]
+
+CRITICAL RULES:
+1. Always use colons after headers: "Thought:", "Action:", "Action Input:"
+2. Start each section on a NEW LINE (never continue on same line as previous text)
+3. Stop after Action Input—never generate fake Observations
+4. Parameters: one per line for multiple values, or inline for single value
+5. Conclude when you have actionable insights (perfect information not required)
+
+PARAMETER FORMATS:
+
+Multiple parameters:
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+Single parameter:
+Action Input: namespace: default
+
+EXAMPLE CYCLE:
+
+Question: Why is namespace 'superman-dev' stuck in terminating state?
+
+Thought: I need to check the namespace status first to identify any blocking resources or finalizers.
+
+Action: kubernetes-server.resources_get
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+[System provides: Observation: {"status": {"phase": "Terminating", "finalizers": ["kubernetes"]}}]
+
+Thought: A finalizer is blocking deletion. I should check for any remaining resources in the namespace.
+
+Action: kubernetes-server.resources_list
+Action Input: apiVersion: v1
+kind: Pod
+namespace: superman-dev
+
+[System provides: Observation: No pods found]
+
+Thought: No pods remain, but the finalizer persists. This is an orphaned finalizer that needs manual removal.
+
+Final Answer: 
+**Root Cause:** Orphaned 'kubernetes' finalizer blocking namespace deletion after all resources were cleaned up.
+
+**Resolution Steps:**
+1. Remove the finalizer: `kubectl patch namespace superman-dev -p '{"spec":{"finalizers":null}}' --type=merge`
+2. Verify deletion: `kubectl get namespace superman-dev`
+3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
+
+**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically."""
+        },
+        {
+            "role": "user",
+            "content": """# Synthesis Task
+
+**Alert Type:** test-parallel-execution
+**Environment:** production
+**Severity:** warning
+
+## Alert Data
+
+```json
+{
+  "description": "Test parallel execution scenario",
+  "namespace": "test-namespace"
+}
+```
+
+## Runbook
+
+# Test Runbook
+This is a test runbook for parallel execution testing.
+
+## Previous Stage Results
+
+### Stage: investigation (Parallel Execution)
+
+**Agent: KubernetesAgent**
+
+Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause.
+
+**Agent: LogAgent**
+
+Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity.
+
+## Your Task
+
+Synthesize the parallel investigation results above into a unified root cause analysis and provide actionable recommendations."""
+        },
+        {
+            "role": "assistant",
+            "content": """Final Answer: **Synthesis of Parallel Investigations**
+
+Both investigations provide complementary evidence. The Kubernetes agent identified the symptom (CrashLoopBackOff), while the log agent uncovered the root cause (database connection timeout).
+
+**Root Cause:** Pod-1 in test-namespace is crashing due to inability to connect to database at db.example.com:5432, resulting in repeated restart attempts (CrashLoopBackOff).
+
+**Recommended Actions:**
+1. Verify database service is running and accessible
+2. Check network policies and firewall rules for connectivity to db.example.com:5432
+3. Validate database credentials in pod configuration
+4. Review database connection timeout settings in application config
+
+**Priority:** High - Application is currently non-functional"""
+        }
+    ]
+}
+
+# ============================================================================
+# REPLICA PARALLEL STAGE (3 replicas + automatic synthesis)
+# ============================================================================
+
+EXPECTED_REPLICA_1_CONVERSATION = {
+    "messages": [
+        {
+            "role": "system",
+            "content": """## General SRE Agent Instructions
+
+You are an expert Site Reliability Engineer (SRE) with deep knowledge of:
+- Kubernetes and container orchestration
+- Cloud infrastructure and services
+- Incident response and troubleshooting
+- System monitoring and alerting
+- GitOps and deployment practices
+
+Analyze alerts thoroughly and provide actionable insights based on:
+1. Alert information and context
+2. Associated runbook procedures
+3. Real-time system data from available tools
+
+Always be specific, reference actual data, and provide clear next steps.
+Focus on root cause analysis and sustainable solutions.
+
+## Kubernetes Server Instructions
+
+For Kubernetes operations:
+- **IMPORTANT: In multi-cluster environments** (when the 'configuration_contexts_list' tool is available):
+  * ALWAYS start by calling 'configuration_contexts_list' to see all available contexts and their server URLs
+  * Use this information to determine which context to target before performing any operations
+  * This prevents working on the wrong cluster and helps you understand the environment
+- Be careful with cluster-scoped resource listings in large clusters
+- Always prefer namespaced queries when possible
+- If you get "server could not find the requested resource" error, check if you're using the namespace parameter correctly:
+  * Cluster-scoped resources (Namespace, Node, ClusterRole, PersistentVolume) should NOT have a namespace parameter
+  * Namespace-scoped resources (Pod, Deployment, Service, ConfigMap) REQUIRE a namespace parameter
+
+## Agent-Specific Instructions
+
+You are a Kubernetes troubleshooting specialist.
+
+You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
+
+REQUIRED FORMAT:
+
+Question: [the incident question]
+Thought: [your step-by-step reasoning]
+Action: [tool name from available tools]
+Action Input: [parameters as key: value pairs]
+
+⚠️ STOP immediately after Action Input. The system provides Observations.
+
+Continue the cycle. Conclude when you have sufficient information:
+
+Thought: [final reasoning]
+Final Answer: [complete structured response]
+
+CRITICAL RULES:
+1. Always use colons after headers: "Thought:", "Action:", "Action Input:"
+2. Start each section on a NEW LINE (never continue on same line as previous text)
+3. Stop after Action Input—never generate fake Observations
+4. Parameters: one per line for multiple values, or inline for single value
+5. Conclude when you have actionable insights (perfect information not required)
+
+PARAMETER FORMATS:
+
+Multiple parameters:
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+Single parameter:
+Action Input: namespace: default
+
+EXAMPLE CYCLE:
+
+Question: Why is namespace 'superman-dev' stuck in terminating state?
+
+Thought: I need to check the namespace status first to identify any blocking resources or finalizers.
+
+Action: kubernetes-server.resources_get
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+[System provides: Observation: {"status": {"phase": "Terminating", "finalizers": ["kubernetes"]}}]
+
+Thought: A finalizer is blocking deletion. I should check for any remaining resources in the namespace.
+
+Action: kubernetes-server.resources_list
+Action Input: apiVersion: v1
+kind: Pod
+namespace: superman-dev
+
+[System provides: Observation: No pods found]
+
+Thought: No pods remain, but the finalizer persists. This is an orphaned finalizer that needs manual removal.
+
+Final Answer: 
+**Root Cause:** Orphaned 'kubernetes' finalizer blocking namespace deletion after all resources were cleaned up.
+
+**Resolution Steps:**
+1. Remove the finalizer: `kubectl patch namespace superman-dev -p '{"spec":{"finalizers":null}}' --type=merge`
+2. Verify deletion: `kubectl get namespace superman-dev`
+3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
+
+**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically."""
+        },
+        {
+            "role": "user",
+            "content": """# Investigation Task
+
+**Alert Type:** test-replica-execution
+**Environment:** production
+**Severity:** critical
+
+## Alert Data
+
+```json
+{
+  "description": "Test replica execution scenario",
+  "deployment": "web-app"
+}
+```
+
+## Runbook
+
+# Test Runbook
+This is a test runbook for replica execution testing.
+
+## Your Task
+
+Investigate this alert using available tools and provide a comprehensive analysis."""
+        },
+        {
+            "role": "assistant",
+            "content": """Thought: I should check the deployment status to understand the issue.
+Action: kubernetes-server.kubectl_get
+Action Input: {"resource": "deployment", "name": "web-app"}"""
+        },
+        {
+            "role": "user",
+            "content": """Observation: kubernetes-server.kubectl_get: {
+  "result": "Deployment web-app has 0/3 replicas ready"
+}"""
+        },
+        {
+            "role": "assistant",
+            "content": """Final Answer: Deployment web-app has no ready replicas (0/3). This indicates a critical availability issue. All pods may be failing to start or pass health checks."""
+        }
+    ]
+}
+
+EXPECTED_REPLICA_2_CONVERSATION = {
+    "messages": [
+        {
+            "role": "system",
+            "content": """## General SRE Agent Instructions
+
+You are an expert Site Reliability Engineer (SRE) with deep knowledge of:
+- Kubernetes and container orchestration
+- Cloud infrastructure and services
+- Incident response and troubleshooting
+- System monitoring and alerting
+- GitOps and deployment practices
+
+Analyze alerts thoroughly and provide actionable insights based on:
+1. Alert information and context
+2. Associated runbook procedures
+3. Real-time system data from available tools
+
+Always be specific, reference actual data, and provide clear next steps.
+Focus on root cause analysis and sustainable solutions.
+
+## Kubernetes Server Instructions
+
+For Kubernetes operations:
+- **IMPORTANT: In multi-cluster environments** (when the 'configuration_contexts_list' tool is available):
+  * ALWAYS start by calling 'configuration_contexts_list' to see all available contexts and their server URLs
+  * Use this information to determine which context to target before performing any operations
+  * This prevents working on the wrong cluster and helps you understand the environment
+- Be careful with cluster-scoped resource listings in large clusters
+- Always prefer namespaced queries when possible
+- If you get "server could not find the requested resource" error, check if you're using the namespace parameter correctly:
+  * Cluster-scoped resources (Namespace, Node, ClusterRole, PersistentVolume) should NOT have a namespace parameter
+  * Namespace-scoped resources (Pod, Deployment, Service, ConfigMap) REQUIRE a namespace parameter
+
+## Agent-Specific Instructions
+
+You are a Kubernetes troubleshooting specialist.
+
+You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
+
+REQUIRED FORMAT:
+
+Question: [the incident question]
+Thought: [your step-by-step reasoning]
+Action: [tool name from available tools]
+Action Input: [parameters as key: value pairs]
+
+⚠️ STOP immediately after Action Input. The system provides Observations.
+
+Continue the cycle. Conclude when you have sufficient information:
+
+Thought: [final reasoning]
+Final Answer: [complete structured response]
+
+CRITICAL RULES:
+1. Always use colons after headers: "Thought:", "Action:", "Action Input:"
+2. Start each section on a NEW LINE (never continue on same line as previous text)
+3. Stop after Action Input—never generate fake Observations
+4. Parameters: one per line for multiple values, or inline for single value
+5. Conclude when you have actionable insights (perfect information not required)
+
+PARAMETER FORMATS:
+
+Multiple parameters:
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+Single parameter:
+Action Input: namespace: default
+
+EXAMPLE CYCLE:
+
+Question: Why is namespace 'superman-dev' stuck in terminating state?
+
+Thought: I need to check the namespace status first to identify any blocking resources or finalizers.
+
+Action: kubernetes-server.resources_get
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+[System provides: Observation: {"status": {"phase": "Terminating", "finalizers": ["kubernetes"]}}]
+
+Thought: A finalizer is blocking deletion. I should check for any remaining resources in the namespace.
+
+Action: kubernetes-server.resources_list
+Action Input: apiVersion: v1
+kind: Pod
+namespace: superman-dev
+
+[System provides: Observation: No pods found]
+
+Thought: No pods remain, but the finalizer persists. This is an orphaned finalizer that needs manual removal.
+
+Final Answer: 
+**Root Cause:** Orphaned 'kubernetes' finalizer blocking namespace deletion after all resources were cleaned up.
+
+**Resolution Steps:**
+1. Remove the finalizer: `kubectl patch namespace superman-dev -p '{"spec":{"finalizers":null}}' --type=merge`
+2. Verify deletion: `kubectl get namespace superman-dev`
+3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
+
+**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically."""
+        },
+        {
+            "role": "user",
+            "content": """# Investigation Task
+
+**Alert Type:** test-replica-execution
+**Environment:** production
+**Severity:** critical
+
+## Alert Data
+
+```json
+{
+  "description": "Test replica execution scenario",
+  "deployment": "web-app"
+}
+```
+
+## Runbook
+
+# Test Runbook
+This is a test runbook for replica execution testing.
+
+## Your Task
+
+Investigate this alert using available tools and provide a comprehensive analysis."""
+        },
+        {
+            "role": "assistant",
+            "content": """Thought: I should check the pod events to see why replicas aren't ready.
+Action: kubernetes-server.kubectl_get
+Action Input: {"resource": "events", "field_selector": "involvedObject.name=web-app"}"""
+        },
+        {
+            "role": "user",
+            "content": """Observation: kubernetes-server.kubectl_get: {
+  "result": "Warning: ImagePullBackOff - Failed to pull image 'web-app:v2.0.0'"
+}"""
+        },
+        {
+            "role": "assistant",
+            "content": """Final Answer: Events show ImagePullBackOff for web-app:v2.0.0. The deployment cannot start because the specified container image cannot be pulled. This is the root cause of the 0/3 ready replicas."""
+        }
+    ]
+}
+
+EXPECTED_REPLICA_3_CONVERSATION = {
+    "messages": [
+        {
+            "role": "system",
+            "content": """## General SRE Agent Instructions
+
+You are an expert Site Reliability Engineer (SRE) with deep knowledge of:
+- Kubernetes and container orchestration
+- Cloud infrastructure and services
+- Incident response and troubleshooting
+- System monitoring and alerting
+- GitOps and deployment practices
+
+Analyze alerts thoroughly and provide actionable insights based on:
+1. Alert information and context
+2. Associated runbook procedures
+3. Real-time system data from available tools
+
+Always be specific, reference actual data, and provide clear next steps.
+Focus on root cause analysis and sustainable solutions.
+
+## Kubernetes Server Instructions
+
+For Kubernetes operations:
+- **IMPORTANT: In multi-cluster environments** (when the 'configuration_contexts_list' tool is available):
+  * ALWAYS start by calling 'configuration_contexts_list' to see all available contexts and their server URLs
+  * Use this information to determine which context to target before performing any operations
+  * This prevents working on the wrong cluster and helps you understand the environment
+- Be careful with cluster-scoped resource listings in large clusters
+- Always prefer namespaced queries when possible
+- If you get "server could not find the requested resource" error, check if you're using the namespace parameter correctly:
+  * Cluster-scoped resources (Namespace, Node, ClusterRole, PersistentVolume) should NOT have a namespace parameter
+  * Namespace-scoped resources (Pod, Deployment, Service, ConfigMap) REQUIRE a namespace parameter
+
+## Agent-Specific Instructions
+
+You are a Kubernetes troubleshooting specialist.
+
+You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
+
+REQUIRED FORMAT:
+
+Question: [the incident question]
+Thought: [your step-by-step reasoning]
+Action: [tool name from available tools]
+Action Input: [parameters as key: value pairs]
+
+⚠️ STOP immediately after Action Input. The system provides Observations.
+
+Continue the cycle. Conclude when you have sufficient information:
+
+Thought: [final reasoning]
+Final Answer: [complete structured response]
+
+CRITICAL RULES:
+1. Always use colons after headers: "Thought:", "Action:", "Action Input:"
+2. Start each section on a NEW LINE (never continue on same line as previous text)
+3. Stop after Action Input—never generate fake Observations
+4. Parameters: one per line for multiple values, or inline for single value
+5. Conclude when you have actionable insights (perfect information not required)
+
+PARAMETER FORMATS:
+
+Multiple parameters:
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+Single parameter:
+Action Input: namespace: default
+
+EXAMPLE CYCLE:
+
+Question: Why is namespace 'superman-dev' stuck in terminating state?
+
+Thought: I need to check the namespace status first to identify any blocking resources or finalizers.
+
+Action: kubernetes-server.resources_get
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+[System provides: Observation: {"status": {"phase": "Terminating", "finalizers": ["kubernetes"]}}]
+
+Thought: A finalizer is blocking deletion. I should check for any remaining resources in the namespace.
+
+Action: kubernetes-server.resources_list
+Action Input: apiVersion: v1
+kind: Pod
+namespace: superman-dev
+
+[System provides: Observation: No pods found]
+
+Thought: No pods remain, but the finalizer persists. This is an orphaned finalizer that needs manual removal.
+
+Final Answer: 
+**Root Cause:** Orphaned 'kubernetes' finalizer blocking namespace deletion after all resources were cleaned up.
+
+**Resolution Steps:**
+1. Remove the finalizer: `kubectl patch namespace superman-dev -p '{"spec":{"finalizers":null}}' --type=merge`
+2. Verify deletion: `kubectl get namespace superman-dev`
+3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
+
+**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically."""
+        },
+        {
+            "role": "user",
+            "content": """# Investigation Task
+
+**Alert Type:** test-replica-execution
+**Environment:** production
+**Severity:** critical
+
+## Alert Data
+
+```json
+{
+  "description": "Test replica execution scenario",
+  "deployment": "web-app"
+}
+```
+
+## Runbook
+
+# Test Runbook
+This is a test runbook for replica execution testing.
+
+## Your Task
+
+Investigate this alert using available tools and provide a comprehensive analysis."""
+        },
+        {
+            "role": "assistant",
+            "content": """Thought: Let me verify the image availability issue.
+Action: kubernetes-server.kubectl_describe
+Action Input: {"resource": "deployment", "name": "web-app"}"""
+        },
+        {
+            "role": "user",
+            "content": """Observation: kubernetes-server.kubectl_describe: {
+  "result": "Image: web-app:v2.0.0, Status: ErrImagePull - Image not found in registry"
+}"""
+        },
+        {
+            "role": "assistant",
+            "content": """Final Answer: Image web-app:v2.0.0 not found in container registry. The deployment is referencing a non-existent image version. Recommend verifying the image tag or rolling back to a known-good version."""
+        }
+    ]
+}
+
+EXPECTED_REPLICA_SYNTHESIS_CONVERSATION = {
+    "messages": [
+        {
+            "role": "system",
+            "content": """## General SRE Agent Instructions
+
+You are an expert Site Reliability Engineer (SRE) with deep knowledge of:
+- Kubernetes and container orchestration
+- Cloud infrastructure and services
+- Incident response and troubleshooting
+- System monitoring and alerting
+- GitOps and deployment practices
+
+Analyze alerts thoroughly and provide actionable insights based on:
+1. Alert information and context
+2. Associated runbook procedures
+3. Real-time system data from available tools
+
+Always be specific, reference actual data, and provide clear next steps.
+Focus on root cause analysis and sustainable solutions.
+
+## Agent-Specific Instructions
+
+You are an Incident Commander synthesizing results from multiple parallel investigations.
+
+Your task:
+1. CRITICALLY EVALUATE each investigation's quality - prioritize results with strong evidence and sound reasoning
+2. DISREGARD or deprioritize low-quality results that lack supporting evidence or contain logical errors
+3. ANALYZE the original alert using the best available data from parallel investigations
+4. INTEGRATE findings from high-quality investigations into a unified understanding
+5. RECONCILE conflicting information by assessing which analysis provides better evidence
+6. PROVIDE definitive root cause analysis based on the most reliable evidence
+7. GENERATE actionable recommendations leveraging insights from the strongest investigations
+
+Focus on solving the original alert/issue, not on meta-analyzing agent performance or comparing approaches.
+
+You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
+
+REQUIRED FORMAT:
+
+Question: [the incident question]
+Thought: [your step-by-step reasoning]
+Action: [tool name from available tools]
+Action Input: [parameters as key: value pairs]
+
+⚠️ STOP immediately after Action Input. The system provides Observations.
+
+Continue the cycle. Conclude when you have sufficient information:
+
+Thought: [final reasoning]
+Final Answer: [complete structured response]
+
+CRITICAL RULES:
+1. Always use colons after headers: "Thought:", "Action:", "Action Input:"
+2. Start each section on a NEW LINE (never continue on same line as previous text)
+3. Stop after Action Input—never generate fake Observations
+4. Parameters: one per line for multiple values, or inline for single value
+5. Conclude when you have actionable insights (perfect information not required)
+
+PARAMETER FORMATS:
+
+Multiple parameters:
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+Single parameter:
+Action Input: namespace: default
+
+EXAMPLE CYCLE:
+
+Question: Why is namespace 'superman-dev' stuck in terminating state?
+
+Thought: I need to check the namespace status first to identify any blocking resources or finalizers.
+
+Action: kubernetes-server.resources_get
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+[System provides: Observation: {"status": {"phase": "Terminating", "finalizers": ["kubernetes"]}}]
+
+Thought: A finalizer is blocking deletion. I should check for any remaining resources in the namespace.
+
+Action: kubernetes-server.resources_list
+Action Input: apiVersion: v1
+kind: Pod
+namespace: superman-dev
+
+[System provides: Observation: No pods found]
+
+Thought: No pods remain, but the finalizer persists. This is an orphaned finalizer that needs manual removal.
+
+Final Answer: 
+**Root Cause:** Orphaned 'kubernetes' finalizer blocking namespace deletion after all resources were cleaned up.
+
+**Resolution Steps:**
+1. Remove the finalizer: `kubectl patch namespace superman-dev -p '{"spec":{"finalizers":null}}' --type=merge`
+2. Verify deletion: `kubectl get namespace superman-dev`
+3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
+
+**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically."""
+        },
+        {
+            "role": "user",
+            "content": """# Synthesis Task
+
+**Alert Type:** test-replica-execution
+**Environment:** production
+**Severity:** critical
+
+## Alert Data
+
+```json
+{
+  "description": "Test replica execution scenario",
+  "deployment": "web-app"
+}
+```
+
+## Runbook
+
+# Test Runbook
+This is a test runbook for replica execution testing.
+
+## Previous Stage Results
+
+### Stage: analysis (Parallel Execution - Replicas)
+
+**Agent: KubernetesAgent-1**
+
+Deployment web-app has no ready replicas (0/3). This indicates a critical availability issue. All pods may be failing to start or pass health checks.
+
+**Agent: KubernetesAgent-2**
+
+Events show ImagePullBackOff for web-app:v2.0.0. The deployment cannot start because the specified container image cannot be pulled. This is the root cause of the 0/3 ready replicas.
+
+**Agent: KubernetesAgent-3**
+
+Image web-app:v2.0.0 not found in container registry. The deployment is referencing a non-existent image version. Recommend verifying the image tag or rolling back to a known-good version.
+
+## Your Task
+
+Synthesize the parallel investigation results above into a unified root cause analysis and provide actionable recommendations."""
+        },
+        {
+            "role": "assistant",
+            "content": """Final Answer: **Synthesis of Replica Investigations**
+
+All three replicas converged on consistent findings with increasing detail. Replica-1 identified the symptom (0/3 ready), Replica-2 found the error (ImagePullBackOff), and Replica-3 confirmed root cause (image not in registry).
+
+**Root Cause:** Deployment web-app references non-existent image web-app:v2.0.0 in container registry, preventing all pods from starting (0/3 ready).
+
+**Immediate Actions:**
+1. Verify image web-app:v2.0.0 was successfully built and pushed to registry
+2. If image missing, rollback deployment to last known-good version
+3. If image exists, check image pull secrets and registry access permissions
+
+**Preventive Measures:**
+- Implement pre-deployment image existence validation
+- Add automated rollback on ImagePullBackOff
+- Set up alerts for failed image pulls
+
+**Priority:** Critical - Complete service outage"""
+        }
+    ]
+}
+
+# ============================================================================
+# PARALLEL + REGULAR STAGE (No automatic synthesis)
+# ============================================================================
+
+EXPECTED_PARALLEL_NO_SYNTHESIS_AGENT_1_CONVERSATION = EXPECTED_PARALLEL_AGENT_1_CONVERSATION
+EXPECTED_PARALLEL_NO_SYNTHESIS_AGENT_2_CONVERSATION = EXPECTED_PARALLEL_AGENT_2_CONVERSATION
+
+EXPECTED_REGULAR_AFTER_PARALLEL_CONVERSATION = {
+    "messages": [
+        {
+            "role": "system",
+            "content": """## General SRE Agent Instructions
+
+You are an expert Site Reliability Engineer (SRE) with deep knowledge of:
+- Kubernetes and container orchestration
+- Cloud infrastructure and services
+- Incident response and troubleshooting
+- System monitoring and alerting
+- GitOps and deployment practices
+
+Analyze alerts thoroughly and provide actionable insights based on:
+1. Alert information and context
+2. Associated runbook procedures
+3. Real-time system data from available tools
+
+Always be specific, reference actual data, and provide clear next steps.
+Focus on root cause analysis and sustainable solutions.
+
+## Kubernetes Server Instructions
+
+For Kubernetes operations:
+- **IMPORTANT: In multi-cluster environments** (when the 'configuration_contexts_list' tool is available):
+  * ALWAYS start by calling 'configuration_contexts_list' to see all available contexts and their server URLs
+  * Use this information to determine which context to target before performing any operations
+  * This prevents working on the wrong cluster and helps you understand the environment
+- Be careful with cluster-scoped resource listings in large clusters
+- Always prefer namespaced queries when possible
+- If you get "server could not find the requested resource" error, check if you're using the namespace parameter correctly:
+  * Cluster-scoped resources (Namespace, Node, ClusterRole, PersistentVolume) should NOT have a namespace parameter
+  * Namespace-scoped resources (Pod, Deployment, Service, ConfigMap) REQUIRE a namespace parameter
+
+## Agent-Specific Instructions
+
+You are a command execution specialist that formulates remediation steps based on investigation results.
+
+You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
+
+REQUIRED FORMAT:
+
+Question: [the incident question]
+Thought: [your step-by-step reasoning]
+Action: [tool name from available tools]
+Action Input: [parameters as key: value pairs]
+
+⚠️ STOP immediately after Action Input. The system provides Observations.
+
+Continue the cycle. Conclude when you have sufficient information:
+
+Thought: [final reasoning]
+Final Answer: [complete structured response]
+
+CRITICAL RULES:
+1. Always use colons after headers: "Thought:", "Action:", "Action Input:"
+2. Start each section on a NEW LINE (never continue on same line as previous text)
+3. Stop after Action Input—never generate fake Observations
+4. Parameters: one per line for multiple values, or inline for single value
+5. Conclude when you have actionable insights (perfect information not required)
+
+PARAMETER FORMATS:
+
+Multiple parameters:
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+Single parameter:
+Action Input: namespace: default
+
+EXAMPLE CYCLE:
+
+Question: Why is namespace 'superman-dev' stuck in terminating state?
+
+Thought: I need to check the namespace status first to identify any blocking resources or finalizers.
+
+Action: kubernetes-server.resources_get
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+[System provides: Observation: {"status": {"phase": "Terminating", "finalizers": ["kubernetes"]}}]
+
+Thought: A finalizer is blocking deletion. I should check for any remaining resources in the namespace.
+
+Action: kubernetes-server.resources_list
+Action Input: apiVersion: v1
+kind: Pod
+namespace: superman-dev
+
+[System provides: Observation: No pods found]
+
+Thought: No pods remain, but the finalizer persists. This is an orphaned finalizer that needs manual removal.
+
+Final Answer: 
+**Root Cause:** Orphaned 'kubernetes' finalizer blocking namespace deletion after all resources were cleaned up.
+
+**Resolution Steps:**
+1. Remove the finalizer: `kubectl patch namespace superman-dev -p '{"spec":{"finalizers":null}}' --type=merge`
+2. Verify deletion: `kubectl get namespace superman-dev`
+3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
+
+**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically."""
+        },
+        {
+            "role": "user",
+            "content": """# Command Formulation Task
+
+**Alert Type:** test-parallel-execution
+**Environment:** production
+**Severity:** warning
+
+## Alert Data
+
+```json
+{
+  "description": "Test parallel execution scenario",
+  "namespace": "test-namespace"
+}
+```
+
+## Runbook
+
+# Test Runbook
+This is a test runbook for parallel execution testing.
+
+## Previous Stage Results
+
+### Stage: investigation (Parallel Execution)
+
+**Agent: KubernetesAgent**
+
+Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause.
+
+**Agent: LogAgent**
+
+Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity.
+
+## Your Task
+
+Based on the parallel investigation results, formulate specific command recommendations for remediation."""
+        },
+        {
+            "role": "assistant",
+            "content": """Final Answer: **Remediation Commands**
+
+Based on parallel investigations showing database connectivity issues causing CrashLoopBackOff:
+
+**Diagnostic Commands:**
+```bash
+# Verify database service
+kubectl get service database -n test-namespace
+kubectl describe service database -n test-namespace
+
+# Check network policies
+kubectl get networkpolicies -n test-namespace
+
+# Test database connectivity from pod
+kubectl exec -n test-namespace pod-1 -- nc -zv db.example.com 5432
+```
+
+**Resolution Steps:**
+1. Verify database service endpoint is correct
+2. Check database is running and accepting connections
+3. Review network policies for connectivity restrictions
+4. Validate database credentials in ConfigMap/Secret
+5. If database is external, verify firewall/security group rules
+
+**Rollback Option:**
+```bash
+# If needed, rollback to previous working version
+kubectl rollout undo deployment/app -n test-namespace
+```"""
+        }
+    ]
+}
+
+# ============================================================================
+# CHAT AFTER PARALLEL EXECUTION
+# ============================================================================
+
+EXPECTED_PARALLEL_CHAT_MESSAGE_1_CONVERSATION = {
+    "messages": [
+        {
+            "role": "system",
+            "content": """## Chat Assistant Instructions
+
+You are an expert Site Reliability Engineer (SRE) assistant helping with follow-up questions about a completed alert investigation.
+
+The user has reviewed the investigation results and has follow-up questions. Your role is to:
+- Provide clear, actionable answers based on the investigation history
+- Use available tools to gather fresh, real-time data when needed
+- Reference specific findings from the original investigation when relevant
+- Maintain the same professional SRE communication style
+- Be concise but thorough in your responses
+
+You have access to the same tools and systems that were used in the original investigation.
+
+## Agent-Specific Instructions
+
+## Response Guidelines
+
+1. **Context Awareness**: Reference the investigation history when it provides relevant context
+2. **Fresh Data**: Use tools to gather current system state if the question requires up-to-date information
+3. **Clarity**: If the question is ambiguous or unclear, ask for clarification in your Final Answer
+4. **Specificity**: Always reference actual data and observations, not assumptions
+5. **Brevity**: Be concise but complete - users have already read the full investigation
+
+You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
+
+REQUIRED FORMAT:
+
+Question: [the incident question]
+Thought: [your step-by-step reasoning]
+Action: [tool name from available tools]
+Action Input: [parameters as key: value pairs]
+
+⚠️ STOP immediately after Action Input. The system provides Observations.
+
+Continue the cycle. Conclude when you have sufficient information:
+
+Thought: [final reasoning]
+Final Answer: [complete structured response]
+
+CRITICAL RULES:
+1. Always use colons after headers: "Thought:", "Action:", "Action Input:"
+2. Start each section on a NEW LINE (never continue on same line as previous text)
+3. Stop after Action Input—never generate fake Observations
+4. Parameters: one per line for multiple values, or inline for single value
+5. Conclude when you have actionable insights (perfect information not required)
+
+PARAMETER FORMATS:
+
+Multiple parameters:
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+Single parameter:
+Action Input: namespace: default
+
+EXAMPLE CYCLE:
+
+Question: Why is namespace 'superman-dev' stuck in terminating state?
+
+Thought: I need to check the namespace status first to identify any blocking resources or finalizers.
+
+Action: kubernetes-server.resources_get
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+[System provides: Observation: {"status": {"phase": "Terminating", "finalizers": ["kubernetes"]}}]
+
+Thought: A finalizer is blocking deletion. I should check for any remaining resources in the namespace.
+
+Action: kubernetes-server.resources_list
+Action Input: apiVersion: v1
+kind: Pod
+namespace: superman-dev
+
+[System provides: Observation: No pods found]
+
+Thought: No pods remain, but the finalizer persists. This is an orphaned finalizer that needs manual removal.
+
+Final Answer: 
+**Root Cause:** Orphaned 'kubernetes' finalizer blocking namespace deletion after all resources were cleaned up.
+
+**Resolution Steps:**
+1. Remove the finalizer: `kubectl patch namespace superman-dev -p '{"spec":{"finalizers":null}}' --type=merge`
+2. Verify deletion: `kubectl get namespace superman-dev`
+3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
+
+**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically.
+
+Focus on answering follow-up questions about a completed investigation for human operators to execute."""
+        },
+        {
+            "role": "user",
+            "content": """# Investigation History
+
+**Alert Type:** test-parallel-execution
+**Environment:** production
+**Severity:** warning
+
+**Alert Data:**
+```json
+{
+  "description": "Test parallel execution scenario",
+  "namespace": "test-namespace"
+}
+```
+
+## Stage: investigation (Parallel Execution)
+
+**Agent: KubernetesAgent**
+Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace.
+
+**Agent: LogAgent**
+Log analysis reveals database connection timeout errors to db.example.com:5432.
+
+## Stage: synthesis
+
+**Synthesis of Parallel Investigations**
+Root cause: Pod-1 crashing due to database connection timeout. Recommended verifying database service and network connectivity.
+
+# User Question
+
+Can you check if the database service is running?"""
+        },
+        {
+            "role": "assistant",
+            "content": """Thought: The user wants to verify database service status. I'll check the service in test-namespace.
+Action: kubernetes-server.kubectl_get
+Action Input: {"resource": "service", "name": "database", "namespace": "test-namespace"}"""
+        },
+        {
+            "role": "user",
+            "content": """Observation: kubernetes-server.kubectl_get: {
+  "result": "Service database is running with ClusterIP 10.96.0.100"
+}"""
+        },
+        {
+            "role": "assistant",
+            "content": """Final Answer: Yes, the database service is running in test-namespace with ClusterIP 10.96.0.100. The service endpoint exists, so the issue is likely with the actual database pod or external database connectivity rather than the Kubernetes service configuration."""
+        }
+    ]
+}
+
+EXPECTED_PARALLEL_CHAT_MESSAGE_2_CONVERSATION = {
+    "messages": [
+        {
+            "role": "system",
+            "content": """## Chat Assistant Instructions
+
+You are an expert Site Reliability Engineer (SRE) assistant helping with follow-up questions about a completed alert investigation.
+
+The user has reviewed the investigation results and has follow-up questions. Your role is to:
+- Provide clear, actionable answers based on the investigation history
+- Use available tools to gather fresh, real-time data when needed
+- Reference specific findings from the original investigation when relevant
+- Maintain the same professional SRE communication style
+- Be concise but thorough in your responses
+
+You have access to the same tools and systems that were used in the original investigation.
+
+## Agent-Specific Instructions
+
+## Response Guidelines
+
+1. **Context Awareness**: Reference the investigation history when it provides relevant context
+2. **Fresh Data**: Use tools to gather current system state if the question requires up-to-date information
+3. **Clarity**: If the question is ambiguous or unclear, ask for clarification in your Final Answer
+4. **Specificity**: Always reference actual data and observations, not assumptions
+5. **Brevity**: Be concise but complete - users have already read the full investigation
+
+You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
+
+REQUIRED FORMAT:
+
+Question: [the incident question]
+Thought: [your step-by-step reasoning]
+Action: [tool name from available tools]
+Action Input: [parameters as key: value pairs]
+
+⚠️ STOP immediately after Action Input. The system provides Observations.
+
+Continue the cycle. Conclude when you have sufficient information:
+
+Thought: [final reasoning]
+Final Answer: [complete structured response]
+
+CRITICAL RULES:
+1. Always use colons after headers: "Thought:", "Action:", "Action Input:"
+2. Start each section on a NEW LINE (never continue on same line as previous text)
+3. Stop after Action Input—never generate fake Observations
+4. Parameters: one per line for multiple values, or inline for single value
+5. Conclude when you have actionable insights (perfect information not required)
+
+PARAMETER FORMATS:
+
+Multiple parameters:
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+Single parameter:
+Action Input: namespace: default
+
+EXAMPLE CYCLE:
+
+Question: Why is namespace 'superman-dev' stuck in terminating state?
+
+Thought: I need to check the namespace status first to identify any blocking resources or finalizers.
+
+Action: kubernetes-server.resources_get
+Action Input: apiVersion: v1
+kind: Namespace
+name: superman-dev
+
+[System provides: Observation: {"status": {"phase": "Terminating", "finalizers": ["kubernetes"]}}]
+
+Thought: A finalizer is blocking deletion. I should check for any remaining resources in the namespace.
+
+Action: kubernetes-server.resources_list
+Action Input: apiVersion: v1
+kind: Pod
+namespace: superman-dev
+
+[System provides: Observation: No pods found]
+
+Thought: No pods remain, but the finalizer persists. This is an orphaned finalizer that needs manual removal.
+
+Final Answer: 
+**Root Cause:** Orphaned 'kubernetes' finalizer blocking namespace deletion after all resources were cleaned up.
+
+**Resolution Steps:**
+1. Remove the finalizer: `kubectl patch namespace superman-dev -p '{"spec":{"finalizers":null}}' --type=merge`
+2. Verify deletion: `kubectl get namespace superman-dev`
+3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
+
+**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically.
+
+Focus on answering follow-up questions about a completed investigation for human operators to execute."""
+        },
+        {
+            "role": "user",
+            "content": """# Investigation History
+
+**Alert Type:** test-parallel-execution
+**Environment:** production
+**Severity:** warning
+
+**Alert Data:**
+```json
+{
+  "description": "Test parallel execution scenario",
+  "namespace": "test-namespace"
+}
+```
+
+## Stage: investigation (Parallel Execution)
+
+**Agent: KubernetesAgent**
+Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace.
+
+**Agent: LogAgent**
+Log analysis reveals database connection timeout errors to db.example.com:5432.
+
+## Stage: synthesis
+
+**Synthesis of Parallel Investigations**
+Root cause: Pod-1 crashing due to database connection timeout. Recommended verifying database service and network connectivity.
+
+## Chat History
+
+**User:** Can you check if the database service is running?
+
+**Assistant:** Yes, the database service is running in test-namespace with ClusterIP 10.96.0.100. The service endpoint exists, so the issue is likely with the actual database pod or external database connectivity rather than the Kubernetes service configuration.
+
+# User Question
+
+What about the database pod itself?"""
+        },
+        {
+            "role": "assistant",
+            "content": """Thought: The user wants to check the database pod status. Let me get pod information.
+Action: kubernetes-server.kubectl_get
+Action Input: {"resource": "pods", "label_selector": "app=database", "namespace": "test-namespace"}"""
+        },
+        {
+            "role": "user",
+            "content": """Observation: kubernetes-server.kubectl_get: {
+  "result": "Pod database-0 is in Running state, ready 1/1"
+}"""
+        },
+        {
+            "role": "assistant",
+            "content": """Final Answer: The database pod (database-0) is running and ready (1/1) in test-namespace. Since both the service and pod are healthy, the issue is that pod-1 is trying to connect to the external address db.example.com:5432 instead of using the internal Kubernetes service. The application configuration likely needs to be updated to use the service name 'database' or 'database.test-namespace.svc.cluster.local' instead of the external address."""
+        }
+    ]
+}
+
+# ============================================================================
+# EXPECTED STAGES AND INTERACTION COUNTS
+# ============================================================================
+
+# Multi-agent parallel + synthesis
+EXPECTED_MULTI_AGENT_STAGES = {
+    "investigation": {
+        "type": "parallel",
+        "parallel_type": "multi_agent",
+        "agent_count": 2,
+        "agents": {
+            "KubernetesAgent": {
+                "llm_count": 2,
+                "mcp_count": 2,  # 1 tool discovery + 1 tool call
+                "interactions": [
+                    # MCP 1 - Tool list discovery
+                    {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+                    # LLM 1 - Initial ReAct iteration
+                    {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 245, 'output_tokens': 85, 'total_tokens': 330, 'interaction_type': 'investigation'},
+                    # MCP 2 - kubectl_get tool call
+                    {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+                    # LLM 2 - Final answer
+                    {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 180, 'output_tokens': 65, 'total_tokens': 245, 'interaction_type': 'final_analysis'}
+                ]
+            },
+            "LogAgent": {
+                "llm_count": 2,
+                "mcp_count": 2,  # 1 tool discovery + 1 tool call
+                "interactions": [
+                    # MCP 1 - Tool list discovery
+                    {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'log-server'},
+                    # LLM 1 - Initial ReAct iteration
+                    {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 200, 'output_tokens': 75, 'total_tokens': 275, 'interaction_type': 'investigation'},
+                    # MCP 2 - get_logs tool call
+                    {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'get_logs', 'server_name': 'log-server'},
+                    # LLM 2 - Final answer
+                    {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 190, 'output_tokens': 70, 'total_tokens': 260, 'interaction_type': 'final_analysis'}
+                ]
+            }
+        }
+    },
+    "synthesis": {
+        "type": "single",
+        "llm_count": 1,
+        "mcp_count": 0,
+        "interactions": [
+            # LLM 1 - Synthesis (no tools)
+            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 420, 'output_tokens': 180, 'total_tokens': 600, 'interaction_type': 'final_analysis'}
+        ]
+    }
+}
+
+# Replica parallel + synthesis  
+EXPECTED_REPLICA_STAGES = {
+    "analysis": {
+        "type": "parallel",
+        "parallel_type": "replica",
+        "agent_count": 3,
+        "agents": {
+            "KubernetesAgent-1": {
+                "llm_count": 2,
+                "mcp_count": 2,  # 1 tool discovery + 1 tool call
+                "interactions": [
+                    # MCP 1 - Tool list discovery
+                    {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+                    # LLM 1 - Initial ReAct iteration
+                    {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 245, 'output_tokens': 85, 'total_tokens': 330, 'interaction_type': 'investigation'},
+                    # MCP 2 - kubectl_get tool call
+                    {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+                    # LLM 2 - Final answer
+                    {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 180, 'output_tokens': 65, 'total_tokens': 245, 'interaction_type': 'final_analysis'}
+                ]
+            },
+            "KubernetesAgent-2": {
+                "llm_count": 2,
+                "mcp_count": 2,  # 1 tool discovery + 1 tool call
+                "interactions": [
+                    # MCP 1 - Tool list discovery
+                    {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+                    # LLM 1 - Initial ReAct iteration
+                    {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 235, 'output_tokens': 80, 'total_tokens': 315, 'interaction_type': 'investigation'},
+                    # MCP 2 - kubectl_get tool call
+                    {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+                    # LLM 2 - Final answer
+                    {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 185, 'output_tokens': 70, 'total_tokens': 255, 'interaction_type': 'final_analysis'}
+                ]
+            },
+            "KubernetesAgent-3": {
+                "llm_count": 2,
+                "mcp_count": 2,  # 1 tool discovery + 1 tool call
+                "interactions": [
+                    # MCP 1 - Tool list discovery
+                    {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+                    # LLM 1 - Initial ReAct iteration
+                    {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 240, 'output_tokens': 82, 'total_tokens': 322, 'interaction_type': 'investigation'},
+                    # MCP 2 - kubectl_describe tool call
+                    {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_describe', 'server_name': 'kubernetes-server'},
+                    # LLM 2 - Final answer
+                    {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 188, 'output_tokens': 72, 'total_tokens': 260, 'interaction_type': 'final_analysis'}
+                ]
+            }
+        }
+    },
+    "synthesis": {
+        "type": "single",
+        "llm_count": 1,
+        "mcp_count": 0,
+        "interactions": [
+            # LLM 1 - Synthesis (no tools)
+            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 450, 'output_tokens': 190, 'total_tokens': 640, 'interaction_type': 'final_analysis'}
+        ]
+    }
+}
+
+# Parallel + regular stage (no synthesis)
+EXPECTED_PARALLEL_REGULAR_STAGES = {
+    "investigation": {
+        "type": "parallel",
+        "parallel_type": "multi_agent",
+        "agent_count": 2,
+        "agents": {
+            "KubernetesAgent": {
+                "llm_count": 2,
+                "mcp_count": 2,  # 1 tool discovery + 1 tool call
+                "interactions": [
+                    # MCP 1 - Tool list discovery
+                    {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+                    # LLM 1 - Initial ReAct iteration
+                    {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 245, 'output_tokens': 85, 'total_tokens': 330, 'interaction_type': 'investigation'},
+                    # MCP 2 - kubectl_get tool call
+                    {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+                    # LLM 2 - Final answer
+                    {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 180, 'output_tokens': 65, 'total_tokens': 245, 'interaction_type': 'final_analysis'}
+                ]
+            },
+            "LogAgent": {
+                "llm_count": 2,
+                "mcp_count": 2,  # 1 tool discovery + 1 tool call
+                "interactions": [
+                    # MCP 1 - Tool list discovery
+                    {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'log-server'},
+                    # LLM 1 - Initial ReAct iteration
+                    {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 200, 'output_tokens': 75, 'total_tokens': 275, 'interaction_type': 'investigation'},
+                    # MCP 2 - get_logs tool call
+                    {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'get_logs', 'server_name': 'log-server'},
+                    # LLM 2 - Final answer
+                    {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 190, 'output_tokens': 70, 'total_tokens': 260, 'interaction_type': 'final_analysis'}
+                ]
+            }
+        }
+    },
+    "command": {
+        "type": "single",
+        "llm_count": 1,
+        "mcp_count": 0,
+        "interactions": [
+            # LLM 1 - Command formulation (no tools)
+            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 400, 'output_tokens': 170, 'total_tokens': 570, 'interaction_type': 'final_analysis'}
+        ]
+    }
+}
+
+# Chat after parallel
+EXPECTED_PARALLEL_CHAT_STAGES = {
+    "investigation": {
+        "type": "parallel",
+        "parallel_type": "multi_agent",
+        "agent_count": 2,
+        "agents": {
+            "KubernetesAgent": {
+                "llm_count": 2,
+                "mcp_count": 2,  # 1 tool discovery + 1 tool call
+                "interactions": [
+                    # MCP 1 - Tool list discovery
+                    {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+                    # LLM 1 - Initial ReAct iteration
+                    {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 245, 'output_tokens': 85, 'total_tokens': 330, 'interaction_type': 'investigation'},
+                    # MCP 2 - kubectl_get tool call
+                    {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+                    # LLM 2 - Final answer
+                    {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 180, 'output_tokens': 65, 'total_tokens': 245, 'interaction_type': 'final_analysis'}
+                ]
+            },
+            "LogAgent": {
+                "llm_count": 2,
+                "mcp_count": 2,  # 1 tool discovery + 1 tool call
+                "interactions": [
+                    # MCP 1 - Tool list discovery
+                    {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'log-server'},
+                    # LLM 1 - Initial ReAct iteration
+                    {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 200, 'output_tokens': 75, 'total_tokens': 275, 'interaction_type': 'investigation'},
+                    # MCP 2 - get_logs tool call
+                    {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'get_logs', 'server_name': 'log-server'},
+                    # LLM 2 - Final answer
+                    {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 190, 'output_tokens': 70, 'total_tokens': 260, 'interaction_type': 'final_analysis'}
+                ]
+            }
+        }
+    },
+    "synthesis": {
+        "type": "single",
+        "llm_count": 1,
+        "mcp_count": 0,
+        "interactions": [
+            # LLM 1 - Synthesis (no tools)
+            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 420, 'output_tokens': 180, 'total_tokens': 600, 'interaction_type': 'final_analysis'}
+        ]
+    }
+}
+
+# Chat message interactions (not stages - these are separate from stage flow)
+EXPECTED_PARALLEL_CHAT_MESSAGE_1_INTERACTIONS = {
+    "llm_count": 2,
+    "mcp_count": 2,  # 1 tool discovery + 1 tool call
+    "interactions": [
+        # MCP 1 - Tool list discovery
+        {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+        # LLM 1 - Initial chat interaction
+        {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 210, 'output_tokens': 75, 'total_tokens': 285, 'interaction_type': 'investigation'},
+        # MCP 2 - kubectl_get tool call
+        {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+        # LLM 2 - Final answer
+        {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 195, 'output_tokens': 68, 'total_tokens': 263, 'interaction_type': 'final_analysis'}
+    ]
+}
+
+EXPECTED_PARALLEL_CHAT_MESSAGE_2_INTERACTIONS = {
+    "llm_count": 2,
+    "mcp_count": 2,  # 1 tool discovery + 1 tool call
+    "interactions": [
+        # MCP 1 - Tool list discovery
+        {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+        # LLM 1 - Initial chat interaction
+        {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 220, 'output_tokens': 78, 'total_tokens': 298, 'interaction_type': 'investigation'},
+        # MCP 2 - kubectl_get tool call
+        {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+        # LLM 2 - Final answer
+        {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 205, 'output_tokens': 72, 'total_tokens': 277, 'interaction_type': 'final_analysis'}
+    ]
+}
+
+# Session-level interactions (executive summary) 
+EXPECTED_PARALLEL_SESSION_LEVEL_INTERACTIONS = {
+    'llm_count': 1,  # Executive summary
+    'mcp_count': 0,  # No MCP interactions at session level
+    'interactions': [
+        # LLM 1 - Executive summary generation
+        {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 100, 'output_tokens': 50, 'total_tokens': 150, 'interaction_type': 'final_analysis_summary'}
+    ]
+}

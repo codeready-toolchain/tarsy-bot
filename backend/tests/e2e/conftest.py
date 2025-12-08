@@ -765,3 +765,156 @@ def e2e_native_thinking_test_client(isolated_native_thinking_settings):
         
         with TestClient(app) as client:
             yield client
+
+
+# =============================================================================
+# Parallel Agent Test Fixtures
+# =============================================================================
+
+@pytest.fixture
+def isolated_parallel_settings(e2e_isolation):
+    """Create isolated test settings for parallel agent e2e tests."""
+    from tarsy.config.settings import Settings
+    
+    # Create isolated database
+    test_db_url = e2e_isolation.create_temp_database()
+    
+    # Create isolated kubeconfig
+    kubeconfig_content = """
+apiVersion: v1
+kind: Config
+clusters:
+- name: test-cluster
+  cluster:
+    server: https://test-k8s-api.example.com
+contexts:
+- name: test-context
+  context:
+    cluster: test-cluster
+current-context: test-context
+"""
+    kubeconfig_path = e2e_isolation.create_temp_file(".yaml", kubeconfig_content)
+    
+    # Create absolute path to parallel test agents config
+    current_dir = Path(__file__).parent
+    test_agents_path = current_dir / "test_parallel_agents.yaml"
+    
+    # Set isolated environment variables
+    e2e_isolation.set_isolated_env("DATABASE_URL", test_db_url)
+    e2e_isolation.set_isolated_env("HISTORY_ENABLED", "true")
+    e2e_isolation.set_isolated_env("AGENT_CONFIG_PATH", str(test_agents_path))
+    e2e_isolation.set_isolated_env("OPENAI_API_KEY", "test-openai-key-123")
+    e2e_isolation.set_isolated_env("ANTHROPIC_API_KEY", "test-anthropic-key-123")
+    e2e_isolation.set_isolated_env("LLM_PROVIDER", "openai-default")
+    e2e_isolation.set_isolated_env("KUBECONFIG", kubeconfig_path)
+    
+    # Create real Settings object with isolated environment
+    settings = Settings()
+    
+    # Override specific values after creation to ensure they're isolated
+    settings.database_url = test_db_url
+    settings.history_enabled = True
+    settings.agent_config_path = str(test_agents_path)
+    settings.openai_api_key = "test-openai-key-123"
+    settings.anthropic_api_key = "test-anthropic-key-123"
+    settings.llm_provider = "openai-default"
+    
+    # Patch global settings
+    e2e_isolation.patch_settings(settings)
+    
+    return settings
+
+
+@pytest.fixture
+def e2e_parallel_test_client(isolated_parallel_settings):
+    """Create an isolated FastAPI test client for parallel agent e2e tests."""
+    # Ensure settings cache is cleared before importing app
+    # This ensures the app is created with the test configuration
+    from contextlib import suppress
+    from unittest.mock import patch
+    import sys
+
+    from fastapi.testclient import TestClient
+    with suppress(Exception):
+        import tarsy.config.settings
+        tarsy.config.settings.get_settings.cache_clear()
+
+    # CRITICAL FIX: Mock MCPClient.initialize() to prevent it from trying to start
+    # real MCP server subprocesses during app lifespan startup
+    # Individual tests can override with more specific mocks as needed
+    async def mock_mcp_initialize(self):
+        """Mock MCP initialization - tests will provide their own mocks."""
+        self._initialized = True
+        self.sessions = {}
+        logger.info("E2E Parallel: Skipping real MCP server initialization (will be mocked in test)")
+    
+    # Clean up tarsy.main module if it exists to force fresh import
+    if 'tarsy.main' in sys.modules:
+        del sys.modules['tarsy.main']
+    
+    with patch('tarsy.integrations.mcp.client.MCPClient.initialize', mock_mcp_initialize):
+        from tarsy.main import app
+        
+        # The isolated settings are already patched globally
+        with TestClient(app) as client:
+            yield client
+        
+        # Clean up after test to ensure fresh state for next test
+        if 'tarsy.main' in sys.modules:
+            del sys.modules['tarsy.main']
+
+
+@pytest.fixture
+def e2e_parallel_alert():
+    """Alert for multi-agent parallel execution testing."""
+    return {
+        "alert_type": "test-parallel-execution",
+        "runbook": "https://runbooks.example.com/parallel-test",
+        "severity": "warning",
+        "data": {
+            "description": "Test parallel execution scenario",
+            "namespace": "test-namespace"
+        }
+    }
+
+
+@pytest.fixture
+def e2e_parallel_regular_alert():
+    """Alert for parallel + regular stage testing."""
+    return {
+        "alert_type": "test-parallel-regular-execution",
+        "runbook": "https://runbooks.example.com/parallel-regular-test",
+        "severity": "warning",
+        "data": {
+            "description": "Test parallel execution with regular stage",
+            "namespace": "test-namespace"
+        }
+    }
+
+
+@pytest.fixture
+def e2e_parallel_chat_alert():
+    """Alert for parallel execution with chat testing."""
+    return {
+        "alert_type": "test-parallel-chat-execution",
+        "runbook": "https://runbooks.example.com/parallel-chat-test",
+        "severity": "warning",
+        "data": {
+            "description": "Test parallel execution for chat",
+            "namespace": "test-namespace"
+        }
+    }
+
+
+@pytest.fixture
+def e2e_replica_alert():
+    """Alert for replica parallel execution testing."""
+    return {
+        "alert_type": "test-replica-execution",
+        "runbook": "https://runbooks.example.com/replica-test",
+        "severity": "critical",
+        "data": {
+            "description": "Test replica execution scenario",
+            "deployment": "web-app"
+        }
+    }

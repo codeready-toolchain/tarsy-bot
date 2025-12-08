@@ -1,0 +1,107 @@
+# Test agent configuration for parallel execution E2E tests
+# This file defines test chains for parallel agent execution scenarios
+
+agents:
+  # Kubernetes specialist agent for parallel multi-agent testing
+  KubernetesAgent:
+    custom_instructions: |
+      You are a Kubernetes specialist analyzing pod health and resource issues.
+      Focus on pod status, events, and resource constraints.
+    mcp_servers:
+      - "kubernetes-server"
+  
+  # Log analysis agent for parallel multi-agent testing
+  LogAgent:
+    custom_instructions: |
+      You are a log analysis specialist focusing on application errors and patterns.
+      Analyze logs to identify root causes and anomalies.
+    mcp_servers:
+      - "log-server"
+  
+  # Command agent for formulating remediation steps
+  CommandAgent:
+    custom_instructions: |
+      You are a command execution specialist that formulates remediation steps based on investigation results.
+    mcp_servers:
+      - "kubernetes-server"
+
+# MCP servers for test environment
+mcp_servers:
+  log-server:
+    server_id: "log-server"
+    server_type: "custom"
+    enabled: true
+    transport:
+      type: "stdio"
+      command: "echo"
+      args: ["log-server-ready"]
+    instructions: "Log analysis server for investigating application logs and debugging issues"
+    data_masking:
+      enabled: false
+
+# Agent chains configuration
+agent_chains:
+  # Test chain 1: Multi-agent parallel stage with automatic synthesis
+  multi-agent-parallel-chain:
+    alert_types:
+      - "test-parallel-execution"
+    stages:
+      - name: "investigation"
+        agents:
+          - name: "KubernetesAgent"
+            llm_provider: "openai-default"
+            iteration_strategy: "react"
+          - name: "LogAgent"
+            llm_provider: "anthropic-default"
+            iteration_strategy: "react"
+        failure_policy: "all"  # Both must succeed
+    description: "Multi-agent parallel stage with automatic synthesis (final stage)"
+  
+  # Test chain 2: Replica parallel stage with automatic synthesis
+  replica-parallel-chain:
+    alert_types:
+      - "test-replica-execution"
+    stages:
+      - name: "analysis"
+        agent: "KubernetesAgent"
+        replicas: 3
+        llm_provider: "openai-default"
+        iteration_strategy: "react"
+        failure_policy: "any"  # At least one must succeed
+    description: "Replica parallel stage (3 replicas) with automatic synthesis"
+  
+  # Test chain 3: Parallel stage followed by regular stage (no auto synthesis)
+  parallel-then-regular-chain:
+    alert_types:
+      - "test-parallel-regular-execution"
+    stages:
+      - name: "investigation"
+        agents:
+          - name: "KubernetesAgent"
+            llm_provider: "openai-default"
+            iteration_strategy: "react"
+          - name: "LogAgent"
+            llm_provider: "anthropic-default"
+            iteration_strategy: "react"
+        failure_policy: "all"
+      - name: "command"
+        agent: "CommandAgent"
+        iteration_strategy: "react-final-analysis"
+    description: "Parallel stage followed by regular stage for manual synthesis"
+  
+  # Test chain 4: Parallel stage with chat functionality
+  parallel-with-chat-chain:
+    alert_types:
+      - "test-parallel-chat-execution"
+    stages:
+      - name: "investigation"
+        agents:
+          - name: "KubernetesAgent"
+            llm_provider: "openai-default"
+            iteration_strategy: "react"
+          - name: "LogAgent"
+            llm_provider: "anthropic-default"
+            iteration_strategy: "react"
+        failure_policy: "all"
+    description: "Parallel stage with automatic synthesis for chat testing"
+
