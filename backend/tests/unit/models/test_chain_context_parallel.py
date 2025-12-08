@@ -348,3 +348,376 @@ class TestChainContextParallelHelpers:
         assert results[0][0] == "partial-parallel"
         assert results[0][1].status == StageStatus.COMPLETED
 
+
+@pytest.mark.unit
+class TestChainContextFormattingParallel:
+    """Test StageContext format_previous_stages_context with parallel results."""
+
+    @pytest.fixture
+    def base_chain_context(self) -> ChainContext:
+        """Create a base ChainContext for testing."""
+        processing_alert = ProcessingAlert(
+            alert_type="kubernetes",
+            severity="critical",
+            timestamp=now_us(),
+            environment="production",
+            runbook_url=None,
+            alert_data={"pod": "failing-pod", "namespace": "prod"}
+        )
+        return ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session",
+            current_stage_name="command"
+        )
+
+    @pytest.fixture
+    def available_tools(self):
+        """Create test AvailableTools."""
+        from tarsy.models.processing_context import AvailableTools
+        return AvailableTools(tools=[])
+
+    @pytest.fixture
+    def mock_agent(self):
+        """Create a mock agent."""
+        from unittest.mock import Mock
+        agent = Mock()
+        agent.__class__.__name__ = "TestAgent"
+        agent.mcp_servers.return_value = []
+        return agent
+
+    def test_format_previous_stages_context_empty(
+        self, base_chain_context: ChainContext, available_tools, mock_agent
+    ) -> None:
+        """Test formatting with no previous stages."""
+        from tarsy.models.processing_context import StageContext
+        
+        stage_context = StageContext(
+            chain_context=base_chain_context,
+            available_tools=available_tools,
+            agent=mock_agent
+        )
+        
+        formatted = stage_context.format_previous_stages_context()
+        assert formatted == "No previous stage context available."
+
+    def test_format_previous_stages_context_single_agent(
+        self, base_chain_context: ChainContext, available_tools, mock_agent
+    ) -> None:
+        """Test formatting with single agent result."""
+        from tarsy.models.processing_context import StageContext
+        
+        result = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="KubernetesAgent",
+            timestamp_us=now_us(),
+            result_summary="Pod analysis complete",
+            complete_conversation_history="## Analysis\nPod is failing due to memory limit"
+        )
+        base_chain_context.add_stage_result("investigation", result)
+        
+        stage_context = StageContext(
+            chain_context=base_chain_context,
+            available_tools=available_tools,
+            agent=mock_agent
+        )
+        
+        formatted = stage_context.format_previous_stages_context()
+        
+        assert "### Results from 'investigation' stage:" in formatted
+        assert "Pod is failing due to memory limit" in formatted
+        assert "<!-- Analysis Result START -->" in formatted
+        assert "<!-- Analysis Result END -->" in formatted
+
+    def test_format_previous_stages_context_parallel_multi_agent(
+        self, base_chain_context: ChainContext, available_tools, mock_agent
+    ) -> None:
+        """Test formatting with parallel multi-agent result."""
+        from tarsy.models.processing_context import StageContext
+        
+        timestamp = now_us()
+        
+        parallel_result = ParallelStageResult(
+            results=[
+                AgentExecutionResult(
+                    status=StageStatus.COMPLETED,
+                    agent_name="KubernetesAgent",
+                    timestamp_us=timestamp,
+                    result_summary="K8s investigation",
+                    complete_conversation_history="Found pod OOMKilled"
+                ),
+                AgentExecutionResult(
+                    status=StageStatus.COMPLETED,
+                    agent_name="VMAgent",
+                    timestamp_us=timestamp,
+                    result_summary="VM investigation",
+                    complete_conversation_history="Node has high memory pressure"
+                )
+            ],
+            metadata=ParallelStageMetadata(
+                parent_stage_execution_id="exec-123",
+                parallel_type="multi_agent",
+                failure_policy=FailurePolicy.ALL,
+                started_at_us=timestamp - 5_000_000,
+                completed_at_us=timestamp,
+                agent_metadatas=[
+                    AgentExecutionMetadata(
+                        agent_name="KubernetesAgent",
+                        llm_provider="openai",
+                        iteration_strategy="react",
+                        started_at_us=timestamp - 5_000_000,
+                        completed_at_us=timestamp,
+                        status=StageStatus.COMPLETED
+                    ),
+                    AgentExecutionMetadata(
+                        agent_name="VMAgent",
+                        llm_provider="anthropic",
+                        iteration_strategy="native-thinking",
+                        started_at_us=timestamp - 5_000_000,
+                        completed_at_us=timestamp,
+                        status=StageStatus.COMPLETED
+                    )
+                ]
+            ),
+            status=StageStatus.COMPLETED,
+            timestamp_us=timestamp
+        )
+        
+        base_chain_context.add_stage_result("investigation", parallel_result)
+        
+        stage_context = StageContext(
+            chain_context=base_chain_context,
+            available_tools=available_tools,
+            agent=mock_agent
+        )
+        
+        formatted = stage_context.format_previous_stages_context()
+        
+        # Check parallel stage header
+        assert "### Results from parallel stage 'investigation':" in formatted
+        assert "**Parallel Execution Summary**: 2/2 agents succeeded" in formatted
+        
+        # Check individual agent results are formatted
+        assert "#### Agent 1: KubernetesAgent (openai, react)" in formatted
+        assert "**Status**: completed" in formatted
+        assert "Found pod OOMKilled" in formatted
+        
+        assert "#### Agent 2: VMAgent (anthropic, native-thinking)" in formatted
+        assert "Node has high memory pressure" in formatted
+        
+        # Check HTML comment boundaries are present
+        assert formatted.count("<!-- Analysis Result START -->") == 2
+        assert formatted.count("<!-- Analysis Result END -->") == 2
+
+    def test_format_previous_stages_context_parallel_with_failure(
+        self, base_chain_context: ChainContext, available_tools, mock_agent
+    ) -> None:
+        """Test formatting parallel result with partial failure."""
+        from tarsy.models.processing_context import StageContext
+        
+        timestamp = now_us()
+        
+        parallel_result = ParallelStageResult(
+            results=[
+                AgentExecutionResult(
+                    status=StageStatus.COMPLETED,
+                    agent_name="Agent1",
+                    timestamp_us=timestamp,
+                    result_summary="Success",
+                    complete_conversation_history="Agent1 analysis completed"
+                ),
+                AgentExecutionResult(
+                    status=StageStatus.FAILED,
+                    agent_name="Agent2",
+                    timestamp_us=timestamp,
+                    result_summary="",
+                    error_message="Connection timeout"
+                )
+            ],
+            metadata=ParallelStageMetadata(
+                parent_stage_execution_id="exec-456",
+                parallel_type="multi_agent",
+                failure_policy=FailurePolicy.ANY,
+                started_at_us=timestamp - 3_000_000,
+                completed_at_us=timestamp,
+                agent_metadatas=[
+                    AgentExecutionMetadata(
+                        agent_name="Agent1",
+                        llm_provider="openai",
+                        iteration_strategy="react",
+                        started_at_us=timestamp - 3_000_000,
+                        completed_at_us=timestamp,
+                        status=StageStatus.COMPLETED
+                    ),
+                    AgentExecutionMetadata(
+                        agent_name="Agent2",
+                        llm_provider="gemini",
+                        iteration_strategy="react",
+                        started_at_us=timestamp - 3_000_000,
+                        completed_at_us=timestamp,
+                        status=StageStatus.FAILED,
+                        error_message="Connection timeout"
+                    )
+                ]
+            ),
+            status=StageStatus.COMPLETED,
+            timestamp_us=timestamp
+        )
+        
+        base_chain_context.add_stage_result("parallel-stage", parallel_result)
+        
+        stage_context = StageContext(
+            chain_context=base_chain_context,
+            available_tools=available_tools,
+            agent=mock_agent
+        )
+        
+        formatted = stage_context.format_previous_stages_context()
+        
+        # Check summary shows partial success
+        assert "**Parallel Execution Summary**: 1/2 agents succeeded" in formatted
+        
+        # Check successful agent is formatted
+        assert "Agent1 analysis completed" in formatted
+        
+        # Check failed agent shows error
+        assert "**Status**: failed" in formatted
+        assert "**Error**: Connection timeout" in formatted
+
+    def test_format_previous_stages_context_mixed_stages(
+        self, base_chain_context: ChainContext, available_tools, mock_agent
+    ) -> None:
+        """Test formatting with both single and parallel stages."""
+        from tarsy.models.processing_context import StageContext
+        
+        timestamp = now_us()
+        
+        # Add single agent stage
+        single_result = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="AnalysisAgent",
+            timestamp_us=timestamp,
+            result_summary="Initial analysis",
+            complete_conversation_history="Alert requires deeper investigation"
+        )
+        base_chain_context.add_stage_result("analysis", single_result)
+        
+        # Add parallel stage
+        parallel_result = ParallelStageResult(
+            results=[
+                AgentExecutionResult(
+                    status=StageStatus.COMPLETED,
+                    agent_name="Agent1",
+                    timestamp_us=timestamp + 1000,
+                    result_summary="Deep dive 1",
+                    complete_conversation_history="Found root cause in logs"
+                ),
+                AgentExecutionResult(
+                    status=StageStatus.COMPLETED,
+                    agent_name="Agent2",
+                    timestamp_us=timestamp + 1000,
+                    result_summary="Deep dive 2",
+                    complete_conversation_history="Metrics confirm the issue"
+                )
+            ],
+            metadata=ParallelStageMetadata(
+                parent_stage_execution_id="exec-789",
+                parallel_type="multi_agent",
+                failure_policy=FailurePolicy.ALL,
+                started_at_us=timestamp,
+                completed_at_us=timestamp + 1000,
+                agent_metadatas=[
+                    AgentExecutionMetadata(
+                        agent_name="Agent1",
+                        llm_provider="openai",
+                        iteration_strategy="react",
+                        started_at_us=timestamp,
+                        completed_at_us=timestamp + 1000,
+                        status=StageStatus.COMPLETED
+                    ),
+                    AgentExecutionMetadata(
+                        agent_name="Agent2",
+                        llm_provider="anthropic",
+                        iteration_strategy="react",
+                        started_at_us=timestamp,
+                        completed_at_us=timestamp + 1000,
+                        status=StageStatus.COMPLETED
+                    )
+                ]
+            ),
+            status=StageStatus.COMPLETED,
+            timestamp_us=timestamp + 1000
+        )
+        base_chain_context.add_stage_result("investigation", parallel_result)
+        
+        stage_context = StageContext(
+            chain_context=base_chain_context,
+            available_tools=available_tools,
+            agent=mock_agent
+        )
+        
+        formatted = stage_context.format_previous_stages_context()
+        
+        # Check both stages are present
+        assert "### Results from 'analysis' stage:" in formatted
+        assert "Alert requires deeper investigation" in formatted
+        
+        assert "### Results from parallel stage 'investigation':" in formatted
+        assert "Found root cause in logs" in formatted
+        assert "Metrics confirm the issue" in formatted
+
+    def test_format_previous_stages_context_escapes_html_comments(
+        self, base_chain_context: ChainContext, available_tools, mock_agent
+    ) -> None:
+        """Test that HTML comments in content are properly escaped."""
+        from tarsy.models.processing_context import StageContext
+        
+        result = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="TestAgent",
+            timestamp_us=now_us(),
+            result_summary="Test",
+            complete_conversation_history="<!-- This is a comment --> and --> another"
+        )
+        base_chain_context.add_stage_result("test-stage", result)
+        
+        stage_context = StageContext(
+            chain_context=base_chain_context,
+            available_tools=available_tools,
+            agent=mock_agent
+        )
+        
+        formatted = stage_context.format_previous_stages_context()
+        
+        # Check that HTML comments are escaped
+        assert "&lt;!--" in formatted
+        assert "--&gt;" in formatted
+        # Original should not be present unescaped
+        assert formatted.count("<!-- This is a comment -->") == 0
+
+    def test_format_previous_stages_context_handles_empty_content(
+        self, base_chain_context: ChainContext, available_tools, mock_agent
+    ) -> None:
+        """Test formatting with empty result_summary and conversation_history."""
+        from tarsy.models.processing_context import StageContext
+        
+        result = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="EmptyAgent",
+            timestamp_us=now_us(),
+            result_summary=""
+        )
+        base_chain_context.add_stage_result("empty-stage", result)
+        
+        stage_context = StageContext(
+            chain_context=base_chain_context,
+            available_tools=available_tools,
+            agent=mock_agent
+        )
+        
+        formatted = stage_context.format_previous_stages_context()
+        
+        # Should still have structure even with empty content
+        assert "### Results from 'empty-stage' stage:" in formatted
+        assert "<!-- Analysis Result START -->" in formatted
+        assert "<!-- Analysis Result END -->" in formatted
+
