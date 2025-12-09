@@ -407,19 +407,8 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             # 1. Mock LLM streaming (preserves LLM hooks!)
             streaming_mock = create_streaming_mock()
             
-            # Import LangChain clients to patch
-            from langchain_anthropic import ChatAnthropic
-            from langchain_google_genai import ChatGoogleGenerativeAI
-            from langchain_openai import ChatOpenAI
-            from langchain_xai import ChatXAI
-            
-            # Patch the astream method on all LangChain client classes
-            # This works because the method will be called on instances
-            with patch.object(ChatOpenAI, 'astream', streaming_mock), \
-                 patch.object(ChatAnthropic, 'astream', streaming_mock), \
-                 patch.object(ChatXAI, 'astream', streaming_mock), \
-                 patch.object(ChatGoogleGenerativeAI, 'astream', streaming_mock):
-                
+            # Patch LangChain clients using shared utility
+            with E2ETestUtils.create_llm_patch_context(streaming_mock=streaming_mock):
                 # 2. Mock MCP client using shared utility with custom sessions
                 mock_sessions = {
                     "kubernetes-server": mock_kubernetes_session,

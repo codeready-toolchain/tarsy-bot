@@ -6,9 +6,7 @@ reducing duplication and improving maintainability.
 """
 
 import asyncio
-from contextlib import contextmanager
 from typing import Callable, Optional
-from unittest.mock import patch
 
 from .e2e_utils import assert_conversation_messages, E2ETestUtils
 
@@ -57,10 +55,12 @@ class ParallelTestBase:
             print(f"❌ {test_name} failed with exception: {e}")
             raise
 
-    @contextmanager
     def _create_llm_patch_context(self, gemini_mock_factory=None, streaming_mock=None):
         """
         Create a context manager that patches LLM clients.
+        
+        This method delegates to E2ETestUtils.create_llm_patch_context for consistency
+        across all E2E tests.
         
         Args:
             gemini_mock_factory: Optional factory for Gemini SDK mocking (native thinking)
@@ -73,38 +73,7 @@ class ParallelTestBase:
             with self._create_llm_patch_context(gemini_mock, streaming_mock):
                 # Test code here with patched LLM clients
         """
-        from langchain_anthropic import ChatAnthropic
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        from langchain_openai import ChatOpenAI
-        from langchain_xai import ChatXAI
-        
-        patches = []
-        
-        # Patch Gemini SDK if provided
-        if gemini_mock_factory:
-            patches.append(
-                patch("tarsy.integrations.llm.gemini_client.genai.Client", gemini_mock_factory)
-            )
-        
-        # Patch LangChain clients if streaming mock provided
-        if streaming_mock:
-            patches.extend([
-                patch.object(ChatOpenAI, 'astream', streaming_mock),
-                patch.object(ChatAnthropic, 'astream', streaming_mock),
-                patch.object(ChatXAI, 'astream', streaming_mock),
-                patch.object(ChatGoogleGenerativeAI, 'astream', streaming_mock)
-            ])
-        
-        # Apply all patches
-        started_patches = []
-        try:
-            for p in patches:
-                started_patches.append(p.start())
-            yield
-        finally:
-            # Stop all patches
-            for p in patches:
-                p.stop()
+        return E2ETestUtils.create_llm_patch_context(gemini_mock_factory, streaming_mock)
 
     async def _execute_test_flow(
         self,

@@ -8,8 +8,9 @@ to reduce duplication and improve maintainability.
 import asyncio
 import re
 import time
+from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Tuple
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 from mcp.types import Tool
 
@@ -581,3 +582,56 @@ class E2ETestUtils:
             return mock_astream
         
         return create_streaming_mock()
+
+    @staticmethod
+    @contextmanager
+    def create_llm_patch_context(gemini_mock_factory=None, streaming_mock=None):
+        """
+        Create a context manager that patches LLM clients.
+        
+        This is a static version of the method from ParallelTestBase, making it
+        available to all E2E tests without needing to inherit from a base class.
+        
+        Args:
+            gemini_mock_factory: Optional factory for Gemini SDK mocking (native thinking)
+            streaming_mock: Optional mock for LangChain streaming (ReAct)
+            
+        Yields:
+            None (patches are active within the context)
+            
+        Example:
+            with E2ETestUtils.create_llm_patch_context(gemini_mock, streaming_mock):
+                # Test code here with patched LLM clients
+        """
+        from langchain_anthropic import ChatAnthropic
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        from langchain_openai import ChatOpenAI
+        from langchain_xai import ChatXAI
+        
+        patches = []
+        
+        # Patch Gemini SDK if provided
+        if gemini_mock_factory:
+            patches.append(
+                patch("tarsy.integrations.llm.gemini_client.genai.Client", gemini_mock_factory)
+            )
+        
+        # Patch LangChain clients if streaming mock provided
+        if streaming_mock:
+            patches.extend([
+                patch.object(ChatOpenAI, 'astream', streaming_mock),
+                patch.object(ChatAnthropic, 'astream', streaming_mock),
+                patch.object(ChatXAI, 'astream', streaming_mock),
+                patch.object(ChatGoogleGenerativeAI, 'astream', streaming_mock)
+            ])
+        
+        # Apply all patches
+        started_patches = []
+        try:
+            for p in patches:
+                started_patches.append(p.start())
+            yield
+        finally:
+            # Stop all patches
+            for p in patches:
+                p.stop()

@@ -411,20 +411,10 @@ class TestNativeThinkingE2E:
 
             # Mock LangChain streaming (used by summarizer)
             langchain_streaming_mock = create_langchain_streaming_mock()
-            
-            # Import LangChain clients to patch
-            from langchain_anthropic import ChatAnthropic
-            from langchain_google_genai import ChatGoogleGenerativeAI
-            from langchain_openai import ChatOpenAI
-            from langchain_xai import ChatXAI
 
-            # Mock Gemini SDK - patch the genai.Client constructor
+            # Patch both Gemini SDK and LangChain clients using shared utility
             with patch("google.genai.Client", create_gemini_mock_client), \
-                 patch.object(ChatOpenAI, 'astream', langchain_streaming_mock), \
-                 patch.object(ChatAnthropic, 'astream', langchain_streaming_mock), \
-                 patch.object(ChatXAI, 'astream', langchain_streaming_mock), \
-                 patch.object(ChatGoogleGenerativeAI, 'astream', langchain_streaming_mock):
-                
+                 E2ETestUtils.create_llm_patch_context(streaming_mock=langchain_streaming_mock):
                 # Mock MCP client
                 mock_sessions = {
                     "kubernetes-server": mock_kubernetes_session,

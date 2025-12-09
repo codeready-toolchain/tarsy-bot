@@ -484,16 +484,8 @@ Finalizers:   [kubernetes.io/pvc-protection]
                     # Mock LLM streaming
                     streaming_mock = create_streaming_mock()
 
-                    from langchain_anthropic import ChatAnthropic
-                    from langchain_google_genai import ChatGoogleGenerativeAI
-                    from langchain_openai import ChatOpenAI
-                    from langchain_xai import ChatXAI
-
-                    with patch.object(ChatOpenAI, "astream", streaming_mock), \
-                         patch.object(ChatAnthropic, "astream", streaming_mock), \
-                         patch.object(ChatXAI, "astream", streaming_mock), \
-                         patch.object(ChatGoogleGenerativeAI, "astream", streaming_mock):
-
+                    # Patch LangChain clients using shared utility
+                    with E2ETestUtils.create_llm_patch_context(streaming_mock=streaming_mock):
                         # Mock MCP client
                         mock_kubernetes_session = create_mcp_session_mock()
                         mock_sessions = {"kubernetes-server": mock_kubernetes_session}
