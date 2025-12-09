@@ -602,12 +602,44 @@ class AlertService:
                 
                 # Check if we need to continue to next stages
                 if parallel_result.status == StageStatus.COMPLETED:
-                    # Continue with remaining stages
-                    result = await self._execute_chain_stages(
-                        chain_definition,
-                        chain_context,
-                        session_mcp_client
-                    )
+                    # Check if there are more stages after the resumed parallel stage
+                    next_stage_idx = stage_index + 1
+                    if next_stage_idx < len(chain_definition.stages):
+                        # There are more stages - update current_stage_name and continue
+                        chain_context.current_stage_name = chain_definition.stages[next_stage_idx].name
+                        
+                        result = await self._execute_chain_stages(
+                            chain_definition,
+                            chain_context,
+                            session_mcp_client
+                        )
+                    else:
+                        # No more stages - handle final analysis directly
+                        logger.info("Parallel stage was last stage, handling synthesis/final analysis")
+                        
+                        # Check if we need automatic synthesis for final parallel stage
+                        if self._is_final_stage_parallel(chain_definition):
+                            from tarsy.models.agent_execution_result import ParallelStageResult
+                            
+                            logger.info("Final stage is parallel - invoking automatic SynthesisAgent synthesis")
+                            try:
+                                synthesis_result = await self._synthesize_parallel_results(
+                                    parallel_result, chain_context, session_mcp_client, chain_definition
+                                )
+                                # Add synthesis result as final stage
+                                chain_context.add_stage_result("synthesis", synthesis_result)
+                            except Exception as e:
+                                logger.error(f"Automatic synthesis failed: {e}", exc_info=True)
+                        
+                        # Extract final analysis from stages
+                        final_analysis = self._extract_final_analysis_from_stages(chain_context)
+                        
+                        result = ChainExecutionResult(
+                            status=ChainStatus.COMPLETED,
+                            stage_results=[],
+                            final_analysis=final_analysis,
+                            timestamp_us=now_us()
+                        )
                 elif parallel_result.status == StageStatus.PAUSED:
                     # Paused again - return pause result
                     result = ChainExecutionResult(
@@ -2166,33 +2198,163 @@ class AlertService:
                 chain_context.add_stage_result(child.stage_name, paused_result)
                 logger.info(f"Restored paused state for {child.agent}")
         
-        # 8. Execute ONLY paused children using existing parallel execution logic
+        # 8. Execute ONLY paused children directly (without creating new parent stage)
         logger.info(f"Re-executing {len(paused_children)} paused agents")
         
-        # Create temporary stage-like object for execution
+        # Execute paused agents concurrently
+        import asyncio
         from types import SimpleNamespace
-        resumed_stage = SimpleNamespace(
-            name=stage_config.name,
-            agent=stage_config.agent,
-            failure_policy=stage_config.failure_policy,
-            llm_provider=stage_config.llm_provider,
-            iteration_strategy=stage_config.iteration_strategy
-        )
         
-        # Execute paused agents (this handles creating new child stage executions)
-        resumed_result = await self._execute_parallel_stage(
-            stage=resumed_stage,
-            chain_context=chain_context,
-            session_mcp_client=session_mcp_client,
-            chain_definition=chain_definition,
-            stage_index=stage_index,
-            execution_configs=execution_configs,
-            parallel_type=paused_parent_stage.parallel_type
-        )
+        async def execute_single_child(config: dict, idx: int):
+            """Execute a single resumed agent/replica and return (result, metadata) tuple."""
+            agent_started_at_us = now_us()
+            agent_name = config["agent_name"]
+            base_agent = config.get("base_agent_name", agent_name)
+            
+            # Find the existing paused child stage execution to reuse
+            paused_child = paused_children[idx]
+            child_execution_id = paused_child.execution_id
+            
+            # Update the existing child stage to ACTIVE (from PAUSED)
+            asyncio.create_task(self._update_stage_execution_started(child_execution_id))
+            
+            try:
+                logger.debug(f"Resuming paused agent {idx+1}/{len(execution_configs)}: '{agent_name}'")
+                
+                # Get agent instance from factory
+                agent = self.agent_factory.get_agent(
+                    agent_identifier=base_agent,
+                    mcp_client=session_mcp_client,
+                    iteration_strategy=config.get("iteration_strategy"),
+                    llm_provider=config.get("llm_provider")
+                )
+                
+                # Set current stage execution ID for interaction tagging (hooks need this!)
+                agent.set_current_stage_execution_id(child_execution_id)
+                
+                # Execute agent
+                result = await agent.process_alert(chain_context)
+                
+                # Override agent_name for replicas
+                if paused_parent_stage.parallel_type == "replica":
+                    result.agent_name = agent_name
+                
+                # Update child stage execution
+                await self._update_stage_execution_completed(child_execution_id, result)
+                
+                # Create metadata
+                agent_completed_at_us = now_us()
+                metadata = AgentExecutionMetadata(
+                    agent_name=agent_name,
+                    llm_provider=config["llm_provider"] or self.settings.llm_provider,
+                    iteration_strategy=config["iteration_strategy"] or "unknown",
+                    started_at_us=agent_started_at_us,
+                    completed_at_us=agent_completed_at_us,
+                    status=StageStatus.COMPLETED,
+                    error_message=None,
+                    token_usage=None
+                )
+                
+                return (result, metadata)
+            
+            except SessionPaused as e:
+                logger.info(f"Agent '{agent_name}' paused again at iteration {e.iteration}")
+                
+                # Create paused result
+                paused_result = AgentExecutionResult(
+                    status=StageStatus.PAUSED,
+                    agent_name=agent_name,
+                    stage_name=stage_config.name,
+                    timestamp_us=now_us(),
+                    result_summary=f"Paused at iteration {e.iteration}",
+                    paused_conversation_state=e.conversation.model_dump() if e.conversation else None,
+                    error_message=None
+                )
+                
+                await self._update_stage_execution_paused(child_execution_id, e.iteration, paused_result)
+                
+                agent_completed_at_us = now_us()
+                metadata = AgentExecutionMetadata(
+                    agent_name=agent_name,
+                    llm_provider=config["llm_provider"] or self.settings.llm_provider,
+                    iteration_strategy=config["iteration_strategy"] or "unknown",
+                    started_at_us=agent_started_at_us,
+                    completed_at_us=agent_completed_at_us,
+                    status=StageStatus.PAUSED,
+                    error_message=None,
+                    token_usage=None
+                )
+                
+                return (paused_result, metadata)
+            
+            except Exception as e:
+                logger.error(f"Agent '{agent_name}' failed: {e}", exc_info=True)
+                
+                await self._update_stage_execution_failed(child_execution_id, str(e))
+                
+                error_result = AgentExecutionResult(
+                    status=StageStatus.FAILED,
+                    agent_name=agent_name,
+                    stage_name=stage_config.name,
+                    timestamp_us=now_us(),
+                    result_summary=f"Execution failed: {str(e)}",
+                    error_message=str(e)
+                )
+                
+                agent_completed_at_us = now_us()
+                metadata = AgentExecutionMetadata(
+                    agent_name=agent_name,
+                    llm_provider=config["llm_provider"] or self.settings.llm_provider,
+                    iteration_strategy=config["iteration_strategy"] or "unknown",
+                    started_at_us=agent_started_at_us,
+                    completed_at_us=agent_completed_at_us,
+                    status=StageStatus.FAILED,
+                    error_message=str(e),
+                    token_usage=None
+                )
+                
+                return (error_result, metadata)
+        
+        # Execute all paused children concurrently
+        tasks = [execute_single_child(config, idx) for idx, config in enumerate(execution_configs)]
+        resumed_results_and_metadata = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Extract results and metadata
+        resumed_results = []
+        resumed_metadatas = []
+        for item in resumed_results_and_metadata:
+            if isinstance(item, Exception):
+                logger.error(f"Unexpected exception during resume: {item}")
+                # Create error result
+                error_result = AgentExecutionResult(
+                    status=StageStatus.FAILED,
+                    agent_name="unknown",
+                    stage_name=stage_config.name,
+                    timestamp_us=now_us(),
+                    result_summary=f"Unexpected error: {str(item)}",
+                    error_message=str(item)
+                )
+                resumed_results.append(error_result)
+                
+                error_metadata = AgentExecutionMetadata(
+                    agent_name="unknown",
+                    llm_provider=self.settings.llm_provider,
+                    iteration_strategy="unknown",
+                    started_at_us=now_us(),
+                    completed_at_us=now_us(),
+                    status=StageStatus.FAILED,
+                    error_message=str(item),
+                    token_usage=None
+                )
+                resumed_metadatas.append(error_metadata)
+            else:
+                result, metadata = item
+                resumed_results.append(result)
+                resumed_metadatas.append(metadata)
         
         # 9. Merge all results: completed + failed + resumed
-        all_results = completed_results + failed_results + resumed_result.results
-        all_metadatas = completed_metadatas + failed_metadatas + resumed_result.metadata.agent_metadatas
+        all_results = completed_results + failed_results + resumed_results
+        all_metadatas = completed_metadatas + failed_metadatas + resumed_metadatas
         
         # 10. Create final merged metadata
         merged_metadata = ParallelStageMetadata(
