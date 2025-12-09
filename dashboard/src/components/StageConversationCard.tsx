@@ -65,6 +65,14 @@ const getStageStatusConfig = (status: string, stageIndex: number) => {
         bgColor: (theme: any) => alpha(theme.palette.primary.main, 0.06),
         borderColor: 'primary.main'
       };
+    case STAGE_STATUS.PAUSED:
+      return {
+        color: 'warning' as const,
+        icon: <Schedule />,
+        label: getStageStatusDisplayName(STAGE_STATUS.PAUSED),
+        bgColor: (theme: any) => alpha(theme.palette.warning.main, 0.06),
+        borderColor: 'warning.main'
+      };
     case STAGE_STATUS.PENDING:
     default:
       return {

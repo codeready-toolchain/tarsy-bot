@@ -19,6 +19,7 @@ import {
   Psychology,
   Build,
   CallSplit,
+  PauseCircle,
 } from '@mui/icons-material';
 import type { StageExecution, InteractionDetail } from '../types';
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
@@ -180,6 +181,15 @@ const ParallelStageExecutionTabs: React.FC<ParallelStageExecutionTabsProps> = ({
                   icon={<CheckCircle fontSize="small" />}
                   label={`${counts.completed} completed`}
                   color="success"
+                  variant="outlined"
+                />
+              )}
+              {counts.paused > 0 && (
+                <Chip
+                  size="small"
+                  icon={<PauseCircle fontSize="small" />}
+                  label={`${counts.paused} paused`}
+                  color="warning"
                   variant="outlined"
                 />
               )}

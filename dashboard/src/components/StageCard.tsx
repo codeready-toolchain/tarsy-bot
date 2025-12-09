@@ -61,6 +61,13 @@ const getStageStatusConfig = (status: string) => {
         label: 'Running',
         bgColor: 'primary.light',
       };
+    case STAGE_STATUS.PAUSED:
+      return {
+        color: 'warning' as const,
+        icon: <Schedule />,
+        label: getStageStatusDisplayName(STAGE_STATUS.PAUSED),
+        bgColor: 'warning.light',
+      };
     case STAGE_STATUS.PENDING:
     default:
       return {

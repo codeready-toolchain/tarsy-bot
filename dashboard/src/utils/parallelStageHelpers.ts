@@ -62,6 +62,12 @@ export function getParallelStageLabel(
 /**
  * Calculate aggregate status from parallel executions
  * Returns a human-readable status like "2/3 Completed" or "All Succeeded"
+ * 
+ * Priority order (matching backend logic):
+ * 1. If any paused -> Show paused count prominently
+ * 2. All completed -> "All Completed"
+ * 3. All failed -> "All Failed"
+ * 4. Mixed states -> Show primary status with counts
  */
 export function getAggregateStatus(parallelExecutions: ParallelStageBase[]): string {
   if (!parallelExecutions || parallelExecutions.length === 0) {
@@ -71,6 +77,18 @@ export function getAggregateStatus(parallelExecutions: ParallelStageBase[]): str
   const counts = getSuccessFailureCounts(parallelExecutions);
   const total = parallelExecutions.length;
   
+  // PAUSED takes priority (matching backend behavior where any paused agent pauses the stage)
+  if (counts.paused > 0) {
+    if (counts.paused === total) {
+      return 'All Paused';
+    } else if (counts.completed > 0) {
+      return `${counts.completed} Completed, ${counts.paused} Paused`;
+    } else {
+      return `${counts.paused}/${total} Paused`;
+    }
+  }
+  
+  // No paused agents - original logic
   if (counts.completed === total) {
     return 'All Completed';
   } else if (counts.failed === total) {
@@ -92,6 +110,7 @@ export function getSuccessFailureCounts(parallelExecutions: ParallelStageBase[])
   failed: number;
   active: number;
   pending: number;
+  paused: number;
   total: number;
 } {
   const counts = {
@@ -99,6 +118,7 @@ export function getSuccessFailureCounts(parallelExecutions: ParallelStageBase[])
     failed: 0,
     active: 0,
     pending: 0,
+    paused: 0,
     total: parallelExecutions.length
   };
   
@@ -115,6 +135,9 @@ export function getSuccessFailureCounts(parallelExecutions: ParallelStageBase[])
         break;
       case STAGE_STATUS.PENDING:
         counts.pending++;
+        break;
+      case STAGE_STATUS.PAUSED:
+        counts.paused++;
         break;
     }
   }

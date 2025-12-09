@@ -108,6 +108,40 @@ describe('parallelStageHelpers', () => {
     it('returns "No executions" for empty array', () => {
       expect(getAggregateStatus([])).toBe('No executions');
     });
+
+    // New tests for PAUSED status
+    it('returns "All Paused" when all executions paused', () => {
+      const executions = [
+        createMockChildExecution(1, 'Agent1', STAGE_STATUS.PAUSED),
+        createMockChildExecution(2, 'Agent2', STAGE_STATUS.PAUSED),
+      ];
+      expect(getAggregateStatus(executions)).toBe('All Paused');
+    });
+
+    it('prioritizes paused status when some completed and some paused', () => {
+      const executions = [
+        createMockChildExecution(1, 'Agent1', STAGE_STATUS.COMPLETED),
+        createMockChildExecution(2, 'Agent2', STAGE_STATUS.PAUSED),
+      ];
+      expect(getAggregateStatus(executions)).toBe('1 Completed, 1 Paused');
+    });
+
+    it('shows paused count when some paused and some failed', () => {
+      const executions = [
+        createMockChildExecution(1, 'Agent1', STAGE_STATUS.FAILED),
+        createMockChildExecution(2, 'Agent2', STAGE_STATUS.PAUSED),
+        createMockChildExecution(3, 'Agent3', STAGE_STATUS.PAUSED),
+      ];
+      expect(getAggregateStatus(executions)).toBe('2/3 Paused');
+    });
+
+    it('prioritizes paused status over active status', () => {
+      const executions = [
+        createMockChildExecution(1, 'Agent1', STAGE_STATUS.ACTIVE),
+        createMockChildExecution(2, 'Agent2', STAGE_STATUS.PAUSED),
+      ];
+      expect(getAggregateStatus(executions)).toBe('1/2 Paused');
+    });
   });
 
   describe('getSuccessFailureCounts', () => {
@@ -125,6 +159,7 @@ describe('parallelStageHelpers', () => {
       expect(counts.failed).toBe(1);
       expect(counts.active).toBe(1);
       expect(counts.pending).toBe(1);
+      expect(counts.paused).toBe(0);
       expect(counts.total).toBe(5);
     });
 
@@ -134,7 +169,25 @@ describe('parallelStageHelpers', () => {
       expect(counts.failed).toBe(0);
       expect(counts.active).toBe(0);
       expect(counts.pending).toBe(0);
+      expect(counts.paused).toBe(0);
       expect(counts.total).toBe(0);
+    });
+
+    it('counts paused executions correctly', () => {
+      const executions = [
+        createMockChildExecution(1, 'Agent1', STAGE_STATUS.COMPLETED),
+        createMockChildExecution(2, 'Agent2', STAGE_STATUS.PAUSED),
+        createMockChildExecution(3, 'Agent3', STAGE_STATUS.PAUSED),
+        createMockChildExecution(4, 'Agent4', STAGE_STATUS.FAILED),
+      ];
+
+      const counts = getSuccessFailureCounts(executions);
+      expect(counts.completed).toBe(1);
+      expect(counts.paused).toBe(2);
+      expect(counts.failed).toBe(1);
+      expect(counts.active).toBe(0);
+      expect(counts.pending).toBe(0);
+      expect(counts.total).toBe(4);
     });
   });
 
