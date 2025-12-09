@@ -12,7 +12,6 @@ Architecture:
 - MOCKED: HTTP requests to LLM APIs, MCP servers, GitHub runbooks
 """
 
-import asyncio
 import logging
 from unittest.mock import patch
 

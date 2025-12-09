@@ -13,7 +13,6 @@ Architecture:
 - MOCKED: HTTP requests to LLM APIs, MCP servers, GitHub runbooks
 """
 
-import asyncio
 import logging
 from typing import Any
 from unittest.mock import patch

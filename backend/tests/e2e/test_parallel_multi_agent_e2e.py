@@ -20,7 +20,6 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from mcp.types import Tool
 
-from .conftest import create_mock_stream
 from .e2e_utils import E2ETestUtils
 from .expected_parallel_conversations import (
     EXPECTED_PARALLEL_AGENT_1_CONVERSATION,
