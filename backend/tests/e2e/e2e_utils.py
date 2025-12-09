@@ -470,3 +470,114 @@ class E2ETestUtils:
 
         # This should never be reached due to the loop logic, but just in case
         raise AssertionError(f"Failed to get session details after {max_retries} attempts")
+
+    @staticmethod
+    def create_agent_aware_streaming_mock(agent_counters: dict, agent_responses: dict, agent_identifiers: dict):
+        """
+        Create an agent-aware streaming mock for LangChain LLM clients.
+        
+        This factory creates a mock that identifies which agent is calling based on system message content
+        and returns appropriate responses from the agent_responses dictionary.
+        
+        Args:
+            agent_counters: Dict tracking interaction count per agent (will be mutated)
+            agent_responses: Dict mapping agent names to lists of response data
+            agent_identifiers: Dict mapping agent names to identifier strings in system messages
+                              e.g., {"LogAgent": "log analysis specialist"}
+        
+        Returns:
+            Mock astream function that can be used to patch LangChain clients
+            
+        Example:
+            agent_counters = {"LogAgent": 0, "SynthesisAgent": 0}
+            agent_responses = {
+                "LogAgent": [
+                    {"response_content": "...", "input_tokens": 200, "output_tokens": 75, "total_tokens": 275}
+                ]
+            }
+            agent_identifiers = {"LogAgent": "log analysis specialist"}
+            
+            streaming_mock = E2ETestUtils.create_agent_aware_streaming_mock(
+                agent_counters, agent_responses, agent_identifiers
+            )
+        """
+        from .conftest import create_mock_stream
+        
+        def create_streaming_mock():
+            """Create a mock astream function that identifies the agent and returns appropriate responses."""
+            async def mock_astream(*args, **kwargs):
+                # Identify which agent is calling by inspecting the conversation
+                agent_name = "Unknown"
+                
+                # Extract messages from args
+                # When patching instance methods, args[0] is 'self', args[1] is the messages
+                messages = []
+                if args and len(args) > 1:
+                    messages = args[1] if isinstance(args[1], list) else []
+                elif args and len(args) > 0 and isinstance(args[0], list):
+                    # Fallback: if args[0] is a list, use it (shouldn't happen with patch.object)
+                    messages = args[0]
+                
+                # Look for agent-specific instructions in the system message
+                for msg in messages:
+                    # Handle both dict and Message object formats
+                    content = ""
+                    msg_type = ""
+                    
+                    if isinstance(msg, dict):
+                        content = msg.get("content", "")
+                        msg_type = msg.get("role", "") or msg.get("type", "")
+                    elif hasattr(msg, "content"):
+                        content = msg.content if isinstance(msg.content, str) else str(msg.content)
+                        msg_type = getattr(msg, "type", "") or msg.__class__.__name__.lower().replace("message", "")
+                    
+                    # Check if this is a system message  
+                    if msg_type in ["system", "systemmessage"]:
+                        # Check all agent identifiers
+                        for agent, identifier in agent_identifiers.items():
+                            if identifier.lower() in content.lower():
+                                agent_name = agent
+                                break
+                        if agent_name != "Unknown":
+                            break
+                
+                # Get the next response for this agent
+                if agent_name in agent_counters:
+                    agent_interaction_num = agent_counters[agent_name]
+                    agent_counters[agent_name] += 1
+                
+                    print(f"\n🔍 LLM REQUEST from {agent_name} (interaction #{agent_interaction_num + 1})")
+                
+                    # Get response for this agent's interaction
+                    agent_response_list = agent_responses.get(agent_name, [])
+                    if agent_interaction_num < len(agent_response_list):
+                        response_data = agent_response_list[agent_interaction_num]
+                    else:
+                        response_data = {
+                            "response_content": f"Default response for {agent_name}",
+                            "input_tokens": 100,
+                            "output_tokens": 50,
+                            "total_tokens": 150
+                        }
+                else:
+                    response_data = {
+                        "response_content": "Default response",
+                        "input_tokens": 100,
+                        "output_tokens": 50,
+                        "total_tokens": 150
+                    }
+                
+                content = response_data["response_content"]
+                usage_metadata = {
+                    "input_tokens": response_data["input_tokens"],
+                    "output_tokens": response_data["output_tokens"],
+                    "total_tokens": response_data["total_tokens"]
+                }
+                
+                # Yield chunks from the mock stream - must be an async generator
+                async for chunk in create_mock_stream(content, usage_metadata):
+                    yield chunk
+            
+            return mock_astream
+        
+        return create_streaming_mock()

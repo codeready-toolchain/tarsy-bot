@@ -5,11 +5,157 @@ This module provides reusable verification methods for all parallel execution E2
 reducing duplication and improving maintainability.
 """
 
-from .e2e_utils import assert_conversation_messages
+import asyncio
+from contextlib import contextmanager
+from typing import Callable, Optional
+from unittest.mock import patch
+
+from .e2e_utils import assert_conversation_messages, E2ETestUtils
 
 
 class ParallelTestBase:
     """Base class with common verification methods for parallel execution E2E tests."""
+
+    async def _run_with_timeout(
+        self,
+        test_func: Callable,
+        timeout_seconds: float = 500.0,
+        test_name: str = "Test"
+    ):
+        """
+        Run a test function with timeout protection.
+        
+        Args:
+            test_func: Async function to execute
+            timeout_seconds: Maximum time to allow for execution
+            test_name: Name of the test for logging
+            
+        Returns:
+            Result from test_func
+            
+        Raises:
+            AssertionError: If timeout is exceeded
+        """
+        async def run_test():
+            print(f"🚀 Starting {test_name}...")
+            result = await test_func()
+            print(f"✅ {test_name} completed!")
+            return result
+
+        try:
+            task = asyncio.create_task(run_test())
+            done, pending = await asyncio.wait({task}, timeout=timeout_seconds)
+
+            if pending:
+                for t in pending:
+                    t.cancel()
+                print(f"❌ TIMEOUT: {test_name} exceeded {timeout_seconds} seconds!")
+                raise AssertionError(f"{test_name} exceeded timeout of {timeout_seconds} seconds")
+            else:
+                return task.result()
+        except Exception as e:
+            print(f"❌ {test_name} failed with exception: {e}")
+            raise
+
+    @contextmanager
+    def _create_llm_patch_context(self, gemini_mock_factory=None, streaming_mock=None):
+        """
+        Create a context manager that patches LLM clients.
+        
+        Args:
+            gemini_mock_factory: Optional factory for Gemini SDK mocking (native thinking)
+            streaming_mock: Optional mock for LangChain streaming (ReAct)
+            
+        Yields:
+            None (patches are active within the context)
+            
+        Example:
+            with self._create_llm_patch_context(gemini_mock, streaming_mock):
+                # Test code here with patched LLM clients
+        """
+        from langchain_anthropic import ChatAnthropic
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        from langchain_openai import ChatOpenAI
+        from langchain_xai import ChatXAI
+        
+        patches = []
+        
+        # Patch Gemini SDK if provided
+        if gemini_mock_factory:
+            patches.append(
+                patch("tarsy.integrations.llm.gemini_client.genai.Client", gemini_mock_factory)
+            )
+        
+        # Patch LangChain clients if streaming mock provided
+        if streaming_mock:
+            patches.extend([
+                patch.object(ChatOpenAI, 'astream', streaming_mock),
+                patch.object(ChatAnthropic, 'astream', streaming_mock),
+                patch.object(ChatXAI, 'astream', streaming_mock),
+                patch.object(ChatGoogleGenerativeAI, 'astream', streaming_mock)
+            ])
+        
+        # Apply all patches
+        started_patches = []
+        try:
+            for p in patches:
+                started_patches.append(p.start())
+            yield
+        finally:
+            # Stop all patches
+            for p in patches:
+                p.stop()
+
+    async def _execute_test_flow(
+        self,
+        test_client,
+        alert_data: dict,
+        expected_chain_id: str,
+        expected_stages_spec: dict,
+        conversation_map: Optional[dict] = None,
+        max_wait_seconds: int = 20
+    ):
+        """
+        Execute the standard test flow: submit alert, wait, verify.
+        
+        Args:
+            test_client: Test client for API calls
+            alert_data: Alert data to submit
+            expected_chain_id: Expected chain ID for verification
+            expected_stages_spec: Expected stage structure specification
+            conversation_map: Optional conversation map for verification
+            max_wait_seconds: Maximum time to wait for completion
+            
+        Returns:
+            Session detail data
+        """
+        # Submit alert
+        session_id = E2ETestUtils.submit_alert(test_client, alert_data)
+        
+        # Wait for completion
+        session_id, final_status = await E2ETestUtils.wait_for_session_completion(
+            test_client, max_wait_seconds=max_wait_seconds
+        )
+        
+        assert final_status == "completed", f"Session failed with status: {final_status}"
+        
+        # Get session details
+        detail_data = await E2ETestUtils.get_session_details_async(
+            test_client, session_id, max_retries=3, retry_delay=0.5
+        )
+        
+        # Verify session metadata
+        self._verify_session_metadata(detail_data, expected_chain_id)
+        
+        # Get stages
+        stages = detail_data.get("stages", [])
+        
+        # Comprehensive verification
+        print("🔍 Step 4: Comprehensive result verification...")
+        self._verify_stage_structure(stages, expected_stages_spec)
+        self._verify_complete_interaction_flow(stages, expected_stages_spec, conversation_map)
+        
+        return detail_data
 
     def _verify_session_metadata(self, detail_data, expected_chain_id):
         """Verify session metadata."""

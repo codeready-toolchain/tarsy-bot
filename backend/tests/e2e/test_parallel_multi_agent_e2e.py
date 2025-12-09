@@ -63,29 +63,10 @@ class TestParallelMultiAgentE2E(ParallelTestBase):
         - ParallelStageResult structure is correct
         - Token tracking works at agent and stage levels
         """
-
-        async def run_test():
-            print("🚀 Starting multi-agent parallel test...")
-            result = await self._execute_multi_agent_test(
-                e2e_parallel_test_client, e2e_parallel_alert
-            )
-            print("✅ Multi-agent parallel test completed!")
-            return result
-
-        try:
-            task = asyncio.create_task(run_test())
-            done, pending = await asyncio.wait({task}, timeout=500.0)
-
-            if pending:
-                for t in pending:
-                    t.cancel()
-                print("❌ TIMEOUT: Test exceeded 500 seconds!")
-                raise AssertionError("Test exceeded timeout of 500 seconds")
-            else:
-                return task.result()
-        except Exception as e:
-            print(f"❌ Test failed with exception: {e}")
-            raise
+        return await self._run_with_timeout(
+            lambda: self._execute_multi_agent_test(e2e_parallel_test_client, e2e_parallel_alert),
+            test_name="multi-agent parallel test"
+        )
 
     async def _execute_multi_agent_test(self, test_client, alert_data):
         """Execute multi-agent parallel test."""
@@ -189,84 +170,16 @@ Action Input: {"resource": "pods", "label_selector": "app=database", "namespace"
         # LANGCHAIN STREAMING MOCK CREATOR
         # ============================================================================
         
-        # Create agent-aware streaming mock for LLM client
-        def create_streaming_mock():
-            """Create a mock astream function that identifies the agent and returns appropriate responses."""
-            async def mock_astream(*args, **kwargs):
-                # Identify which agent is calling by inspecting the conversation
-                agent_name = "Unknown"
-                
-                # Extract messages from args
-                # When patching instance methods, args[0] is 'self', args[1] is the messages
-                messages = []
-                if args and len(args) > 1:
-                    messages = args[1] if isinstance(args[1], list) else []
-                elif args and len(args) > 0 and isinstance(args[0], list):
-                    # Fallback: if args[0] is a list, use it (shouldn't happen with patch.object)
-                    messages = args[0]
-                
-                # Look for agent-specific instructions in the system message
-                # Note: KubernetesAgent uses Gemini SDK (not LangChain), so we only identify LogAgent, SynthesisAgent, and ChatAgent here
-                for msg in messages:
-                        # Handle both dict and Message object formats
-                        content = ""
-                        msg_type = ""
-                        
-                        if isinstance(msg, dict):
-                            content = msg.get("content", "")
-                            msg_type = msg.get("role", "") or msg.get("type", "")
-                        elif hasattr(msg, "content"):
-                            content = msg.content if isinstance(msg.content, str) else str(msg.content)
-                            msg_type = getattr(msg, "type", "") or msg.__class__.__name__.lower().replace("message", "")
-                        
-                        # Check if this is a system message  
-                        if msg_type in ["system", "systemmessage"]:
-                            if "log analysis specialist" in content:
-                                agent_name = "LogAgent"
-                            elif "Incident Commander synthesizing" in content:
-                                agent_name = "SynthesisAgent"
-                            elif "Chat Assistant Instructions" in content:
-                                agent_name = "ChatAgent"
-                            break
-                
-                # Get the next response for this agent
-                if agent_name in agent_counters:
-                    agent_interaction_num = agent_counters[agent_name]
-                    agent_counters[agent_name] += 1
-                
-                    print(f"\n🔍 LLM REQUEST from {agent_name} (interaction #{agent_interaction_num + 1})")
-                
-                    # Get response for this agent's interaction
-                    agent_response_list = agent_responses.get(agent_name, [])
-                    if agent_interaction_num < len(agent_response_list):
-                        response_data = agent_response_list[agent_interaction_num]
-                    else:
-                        response_data = {
-                            "response_content": f"Default response for {agent_name}",
-                            "input_tokens": 100,
-                            "output_tokens": 50,
-                            "total_tokens": 150
-                        }
-                else:
-                    response_data = {
-                    "response_content": "Default response",
-                    "input_tokens": 100,
-                    "output_tokens": 50,
-                    "total_tokens": 150
-                    }
-                
-                content = response_data["response_content"]
-                usage_metadata = {
-                    "input_tokens": response_data["input_tokens"],
-                    "output_tokens": response_data["output_tokens"],
-                    "total_tokens": response_data["total_tokens"]
-                }
-                
-                # Yield chunks from the mock stream - must be an async generator
-                async for chunk in create_mock_stream(content, usage_metadata):
-                    yield chunk
-            
-            return mock_astream
+        # Create agent-aware streaming mock for LangChain agents
+        agent_identifiers = {
+            "LogAgent": "log analysis specialist",
+            "SynthesisAgent": "Incident Commander synthesizing",
+            "ChatAgent": "Chat Assistant Instructions"
+        }
+        
+        streaming_mock = E2ETestUtils.create_agent_aware_streaming_mock(
+            agent_counters, agent_responses, agent_identifiers
+        )
         
         # Create MCP mock for kubernetes server (shared by both agents)
         mock_k8s_session = AsyncMock()
@@ -321,52 +234,12 @@ Action Input: {"resource": "pods", "label_selector": "app=database", "namespace"
         # Create MCP client patches
         mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
         
-        # Create streaming mock for LLM - patch LangChain clients directly
-        streaming_mock = create_streaming_mock()
-        
-        # Import LangChain clients to patch
-        from langchain_anthropic import ChatAnthropic
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        from langchain_openai import ChatOpenAI
-        from langchain_xai import ChatXAI
-        
-        # Patch both Gemini SDK (for native thinking) and LangChain clients (for ReAct)
-        # IMPORTANT: Patch where genai.Client is USED, not where it's defined
-        with patch("tarsy.integrations.llm.gemini_client.genai.Client", gemini_mock_factory), \
-             patch.object(ChatOpenAI, 'astream', streaming_mock), \
-             patch.object(ChatAnthropic, 'astream', streaming_mock), \
-             patch.object(ChatXAI, 'astream', streaming_mock), \
-             patch.object(ChatGoogleGenerativeAI, 'astream', streaming_mock):
-            
+        # Patch LLM clients (both Gemini SDK and LangChain)
+        with self._create_llm_patch_context(gemini_mock_factory, streaming_mock):
             with patch('tarsy.integrations.mcp.client.MCPClient.list_tools', mock_list_tools):
                 with patch('tarsy.integrations.mcp.client.MCPClient.call_tool', mock_call_tool):
                     with E2ETestUtils.setup_runbook_service_patching("# Test Runbook\nThis is a test runbook for parallel execution testing."):
-                        # Submit alert
-                        session_id = E2ETestUtils.submit_alert(test_client, alert_data)
-                        
-                        # Wait for completion
-                        session_id, final_status = await E2ETestUtils.wait_for_session_completion(
-                            test_client, max_wait_seconds=20
-                        )
-                        
-                        assert final_status == "completed", f"Session failed with status: {final_status}"
-                        
-                        # Get session details
-                        detail_data = await E2ETestUtils.get_session_details_async(
-                            test_client, session_id, max_retries=3, retry_delay=0.5
-                        )
-                        
-                        # Verify session metadata
-                        self._verify_session_metadata(detail_data, "multi-agent-parallel-chain")
-                        
-                        # Get stages
-                        stages = detail_data.get("stages", [])
-                        
-                        # Comprehensive verification
-                        print("🔍 Step 4: Comprehensive result verification...")
-                        self._verify_stage_structure(stages, EXPECTED_MULTI_AGENT_STAGES)
-                        
-                        # Create conversation map
+                        # Create conversation map for verification
                         conversation_map = {
                             "investigation": {
                                 "KubernetesAgent": EXPECTED_PARALLEL_AGENT_1_CONVERSATION,
@@ -375,13 +248,20 @@ Action Input: {"resource": "pods", "label_selector": "app=database", "namespace"
                             "synthesis": EXPECTED_SYNTHESIS_CONVERSATION
                         }
                         
-                        self._verify_complete_interaction_flow(stages, EXPECTED_MULTI_AGENT_STAGES, conversation_map)
+                        # Execute standard test flow
+                        detail_data = await self._execute_test_flow(
+                            test_client, alert_data,
+                            expected_chain_id="multi-agent-parallel-chain",
+                            expected_stages_spec=EXPECTED_MULTI_AGENT_STAGES,
+                            conversation_map=conversation_map,
+                            max_wait_seconds=20
+                        )
                         
                         print("✅ Multi-agent parallel test passed!")
                         
                         # Test chat functionality
                         print("🔍 Step 5: Testing chat functionality...")
-                        await self._test_chat_functionality(test_client, session_id)
+                        await self._test_chat_functionality(test_client, detail_data["session_id"])
                         print("✅ Chat functionality test passed!")
                         
                         return detail_data

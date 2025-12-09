@@ -62,29 +62,10 @@ class TestParallelReplicaE2E(ParallelTestBase):
         - Automatic synthesis aggregates results
         - failure_policy="any" allows partial success
         """
-
-        async def run_test():
-            print("🚀 Starting replica parallel test...")
-            result = await self._execute_replica_test(
-                e2e_parallel_test_client, e2e_replica_alert
-            )
-            print("✅ Replica parallel test completed!")
-            return result
-
-        try:
-            task = asyncio.create_task(run_test())
-            done, pending = await asyncio.wait({task}, timeout=500.0)
-
-            if pending:
-                for t in pending:
-                    t.cancel()
-                print("❌ TIMEOUT: Test exceeded 500 seconds!")
-                raise AssertionError("Test exceeded timeout of 500 seconds")
-            else:
-                return task.result()
-        except Exception as e:
-            print(f"❌ Test failed with exception: {e}")
-            raise
+        return await self._run_with_timeout(
+            lambda: self._execute_replica_test(e2e_parallel_test_client, e2e_replica_alert),
+            test_name="replica parallel test"
+        )
 
     async def _execute_replica_test(self, test_client, alert_data):
         """Execute replica parallel test."""
@@ -257,22 +238,13 @@ All three replicas converged on consistent findings with increasing detail. Repl
         }
         
         # Create streaming mock for synthesis agent
-        def create_streaming_mock():
-            async def mock_astream(*args, **kwargs):
-                print(f"\n🔍 LLM REQUEST for SynthesisAgent")
-                
-                content = synthesis_response["response_content"]
-                usage_metadata = {
-                    "input_tokens": synthesis_response["input_tokens"],
-                    "output_tokens": synthesis_response["output_tokens"],
-                    "total_tokens": synthesis_response["total_tokens"]
-                }
-                
-                # Yield chunks from the mock stream - must be an async generator
-                async for chunk in create_mock_stream(content, usage_metadata):
-                    yield chunk
-            
-            return mock_astream
+        synthesis_agent_counters = {"SynthesisAgent": 0}
+        synthesis_agent_responses = {"SynthesisAgent": [synthesis_response]}
+        synthesis_agent_identifiers = {"SynthesisAgent": "Incident Commander synthesizing"}
+        
+        streaming_mock = E2ETestUtils.create_agent_aware_streaming_mock(
+            synthesis_agent_counters, synthesis_agent_responses, synthesis_agent_identifiers
+        )
         
         # Create MCP session mock with replica-aware responses
         # We create a custom session that returns different results based on replica_id
@@ -309,17 +281,7 @@ All three replicas converged on consistent findings with increasing detail. Repl
         
         # Create sessions dict and MCP client patches
         mock_sessions = {"kubernetes-server": mock_k8s_session}
-        from .e2e_utils import E2ETestUtils
         mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
-        
-        # Create streaming mock for LLM - patch LangChain clients directly
-        streaming_mock = create_streaming_mock()
-        
-        # Import LangChain clients to patch
-        from langchain_anthropic import ChatAnthropic
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        from langchain_openai import ChatOpenAI
-        from langchain_xai import ChatXAI
         
         # Patch llm_interaction_context to set the contextvar
         from tarsy.hooks.hook_context import llm_interaction_context as original_llm_context
@@ -355,44 +317,15 @@ All three replicas converged on consistent findings with increasing detail. Repl
             
             return execution_id
         
-        # Patch both Gemini SDK (for native thinking replicas) and LangChain clients (for synthesis)
-        with patch("tarsy.integrations.llm.gemini_client.genai.Client", gemini_mock_factory), \
-             patch.object(ChatOpenAI, 'astream', streaming_mock), \
-             patch.object(ChatAnthropic, 'astream', streaming_mock), \
-             patch.object(ChatXAI, 'astream', streaming_mock), \
-             patch.object(ChatGoogleGenerativeAI, 'astream', streaming_mock), \
+        # Patch LLM clients (both Gemini SDK and LangChain)
+        with self._create_llm_patch_context(gemini_mock_factory, streaming_mock), \
              patch("tarsy.integrations.llm.gemini_client.llm_interaction_context", patched_llm_context), \
              patch.object(AlertService, '_create_stage_execution', patched_create_stage):
             
             with patch('tarsy.integrations.mcp.client.MCPClient.list_tools', mock_list_tools):
                 with patch('tarsy.integrations.mcp.client.MCPClient.call_tool', mock_call_tool):
                     with E2ETestUtils.setup_runbook_service_patching("# Test Runbook\nThis is a test runbook for replica execution testing."):
-                        # Submit alert
-                        session_id = E2ETestUtils.submit_alert(test_client, alert_data)
-                        
-                        # Wait for completion
-                        session_id, final_status = await E2ETestUtils.wait_for_session_completion(
-                            test_client, max_wait_seconds=20
-                        )
-                        
-                        assert final_status == "completed", f"Session failed with status: {final_status}"
-                        
-                        # Get session details
-                        detail_data = await E2ETestUtils.get_session_details_async(
-                            test_client, session_id, max_retries=3, retry_delay=0.5
-                        )
-                        
-                        # Verify session metadata
-                        self._verify_session_metadata(detail_data, "replica-parallel-chain")
-                        
-                        # Get stages for verification
-                        stages = detail_data.get("stages", [])
-                        
-                        # Comprehensive verification
-                        print("🔍 Step 4: Comprehensive result verification...")
-                        self._verify_stage_structure(stages, EXPECTED_REPLICA_STAGES)
-                        
-                        # Create conversation map
+                        # Create conversation map for verification
                         conversation_map = {
                             "analysis": {
                                 "KubernetesAgent-1": EXPECTED_REPLICA_1_CONVERSATION,
@@ -402,7 +335,14 @@ All three replicas converged on consistent findings with increasing detail. Repl
                             "synthesis": EXPECTED_REPLICA_SYNTHESIS_CONVERSATION
                         }
                         
-                        self._verify_complete_interaction_flow(stages, EXPECTED_REPLICA_STAGES, conversation_map)
+                        # Execute standard test flow
+                        detail_data = await self._execute_test_flow(
+                            test_client, alert_data,
+                            expected_chain_id="replica-parallel-chain",
+                            expected_stages_spec=EXPECTED_REPLICA_STAGES,
+                            conversation_map=conversation_map,
+                            max_wait_seconds=20
+                        )
                         
                         print("✅ Replica parallel test passed!")
                         return detail_data
