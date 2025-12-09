@@ -78,19 +78,3 @@ agent_chains:
         iteration_strategy: "react-final-analysis"
     description: "Parallel stage followed by regular stage for manual synthesis"
   
-  # Test chain 4: Parallel stage with chat functionality
-  parallel-with-chat-chain:
-    alert_types:
-      - "test-parallel-chat-execution"
-    stages:
-      - name: "investigation"
-        agents:
-          - name: "KubernetesAgent"
-            llm_provider: "google-default"
-            iteration_strategy: "native-thinking"
-          - name: "LogAgent"
-            llm_provider: "anthropic-default"
-            iteration_strategy: "react"
-        failure_policy: "all"
-    description: "Parallel stage with automatic synthesis for chat testing"
-
