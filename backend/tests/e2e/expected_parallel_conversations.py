@@ -1621,12 +1621,12 @@ EXPECTED_PARALLEL_REGULAR_STAGES = {
                 "interactions": [
                     # MCP 1 - Tool list discovery
                     {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
-                    # LLM 1 - Initial ReAct iteration
-                    {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 245, 'output_tokens': 85, 'total_tokens': 330, 'interaction_type': 'investigation'},
+                    # LLM 1 - Native thinking with function call (no assistant message added when text_content is empty)
+                    {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 2, 'input_tokens': 240, 'output_tokens': 85, 'total_tokens': 325, 'interaction_type': 'investigation'},
                     # MCP 2 - kubectl_get tool call
                     {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
-                    # LLM 2 - Final answer
-                    {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 180, 'output_tokens': 65, 'total_tokens': 245, 'interaction_type': 'final_analysis'}
+                    # LLM 2 - Final answer after tool result
+                    {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 4, 'input_tokens': 180, 'output_tokens': 65, 'total_tokens': 245, 'interaction_type': 'final_analysis'}
                 ]
             },
             "LogAgent": {

@@ -91,6 +91,21 @@ class TestParallelReplicaE2E(ParallelTestBase):
         print("🔧 Starting replica parallel test execution")
 
         # ============================================================================
+        # STAGE EXECUTION TRACKING for mapping stage_execution_id → agent_name
+        # ============================================================================
+        # We need to track which stage_execution_id belongs to which agent so the mock
+        # can return the correct response based on the agent name
+        import contextvars
+        import threading
+        
+        # Shared mapping: stage_execution_id → agent_name
+        stage_to_agent_map = {}
+        map_lock = threading.Lock()
+        
+        # Context variable to track current stage_execution_id in the LLM call
+        _current_stage_execution_id = contextvars.ContextVar('current_stage_execution_id', default=None)
+        
+        # ============================================================================
         # NATIVE THINKING MOCK (for KubernetesAgent replicas using Gemini)
         # ============================================================================
         # Gemini SDK responses for native thinking (function calling) - all replicas
@@ -149,41 +164,41 @@ class TestParallelReplicaE2E(ParallelTestBase):
             }
         }
         
-        # Create a task-aware Gemini mock that tracks concurrent replicas
-        # This allows concurrent replicas to work correctly by assigning each task a replica index
+        # Create an agent-aware Gemini mock that uses stage_execution_id to identify agents
         from .conftest import create_native_thinking_response
-        import threading
         
-        def create_task_aware_gemini_mock(response_map: dict):
-            """Create a task-aware Gemini mock for concurrent replica testing."""
-            # Shared state with lock for thread safety
-            task_state = {
-                "task_to_replica": {},  # task_id -> replica_number (1, 2, 3)
-                "task_call_counts": {},  # task_id -> call_count
-                "next_replica": 1,  # Next replica number to assign
-                "lock": threading.Lock()
-            }
+        def create_agent_aware_gemini_mock(response_map: dict, stage_to_agent_map: dict, stage_id_contextvar):
+            """Create an agent-aware Gemini mock that identifies replicas by their stage_execution_id."""
+            # Track call counts per agent
+            agent_call_counts = {}
             
             def response_generator(call_num: int, model: str, contents: list, config: Any):
-                import asyncio
-                task = asyncio.current_task()
-                task_id = id(task) if task else 0
+                # Get current stage_execution_id from context
+                stage_execution_id = stage_id_contextvar.get()
                 
-                with task_state["lock"]:
-                    # Assign replica number to this task on first call
-                    if task_id not in task_state["task_to_replica"]:
-                        task_state["task_to_replica"][task_id] = task_state["next_replica"]
-                        task_state["task_call_counts"][task_id] = 0
-                        task_state["next_replica"] += 1
-                    
-                    # Increment call count for this task
-                    task_state["task_call_counts"][task_id] += 1
-                    
-                    replica_num = task_state["task_to_replica"][task_id]
-                    call_num_for_replica = task_state["task_call_counts"][task_id]
+                # Look up agent name from stage_execution_id
+                with map_lock:
+                    agent_name = stage_to_agent_map.get(stage_execution_id, "unknown")
+                
+                # Track call count for this agent
+                if agent_name not in agent_call_counts:
+                    agent_call_counts[agent_name] = 0
+                agent_call_counts[agent_name] += 1
+                
+                call_num_for_agent = agent_call_counts[agent_name]
+                
+                # Extract replica number from agent name (e.g., "KubernetesAgent-1" → 1)
+                replica_num = 1
+                if '-' in agent_name:
+                    try:
+                        replica_num = int(agent_name.split('-')[-1])
+                    except ValueError:
+                        pass
                 
                 # Build response key
-                response_key = f"replica-{replica_num}-call-{call_num_for_replica}"
+                response_key = f"replica-{replica_num}-call-{call_num_for_agent}"
+                
+                print(f"[MOCK] stage_id={stage_execution_id[:8] if stage_execution_id else 'None'}, agent={agent_name}, call={call_num_for_agent}, key={response_key}")
                 
                 response_data = response_map.get(response_key, {
                     "text_content": f"Fallback response for {response_key}",
@@ -210,7 +225,11 @@ class TestParallelReplicaE2E(ParallelTestBase):
             
             return client_factory
         
-        gemini_mock_factory = create_task_aware_gemini_mock(gemini_response_map)
+        gemini_mock_factory = create_agent_aware_gemini_mock(
+            gemini_response_map, 
+            stage_to_agent_map,
+            _current_stage_execution_id
+        )
         
         # ============================================================================
         # LANGCHAIN MOCK (for SynthesisAgent using ReAct)
@@ -304,12 +323,49 @@ All three replicas converged on consistent findings with increasing detail. Repl
         from langchain_openai import ChatOpenAI
         from langchain_xai import ChatXAI
         
+        # Patch llm_interaction_context to set the contextvar
+        from tarsy.hooks.hook_context import llm_interaction_context as original_llm_context
+        from contextlib import asynccontextmanager
+        
+        @asynccontextmanager
+        async def patched_llm_context(session_id, request_data, stage_execution_id=None, native_tools_config=None):
+            """Patched version that sets the contextvar for test access."""
+            # Set the contextvar so the mock can access it
+            token = _current_stage_execution_id.set(stage_execution_id)
+            try:
+                # Call original context manager
+                async with original_llm_context(session_id, request_data, stage_execution_id, native_tools_config) as ctx:
+                    yield ctx
+            finally:
+                # Reset contextvar
+                _current_stage_execution_id.reset(token)
+        
+        # Patch AlertService._create_stage_execution to capture the mapping
+        from tarsy.services.alert_service import AlertService
+        original_create_stage = AlertService._create_stage_execution
+        
+        async def patched_create_stage(self, session_id, stage, stage_index, parent_stage_execution_id=None, parallel_index=None, parallel_type=None):
+            """Patched version that captures stage_execution_id → agent_name mapping."""
+            # Call original to get the execution_id
+            execution_id = await original_create_stage(self, session_id, stage, stage_index, parent_stage_execution_id, parallel_index, parallel_type)
+            
+            # Capture the mapping for parallel stages (they have agent names with replica suffix)
+            if hasattr(stage, 'agent'):
+                agent_name = stage.agent
+                with map_lock:
+                    stage_to_agent_map[execution_id] = agent_name
+                    print(f"[MAPPING] stage_id={execution_id[:8]} → agent={agent_name}")
+            
+            return execution_id
+        
         # Patch both Gemini SDK (for native thinking replicas) and LangChain clients (for synthesis)
         with patch("tarsy.integrations.llm.gemini_client.genai.Client", gemini_mock_factory), \
              patch.object(ChatOpenAI, 'astream', streaming_mock), \
              patch.object(ChatAnthropic, 'astream', streaming_mock), \
              patch.object(ChatXAI, 'astream', streaming_mock), \
-             patch.object(ChatGoogleGenerativeAI, 'astream', streaming_mock):
+             patch.object(ChatGoogleGenerativeAI, 'astream', streaming_mock), \
+             patch("tarsy.integrations.llm.gemini_client.llm_interaction_context", patched_llm_context), \
+             patch.object(AlertService, '_create_stage_execution', patched_create_stage):
             
             with patch('tarsy.integrations.mcp.client.MCPClient.list_tools', mock_list_tools):
                 with patch('tarsy.integrations.mcp.client.MCPClient.call_tool', mock_call_tool):

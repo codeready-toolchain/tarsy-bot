@@ -85,35 +85,60 @@ class TestParallelThenRegularE2E(ParallelTestBase):
         """Execute parallel + regular stage test."""
         print("🔧 Starting parallel + regular stage test execution")
 
-        # Track all LLM interactions
-        all_llm_interactions = []
+        # ============================================================================
+        # NATIVE THINKING MOCK (for KubernetesAgent using Gemini)
+        # ============================================================================
+        # Gemini SDK responses for native thinking (function calling)
+        gemini_response_map = {
+            1: {  # First call - tool call with thinking
+                "text_content": "",  # Empty for tool calls
+                "thinking_content": "I should check the pod status in test-namespace to understand the issue.",
+                "function_calls": [{"name": "kubernetes-server__kubectl_get", "args": {"resource": "pods", "namespace": "test-namespace"}}],
+                "input_tokens": 240,
+                "output_tokens": 85,
+                "total_tokens": 325
+            },
+            2: {  # Second call - final answer after tool result
+                "text_content": "Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause.",
+                "thinking_content": "I have identified the pod status. This provides enough information for initial analysis.",
+                "function_calls": None,
+                "input_tokens": 180,
+                "output_tokens": 65,
+                "total_tokens": 245
+            }
+        }
         
-        # Define mock responses
-        # Token counts must match EXPECTED_PARALLEL_REGULAR_STAGES in expected_parallel_conversations.py
-        # Agent1: interactions 1-2, Agent2: interactions 3-4, Command stage: interaction 5
-        mock_response_map = {
-            1: {  # Agent1 (KubernetesAgent) - Initial analysis (LLM position 1)
-                "response_content": """Thought: I should check the pod status in the test-namespace to understand any issues.
-Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "pods", "namespace": "test-namespace"}""",
-                "input_tokens": 245, "output_tokens": 85, "total_tokens": 330
-            },
-            2: {  # Agent1 - Final answer (LLM position 2)
-                "response_content": """Final Answer: Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause.""",
-                "input_tokens": 180, "output_tokens": 65, "total_tokens": 245
-            },
-            3: {  # Agent2 (LogAgent) - Log analysis (LLM position 1)
-                "response_content": """Thought: I should analyze the application logs to find error patterns.
-Action: log-server.get_logs
+        # Import create_gemini_client_mock from conftest
+        from .conftest import create_gemini_client_mock
+        gemini_mock_factory = create_gemini_client_mock(gemini_response_map)
+        
+        # ============================================================================
+        # LANGCHAIN MOCK (for LogAgent and CommandAgent using ReAct)
+        # ============================================================================
+        # Agent-specific interaction counters for LangChain-based agents
+        agent_counters = {
+            "LogAgent": 0,
+            "CommandAgent": 0
+        }
+        
+        # Define mock responses per LangChain agent (ReAct format)
+        agent_responses = {
+            "LogAgent": [
+                {  # Interaction 1 - Log analysis with get_logs action
+                    "response_content": """Thought: I should analyze the application logs to find error patterns.
+Action: kubernetes-server.get_logs
 Action Input: {"namespace": "test-namespace", "pod": "pod-1"}""",
-                "input_tokens": 200, "output_tokens": 75, "total_tokens": 275
-            },
-            4: {  # Agent2 - Final answer (LLM position 2)
-                "response_content": """Final Answer: Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity.""",
-                "input_tokens": 190, "output_tokens": 70, "total_tokens": 260
-            },
-            5: {  # Command agent (uses parallel results) (LLM position 1)
-                "response_content": """Final Answer: **Remediation Commands**
+                    "input_tokens": 200, "output_tokens": 75, "total_tokens": 275
+                },
+                {  # Interaction 2 - Final answer
+                    "response_content": """Thought: I have analyzed the logs and found the root cause.
+Final Answer: Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity.""",
+                    "input_tokens": 190, "output_tokens": 70, "total_tokens": 260
+                }
+            ],
+            "CommandAgent": [
+                {  # Interaction 1 - Command agent final answer
+                    "response_content": """Final Answer: **Remediation Commands**
 
 Based on parallel investigations showing database connectivity issues causing CrashLoopBackOff:
 
@@ -142,24 +167,78 @@ kubectl exec -n test-namespace pod-1 -- nc -zv db.example.com 5432
 # If needed, rollback to previous working version
 kubectl rollout undo deployment/app -n test-namespace
 ```""",
-                "input_tokens": 400, "output_tokens": 170, "total_tokens": 570
-            }
+                    "input_tokens": 400, "output_tokens": 170, "total_tokens": 570
+                }
+            ]
         }
         
-        # Create streaming mock
+        # ============================================================================
+        # LANGCHAIN STREAMING MOCK CREATOR
+        # ============================================================================
+        
+        # Create agent-aware streaming mock for LLM client
         def create_streaming_mock():
+            """Create a mock astream function that identifies the agent and returns appropriate responses."""
             async def mock_astream(*args, **kwargs):
-                interaction_num = len(all_llm_interactions) + 1
-                all_llm_interactions.append(interaction_num)
+                # Identify which agent is calling by inspecting the conversation
+                agent_name = "Unknown"
                 
-                print(f"\n🔍 LLM REQUEST #{interaction_num}")
+                # Extract messages from args
+                # When patching instance methods, args[0] is 'self', args[1] is the messages
+                messages = []
+                if args and len(args) > 1:
+                    messages = args[1] if isinstance(args[1], list) else []
+                elif args and len(args) > 0 and isinstance(args[0], list):
+                    # Fallback: if args[0] is a list, use it (shouldn't happen with patch.object)
+                    messages = args[0]
                 
-                response_data = mock_response_map.get(interaction_num, {
+                # Look for agent-specific instructions in the system message
+                # Note: KubernetesAgent uses Gemini SDK (not LangChain), so we only identify LogAgent and CommandAgent here
+                for msg in messages:
+                        # Handle both dict and Message object formats
+                        content = ""
+                        msg_type = ""
+                        
+                        if isinstance(msg, dict):
+                            content = msg.get("content", "")
+                            msg_type = msg.get("role", "") or msg.get("type", "")
+                        elif hasattr(msg, "content"):
+                            content = msg.content if isinstance(msg.content, str) else str(msg.content)
+                            msg_type = getattr(msg, "type", "") or msg.__class__.__name__.lower().replace("message", "")
+                        
+                        # Check if this is a system message  
+                        if msg_type in ["system", "systemmessage"]:
+                            if "log analysis specialist" in content:
+                                agent_name = "LogAgent"
+                            elif "command execution specialist" in content:
+                                agent_name = "CommandAgent"
+                            break
+                
+                # Get the next response for this agent
+                if agent_name in agent_counters:
+                    agent_interaction_num = agent_counters[agent_name]
+                    agent_counters[agent_name] += 1
+                
+                    print(f"\n🔍 LLM REQUEST from {agent_name} (interaction #{agent_interaction_num + 1})")
+                
+                    # Get response for this agent's interaction
+                    agent_response_list = agent_responses.get(agent_name, [])
+                    if agent_interaction_num < len(agent_response_list):
+                        response_data = agent_response_list[agent_interaction_num]
+                    else:
+                        response_data = {
+                            "response_content": f"Default response for {agent_name}",
+                            "input_tokens": 100,
+                            "output_tokens": 50,
+                            "total_tokens": 150
+                        }
+                else:
+                    response_data = {
                     "response_content": "Default response",
                     "input_tokens": 100,
                     "output_tokens": 50,
                     "total_tokens": 150
-                })
+                    }
                 
                 content = response_data["response_content"]
                 usage_metadata = {
@@ -193,8 +272,10 @@ kubectl rollout undo deployment/app -n test-namespace
         from langchain_openai import ChatOpenAI
         from langchain_xai import ChatXAI
         
-        # Patch and execute - Note: Using parallel-then-regular-chain config
-        with patch.object(ChatOpenAI, 'astream', streaming_mock), \
+        # Patch both Gemini SDK (for native thinking) and LangChain clients (for ReAct)
+        # IMPORTANT: Patch where genai.Client is USED, not where it's defined
+        with patch("tarsy.integrations.llm.gemini_client.genai.Client", gemini_mock_factory), \
+             patch.object(ChatOpenAI, 'astream', streaming_mock), \
              patch.object(ChatAnthropic, 'astream', streaming_mock), \
              patch.object(ChatXAI, 'astream', streaming_mock), \
              patch.object(ChatGoogleGenerativeAI, 'astream', streaming_mock):
