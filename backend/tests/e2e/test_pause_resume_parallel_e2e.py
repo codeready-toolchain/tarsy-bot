@@ -81,44 +81,61 @@ class TestPauseResumeParallelE2E(ParallelTestBase):
             settings.max_llm_mcp_iterations = 2
             print(f"🔧 Set max_llm_mcp_iterations to 2")
             
-            # Track all LLM interactions
-            all_llm_interactions = []
-            
-            # Define mock response map
-            # Phase 1 (max_iterations=2): Kubernetes pauses at 2, Log completes at 2
-            # Phase 2 (max_iterations=4): Kubernetes continues from pause and completes
-            mock_response_map = {
-                # Phase 1: Initial execution
-                # Kubernetes Agent - will pause at iteration 2
-                "kubernetes_1": {
-                    "response_content": """Thought: I need to check pod status.
-Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "pods", "namespace": "test-namespace"}""",
+            # ============================================================================
+            # NATIVE THINKING MOCK (for KubernetesAgent using Gemini)
+            # ============================================================================
+            # Gemini SDK responses for native thinking (function calling)
+            gemini_response_map = {
+                1: {  # First call - tool call with thinking (pauses)
+                    "text_content": "",  # Empty for tool calls
+                    "thinking_content": "I should check the pod status in test-namespace to understand the issue.",
+                    "function_calls": [{"name": "kubernetes-server__kubectl_get", "args": {"resource": "pods", "namespace": "test-namespace"}}],
                     "input_tokens": 200,
                     "output_tokens": 60,
-                    "total_tokens": 260,
+                    "total_tokens": 260
                 },
-                "kubernetes_2": {
-                    # Pauses - no Final Answer
-                    "response_content": """Thought: I see CrashLoopBackOff. Need more investigation but hit iteration limit.
-Action: kubernetes-server.kubectl_describe
-Action Input: {"resource": "pod", "name": "pod-1", "namespace": "test-namespace"}""",
+                2: {  # Second call - still investigating, no final answer (pauses at iteration 2)
+                    "text_content": "",  # Empty for tool calls
+                    "thinking_content": "I see CrashLoopBackOff. Need more investigation but hit iteration limit.",
+                    "function_calls": [{"name": "kubernetes-server__kubectl_describe", "args": {"resource": "pod", "name": "pod-1", "namespace": "test-namespace"}}],
                     "input_tokens": 220,
                     "output_tokens": 70,
-                    "total_tokens": 290,
+                    "total_tokens": 290
                 },
-                # Log Agent - completes at iteration 2
-                "log_1": {
-                    "response_content": """Thought: I should check application logs.
+                3: {  # Third call (after resume) - final answer
+                    "text_content": "**Kubernetes Analysis Complete**\n\nInfrastructure findings:\n- Pod pod-1 in CrashLoopBackOff state\n- Namespace: test-namespace\n- Pod has been restarting repeatedly (5+ times)\n- Container exit code indicates connection failure\n\nKubernetes investigation complete.",
+                    "thinking_content": "I can now complete my investigation with the additional iterations available.",
+                    "function_calls": None,
+                    "input_tokens": 240,
+                    "output_tokens": 95,
+                    "total_tokens": 335
+                }
+            }
+            
+            # Import create_gemini_client_mock from conftest
+            from .conftest import create_gemini_client_mock
+            gemini_mock_factory = create_gemini_client_mock(gemini_response_map)
+            
+            # ============================================================================
+            # LANGCHAIN MOCK (for LogAgent using ReAct + for SynthesisAgent)
+            # ============================================================================
+            # Agent-specific interaction counters for LangChain-based agents
+            agent_counters = {
+                "LogAgent": 0,
+                "SynthesisAgent": 0,
+            }
+            
+            # Define mock responses per LangChain agent (ReAct format)
+            agent_responses = {
+                "LogAgent": [
+                    {  # Interaction 1 - Log analysis with get_logs action
+                        "response_content": """Thought: I should check application logs.
 Action: kubernetes-server.get_logs
 Action Input: {"namespace": "test-namespace", "pod": "pod-1"}""",
-                    "input_tokens": 190,
-                    "output_tokens": 55,
-                    "total_tokens": 245,
-                },
-                "log_2": {
-                    # Completes with Final Answer
-                    "response_content": """Thought: Logs show database connection timeout.
+                        "input_tokens": 190, "output_tokens": 55, "total_tokens": 245
+                    },
+                    {  # Interaction 2 - Final answer (completes at iteration 2)
+                        "response_content": """Thought: Logs show database connection timeout.
 
 Final Answer: **Log Analysis Complete**
 
@@ -128,31 +145,12 @@ Found critical error in logs:
 - CrashLoopBackOff is result of repeated connection failures
 
 Root cause identified from logs.""",
-                    "input_tokens": 210,
-                    "output_tokens": 85,
-                    "total_tokens": 295,
-                },
-                # Phase 2: Resume - only Kubernetes continues
-                "kubernetes_3": {
-                    # After resume, continues investigation
-                    "response_content": """Thought: I can now complete my investigation.
-
-Final Answer: **Kubernetes Analysis Complete**
-
-Infrastructure findings:
-- Pod pod-1 in CrashLoopBackOff state
-- Namespace: test-namespace
-- Pod has been restarting repeatedly (5+ times)
-- Container exit code indicates connection failure
-
-Kubernetes investigation complete.""",
-                    "input_tokens": 240,
-                    "output_tokens": 95,
-                    "total_tokens": 335,
-                },
-                # Synthesis stage
-                "synthesis_1": {
-                    "response_content": """Final Answer: **Synthesis of Parallel Investigations**
+                        "input_tokens": 210, "output_tokens": 85, "total_tokens": 295
+                    }
+                ],
+                "SynthesisAgent": [
+                    {  # Interaction 1 - Synthesis final answer  
+                        "response_content": """Final Answer: **Synthesis of Parallel Investigations**
 
 Combined analysis from both agents:
 
@@ -173,74 +171,24 @@ Pod is failing due to database connectivity issues. The pod attempts to connect 
 2. Check network connectivity to db.example.com:5432
 3. Validate database credentials
 4. Review firewall/network policies""",
-                    "input_tokens": 450,
-                    "output_tokens": 200,
-                    "total_tokens": 650,
-                },
+                        "input_tokens": 450, "output_tokens": 200, "total_tokens": 650
+                    }
+                ]
             }
             
-            # Create agent-aware streaming mock
-            agent_counters = {
-                "KubernetesAgent": 0,
-                "LogAgent": 0,
-                "SynthesisAgent": 0,
+            # ============================================================================
+            # LANGCHAIN STREAMING MOCK CREATOR
+            # ============================================================================
+            
+            # Create agent-aware streaming mock for LangChain agents
+            agent_identifiers = {
+                "LogAgent": "log analysis specialist",
+                "SynthesisAgent": "Incident Commander synthesizing"
             }
             
-            def create_streaming_mock():
-                """Create mock astream that routes to correct agent responses."""
-                async def mock_astream(*args, **_kwargs):
-                    # Determine which agent is calling based on message content
-                    if args and len(args) > 0:
-                        messages = args[0]
-                        agent_type = None
-                        
-                        # Identify agent from system message
-                        for msg in messages:
-                            content = getattr(msg, "content", "") if hasattr(msg, "content") else ""
-                            if "Kubernetes infrastructure specialist" in content:
-                                agent_type = "KubernetesAgent"
-                                break
-                            elif "log analysis specialist" in content:
-                                agent_type = "LogAgent"
-                                break
-                            elif "Incident Commander synthesizing" in content:
-                                agent_type = "SynthesisAgent"
-                                break
-                        
-                        if not agent_type:
-                            agent_type = "unknown"
-                        
-                        # Increment counter
-                        if agent_type in agent_counters:
-                            agent_counters[agent_type] += 1
-                            interaction_num = agent_counters[agent_type]
-                        else:
-                            interaction_num = 1
-                        
-                        all_llm_interactions.append((agent_type, interaction_num))
-                        
-                        # Get mock response
-                        key = f"{agent_type.lower().replace('agent', '')}_{interaction_num}"
-                        mock_response = mock_response_map.get(key, {
-                            "response_content": "Unknown response",
-                            "input_tokens": 100,
-                            "output_tokens": 50,
-                            "total_tokens": 150,
-                        })
-                        
-                        print(f"🔍 LLM call: {agent_type} interaction {interaction_num} (key: {key})")
-                        
-                        content = mock_response["response_content"]
-                        usage_metadata = {
-                            "input_tokens": mock_response["input_tokens"],
-                            "output_tokens": mock_response["output_tokens"],
-                            "total_tokens": mock_response["total_tokens"],
-                        }
-                        
-                        async for chunk in create_mock_stream(content, usage_metadata):
-                            yield chunk
-                
-                return mock_astream
+            streaming_mock = E2ETestUtils.create_agent_aware_streaming_mock(
+                agent_counters, agent_responses, agent_identifiers
+            )
             
             # Create MCP session mock
             def create_mcp_session_mock():
@@ -299,43 +247,25 @@ Pod is failing due to database connectivity issues. The pod attempts to connect 
                 BUILTIN_MCP_SERVERS, {"kubernetes-server": k8s_config}
             )
             
-            with patch("tarsy.config.builtin_config.BUILTIN_MCP_SERVERS", test_mcp_servers), \
-                 patch("tarsy.services.mcp_server_registry.MCPServerRegistry._DEFAULT_SERVERS", test_mcp_servers), \
-                 E2ETestUtils.setup_runbook_service_patching("# Parallel Pause Test Runbook"):
-                
-                # Mock LLM clients
-                streaming_mock = create_streaming_mock()
-                from langchain_anthropic import ChatAnthropic
-                from langchain_google_genai import ChatGoogleGenerativeAI
-                from langchain_openai import ChatOpenAI
-                from langchain_xai import ChatXAI
-                
-                with patch.object(ChatOpenAI, "astream", streaming_mock), \
-                     patch.object(ChatAnthropic, "astream", streaming_mock), \
-                     patch.object(ChatXAI, "astream", streaming_mock), \
-                     patch.object(ChatGoogleGenerativeAI, "astream", streaming_mock):
-                    
-                    # Mock MCP client
-                    mock_k8s_session = create_mcp_session_mock()
-                    mock_sessions = {"kubernetes-server": mock_k8s_session}
-                    mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
-                    
-                    async def mock_initialize(self):
-                        self.sessions = mock_sessions.copy()
-                        self._initialized = True
-                    
-                    with patch.object(MCPClient, "initialize", mock_initialize), \
-                         patch.object(MCPClient, "list_tools", mock_list_tools), \
-                         patch.object(MCPClient, "call_tool", mock_call_tool):
-                        
-                        # ===== Phase 1: Initial execution with pause =====
+            # Create MCP client patches
+            mock_k8s_session = create_mcp_session_mock()
+            mock_sessions = {"kubernetes-server": mock_k8s_session}
+            mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
+            
+            # Patch LLM clients (both Gemini SDK and LangChain)
+            with self._create_llm_patch_context(gemini_mock_factory, streaming_mock):
+                with patch.object(MCPClient, "list_tools", mock_list_tools), \
+                     patch.object(MCPClient, "call_tool", mock_call_tool):
+                    with E2ETestUtils.setup_runbook_service_patching("# Parallel Pause Test Runbook"):
+                            
+                            # ===== Phase 1: Initial execution with pause =====
                         print("\n⏳ Phase 1: Submit alert (max_iterations=2)")
                         session_id = E2ETestUtils.submit_alert(test_client, alert_data)
                         
                         print("⏳ Wait for session to pause...")
                         paused_session_id, paused_status = await E2ETestUtils.wait_for_session_completion(
                             test_client, max_wait_seconds=20, debug_logging=True
-                        )
+                            )
                         
                         print("🔍 Verify pause state...")
                         assert paused_session_id == session_id
@@ -400,6 +330,19 @@ Pod is failing due to database connectivity issues. The pod attempts to connect 
                         
                         print("🔍 Verify final state...")
                         assert final_session_id == session_id
+                        
+                        # If failed, print error details for debugging
+                        if final_status == "failed":
+                            failed_detail = await E2ETestUtils.get_session_details_async(test_client, session_id)
+                            error_msg = failed_detail.get("error_message", "No error message")
+                            stages = failed_detail.get("stages", [])
+                            print(f"❌ Session failed with error: {error_msg}")
+                            print(f"❌ Number of stages: {len(stages)}")
+                            for stage in stages:
+                                print(f"   Stage: {stage.get('stage_name')} - Status: {stage.get('status')}")
+                                if stage.get("error_message"):
+                                    print(f"     Error: {stage.get('error_message')}")
+                        
                         assert final_status == "completed", f"Expected 'completed', got '{final_status}'"
                         
                         # Get final session details
@@ -452,7 +395,6 @@ Pod is failing due to database connectivity issues. The pod attempts to connect 
                         print(f"   - Log preserved from initial execution (2 interactions)")
                         print(f"   - Synthesis combined both results")
                         print(f"   - Executive summary generated")
-                        print(f"   - Total LLM calls: {len(all_llm_interactions)}")
                         
                         return final_detail
         

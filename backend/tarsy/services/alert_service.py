@@ -528,14 +528,27 @@ class AlertService:
             
             # Reconstruct stage outputs from completed AND paused stages
             # IMPORTANT: Paused stages need their conversation history restored
+            # NOTE: Parallel stages have ParallelStageResult, not AgentExecutionResult
             for stage_exec in stage_executions:
                 if stage_exec.status == StageStatus.COMPLETED.value and stage_exec.stage_output:
-                    # Reconstruct AgentExecutionResult from stage_output
-                    result = AgentExecutionResult.model_validate(stage_exec.stage_output)
+                    # Check if this is a parallel stage (parent execution)
+                    if stage_exec.parallel_type in ParallelType.parallel_values():
+                        # Reconstruct ParallelStageResult from stage_output
+                        from tarsy.models.agent_execution_result import ParallelStageResult
+                        result = ParallelStageResult.model_validate(stage_exec.stage_output)
+                    else:
+                        # Reconstruct AgentExecutionResult from stage_output
+                        result = AgentExecutionResult.model_validate(stage_exec.stage_output)
                     chain_context.add_stage_result(stage_exec.stage_name, result)
                 elif stage_exec.status == StageStatus.PAUSED.value and stage_exec.stage_output:
-                    # Restore paused stage's conversation history for resume
-                    result = AgentExecutionResult.model_validate(stage_exec.stage_output)
+                    # Check if this is a parallel stage (parent execution)
+                    if stage_exec.parallel_type in ParallelType.parallel_values():
+                        # Restore paused parallel stage's result for resume
+                        from tarsy.models.agent_execution_result import ParallelStageResult
+                        result = ParallelStageResult.model_validate(stage_exec.stage_output)
+                    else:
+                        # Restore paused stage's conversation history for resume
+                        result = AgentExecutionResult.model_validate(stage_exec.stage_output)
                     chain_context.add_stage_result(stage_exec.stage_name, result)
                     logger.info(f"Restored conversation history for paused stage '{stage_exec.stage_name}'")
             
@@ -796,6 +809,42 @@ class AlertService:
                         if stage_result.status == StageStatus.COMPLETED:
                             successful_stages += 1
                             logger.info(f"Parallel stage '{stage.name}' completed successfully")
+                        elif stage_result.status == StageStatus.PAUSED:
+                            # Parallel stage paused - propagate pause to session level
+                            logger.info(f"Parallel stage '{stage.name}' paused")
+                            
+                            # Create pause metadata
+                            pause_meta = PauseMetadata(
+                                reason=PauseReason.MAX_ITERATIONS_REACHED,
+                                current_iteration=0,  # Not meaningful for parallel stages
+                                message=f"Parallel stage '{stage.name}' paused - one or more agents need more iterations",
+                                paused_at_us=now_us()
+                            )
+                            
+                            # Serialize pause metadata (convert enum to string)
+                            pause_meta_dict = pause_meta.model_dump(mode='json')
+                            
+                            # Update session status to PAUSED with metadata
+                            from tarsy.models.constants import AlertSessionStatus
+                            self._update_session_status(
+                                chain_context.session_id, 
+                                AlertSessionStatus.PAUSED.value,
+                                pause_metadata=pause_meta_dict
+                            )
+                            
+                            # Publish pause event with metadata
+                            from tarsy.services.events.event_helpers import (
+                                publish_session_paused,
+                            )
+                            await publish_session_paused(chain_context.session_id, pause_metadata=pause_meta_dict)
+                            
+                            # Return paused result (not failed)
+                            return ChainExecutionResult(
+                                status=ChainStatus.PAUSED,
+                                final_analysis="Parallel stage paused - waiting for user to resume",
+                                error=None,
+                                timestamp_us=now_us()
+                            )
                         else:
                             failed_stages += 1
                             logger.error(f"Parallel stage '{stage.name}' failed")
@@ -1759,10 +1808,17 @@ class AlertService:
                 if parallel_type == "replica":
                     result.agent_name = agent_name
                 
-                # Update child stage execution with result
+                # Update child stage execution with result based on status
                 if result.status == StageStatus.COMPLETED:
                     await self._update_stage_execution_completed(child_execution_id, result)
+                elif result.status == StageStatus.PAUSED:
+                    # Agent paused normally (not via exception) - this shouldn't happen 
+                    # because agents raise SessionPaused exception, but handle it just in case
+                    # Extract iteration from result if available, default to 0
+                    iteration = getattr(result, 'current_iteration', 0)
+                    await self._update_stage_execution_paused(child_execution_id, iteration, result)
                 else:
+                    # FAILED or other status
                     await self._update_stage_execution_failed(
                         child_execution_id,
                         result.error_message or "Execution failed"
