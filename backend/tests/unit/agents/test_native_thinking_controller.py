@@ -320,4 +320,127 @@ class TestNativeThinkingController:
         
         assert "## Analysis Result" in result
         assert "Analysis content here." in result
+    
+    @pytest.mark.asyncio
+    @patch('tarsy.agents.iteration_controllers.native_thinking_controller.get_settings')
+    async def test_consecutive_tool_timeouts_fail_immediately(
+        self, mock_get_settings, mock_llm_manager_google, mock_prompt_builder, mock_agent, sample_context
+    ):
+        """Test that 2 consecutive tool timeouts cause immediate failure."""
+        # Setup
+        mock_settings = Mock()
+        mock_settings.llm_iteration_timeout = 210
+        mock_get_settings.return_value = mock_settings
+        
+        controller = NativeThinkingController(mock_llm_manager_google, mock_prompt_builder)
+        
+        # Mock native client
+        mock_native_client = Mock()
+        
+        # Create responses that will trigger tool calls
+        def create_tool_response(idx):
+            response = Mock(spec=['has_tool_calls', 'tool_calls', 'is_final', 'thinking_content',
+                                 'thought_signature', 'conversation', 'content'])
+            response.has_tool_calls = True
+            response.is_final = False
+            response.thinking_content = f"Thinking {idx}"
+            response.thought_signature = f"sig{idx}".encode()
+            response.conversation = Mock(spec=['messages', 'append_observation'])
+            response.conversation.messages = []
+            response.content = f"Using tool {idx}"
+            
+            tool_call = Mock()
+            tool_call.server = "kubernetes"
+            tool_call.tool = f"tool_{idx}"
+            tool_call.parameters = {}
+            response.tool_calls = [tool_call]
+            return response
+        
+        # Create multiple responses (more than we'll need)
+        responses = [create_tool_response(i) for i in range(5)]
+        mock_native_client.generate = AsyncMock(side_effect=responses)
+        mock_llm_manager_google.get_native_thinking_client.return_value = mock_native_client
+        
+        # Mock agent's execute_mcp_tools to raise timeout errors consistently
+        async def timeout_tool(*args, **kwargs):
+            raise TimeoutError("Tool call exceeded 70s timeout")
+        
+        mock_agent.execute_mcp_tools = AsyncMock(side_effect=timeout_tool)
+        sample_context.agent = mock_agent
+        
+        # Execute and verify it fails after 2 consecutive timeouts
+        with pytest.raises(Exception) as exc_info:
+            await controller.execute_analysis_loop(sample_context)
+        
+        assert "consecutive tool timeout failures" in str(exc_info.value).lower()
+        
+        # Verify we made exactly 2 LLM calls (one for each timeout, then stopped immediately)
+        assert mock_native_client.generate.call_count == 2
+    
+    @pytest.mark.asyncio
+    @patch('tarsy.agents.iteration_controllers.native_thinking_controller.get_settings')
+    async def test_timeout_counter_resets_on_non_timeout_error(
+        self, mock_get_settings, mock_llm_manager_google, mock_prompt_builder, mock_agent, sample_context
+    ):
+        """Test that consecutive timeout counter resets on non-timeout errors."""
+        # Setup
+        mock_settings = Mock()
+        mock_settings.llm_iteration_timeout = 210
+        mock_get_settings.return_value = mock_settings
+        
+        controller = NativeThinkingController(mock_llm_manager_google, mock_prompt_builder)
+        
+        # Mock native client
+        mock_native_client = Mock()
+        
+        # Create enough responses for the test scenario
+        responses = []
+        for i in range(10):
+            response = Mock(spec=['has_tool_calls', 'tool_calls', 'is_final', 'thinking_content',
+                                 'thought_signature', 'conversation', 'content'])
+            response.has_tool_calls = True
+            response.is_final = False
+            response.thinking_content = f"Thinking {i}"
+            response.thought_signature = f"sig{i}".encode()
+            response.conversation = Mock(spec=['messages', 'append_observation'])
+            response.conversation.messages = []
+            response.content = f"Using tool {i}"
+            
+            tool_call = Mock()
+            tool_call.server = "kubernetes"
+            tool_call.tool = f"tool_{i}"
+            tool_call.parameters = {}
+            response.tool_calls = [tool_call]
+            responses.append(response)
+        
+        mock_native_client.generate = AsyncMock(side_effect=responses)
+        mock_llm_manager_google.get_native_thinking_client.return_value = mock_native_client
+        
+        # Mock tool execution: timeout, non-timeout error (resets), timeout, timeout (fails)
+        call_count = [0]
+        
+        async def varying_tool_results(*args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise TimeoutError("First timeout")
+            elif call_count[0] == 2:
+                # Different error type resets the counter (don't use word "timeout" in message!)
+                raise ValueError("Different error type resets counter")
+            elif call_count[0] == 3:
+                raise TimeoutError("Third call first after reset")
+            elif call_count[0] == 4:
+                raise TimeoutError("Fourth call second consecutive should fail")
+            else:
+                return {"kubernetes": [{"tool": "test", "result": "success"}]}
+        
+        mock_agent.execute_mcp_tools = AsyncMock(side_effect=varying_tool_results)
+        sample_context.agent = mock_agent
+        
+        # This should fail on the 4th call (2nd consecutive timeout after counter reset)
+        with pytest.raises(Exception) as exc_info:
+            await controller.execute_analysis_loop(sample_context)
+        
+        assert "consecutive tool timeout failures" in str(exc_info.value).lower()
+        # Should have stopped after 4th tool call (4 LLM calls)
+        assert mock_native_client.generate.call_count == 4
 

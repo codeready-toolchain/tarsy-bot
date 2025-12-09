@@ -215,8 +215,18 @@ class ParallelStageExecutor:
                 # Set current stage execution ID for interaction tagging (hooks need this!)
                 agent.set_current_stage_execution_id(child_execution_id)
                 
-                # Execute agent
-                result = await agent.process_alert(chain_context)
+                # Execute agent with timeout protection
+                # Use alert_processing_timeout as maximum time for any single agent
+                # This prevents individual agents from consuming entire session budget
+                try:
+                    result = await asyncio.wait_for(
+                        agent.process_alert(chain_context),
+                        timeout=self.settings.alert_processing_timeout
+                    )
+                except asyncio.TimeoutError:
+                    raise TimeoutError(
+                        f"Agent '{agent_name}' exceeded {self.settings.alert_processing_timeout}s timeout"
+                    ) from None
                 
                 # Override agent_name for replicas
                 if parallel_type == "replica":
@@ -607,8 +617,17 @@ class ParallelStageExecutor:
                 # Set current stage execution ID for interaction tagging (hooks need this!)
                 agent.set_current_stage_execution_id(child_execution_id)
                 
-                # Execute agent
-                result = await agent.process_alert(chain_context)
+                # Execute agent with timeout protection
+                # Use alert_processing_timeout as maximum time for any single agent
+                try:
+                    result = await asyncio.wait_for(
+                        agent.process_alert(chain_context),
+                        timeout=self.settings.alert_processing_timeout
+                    )
+                except asyncio.TimeoutError:
+                    raise TimeoutError(
+                        f"Agent '{agent_name}' exceeded {self.settings.alert_processing_timeout}s timeout during resume"
+                    ) from None
                 
                 # Override agent_name for replicas
                 if paused_parent_stage.parallel_type == "replica":

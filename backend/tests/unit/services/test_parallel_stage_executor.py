@@ -5,6 +5,7 @@ Tests the parallel stage execution logic including multi-agent parallelism,
 replicated agent execution, and result aggregation.
 """
 
+import asyncio
 import pytest
 from unittest.mock import AsyncMock, Mock, patch
 from types import SimpleNamespace
@@ -385,4 +386,210 @@ class TestStatusAggregation:
             actual_status = StageStatus.COMPLETED if completed_count > 0 else StageStatus.FAILED
         
         assert actual_status == expected_status
+
+
+@pytest.mark.unit
+class TestParallelAgentTimeouts:
+    """Test timeout handling for parallel agent execution."""
+    
+    @pytest.mark.asyncio
+    async def test_parallel_agent_respects_timeout(self):
+        """Test that parallel agent execution respects alert_processing_timeout."""
+        # Create mocks
+        agent_factory = Mock()
+        stage_manager = Mock()
+        stage_manager.create_stage_execution = AsyncMock(return_value="stage-exec-1")
+        stage_manager.update_stage_execution_started = AsyncMock()
+        stage_manager.update_stage_execution_failed = AsyncMock()
+        
+        settings = MockFactory.create_mock_settings()
+        settings.alert_processing_timeout = 1  # 1 second timeout
+        settings.llm_provider = "test-provider"  # Add default provider
+        
+        # Create agent that takes too long
+        slow_agent = Mock()
+        
+        async def slow_process(*args, **kwargs):
+            await asyncio.sleep(5)  # Takes 5 seconds (exceeds 1s timeout)
+            return AgentExecutionResult(
+                status=StageStatus.COMPLETED,
+                agent_name="SlowAgent",
+                stage_name="test",
+                timestamp_us=now_us(),
+                result_summary="Should not reach here"
+            )
+        
+        slow_agent.process_alert = AsyncMock(side_effect=slow_process)
+        slow_agent.set_current_stage_execution_id = Mock()
+        slow_agent.iteration_strategy = Mock()
+        slow_agent.iteration_strategy.value = "react"  # Provide iteration strategy
+        agent_factory.get_agent = Mock(return_value=slow_agent)
+        
+        executor = ParallelStageExecutor(
+            agent_factory=agent_factory,
+            settings=settings,
+            stage_manager=stage_manager
+        )
+        
+        # Create test data
+        stage = SimpleNamespace(
+            name="test-stage",
+            agent="SlowAgent",
+            agents=None,
+            replicas=1,
+            llm_provider=None,
+            iteration_strategy=None,
+            failure_policy=FailurePolicy.ALL
+        )
+        
+        from tarsy.models.alert import ProcessingAlert
+        alert = AlertFactory.create_kubernetes_alert()
+        processing_alert = ProcessingAlert(
+            alert_type=alert.alert_type or "kubernetes",
+            severity=alert.data.get("severity", "critical"),
+            timestamp=alert.timestamp,
+            environment=alert.data.get("environment", "production"),
+            runbook_url=alert.runbook,
+            alert_data=alert.data
+        )
+        
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session"
+        )
+        
+        chain_def = SimpleNamespace(llm_provider=None)
+        
+        # Execute and verify timeout occurs
+        result = await executor.execute_replicated_agent(
+            stage=stage,
+            chain_context=chain_context,
+            session_mcp_client=Mock(),
+            chain_definition=chain_def,
+            stage_index=0
+        )
+        
+        # Verify result is a failure due to timeout
+        assert result.status == StageStatus.FAILED
+        assert len(result.results) == 1
+        assert result.results[0].status == StageStatus.FAILED
+        assert "timeout" in result.results[0].error_message.lower()
+        
+        # Verify stage execution was marked as failed
+        stage_manager.update_stage_execution_failed.assert_called()
+    
+    @pytest.mark.asyncio
+    async def test_parallel_agents_timeout_independently(self):
+        """Test that each parallel agent has independent timeout enforcement."""
+        # Create mocks
+        agent_factory = Mock()
+        stage_manager = Mock()
+        stage_manager.create_stage_execution = AsyncMock(side_effect=lambda *args, **kwargs: f"exec-{kwargs.get('parallel_index', 0)}")
+        stage_manager.update_stage_execution_started = AsyncMock()
+        stage_manager.update_stage_execution_completed = AsyncMock()
+        stage_manager.update_stage_execution_failed = AsyncMock()
+        
+        settings = MockFactory.create_mock_settings()
+        settings.alert_processing_timeout = 2  # 2 second timeout
+        settings.llm_provider = "test-provider"  # Add default provider
+        
+        # Create fast and slow agents
+        fast_agent = Mock()
+        async def fast_process(*args, **kwargs):
+            await asyncio.sleep(0.1)  # Fast
+            return AgentExecutionResult(
+                status=StageStatus.COMPLETED,
+                agent_name="FastAgent",
+                stage_name="test",
+                timestamp_us=now_us(),
+                result_summary="Completed quickly"
+            )
+        fast_agent.process_alert = AsyncMock(side_effect=fast_process)
+        fast_agent.set_current_stage_execution_id = Mock()
+        fast_agent.iteration_strategy = Mock()
+        fast_agent.iteration_strategy.value = "react"
+        
+        slow_agent = Mock()
+        async def slow_process(*args, **kwargs):
+            await asyncio.sleep(5)  # Too slow
+            return AgentExecutionResult(
+                status=StageStatus.COMPLETED,
+                agent_name="SlowAgent",
+                stage_name="test",
+                timestamp_us=now_us(),
+                result_summary="Should not reach here"
+            )
+        slow_agent.process_alert = AsyncMock(side_effect=slow_process)
+        slow_agent.set_current_stage_execution_id = Mock()
+        slow_agent.iteration_strategy = Mock()
+        slow_agent.iteration_strategy.value = "react"
+        
+        # Return different agents based on identifier
+        def get_agent(agent_identifier, **kwargs):
+            if "Fast" in agent_identifier:
+                return fast_agent
+            return slow_agent
+        
+        agent_factory.get_agent = Mock(side_effect=get_agent)
+        
+        executor = ParallelStageExecutor(
+            agent_factory=agent_factory,
+            settings=settings,
+            stage_manager=stage_manager
+        )
+        
+        # Create parallel stage with different agents
+        stage = SimpleNamespace(
+            name="test-stage",
+            agents=[
+                SimpleNamespace(name="FastAgent", llm_provider=None, iteration_strategy=None),
+                SimpleNamespace(name="SlowAgent", llm_provider=None, iteration_strategy=None)
+            ],
+            replicas=1,
+            llm_provider=None,
+            iteration_strategy=None,
+            failure_policy=FailurePolicy.ANY  # Continue if one succeeds
+        )
+        
+        from tarsy.models.alert import ProcessingAlert
+        alert = AlertFactory.create_kubernetes_alert()
+        processing_alert = ProcessingAlert(
+            alert_type=alert.alert_type or "kubernetes",
+            severity=alert.data.get("severity", "critical"),
+            timestamp=alert.timestamp,
+            environment=alert.data.get("environment", "production"),
+            runbook_url=alert.runbook,
+            alert_data=alert.data
+        )
+        
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session"
+        )
+        
+        chain_def = SimpleNamespace(llm_provider=None)
+        
+        # Execute parallel agents
+        result = await executor.execute_parallel_agents(
+            stage=stage,
+            chain_context=chain_context,
+            session_mcp_client=Mock(),
+            chain_definition=chain_def,
+            stage_index=0
+        )
+        
+        # Verify one succeeded and one timed out
+        assert result.status == StageStatus.COMPLETED  # ANY policy: one success is enough
+        assert len(result.results) == 2
+        
+        # Find the results by agent name
+        fast_result = next((r for r in result.results if r.agent_name == "FastAgent"), None)
+        slow_result = next((r for r in result.results if r.agent_name == "SlowAgent"), None)
+        
+        assert fast_result is not None
+        assert fast_result.status == StageStatus.COMPLETED
+        
+        assert slow_result is not None
+        assert slow_result.status == StageStatus.FAILED
+        assert "timeout" in slow_result.error_message.lower()
 
