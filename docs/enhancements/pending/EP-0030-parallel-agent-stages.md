@@ -11,6 +11,7 @@ Add parallel execution capabilities to agent chains, supporting:
 5. **Partial success**: Continue chain if at least one parallel execution succeeds
 6. **Structured results**: Raw parallel outputs packaged for next stage consumption
 7. **Automatic synthesis**: Built-in SynthesisAgent synthesizes results when parallel stage is final
+8. **Pause/Resume support**: Individual agents can pause at max_iterations while others complete; resume re-executes only paused agents
 
 ## Configuration Syntax
 
@@ -100,6 +101,52 @@ stages:
 ### Case 3: Single Agent Final Stage (Existing Behavior)
 
 - Use agent's own final analysis (unchanged)
+
+## Pause/Resume Behavior
+
+### Pause Detection
+
+When any parallel agent hits `max_iterations` without reaching a Final Answer:
+1. Agent raises `SessionPaused` exception (same as single-agent stages)
+2. Exception caught in `execute_single()` (parallel execution handler)
+3. Child stage marked as `PAUSED` (not `FAILED`)
+4. Other parallel agents continue running naturally
+5. Parent stage status determined by priority: `PAUSED > FAILED > COMPLETED`
+6. Session enters `PAUSED` state if any agent is paused
+
+### Status Priority
+
+Overall parallel stage status follows this priority:
+1. **PAUSED** - If any agent is paused, stage is PAUSED (user can resume)
+2. **COMPLETED/FAILED** - Determined by `failure_policy` if no agents paused
+
+Examples:
+- 2 completed + 1 paused → Stage is PAUSED
+- 1 completed + 1 failed + 1 paused → Stage is PAUSED
+- 2 completed + 1 failed (no pauses) + policy=ANY → Stage is COMPLETED
+- 2 completed + 1 failed (no pauses) + policy=ALL → Stage is FAILED
+
+### Resume Behavior
+
+When resuming a paused parallel stage:
+1. Load all child stage executions from database
+2. Separate by status: completed, paused, failed
+3. Reconstruct results from completed children (preserved)
+4. Reconstruct results from failed children (preserved)
+5. Build execution configs for ONLY paused children
+6. Restore paused conversation states to chain context
+7. Re-execute paused agents using existing parallel execution logic
+8. Merge all results: completed + failed + resumed
+9. Determine final status (may pause again if agents hit max_iterations)
+10. Update parent stage with merged result
+
+### Key Features
+
+- **Completed results preserved**: Agents that finished successfully don't re-execute
+- **Failed results preserved**: Agents that failed remain failed (resume only pauses)
+- **Independent iteration counts**: Each agent tracks its own iteration count
+- **Multiple resume cycles**: Can pause and resume multiple times
+- **Synthesis integration**: Final synthesis includes all agent results (completed + resumed)
 
 ## Implementation Tasks
 
@@ -287,6 +334,11 @@ stages:
 9. **Database Hierarchy**: Parent-child relationship for stage executions enables clean queries and UI grouping
 10. **Consistent Naming**: Use `name` field in `ParallelAgentConfig` (not `agent`) for consistency with stage naming
 11. **Metadata Separation**: Configuration metadata vs execution metadata clearly separated in `ParallelStageMetadata`
+12. **Pause/Resume Compatibility**: 
+    - When any parallel agent pauses, entire stage marked as PAUSED (pause priority over success/failure)
+    - Other agents allowed to complete naturally (preserve their work)
+    - Resume re-executes only paused agents (completed/failed results preserved)
+    - Multiple pause/resume cycles supported
 
 ## Files to Modify
 

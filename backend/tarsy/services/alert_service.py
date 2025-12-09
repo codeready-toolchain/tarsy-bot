@@ -29,6 +29,7 @@ from tarsy.models.constants import (
     ParallelType,
     StageStatus,
 )
+from tarsy.models.db_models import StageExecution
 from tarsy.models.pause_metadata import PauseMetadata, PauseReason
 from tarsy.models.processing_context import ChainContext
 from tarsy.services.agent_factory import AgentFactory
@@ -567,12 +568,55 @@ class AlertService:
             logger.info(f"Creating session-scoped MCP client for resumed session {session_id}")
             session_mcp_client = await self.mcp_client_factory.create_client()
             
-            # Execute from the paused stage
-            result = await self._execute_chain_stages(
-                chain_definition,
-                chain_context,
-                session_mcp_client
-            )
+            # Check if paused stage is a parallel stage
+            if paused_stage.parallel_type in ParallelType.parallel_values():
+                logger.info(f"Resuming parallel stage '{paused_stage.stage_name}'")
+                
+                # Find stage index in chain definition
+                stage_index = paused_stage.stage_index
+                
+                # Resume parallel stage (only re-executes paused children)
+                parallel_result = await self._resume_parallel_stage(
+                    paused_parent_stage=paused_stage,
+                    chain_context=chain_context,
+                    session_mcp_client=session_mcp_client,
+                    chain_definition=chain_definition,
+                    stage_index=stage_index
+                )
+                
+                # Add result to context
+                chain_context.add_stage_result(paused_stage.stage_name, parallel_result)
+                
+                # Check if we need to continue to next stages
+                if parallel_result.status == StageStatus.COMPLETED:
+                    # Continue with remaining stages
+                    result = await self._execute_chain_stages(
+                        chain_definition,
+                        chain_context,
+                        session_mcp_client
+                    )
+                elif parallel_result.status == StageStatus.PAUSED:
+                    # Paused again - return pause result
+                    result = ChainExecutionResult(
+                        status=ChainStatus.PAUSED,
+                        stage_results=[],
+                        final_analysis=f"Parallel stage '{paused_stage.stage_name}' paused again",
+                        timestamp_us=now_us()
+                    )
+                else:  # FAILED
+                    result = ChainExecutionResult(
+                        status=ChainStatus.FAILED,
+                        stage_results=[],
+                        error=f"Parallel stage '{paused_stage.stage_name}' failed",
+                        timestamp_us=now_us()
+                    )
+            else:
+                # Existing: Resume single-agent stage
+                result = await self._execute_chain_stages(
+                    chain_definition,
+                    chain_context,
+                    session_mcp_client
+                )
             
             # Handle result
             if result.status == ChainStatus.COMPLETED:
@@ -1739,7 +1783,41 @@ class AlertService:
                 
                 return (result, metadata)
                 
+            except SessionPaused as e:
+                # Special handling for pause signal (not an error!)
+                logger.info(f"{parallel_type} '{agent_name}' paused at iteration {e.iteration}")
+                
+                # Create paused result with conversation state for resume
+                paused_result = AgentExecutionResult(
+                    status=StageStatus.PAUSED,
+                    agent_name=agent_name,
+                    stage_name=stage.name,
+                    timestamp_us=now_us(),
+                    result_summary=f"Paused at iteration {e.iteration}",
+                    paused_conversation_state=e.conversation.model_dump() if e.conversation else None,
+                    error_message=None
+                )
+                
+                # Update child stage as PAUSED (not failed!)
+                await self._update_stage_execution_paused(child_execution_id, e.iteration, paused_result)
+                
+                # Create metadata with PAUSED status
+                agent_completed_at_us = now_us()
+                metadata = AgentExecutionMetadata(
+                    agent_name=agent_name,
+                    llm_provider=config["llm_provider"] or self.settings.llm_provider,
+                    iteration_strategy=config["iteration_strategy"] or "unknown",
+                    started_at_us=agent_started_at_us,
+                    completed_at_us=agent_completed_at_us,
+                    status=StageStatus.PAUSED,
+                    error_message=None,
+                    token_usage=None
+                )
+                
+                return (paused_result, metadata)
+                
             except Exception as e:
+                # All other exceptions are failures
                 logger.error(f"{parallel_type} '{agent_name}' failed: {e}", exc_info=True)
                 
                 agent_completed_at_us = now_us()
@@ -1821,18 +1899,32 @@ class AlertService:
         )
         
         # Determine overall stage status based on failure policy
-        successful_count = sum(1 for m in metadatas if m.status == StageStatus.COMPLETED)
-        failed_count = len(metadatas) - successful_count
+        # Count by all statuses
+        completed_count = sum(1 for m in metadatas if m.status == StageStatus.COMPLETED)
+        failed_count = sum(1 for m in metadatas if m.status == StageStatus.FAILED)
+        paused_count = sum(1 for m in metadatas if m.status == StageStatus.PAUSED)
         
-        if stage.failure_policy == FailurePolicy.ALL:
+        # PAUSED takes priority over everything - if any agent paused, whole stage is paused
+        if paused_count > 0:
+            # Any agent paused = whole stage is paused (user can resume)
+            overall_status = StageStatus.PAUSED
+            logger.info(
+                f"{parallel_type.capitalize()} stage '{stage.name}': "
+                f"{completed_count} completed, {failed_count} failed, {paused_count} paused "
+                f"-> Overall status: PAUSED"
+            )
+        elif stage.failure_policy == FailurePolicy.ALL:
             overall_status = StageStatus.COMPLETED if failed_count == 0 else StageStatus.FAILED
+            logger.info(
+                f"{parallel_type.capitalize()} stage '{stage.name}' completed: {completed_count}/{len(metadatas)} succeeded, "
+                f"policy={stage.failure_policy}, status={overall_status.value}"
+            )
         else:  # FailurePolicy.ANY
-            overall_status = StageStatus.COMPLETED if successful_count > 0 else StageStatus.FAILED
-        
-        logger.info(
-            f"{parallel_type.capitalize()} stage '{stage.name}' completed: {successful_count}/{len(metadatas)} succeeded, "
-            f"policy={stage.failure_policy}, status={overall_status.value}"
-        )
+            overall_status = StageStatus.COMPLETED if completed_count > 0 else StageStatus.FAILED
+            logger.info(
+                f"{parallel_type.capitalize()} stage '{stage.name}' completed: {completed_count}/{len(metadatas)} succeeded, "
+                f"policy={stage.failure_policy}, status={overall_status.value}"
+            )
         
         # Create parallel stage result
         parallel_result = ParallelStageResult(
@@ -1845,11 +1937,265 @@ class AlertService:
         # Update parent stage execution with result
         if overall_status == StageStatus.COMPLETED:
             await self._update_stage_execution_completed(parent_stage_execution_id, parallel_result)
-        else:
+        elif overall_status == StageStatus.PAUSED:
+            # Handle paused parallel stage
+            # Use a representative iteration count (timestamp as proxy since we don't track iteration in metadata)
+            # Note: Individual child iterations are stored in their own stage_execution records
+            representative_iteration = max(
+                m.completed_at_us for m in metadatas if m.status == StageStatus.PAUSED
+            ) // 1000  # Use timestamp as proxy since iteration not in metadata
+            
+            # Save parallel_result in parent stage (contains ALL agent results including paused ones)
+            await self._update_stage_execution_paused(
+                parent_stage_execution_id, 
+                representative_iteration,
+                parallel_result  # This preserves all agent results for resume
+            )
+            
+            logger.info(
+                f"Parallel stage '{stage.name}' paused: "
+                f"{paused_count} agents paused, {completed_count} completed, {failed_count} failed"
+            )
+        else:  # FAILED
             error_msg = f"{parallel_type.capitalize()} stage failed: {failed_count}/{len(metadatas)} executions failed (policy: {stage.failure_policy})"
             await self._update_stage_execution_failed(parent_stage_execution_id, error_msg)
         
         return parallel_result
+    
+    async def _resume_parallel_stage(
+        self,
+        paused_parent_stage: 'StageExecution',
+        chain_context: ChainContext,
+        session_mcp_client: MCPClient,
+        chain_definition: ChainConfigModel,
+        stage_index: int
+    ) -> ParallelStageResult:
+        """
+        Resume a paused parallel stage by re-executing only paused children.
+        
+        Completed and failed children are preserved from the original execution.
+        Only agents in PAUSED status are re-executed.
+        
+        Args:
+            paused_parent_stage: Parent stage execution that was paused
+            chain_context: Chain context for session
+            session_mcp_client: Session-scoped MCP client
+            chain_definition: Full chain definition
+            stage_index: Index of this stage in chain
+            
+        Returns:
+            ParallelStageResult with merged results (completed + resumed)
+        """
+        from tarsy.models.agent_execution_result import (
+            AgentExecutionMetadata,
+            ParallelStageMetadata,
+            ParallelStageResult,
+        )
+        
+        logger.info(f"Resuming parallel stage '{paused_parent_stage.stage_name}'")
+        
+        # 1. Load all child stage executions
+        children = await self.history_service.get_parallel_stage_children(
+            paused_parent_stage.execution_id
+        )
+        
+        # 2. Separate children by status
+        completed_children = [c for c in children if c.status == StageStatus.COMPLETED.value]
+        paused_children = [c for c in children if c.status == StageStatus.PAUSED.value]
+        failed_children = [c for c in children if c.status == StageStatus.FAILED.value]
+        
+        logger.info(
+            f"Parallel stage resume: {len(completed_children)} completed, "
+            f"{len(paused_children)} paused, {len(failed_children)} failed"
+        )
+        
+        if not paused_children:
+            raise ValueError(
+                f"No paused children found for parallel stage {paused_parent_stage.stage_name}"
+            )
+        
+        # 3. Load original stage configuration from chain definition
+        stage_config = chain_definition.stages[stage_index]
+        
+        # 4. Reconstruct completed results from database
+        completed_results = []
+        completed_metadatas = []
+        
+        for child in completed_children:
+            if child.stage_output:
+                result = AgentExecutionResult.model_validate(child.stage_output)
+                completed_results.append(result)
+                
+                # Reconstruct metadata for completed child
+                metadata = AgentExecutionMetadata(
+                    agent_name=child.agent,
+                    llm_provider="unknown",  # Not stored, will be recalculated
+                    iteration_strategy="unknown",  # Not stored
+                    started_at_us=child.started_at_us or 0,
+                    completed_at_us=child.completed_at_us or 0,
+                    status=StageStatus.COMPLETED,
+                    error_message=None,
+                    token_usage=None
+                )
+                completed_metadatas.append(metadata)
+        
+        # 5. Reconstruct failed results from database (preserve failures)
+        failed_results = []
+        failed_metadatas = []
+        
+        for child in failed_children:
+            # Create failed result
+            failed_result = AgentExecutionResult(
+                status=StageStatus.FAILED,
+                agent_name=child.agent,
+                stage_name=child.stage_name,
+                timestamp_us=child.completed_at_us or now_us(),
+                result_summary=f"Failed: {child.error_message or 'Unknown error'}",
+                error_message=child.error_message
+            )
+            failed_results.append(failed_result)
+            
+            # Reconstruct metadata
+            metadata = AgentExecutionMetadata(
+                agent_name=child.agent,
+                llm_provider="unknown",
+                iteration_strategy="unknown",
+                started_at_us=child.started_at_us or 0,
+                completed_at_us=child.completed_at_us or now_us(),
+                status=StageStatus.FAILED,
+                error_message=child.error_message,
+                token_usage=None
+            )
+            failed_metadatas.append(metadata)
+        
+        # 6. Build execution configs for ONLY paused children
+        execution_configs = []
+        
+        for child in paused_children:
+            # Determine agent configuration
+            # For multi-agent: look up in stage.agents list
+            # For replica: reconstruct from naming pattern
+            
+            if paused_parent_stage.parallel_type == ParallelType.MULTI_AGENT.value:
+                # Find matching agent config in stage definition
+                agent_config = next(
+                    (a for a in stage_config.agents if a.name == child.agent),
+                    None
+                )
+                if not agent_config:
+                    raise ValueError(f"Agent config not found for {child.agent}")
+                
+                config = {
+                    "agent_name": child.agent,
+                    "llm_provider": agent_config.llm_provider,
+                    "iteration_strategy": agent_config.iteration_strategy,
+                }
+            else:  # REPLICA
+                # Extract base agent name (e.g., "KubernetesAgent-1" -> "KubernetesAgent")
+                base_agent = stage_config.agent
+                
+                config = {
+                    "agent_name": child.agent,  # Keep replica name
+                    "base_agent_name": base_agent,
+                    "llm_provider": stage_config.llm_provider,
+                    "iteration_strategy": stage_config.iteration_strategy,
+                }
+            
+            execution_configs.append(config)
+            
+            # 7. Restore paused conversation state to chain_context
+            if child.stage_output:
+                paused_result = AgentExecutionResult.model_validate(child.stage_output)
+                # Add to context so agent can resume from paused state
+                chain_context.add_stage_result(child.stage_name, paused_result)
+                logger.info(f"Restored paused state for {child.agent}")
+        
+        # 8. Execute ONLY paused children using existing parallel execution logic
+        logger.info(f"Re-executing {len(paused_children)} paused agents")
+        
+        # Create temporary stage-like object for execution
+        from types import SimpleNamespace
+        resumed_stage = SimpleNamespace(
+            name=stage_config.name,
+            agent=stage_config.agent,
+            failure_policy=stage_config.failure_policy,
+            llm_provider=stage_config.llm_provider,
+            iteration_strategy=stage_config.iteration_strategy
+        )
+        
+        # Execute paused agents (this handles creating new child stage executions)
+        resumed_result = await self._execute_parallel_stage(
+            stage=resumed_stage,
+            chain_context=chain_context,
+            session_mcp_client=session_mcp_client,
+            chain_definition=chain_definition,
+            stage_index=stage_index,
+            execution_configs=execution_configs,
+            parallel_type=paused_parent_stage.parallel_type
+        )
+        
+        # 9. Merge all results: completed + failed + resumed
+        all_results = completed_results + failed_results + resumed_result.results
+        all_metadatas = completed_metadatas + failed_metadatas + resumed_result.metadata.agent_metadatas
+        
+        # 10. Create final merged metadata
+        merged_metadata = ParallelStageMetadata(
+            parent_stage_execution_id=paused_parent_stage.execution_id,
+            parallel_type=paused_parent_stage.parallel_type,
+            failure_policy=stage_config.failure_policy,
+            started_at_us=paused_parent_stage.started_at_us or now_us(),
+            completed_at_us=now_us(),
+            agent_metadatas=all_metadatas
+        )
+        
+        # 11. Determine final status using same logic as initial execution
+        completed_count = sum(1 for m in all_metadatas if m.status == StageStatus.COMPLETED)
+        failed_count = sum(1 for m in all_metadatas if m.status == StageStatus.FAILED)
+        paused_count = sum(1 for m in all_metadatas if m.status == StageStatus.PAUSED)
+        
+        if paused_count > 0:
+            # Still has paused agents (hit max_iterations again on resume)
+            final_status = StageStatus.PAUSED
+            logger.warning(f"Parallel stage paused again: {paused_count} agents still paused")
+        elif stage_config.failure_policy == FailurePolicy.ALL:
+            final_status = StageStatus.COMPLETED if failed_count == 0 else StageStatus.FAILED
+        else:  # FailurePolicy.ANY
+            final_status = StageStatus.COMPLETED if completed_count > 0 else StageStatus.FAILED
+        
+        # 12. Create final merged result
+        merged_result = ParallelStageResult(
+            results=all_results,
+            metadata=merged_metadata,
+            status=final_status,
+            timestamp_us=merged_metadata.completed_at_us
+        )
+        
+        # 13. Update parent stage with final result
+        if final_status == StageStatus.COMPLETED:
+            await self._update_stage_execution_completed(
+                paused_parent_stage.execution_id, 
+                merged_result
+            )
+        elif final_status == StageStatus.PAUSED:
+            # Paused again - update with new pause state
+            await self._update_stage_execution_paused(
+                paused_parent_stage.execution_id,
+                0,  # Iteration not meaningful for parallel stage
+                merged_result
+            )
+        else:  # FAILED
+            error_msg = f"Parallel stage failed after resume: {failed_count} agents failed"
+            await self._update_stage_execution_failed(
+                paused_parent_stage.execution_id,
+                error_msg
+            )
+        
+        logger.info(
+            f"Parallel stage resume complete: {completed_count} completed, "
+            f"{failed_count} failed, {paused_count} paused -> {final_status.value}"
+        )
+        
+        return merged_result
     
     def _is_final_stage_parallel(self, chain_definition: "ChainConfigModel") -> bool:
         """

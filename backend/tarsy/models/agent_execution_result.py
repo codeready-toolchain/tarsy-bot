@@ -141,6 +141,11 @@ class ParallelStageMetadata(BaseModel):
         return sum(1 for meta in self.agent_metadatas if meta.status == StageStatus.FAILED)
     
     @property
+    def paused_count(self) -> int:
+        """Count of paused agent executions."""
+        return sum(1 for meta in self.agent_metadatas if meta.status == StageStatus.PAUSED)
+    
+    @property
     def total_count(self) -> int:
         """Total number of agent executions."""
         return len(self.agent_metadatas)

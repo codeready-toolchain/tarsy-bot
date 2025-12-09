@@ -91,13 +91,10 @@ test-e2e: check-test-deps clean-test-db ## Run end-to-end tests only (one by one
 	@$(MAKE) clean-test-db
 	@echo "$(YELLOW)Running ninth E2E test (parallel then regular)...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_parallel_then_regular_e2e.py -v --tb=short -m e2e || exit 1
+	@$(MAKE) clean-test-db
+	@echo "$(YELLOW)Running tenth E2E test (parallel pause/resume)...$(NC)"
+	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_pause_resume_parallel_e2e.py -v --tb=short -m e2e || exit 1
 	@echo "$(GREEN)All E2E tests completed successfully!$(NC)"
-
-.PHONY: test-e2e-pause-resume
-test-e2e-pause-resume: check-test-deps clean-test-db ## Run only the pause/resume E2E test
-	@echo "$(GREEN)Running pause/resume E2E test...$(NC)"
-	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_pause_resume_e2e.py -v --tb=short -m e2e
-	@echo "$(GREEN)Pause/resume E2E test completed!$(NC)"
 
 .PHONY: test-coverage
 test-coverage: check-test-deps clean-test-db ## Run unit and integration tests with coverage report (no e2e-tests for stability, with clean database)
