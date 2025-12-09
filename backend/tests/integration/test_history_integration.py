@@ -1485,3 +1485,107 @@ class TestDuplicatePreventionIntegration:
         assert detailed_session_2.author is None
         assert detailed_session_2.runbook_url is None
         assert detailed_session_2.session_id == "test-metadata-session-2"
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+class TestParallelStageHistoryIntegration:
+    """Integration tests for parallel stage history operations."""
+    
+    async def test_get_parallel_stage_children(self, history_service_with_test_db: HistoryService) -> None:
+        """Test HistoryService.get_parallel_stage_children() retrieves child stages correctly."""
+        from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+        from tarsy.models.alert import Alert, ProcessingAlert
+        from tarsy.models.constants import ParallelType, StageStatus
+        from tarsy.models.db_models import StageExecution
+        from tarsy.models.processing_context import ChainContext
+        
+        # Create a test session
+        alert = Alert(
+            alert_type="kubernetes",
+            data={"pod": "test-pod", "namespace": "default"}
+        )
+        processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type="kubernetes")
+        context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-parallel-children-session",
+            current_stage_name="parallel_stage"
+        )
+        
+        chain_definition = ChainConfigModel(
+            chain_id="test-parallel-chain",
+            alert_types=["kubernetes"],
+            stages=[
+                ChainStageConfigModel(
+                    name="parallel_stage",
+                    agent="base"
+                )
+            ]
+        )
+        
+        history_service_with_test_db.create_session(context, chain_definition)
+        
+        # Create a parent parallel stage execution
+        parent_stage = StageExecution(
+            session_id="test-parallel-children-session",
+            stage_id="parallel_stage_0",
+            stage_index=0,
+            stage_name="parallel_stage",
+            agent="ParallelStage",
+            status=StageStatus.PAUSED.value,
+            parallel_type=ParallelType.MULTI_AGENT.value,
+            started_at_us=now_us(),
+        )
+        
+        parent_execution_id = await history_service_with_test_db.create_stage_execution(parent_stage)
+        
+        # Create child stage executions with different statuses
+        child_agents = [
+            ("KubernetesAgent", StageStatus.COMPLETED, "Analysis complete"),
+            ("LogAgent", StageStatus.PAUSED, "Paused at iteration 2"),
+            ("NetworkAgent", StageStatus.FAILED, "Connection timeout"),
+        ]
+        
+        child_execution_ids = []
+        for idx, (agent_name, status, summary) in enumerate(child_agents):
+            child_stage = StageExecution(
+                session_id="test-parallel-children-session",
+                stage_id=f"parallel_stage_child_{idx}",
+                stage_index=0,
+                stage_name="parallel_stage",
+                agent=agent_name,
+                status=status.value,
+                parallel_type=ParallelType.MULTI_AGENT.value,
+                parent_stage_execution_id=parent_execution_id,
+                parallel_index=idx + 1,
+                started_at_us=now_us(),
+                error_message="Test error" if status == StageStatus.FAILED else None
+            )
+            
+            child_id = await history_service_with_test_db.create_stage_execution(child_stage)
+            child_execution_ids.append(child_id)
+        
+        # Test: Retrieve children using HistoryService method
+        children = await history_service_with_test_db.get_parallel_stage_children(parent_execution_id)
+        
+        # Assertions
+        assert len(children) == 3, f"Expected 3 children, got {len(children)}"
+        assert all(isinstance(c, StageExecution) for c in children), "All children should be StageExecution instances"
+        assert all(c.parent_stage_execution_id == parent_execution_id for c in children), "All children should reference parent"
+        
+        # Verify children are ordered by parallel_index
+        assert [c.parallel_index for c in children] == [1, 2, 3], "Children should be ordered by parallel_index"
+        
+        # Verify statuses match
+        assert children[0].agent == "KubernetesAgent"
+        assert children[0].status == StageStatus.COMPLETED.value
+        
+        assert children[1].agent == "LogAgent"
+        assert children[1].status == StageStatus.PAUSED.value
+        
+        assert children[2].agent == "NetworkAgent"
+        assert children[2].status == StageStatus.FAILED.value
+        
+        # Test: Empty result for non-existent parent
+        empty_children = await history_service_with_test_db.get_parallel_stage_children("non-existent-id")
+        assert empty_children == [], "Should return empty list for non-existent parent"
