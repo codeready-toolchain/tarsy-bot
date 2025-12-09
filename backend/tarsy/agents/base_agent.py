@@ -134,12 +134,12 @@ class BaseAgent(ABC):
             from .iteration_controllers.synthesis_controller import (
                 SynthesisController,
             )
-            return SynthesisController()
+            return SynthesisController(self.llm_manager, self._prompt_builder)
         elif strategy == IterationStrategy.SYNTHESIS_NATIVE_THINKING:
             from .iteration_controllers.synthesis_native_thinking_controller import (
                 SynthesisNativeThinkingController,
             )
-            return SynthesisNativeThinkingController()
+            return SynthesisNativeThinkingController(self.llm_manager, self._prompt_builder)
         else:
             assert_never(strategy)
     

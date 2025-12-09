@@ -85,6 +85,40 @@ class PromptBuilder:
             history_text=history_text
         )
     
+    def build_synthesis_prompt(self, context: 'StageContext') -> str:
+        """
+        Build synthesis prompt for combining parallel investigation results.
+        
+        Similar to ReAct prompt but with no tools available (tool-less synthesis).
+        """
+        logger.debug("Building synthesis prompt")
+        # Build question components using StageContext properties directly
+        alert_section = self.alert_component.format(context.chain_context.processing_alert)
+        runbook_section = self.runbook_component.format(context.runbook_content)
+        
+        # Use StageContext's built-in previous stages formatting
+        # This will include the parallel results
+        previous_stages_context = context.format_previous_stages_context()
+        if previous_stages_context == "No previous stage context available.":
+            chain_context = "## Previous Stage Data\nNo previous stage data is available for this alert. This is the first stage of analysis."
+        else:
+            chain_context = f"## Previous Stage Data\n{previous_stages_context}"
+        
+        # Build question
+        question = ANALYSIS_QUESTION_TEMPLATE.format(
+            alert_type=context.chain_context.processing_alert.alert_type,
+            alert_section=alert_section,
+            runbook_section=runbook_section,
+            chain_context=chain_context
+        )
+        
+        # Format with no tools available (synthesis doesn't use tools)
+        return STANDARD_REACT_PROMPT_TEMPLATE.format(
+            available_actions="No tools available.",
+            question=question,
+            history_text=""
+        )
+    
     def build_stage_analysis_react_prompt(self, context: 'StageContext', react_history: Optional[List[str]] = None) -> str:
         """Build stage analysis ReAct prompt."""
         logger.debug("Building stage analysis ReAct prompt")

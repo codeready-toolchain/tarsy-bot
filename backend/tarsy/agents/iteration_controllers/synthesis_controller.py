@@ -9,11 +9,12 @@ agents and produces a unified analysis.
 from typing import TYPE_CHECKING
 
 from tarsy.agents.iteration_controllers.base_controller import IterationController
-from tarsy.agents.prompts.builders import PromptBuilder
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.utils.logger import get_module_logger
 
 if TYPE_CHECKING:
+    from tarsy.agents.prompts.builders import PromptBuilder
+    from tarsy.integrations.llm.manager import LLMManager
     from tarsy.models.processing_context import StageContext
 
 logger = get_module_logger(__name__)
@@ -27,10 +28,17 @@ class SynthesisController(IterationController):
     Works with any LLM provider (provider-agnostic).
     """
     
-    def __init__(self):
-        """Initialize synthesis controller."""
+    def __init__(self, llm_manager: 'LLMManager', prompt_builder: 'PromptBuilder'):
+        """
+        Initialize synthesis controller.
+        
+        Args:
+            llm_manager: LLM manager for accessing LLM clients
+            prompt_builder: Prompt builder for creating synthesis prompts
+        """
         super().__init__()
-        self.prompt_builder = PromptBuilder()
+        self.llm_manager = llm_manager
+        self.prompt_builder = prompt_builder
     
     def needs_mcp_tools(self) -> bool:
         """Synthesis doesn't need MCP tools."""
@@ -73,23 +81,28 @@ class SynthesisController(IterationController):
         # Extract native tools override from context (if specified)
         native_tools_override = self._get_native_tools_override(context)
         
-        # Single LLM call for synthesis
+        # Single LLM call for synthesis using llm_manager
         try:
-            response = await agent.llm_client.generate_with_conversation(
+            conversation_result = await self.llm_manager.generate_response(
                 conversation=conversation,
-                stage_execution_id=stage_execution_id,
                 session_id=context.session_id,
+                stage_execution_id=stage_execution_id,
+                provider=agent._llm_provider_name,
                 native_tools_override=native_tools_override
             )
             
-            # Extract content from response
-            if hasattr(response, 'content'):
-                analysis = response.content
-            else:
-                analysis = str(response)
+            # Extract assistant response
+            assistant_message = conversation_result.get_latest_assistant_message()
+            if not assistant_message:
+                raise Exception("No assistant response received from LLM")
+            
+            response = assistant_message
+            
+            # Extract content from assistant message
+            analysis = response.content if hasattr(response, 'content') else str(response)
             
             # Store conversation for investigation_history
-            self._last_conversation = conversation
+            self._last_conversation = conversation_result
             
             logger.info("Synthesis analysis completed successfully")
             return analysis if analysis else "No synthesis result generated"

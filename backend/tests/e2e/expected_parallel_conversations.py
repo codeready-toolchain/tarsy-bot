@@ -320,7 +320,6 @@ Always be specific, reference actual data, and provide clear next steps.
 Focus on root cause analysis and sustainable solutions.
 
 ## Agent-Specific Instructions
-
 You are an Incident Commander synthesizing results from multiple parallel investigations.
 
 Your task:
@@ -332,76 +331,7 @@ Your task:
 6. PROVIDE definitive root cause analysis based on the most reliable evidence
 7. GENERATE actionable recommendations leveraging insights from the strongest investigations
 
-Focus on solving the original alert/issue, not on meta-analyzing agent performance or comparing approaches.
-
-You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
-
-REQUIRED FORMAT:
-
-Question: [the incident question]
-Thought: [your step-by-step reasoning]
-Action: [tool name from available tools]
-Action Input: [parameters as key: value pairs]
-
-⚠️ STOP immediately after Action Input. The system provides Observations.
-
-Continue the cycle. Conclude when you have sufficient information:
-
-Thought: [final reasoning]
-Final Answer: [complete structured response]
-
-CRITICAL RULES:
-1. Always use colons after headers: "Thought:", "Action:", "Action Input:"
-2. Start each section on a NEW LINE (never continue on same line as previous text)
-3. Stop after Action Input—never generate fake Observations
-4. Parameters: one per line for multiple values, or inline for single value
-5. Conclude when you have actionable insights (perfect information not required)
-
-PARAMETER FORMATS:
-
-Multiple parameters:
-Action Input: apiVersion: v1
-kind: Namespace
-name: superman-dev
-
-Single parameter:
-Action Input: namespace: default
-
-EXAMPLE CYCLE:
-
-Question: Why is namespace 'superman-dev' stuck in terminating state?
-
-Thought: I need to check the namespace status first to identify any blocking resources or finalizers.
-
-Action: kubernetes-server.resources_get
-Action Input: apiVersion: v1
-kind: Namespace
-name: superman-dev
-
-[System provides: Observation: {"status": {"phase": "Terminating", "finalizers": ["kubernetes"]}}]
-
-Thought: A finalizer is blocking deletion. I should check for any remaining resources in the namespace.
-
-Action: kubernetes-server.resources_list
-Action Input: apiVersion: v1
-kind: Pod
-namespace: superman-dev
-
-[System provides: Observation: No pods found]
-
-Thought: No pods remain, but the finalizer persists. This is an orphaned finalizer that needs manual removal.
-
-Final Answer: 
-**Root Cause:** Orphaned 'kubernetes' finalizer blocking namespace deletion after all resources were cleaned up.
-
-**Resolution Steps:**
-1. Remove the finalizer: `kubectl patch namespace superman-dev -p '{"spec":{"finalizers":null}}' --type=merge`
-2. Verify deletion: `kubectl get namespace superman-dev`
-3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
-
-**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically.
-
-Focus on investigation and providing recommendations for human operators to execute."""
+Focus on solving the original alert/issue, not on meta-analyzing agent performance or comparing approaches."""
         },
         {
             "role": "user",
@@ -446,14 +376,27 @@ This is a test runbook for parallel execution testing.
 **Status**: completed
 
 <!-- Analysis Result START -->
-Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause.
+USER: Tool Result: kubernetes-server.kubectl_get:
+{
+  "result": "{\\"result\\": \\"Pod pod-1 is in CrashLoopBackOff state\\"}"
+}
+
+ASSISTANT: Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause.
 <!-- Analysis Result END -->
 
 #### Agent 2: LogAgent (anthropic-default, react)
 **Status**: completed
 
 <!-- Analysis Result START -->
-Thought: I have analyzed the logs and found the root cause.
+ASSISTANT: Thought: I should analyze the application logs to find error patterns.
+Action: kubernetes-server.get_logs
+Action Input: {"namespace": "test-namespace", "pod": "pod-1"}
+
+USER: Observation: kubernetes-server.get_logs: {
+  "result": "{\\"logs\\": \\"Error: Failed to connect to database at db.example.com:5432 - connection timeout\\"}"
+}
+
+ASSISTANT: Thought: I have analyzed the logs and found the root cause.
 Final Answer: Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity.
 <!-- Analysis Result END -->
 
@@ -823,7 +766,6 @@ Always be specific, reference actual data, and provide clear next steps.
 Focus on root cause analysis and sustainable solutions.
 
 ## Agent-Specific Instructions
-
 You are an Incident Commander synthesizing results from multiple parallel investigations.
 
 Your task:
@@ -835,76 +777,7 @@ Your task:
 6. PROVIDE definitive root cause analysis based on the most reliable evidence
 7. GENERATE actionable recommendations leveraging insights from the strongest investigations
 
-Focus on solving the original alert/issue, not on meta-analyzing agent performance or comparing approaches.
-
-You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
-
-REQUIRED FORMAT:
-
-Question: [the incident question]
-Thought: [your step-by-step reasoning]
-Action: [tool name from available tools]
-Action Input: [parameters as key: value pairs]
-
-⚠️ STOP immediately after Action Input. The system provides Observations.
-
-Continue the cycle. Conclude when you have sufficient information:
-
-Thought: [final reasoning]
-Final Answer: [complete structured response]
-
-CRITICAL RULES:
-1. Always use colons after headers: "Thought:", "Action:", "Action Input:"
-2. Start each section on a NEW LINE (never continue on same line as previous text)
-3. Stop after Action Input—never generate fake Observations
-4. Parameters: one per line for multiple values, or inline for single value
-5. Conclude when you have actionable insights (perfect information not required)
-
-PARAMETER FORMATS:
-
-Multiple parameters:
-Action Input: apiVersion: v1
-kind: Namespace
-name: superman-dev
-
-Single parameter:
-Action Input: namespace: default
-
-EXAMPLE CYCLE:
-
-Question: Why is namespace 'superman-dev' stuck in terminating state?
-
-Thought: I need to check the namespace status first to identify any blocking resources or finalizers.
-
-Action: kubernetes-server.resources_get
-Action Input: apiVersion: v1
-kind: Namespace
-name: superman-dev
-
-[System provides: Observation: {"status": {"phase": "Terminating", "finalizers": ["kubernetes"]}}]
-
-Thought: A finalizer is blocking deletion. I should check for any remaining resources in the namespace.
-
-Action: kubernetes-server.resources_list
-Action Input: apiVersion: v1
-kind: Pod
-namespace: superman-dev
-
-[System provides: Observation: No pods found]
-
-Thought: No pods remain, but the finalizer persists. This is an orphaned finalizer that needs manual removal.
-
-Final Answer: 
-**Root Cause:** Orphaned 'kubernetes' finalizer blocking namespace deletion after all resources were cleaned up.
-
-**Resolution Steps:**
-1. Remove the finalizer: `kubectl patch namespace superman-dev -p '{"spec":{"finalizers":null}}' --type=merge`
-2. Verify deletion: `kubectl get namespace superman-dev`
-3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
-
-**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically.
-
-Focus on investigation and providing recommendations for human operators to execute."""
+Focus on solving the original alert/issue, not on meta-analyzing agent performance or comparing approaches."""
         },
         {
             "role": "user",

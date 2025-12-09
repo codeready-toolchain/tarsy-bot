@@ -8,11 +8,12 @@ deeper reasoning and analysis when synthesizing parallel investigation results.
 from typing import TYPE_CHECKING
 
 from tarsy.agents.iteration_controllers.native_thinking_controller import NativeThinkingController
-from tarsy.agents.prompts.builders import PromptBuilder
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage
 from tarsy.utils.logger import get_module_logger
 
 if TYPE_CHECKING:
+    from tarsy.agents.prompts.builders import PromptBuilder
+    from tarsy.integrations.llm.manager import LLMManager
     from tarsy.models.processing_context import StageContext
 
 logger = get_module_logger(__name__)
@@ -26,10 +27,15 @@ class SynthesisNativeThinkingController(NativeThinkingController):
     and synthesis-specific.
     """
     
-    def __init__(self):
-        """Initialize synthesis native thinking controller."""
-        super().__init__()
-        self.prompt_builder = PromptBuilder()
+    def __init__(self, llm_manager: 'LLMManager', prompt_builder: 'PromptBuilder'):
+        """
+        Initialize synthesis native thinking controller.
+        
+        Args:
+            llm_manager: LLM manager for accessing native thinking clients
+            prompt_builder: Prompt builder for creating synthesis prompts
+        """
+        super().__init__(llm_manager, prompt_builder)
     
     def needs_mcp_tools(self) -> bool:
         """Synthesis doesn't need MCP tools."""
@@ -72,12 +78,16 @@ class SynthesisNativeThinkingController(NativeThinkingController):
         # Extract native tools override - synthesis never uses tools, but preserve context
         native_tools_override = self._get_native_tools_override(context)
         
+        # Get Gemini native thinking client (from parent class method)
+        client = self._get_native_thinking_client(agent._llm_provider_name)
+        
         # Single LLM call with native thinking for synthesis
         try:
-            response = await agent.llm_client.generate_with_conversation(
+            response = await client.generate(
                 conversation=conversation,
-                stage_execution_id=stage_execution_id,
                 session_id=context.session_id,
+                mcp_tools=[],  # Synthesis doesn't use tools
+                stage_execution_id=stage_execution_id,
                 thinking_level="high",  # Enable deep thinking for synthesis
                 native_tools_override=native_tools_override
             )
