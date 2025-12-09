@@ -6,11 +6,56 @@
 
 ---
 
+## Problem Statement
+
+### Current State
+
+TARSy successfully processes security alerts and produces investigation analyses, but we lack systematic quality assessment of these analyses. Key challenges:
+
+- **No Quality Metrics**: Cannot quantitatively assess investigation quality or track improvements over time
+- **Manual Review Overhead**: Operators must manually review analyses to identify gaps or methodology issues
+- **No Feedback Loop**: Difficult to identify patterns in investigation weaknesses to improve agent behavior
+- **Limited Visibility**: No way to compare investigation approaches or identify best practices
+
+### Why This Matters
+
+Quality scoring enables:
+1. **Continuous Improvement**: Identify investigation patterns that need refinement
+2. **Agent Development**: Understand which MCP tools are underutilized or missing
+3. **Operational Confidence**: Quantify analysis reliability for different alert types
+4. **Training Data**: Identify high-quality sessions for future model fine-tuning
+
+### Solution Approach
+
+Implement an LLM-based "judge" that critically evaluates completed alert analysis sessions using a rigorous scoring framework. The judge examines investigation methodology, tool usage, evidence gathering, and conclusion quality—providing both quantitative scores and actionable improvement suggestions.
+
 ## Overview
 
 This EP describes Phase 1 of the alert session scoring system: implementing a core API for scoring individual TARSy alert analysis sessions using an LLM-based "judge" that critically evaluates analysis quality.
 
 **Scope:** On-demand scoring API for individual sessions. UI integration, scheduled scoring, and insights aggregation are covered in separate future EPs.
+
+## Design Overview
+
+### Architecture Summary
+
+The scoring system introduces a new service layer that operates independently of alert processing. It retrieves completed session data from the existing History Service, sends it to a configurable judge LLM for evaluation, and stores structured scores in a purpose-built database schema.
+
+### Key Design Principles
+
+- **Non-Intrusive**: Operates post-session; zero impact on alert processing performance
+- **Criteria Evolution**: Content-addressed configuration enables tracking scoring criteria changes over time
+- **Flexible Scoring**: JSONB score breakdowns adapt to evolving evaluation dimensions without schema migrations
+- **Actionable Feedback**: Normalized storage of missing tools and alternative approaches enables analytics
+- **Manual Control**: Phase 1 is operator-triggered only; automation deferred to future phases
+
+### Design Goals
+
+- Enable systematic quality assessment of TARSy investigation sessions
+- Provide actionable feedback for improving investigation methodology
+- Establish foundation for agent improvement and MCP server development priorities
+- Support historical analysis and criteria evolution tracking
+- Maintain scoring consistency while allowing criteria iteration
 
 ## Experimental Background
 
@@ -36,6 +81,72 @@ This EP describes Phase 1 of the alert session scoring system: implementing a co
 - Automated/scheduled batch scoring
 - Insights aggregation and pattern analysis
 - Real-time scoring during alert processing
+
+---
+
+## Use Cases
+
+### Primary Use Cases
+
+1. **Manual Quality Review**
+   ```
+   Operator: Reviews completed security investigation
+   Action: POST /api/v1/scoring/sessions/{session_id}/score
+   Result: Receives detailed score breakdown with specific methodology critiques
+   Value: Understands investigation quality and identifies improvement areas
+   ```
+
+2. **Agent Development Feedback**
+   ```
+   Developer: Evaluating new agent behavior after code changes
+   Action: Scores 10 recent sessions with updated agent
+   Result: Discovers agent now scores 65→72 average, but consistently missing file-read tools
+   Value: Quantifies improvement and identifies specific gaps to address
+   ```
+
+3. **MCP Server Prioritization**
+   ```
+   Team: Planning which MCP server to develop next
+   Action: Queries score_missing_tools table for frequency analysis
+   Result: "list-processes" tool mentioned in 35% of scores as missing capability
+   Value: Data-driven decision on which tools provide most value
+   ```
+
+4. **Criteria Evolution Tracking**
+   ```
+   Operator: Updates scoring criteria to emphasize evidence gathering
+   Action: Re-scores historical sessions with new criteria (different criteria_hash)
+   Result: Compares old vs. new scores to understand criteria impact
+   Value: Validates that criteria changes measure intended quality dimensions
+   ```
+
+5. **Investigation Methodology Improvement**
+   ```
+   Operator: Reviews alternative approaches from low-scoring sessions
+   Action: GET /api/v1/scoring/sessions/{session_id}/score
+   Result: Judge suggests "File-First Forensic Approach" for malware investigations
+   Value: Learns investigation patterns that could improve future analyses
+   ```
+
+### Secondary Use Cases
+
+6. **Training Data Curation**
+   ```
+   ML Engineer: Building fine-tuning dataset for future agent models
+   Action: Queries sessions with total_score >= 85 and is_current_criteria = true
+   Result: Identifies 47 high-quality sessions with optimal investigation patterns
+   Value: Curates training examples that demonstrate best practices
+   ```
+
+7. **Scoring Consistency Validation**
+   ```
+   Operator: Testing judge LLM reliability
+   Action: Scores same session 3 times with force_rescore=true
+   Result: Receives scores of 67, 65, 69 (±2 point variance)
+   Value: Validates scoring consistency for operational use
+   ```
+
+---
 
 ## System Architecture
 
