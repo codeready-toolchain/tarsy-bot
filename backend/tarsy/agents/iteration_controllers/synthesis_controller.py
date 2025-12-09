@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from tarsy.agents.iteration_controllers.base_controller import IterationController
 from tarsy.agents.prompts.builders import PromptBuilder
-from tarsy.models.llm_models import LLMConversation, LLMMessage, MessageRole
+from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.utils.logger import get_module_logger
 
 if TYPE_CHECKING:

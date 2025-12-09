@@ -44,6 +44,11 @@ agent_chains:
             llm_provider: "anthropic-default"
             iteration_strategy: "react"
         failure_policy: "all"  # Both must succeed
+        # Synthesis configuration (test uses ReAct mocks)
+        synthesis:
+          agent: "SynthesisAgent"
+          iteration_strategy: "native-thinking-synthesis"
+          llm_provider: "anthropic-default"
     description: "Multi-agent parallel stage with automatic synthesis (final stage)"
   
   # Test chain 2: Replica parallel stage with automatic synthesis
@@ -57,6 +62,11 @@ agent_chains:
         llm_provider: "google-default"
         iteration_strategy: "native-thinking"
         failure_policy: "any"  # At least one must succeed
+        # Synthesis configuration (test uses ReAct mocks)
+        synthesis:
+          agent: "SynthesisAgent"
+          iteration_strategy: "react"
+          llm_provider: "anthropic-default"
     description: "Replica parallel stage (3 replicas) with automatic synthesis"
   
   # Test chain 3: Parallel stage followed by regular stage (no auto synthesis)

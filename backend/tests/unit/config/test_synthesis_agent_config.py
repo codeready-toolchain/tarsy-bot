@@ -17,7 +17,7 @@ class TestSynthesisAgentConfiguration:
         
         config = BUILTIN_AGENTS["SynthesisAgent"]
         assert config["import"] == "tarsy.agents.synthesis_agent.SynthesisAgent"
-        assert config["iteration_strategy"] == "react"
+        assert config["iteration_strategy"] == "synthesis"
         assert "description" in config
 
     def test_synthesis_agent_description(self) -> None:
@@ -29,10 +29,10 @@ class TestSynthesisAgentConfiguration:
         assert "parallel" in description.lower()
 
     def test_synthesis_agent_iteration_strategy(self) -> None:
-        """Test that SynthesisAgent uses REACT iteration strategy."""
+        """Test that SynthesisAgent uses SYNTHESIS iteration strategy."""
         config = BUILTIN_AGENTS["SynthesisAgent"]
         
-        assert config["iteration_strategy"] == "react"
+        assert config["iteration_strategy"] == "synthesis"
 
     def test_synthesis_agent_instantiation(
         self, isolated_test_settings, patch_settings_for_tests
@@ -131,7 +131,7 @@ class TestSynthesisAgentConfiguration:
     def test_synthesis_agent_default_iteration_strategy(
         self, isolated_test_settings, patch_settings_for_tests
     ) -> None:
-        """Test that SynthesisAgent defaults to REACT strategy."""
+        """Test that SynthesisAgent defaults to SYNTHESIS strategy."""
         from unittest.mock import Mock
         
         llm_manager = Mock()
@@ -144,7 +144,7 @@ class TestSynthesisAgentConfiguration:
             mcp_registry=mcp_registry
         )
         
-        assert agent.iteration_strategy == IterationStrategy.REACT
+        assert agent.iteration_strategy == IterationStrategy.SYNTHESIS
 
     def test_synthesis_agent_custom_iteration_strategy(
         self, isolated_test_settings, patch_settings_for_tests

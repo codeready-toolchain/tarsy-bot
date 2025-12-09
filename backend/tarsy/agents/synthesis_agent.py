@@ -31,7 +31,7 @@ class SynthesisAgent(BaseAgent):
         llm_manager: LLMManager,
         mcp_client: MCPClient,
         mcp_registry: MCPServerRegistry,
-        iteration_strategy: IterationStrategy = IterationStrategy.REACT
+        iteration_strategy: IterationStrategy = IterationStrategy.SYNTHESIS
     ):
         """
         Initialize the Synthesis Agent.
@@ -40,7 +40,7 @@ class SynthesisAgent(BaseAgent):
             llm_manager: LLM manager for accessing LLM clients
             mcp_client: Client for MCP server interactions
             mcp_registry: Registry of MCP server configurations
-            iteration_strategy: Iteration strategy to use (default: REACT)
+            iteration_strategy: Iteration strategy to use (default: SYNTHESIS)
         """
         super().__init__(
             llm_manager=llm_manager,

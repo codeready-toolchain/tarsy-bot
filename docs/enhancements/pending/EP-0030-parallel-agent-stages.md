@@ -11,7 +11,9 @@ Add parallel execution capabilities to agent chains, supporting:
 5. **Partial success**: Continue chain if at least one parallel execution succeeds
 6. **Structured results**: Raw parallel outputs packaged for next stage consumption
 7. **Automatic synthesis**: Built-in SynthesisAgent synthesizes results when parallel stage is final
-8. **Pause/Resume support**: Individual agents can pause at max_iterations while others complete; resume re-executes only paused agents
+8. **Configurable synthesis**: Optional `synthesis` field allows customizing synthesis agent, iteration strategy, and LLM provider
+9. **Rich investigation history**: Synthesis strategies receive full conversation history (thoughts, tool observations) for comprehensive analysis
+10. **Pause/Resume support**: Individual agents can pause at max_iterations while others complete; resume re-executes only paused agents
 
 ## Configuration Syntax
 
@@ -28,6 +30,11 @@ stages:
         llm_provider: "anthropic"
         iteration_strategy: "native-thinking"  # Compare strategies
     failure_policy: "any"                  # Continue if any succeeds (default: "all")
+    # Optional: Configure synthesis behavior (uses defaults if omitted)
+    synthesis:
+      agent: "SynthesisAgent"              # Agent to use for synthesis (default: SynthesisAgent)
+      iteration_strategy: "react-synthesis" # Synthesis strategy (default: react-synthesis)
+      llm_provider: "anthropic-default"    # Optional provider override for synthesis
   
   - name: "command"
     agent: "SynthesisAgent"                # Final analysis from parallel results (built-in)
@@ -42,6 +49,10 @@ stages:
     replicas: 3                    # Run same agent 3 times with same config
     llm_provider: "openai"         # All replicas use same provider/strategy
     iteration_strategy: "react"
+    # Optional: Configure synthesis with custom strategy
+    synthesis:
+      iteration_strategy: "native-thinking-synthesis"  # Use Gemini thinking for synthesis
+      llm_provider: "google-default"
   
   - name: "command"
     agent: "SynthesisAgent"        # Final analysis from all 3 parallel results
@@ -69,13 +80,20 @@ stages:
 
 ### Automatic Synthesis (No Explicit Judge)
 
+When a parallel stage is the final stage, synthesis is automatically invoked using the stage's `synthesis` configuration (or defaults if not specified).
+
 ```yaml
 stages:
   - name: "investigation"
     agents:
       - name: "kubernetes"
       - name: "vm"
-  # No follow-up stage → built-in SynthesisAgent automatically synthesizes results
+    # Optional: Configure automatic synthesis
+    synthesis:
+      agent: "SynthesisAgent"              # Default
+      iteration_strategy: "react-synthesis" # Default (or use "native-thinking-synthesis")
+      llm_provider: "anthropic-default"    # Optional
+  # No follow-up stage → synthesis automatically invoked with above config
 ```
 
 ```yaml
@@ -83,7 +101,9 @@ stages:
   - name: "investigation"
     agent: "kubernetes"
     replicas: 3
-  # No follow-up stage → built-in SynthesisAgent automatically synthesizes results
+    synthesis:
+      iteration_strategy: "native-thinking-synthesis"  # Use Gemini thinking
+  # No follow-up stage → synthesis automatically invoked
 ```
 
 ## Result Handling Logic
@@ -156,19 +176,27 @@ When resuming a paused parallel stage:
   - `name: str` - agent identifier (changed from `agent` for consistency)
   - `llm_provider: Optional[str]` - optional LLM provider override for this agent
   - `iteration_strategy: Optional[str]` - optional iteration strategy override for this agent
+- Add `SynthesisConfig` model for configurable synthesis behavior:
+  - `agent: str` - agent to use for synthesis (default: "SynthesisAgent")
+  - `iteration_strategy: str` - synthesis strategy (default: "react-synthesis")
+  - `llm_provider: Optional[str]` - optional LLM provider for synthesis
 - Add `replicas` field to `ChainStageConfigModel` with validation (≥1, default 1)
 - Add `failure_policy` field: `Literal["all", "any"]` (default "all")
 - Add `agents` field: `Optional[List[ParallelAgentConfig]]` as alternative to single `agent`
+- Add `synthesis` field: `Optional[SynthesisConfig]` for configurable synthesis
 - Add validation: Either `agent` OR `agents` must be specified, not both
 - Add validation: If `replicas > 1`, must use single `agent`, not `agents` list
 - Add validation: Replicas with `agent` run with same config; use `agents` list for per-agent variety
 
 ### 2. Parallel Execution Results ([backend/tarsy/models/agent_execution_result.py](backend/tarsy/models/agent_execution_result.py))
 
+- Update `AgentExecutionResult` model:
+  - Add `investigation_history: Optional[str]` field - rich conversation history for synthesis strategies (includes all assistant messages, tool observations, excludes system messages and first user message)
+  - Keep `complete_conversation_history: Optional[str]` for backward compatibility with sequential stages
 - Create `AgentExecutionMetadata` model for individual agent execution details:
   - `agent_name: str` - e.g., "KubernetesAgent" or "KubernetesAgent-1" for replicas
   - `llm_provider: str` - provider used for this agent
-  - `iteration_strategy: str` - strategy used (e.g., "react", "native-thinking", "react-stage")
+  - `iteration_strategy: str` - strategy used (e.g., "react", "native-thinking", "react-stage", "react-synthesis", "native-thinking-synthesis")
   - `started_at_us: int`, `completed_at_us: int` - timing info
   - `duration_ms: int` - calculated duration
   - `status: StageStatus` - COMPLETED, FAILED, etc.
@@ -185,7 +213,9 @@ When resuming a paused parallel stage:
   - `status: StageStatus` - aggregated stage status based on failure policy
   - **No `aggregated_summary` field** - synthesis happens in judge agent, not here
 
-### 3. Built-in SynthesisAgent Configuration ([backend/tarsy/config/builtin_config.py](backend/tarsy/config/builtin_config.py))
+### 3. Built-in SynthesisAgent Configuration & Iteration Strategies
+
+#### Built-in SynthesisAgent ([backend/tarsy/config/builtin_config.py](backend/tarsy/config/builtin_config.py))
 
 - Add `SynthesisAgent` entry to `BUILTIN_AGENTS` dictionary:
   - Uses `ConfigurableAgent` (no custom class needed - pure analysis agent)
@@ -200,8 +230,24 @@ When resuming a paused parallel stage:
     - Generate actionable recommendations leveraging insights from the strongest investigations
     - Focus on solving the original alert/issue, not on meta-analyzing agent performance
   - No MCP servers required (empty mcp_servers list)
-  - iteration_strategy: "react" (for structured analysis)
+  - iteration_strategy: "react-synthesis" (default synthesis strategy)
 - Make user-accessible: Can be used explicitly in chains or automatically invoked
+
+#### Synthesis Iteration Strategies ([backend/tarsy/models/constants.py](backend/tarsy/models/constants.py))
+
+- Add new iteration strategies to `IterationStrategy` enum:
+  - `REACT_SYNTHESIS = "react-synthesis"` - ReAct-based synthesis without MCP tools (default)
+  - `NATIVE_THINKING_SYNTHESIS = "native-thinking-synthesis"` - Gemini native thinking for synthesis
+
+#### Synthesis Controllers ([backend/tarsy/agents/iteration_controllers/](backend/tarsy/agents/iteration_controllers/))
+
+- Create `ReactSynthesisController` extending `ReactController`:
+  - Synthesis-specific prompts
+  - `needs_mcp_tools() -> False` (no tool access needed)
+- Create `NativeThinkingSynthesisController` extending `NativeThinkingController`:
+  - Gemini thinking-based synthesis
+  - `needs_mcp_tools() -> False`
+- Update controller factory to map new strategies to synthesis controllers
 
 ### 4. ChainContext Updates ([backend/tarsy/models/processing_context.py](backend/tarsy/models/processing_context.py))
 
@@ -209,6 +255,10 @@ When resuming a paused parallel stage:
 - Add `get_previous_stage_results()` helper that handles both single and parallel results
 - Add `is_parallel_stage(stage_name: str)` helper to check if a stage has parallel execution
 - Add `get_last_stage_result()` helper for automatic synthesis logic
+- Update `format_previous_stages_context()` to use `investigation_history` for synthesis strategies:
+  - Detect if current agent uses synthesis strategy (react-synthesis, native-thinking-synthesis)
+  - For synthesis contexts: Use `investigation_history` field (rich conversation history)
+  - For non-synthesis contexts: Use `complete_conversation_history` (backward compatible)
 
 ### 5. Stage Execution in AlertService ([backend/tarsy/services/alert_service.py](backend/tarsy/services/alert_service.py))
 
@@ -231,8 +281,11 @@ When resuming a paused parallel stage:
   - Handle `ParallelStageResult` status aggregation
 - Add `_is_final_stage_parallel()` helper to check if last stage is parallel
 - Add `_synthesize_parallel_results()` method:
-  - Automatically invoke built-in `SynthesisAgent` when parallel stage is final
-  - Pass `ParallelStageResult` to SynthesisAgent for synthesis
+  - Automatically invoke synthesis agent when parallel stage is final
+  - Use stage's `synthesis` config (agent, iteration_strategy, llm_provider)
+  - Default to `SynthesisAgent` with `react-synthesis` if no config provided
+  - Resolve effective LLM provider: synthesis.llm_provider → stage.llm_provider → chain.llm_provider
+  - Pass `ParallelStageResult` to synthesis agent
   - Return synthesized final analysis
 - Update `_extract_final_analysis_from_stages()`:
   - Check if final stage is parallel
@@ -266,12 +319,19 @@ When resuming a paused parallel stage:
   - For multi-agent: Organize with clear sections and headers (e.g., "## Kubernetes Investigation", "## VM Investigation")
   - For replicas: Label clearly (e.g., "## Run 1 (openai)", "## Run 2 (anthropic)", "## Run 3 (gemini)") - NO pre-analysis
   - Include metadata for each execution: timing, status, LLM provider, iteration strategy
+  - For synthesis strategies: Use `investigation_history` field (rich conversation with tool observations)
+  - For non-synthesis: Use `complete_conversation_history` (last assistant message)
   - Present raw results - let the next agent (SynthesisAgent) do all analysis and comparison
 - Add specific prompt template for `SynthesisAgent`:
   - "You are the Incident Commander analyzing the alert using data from N parallel investigations..."
   - "Critically evaluate the quality of each investigation - prioritize results with strong evidence and reasoning"
   - "Your task: synthesize the best findings into a unified analysis of the original issue..."
 - Update existing stage transition prompts to handle `ParallelStageResult` in previous stages
+- Update iteration controllers to generate `investigation_history`:
+  - Add `build_synthesis_conversation()` method to `IterationController` base class
+  - Implement in `ReactController` and `NativeThinkingController`
+  - Exclude system messages and first user message (alert data already in context)
+  - Include all assistant messages, tool observations, and final answers
 
 ### 9. Dashboard Stage Display - Backend ([backend/tarsy/controllers/history_controller.py](backend/tarsy/controllers/history_controller.py))
 
@@ -330,11 +390,16 @@ When resuming a paused parallel stage:
 5. **Partial Success**: Default to `all` policy (strict), but allow `any` for resilient pipelines
 6. **Pure Data Container**: `ParallelStageResult` is raw data only, no synthesis (Option B)
 7. **Automatic Synthesis**: Built-in `SynthesisAgent` auto-invoked for final parallel stages, critically evaluates result quality
-8. **User-Accessible Synthesis**: Built-in `SynthesisAgent` can also be explicitly used in chains
-9. **Database Hierarchy**: Parent-child relationship for stage executions enables clean queries and UI grouping
-10. **Consistent Naming**: Use `name` field in `ParallelAgentConfig` (not `agent`) for consistency with stage naming
-11. **Metadata Separation**: Configuration metadata vs execution metadata clearly separated in `ParallelStageMetadata`
-12. **Pause/Resume Compatibility**: 
+8. **Configurable Synthesis**: Optional `synthesis` field on stages allows configuring:
+    - Agent to use for synthesis (default: `SynthesisAgent`)
+    - Iteration strategy: `react-synthesis` (default) or `native-thinking-synthesis` for Gemini thinking
+    - LLM provider override for synthesis (inherits from stage/chain if not specified)
+9. **Rich Investigation History**: New `investigation_history` field captures full conversation (minus system/first user message) for synthesis strategies, while `complete_conversation_history` preserved for backward compatibility
+10. **User-Accessible Synthesis**: Built-in `SynthesisAgent` can also be explicitly used in chains
+11. **Database Hierarchy**: Parent-child relationship for stage executions enables clean queries and UI grouping
+12. **Consistent Naming**: Use `name` field in `ParallelAgentConfig` (not `agent`) for consistency with stage naming
+13. **Metadata Separation**: Configuration metadata vs execution metadata clearly separated in `ParallelStageMetadata`
+14. **Pause/Resume Compatibility**: 
     - When any parallel agent pauses, entire stage marked as PAUSED (pause priority over success/failure)
     - Other agents allowed to complete naturally (preserve their work)
     - Resume re-executes only paused agents (completed/failed results preserved)
@@ -352,12 +417,21 @@ When resuming a paused parallel stage:
 ### Configuration
 
 - Update [`backend/tarsy/config/builtin_config.py`](backend/tarsy/config/builtin_config.py) - Add SynthesisAgent definition
+- Update [`backend/tarsy/models/constants.py`](backend/tarsy/models/constants.py) - Add synthesis iteration strategies
 
 ### Services
 
 - [`backend/tarsy/services/alert_service.py`](backend/tarsy/services/alert_service.py)
 - [`backend/tarsy/services/history_service.py`](backend/tarsy/services/history_service.py)
 - [`backend/tarsy/services/chain_registry.py`](backend/tarsy/services/chain_registry.py)
+
+### Agents & Iteration Controllers
+
+- [`backend/tarsy/agents/base_agent.py`](backend/tarsy/agents/base_agent.py) - Generate investigation_history field
+- [`backend/tarsy/agents/iteration_controllers/base_controller.py`](backend/tarsy/agents/iteration_controllers/base_controller.py) - Add build_synthesis_conversation method
+- Create [`backend/tarsy/agents/iteration_controllers/react_synthesis_controller.py`](backend/tarsy/agents/iteration_controllers/react_synthesis_controller.py) - ReAct synthesis controller
+- Create [`backend/tarsy/agents/iteration_controllers/native_thinking_synthesis_controller.py`](backend/tarsy/agents/iteration_controllers/native_thinking_synthesis_controller.py) - Gemini synthesis controller
+- Update [`backend/tarsy/agents/iteration_controllers/__init__.py`](backend/tarsy/agents/iteration_controllers/__init__.py) - Register synthesis controllers
 
 ### Prompts
 
