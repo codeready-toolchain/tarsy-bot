@@ -1698,6 +1698,35 @@ Action Input: {"resource": "pods", "label_selector": "app=database", "namespace"
     ]
 }
 
+# Expected interactions structure for chat messages after parallel execution
+# Note: Chat agents reuse tool discovery from the session, so no tool_list calls
+EXPECTED_PARALLEL_CHAT_INTERACTIONS = {
+    'message_1': {
+        'llm_count': 2,  # Initial ReAct + Final answer
+        'mcp_count': 1,  # 1 tool_call only (tools already discovered)
+        'interactions': [
+            # LLM 1 - Initial ReAct iteration (kubectl_get for service)
+            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 210, 'output_tokens': 65, 'total_tokens': 275},
+            # MCP 1 - kubectl_get service call
+            {'type': 'mcp', 'position': 1, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+            # LLM 2 - Final answer
+            {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 190, 'output_tokens': 80, 'total_tokens': 270}
+        ]
+    },
+    'message_2': {
+        'llm_count': 2,  # Initial ReAct + Final answer
+        'mcp_count': 1,  # 1 tool_call only (tools already discovered)
+        'interactions': [
+            # LLM 1 - Initial ReAct iteration (kubectl_get for pods)
+            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 220, 'output_tokens': 70, 'total_tokens': 290},
+            # MCP 1 - kubectl_get pods call
+            {'type': 'mcp', 'position': 1, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+            # LLM 2 - Final answer
+            {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 200, 'output_tokens': 90, 'total_tokens': 290}
+        ]
+    }
+}
+
 # ============================================================================
 # EXPECTED STAGES AND INTERACTION COUNTS
 # ============================================================================
