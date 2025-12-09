@@ -143,8 +143,10 @@ class ParallelTestBase:
                     
                     # Verify token usage
                     if "input_tokens" in expected_interaction:
-                        assert details.get("input_tokens") == expected_interaction["input_tokens"], (
-                            f"Agent '{agent_name}' LLM interaction {i+1} input_tokens mismatch"
+                        actual_input = details.get("input_tokens")
+                        expected_input = expected_interaction["input_tokens"]
+                        assert actual_input == expected_input, (
+                            f"Agent '{agent_name}' LLM interaction {i+1} input_tokens mismatch: expected {expected_input}, got {actual_input}"
                         )
                         assert details.get("output_tokens") == expected_interaction["output_tokens"], (
                             f"Agent '{agent_name}' LLM interaction {i+1} output_tokens mismatch"

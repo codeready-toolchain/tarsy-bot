@@ -15,6 +15,7 @@ Architecture:
 
 import asyncio
 import logging
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -93,17 +94,18 @@ class TestParallelReplicaE2E(ParallelTestBase):
         # NATIVE THINKING MOCK (for KubernetesAgent replicas using Gemini)
         # ============================================================================
         # Gemini SDK responses for native thinking (function calling) - all replicas
+        # Each replica uses UNIQUE tool parameters (with replica-id) to make them distinguishable
         gemini_response_map = {
-            # Replica 1
-            1: {  # First call - tool call with thinking
+            # Replica 1 - checks deployment with replica-id=1
+            "replica-1-call-1": {
                 "text_content": "",
                 "thinking_content": "I should check the deployment status to understand the issue.",
-                "function_calls": [{"name": "kubernetes-server__kubectl_get", "args": {"resource": "deployment", "name": "web-app"}}],
+                "function_calls": [{"name": "kubernetes-server__kubectl_get", "args": {"resource": "deployment", "name": "web-app", "replica_id": "1"}}],
                 "input_tokens": 245,
                 "output_tokens": 85,
                 "total_tokens": 330
             },
-            2: {  # Second call - final answer
+            "replica-1-call-2": {
                 "text_content": "Deployment web-app has no ready replicas (0/3). This indicates a critical availability issue. All pods may be failing to start or pass health checks.",
                 "thinking_content": "I have identified the deployment status issue.",
                 "function_calls": None,
@@ -111,16 +113,16 @@ class TestParallelReplicaE2E(ParallelTestBase):
                 "output_tokens": 65,
                 "total_tokens": 245
             },
-            # Replica 2
-            3: {  # First call - tool call with thinking
+            # Replica 2 - checks events with replica-id=2
+            "replica-2-call-1": {
                 "text_content": "",
                 "thinking_content": "I should check the pod events to see why replicas aren't ready.",
-                "function_calls": [{"name": "kubernetes-server__kubectl_get", "args": {"resource": "events", "field_selector": "involvedObject.name=web-app"}}],
+                "function_calls": [{"name": "kubernetes-server__kubectl_get", "args": {"resource": "events", "field_selector": "involvedObject.name=web-app", "replica_id": "2"}}],
                 "input_tokens": 235,
                 "output_tokens": 80,
                 "total_tokens": 315
             },
-            4: {  # Second call - final answer
+            "replica-2-call-2": {
                 "text_content": "Events show ImagePullBackOff for web-app:v2.0.0. The deployment cannot start because the specified container image cannot be pulled. This is the root cause of the 0/3 ready replicas.",
                 "thinking_content": "I have found the specific error causing the issue.",
                 "function_calls": None,
@@ -128,16 +130,16 @@ class TestParallelReplicaE2E(ParallelTestBase):
                 "output_tokens": 70,
                 "total_tokens": 255
             },
-            # Replica 3
-            5: {  # First call - tool call with thinking
+            # Replica 3 - describes deployment with replica-id=3
+            "replica-3-call-1": {
                 "text_content": "",
                 "thinking_content": "Let me verify the image availability issue.",
-                "function_calls": [{"name": "kubernetes-server__kubectl_describe", "args": {"resource": "deployment", "name": "web-app"}}],
+                "function_calls": [{"name": "kubernetes-server__kubectl_describe", "args": {"resource": "deployment", "name": "web-app", "replica_id": "3"}}],
                 "input_tokens": 240,
                 "output_tokens": 82,
                 "total_tokens": 322
             },
-            6: {  # Second call - final answer
+            "replica-3-call-2": {
                 "text_content": "Image web-app:v2.0.0 not found in container registry. The deployment is referencing a non-existent image version. Recommend verifying the image tag or rolling back to a known-good version.",
                 "thinking_content": "I have confirmed the root cause is the missing image.",
                 "function_calls": None,
@@ -147,9 +149,68 @@ class TestParallelReplicaE2E(ParallelTestBase):
             }
         }
         
-        # Import create_gemini_client_mock from conftest
-        from .conftest import create_gemini_client_mock
-        gemini_mock_factory = create_gemini_client_mock(gemini_response_map)
+        # Create a task-aware Gemini mock that tracks concurrent replicas
+        # This allows concurrent replicas to work correctly by assigning each task a replica index
+        from .conftest import create_native_thinking_response
+        import threading
+        
+        def create_task_aware_gemini_mock(response_map: dict):
+            """Create a task-aware Gemini mock for concurrent replica testing."""
+            # Shared state with lock for thread safety
+            task_state = {
+                "task_to_replica": {},  # task_id -> replica_number (1, 2, 3)
+                "task_call_counts": {},  # task_id -> call_count
+                "next_replica": 1,  # Next replica number to assign
+                "lock": threading.Lock()
+            }
+            
+            def response_generator(call_num: int, model: str, contents: list, config: Any):
+                import asyncio
+                task = asyncio.current_task()
+                task_id = id(task) if task else 0
+                
+                with task_state["lock"]:
+                    # Assign replica number to this task on first call
+                    if task_id not in task_state["task_to_replica"]:
+                        task_state["task_to_replica"][task_id] = task_state["next_replica"]
+                        task_state["task_call_counts"][task_id] = 0
+                        task_state["next_replica"] += 1
+                    
+                    # Increment call count for this task
+                    task_state["task_call_counts"][task_id] += 1
+                    
+                    replica_num = task_state["task_to_replica"][task_id]
+                    call_num_for_replica = task_state["task_call_counts"][task_id]
+                
+                # Build response key
+                response_key = f"replica-{replica_num}-call-{call_num_for_replica}"
+                
+                response_data = response_map.get(response_key, {
+                    "text_content": f"Fallback response for {response_key}",
+                    "thinking_content": None,
+                    "function_calls": None,
+                    "input_tokens": 100,
+                    "output_tokens": 50,
+                    "total_tokens": 150
+                })
+                
+                return create_native_thinking_response(
+                    text_content=response_data.get("text_content", ""),
+                    thinking_content=response_data.get("thinking_content"),
+                    function_calls=response_data.get("function_calls"),
+                    thought_signature=response_data.get("thought_signature"),
+                    input_tokens=response_data.get("input_tokens", 100),
+                    output_tokens=response_data.get("output_tokens", 50),
+                    total_tokens=response_data.get("total_tokens", 150)
+                )
+            
+            def client_factory(api_key: str = "test-api-key"):
+                from .conftest import MockGeminiClient
+                return MockGeminiClient(response_generator=response_generator)
+            
+            return client_factory
+        
+        gemini_mock_factory = create_task_aware_gemini_mock(gemini_response_map)
         
         # ============================================================================
         # LANGCHAIN MOCK (for SynthesisAgent using ReAct)
@@ -196,10 +257,42 @@ All three replicas converged on consistent findings with increasing detail. Repl
             
             return mock_astream
         
-        # Create MCP mocks
-        mock_k8s_session = E2ETestUtils.create_generic_mcp_session_mock("Mock kubectl response")
-        mock_sessions = {"kubernetes-server": mock_k8s_session}
+        # Create MCP session mock with replica-aware responses
+        # We create a custom session that returns different results based on replica_id
+        from unittest.mock import AsyncMock, Mock
         
+        mock_k8s_session = AsyncMock()
+        
+        async def mock_session_call_tool(tool_name, parameters):
+            """Mock MCP session call_tool with replica-aware responses."""
+            # Extract replica_id to determine which response to return
+            replica_id = parameters.get("replica_id", "1")
+            
+            if replica_id == "1":
+                result_text = "Deployment web-app has 0/3 replicas ready"
+            elif replica_id == "2":
+                result_text = "Warning: ImagePullBackOff - Failed to pull image 'web-app:v2.0.0'"
+            elif replica_id == "3":
+                result_text = "Image: web-app:v2.0.0, Status: ErrImagePull - Image not found in registry"
+            else:
+                result_text = "Mock kubectl response"
+            
+            # Return in MCP SDK format (with .content attribute)
+            mock_result = Mock()
+            mock_content = Mock()
+            mock_content.text = result_text
+            mock_result.content = [mock_content]
+            return mock_result
+        
+        async def mock_list_tools():
+            return []  # Empty list for tool discovery
+        
+        mock_k8s_session.call_tool = mock_session_call_tool
+        mock_k8s_session.list_tools = mock_list_tools
+        
+        # Create sessions dict and MCP client patches
+        mock_sessions = {"kubernetes-server": mock_k8s_session}
+        from .e2e_utils import E2ETestUtils
         mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
         
         # Create streaming mock for LLM - patch LangChain clients directly
@@ -239,7 +332,7 @@ All three replicas converged on consistent findings with increasing detail. Repl
                         # Verify session metadata
                         self._verify_session_metadata(detail_data, "replica-parallel-chain")
                         
-                        # Get stages
+                        # Get stages for verification
                         stages = detail_data.get("stages", [])
                         
                         # Comprehensive verification

@@ -528,7 +528,8 @@ For Kubernetes operations:
 
 ## Agent-Specific Instructions
 
-You are a Kubernetes troubleshooting specialist.
+You are a Kubernetes specialist analyzing pod health and resource issues.
+Focus on pod status, events, and resource constraints.
 
 You are an SRE agent analyzing incidents. Use the available tools to investigate and provide actionable recommendations.
 
@@ -548,7 +549,7 @@ Focus on investigation and providing recommendations for human operators to exec
 
 ### Alert Metadata
 **Alert Type:** test-replica-execution
-**Severity:** critical
+**Severity:** warning
 **Timestamp:** {TIMESTAMP}
 **Environment:** production
 
@@ -630,7 +631,8 @@ For Kubernetes operations:
 
 ## Agent-Specific Instructions
 
-You are a Kubernetes troubleshooting specialist.
+You are a Kubernetes specialist analyzing pod health and resource issues.
+Focus on pod status, events, and resource constraints.
 
 You are an SRE agent analyzing incidents. Use the available tools to investigate and provide actionable recommendations.
 
@@ -650,7 +652,7 @@ Focus on investigation and providing recommendations for human operators to exec
 
 ### Alert Metadata
 **Alert Type:** test-replica-execution
-**Severity:** critical
+**Severity:** warning
 **Timestamp:** {TIMESTAMP}
 **Environment:** production
 
@@ -732,7 +734,8 @@ For Kubernetes operations:
 
 ## Agent-Specific Instructions
 
-You are a Kubernetes troubleshooting specialist.
+You are a Kubernetes specialist analyzing pod health and resource issues.
+Focus on pod status, events, and resource constraints.
 
 You are an SRE agent analyzing incidents. Use the available tools to investigate and provide actionable recommendations.
 
@@ -752,7 +755,7 @@ Focus on investigation and providing recommendations for human operators to exec
 
 ### Alert Metadata
 **Alert Type:** test-replica-execution
-**Severity:** critical
+**Severity:** warning
 **Timestamp:** {TIMESTAMP}
 **Environment:** production
 
@@ -905,14 +908,23 @@ Focus on investigation and providing recommendations for human operators to exec
         },
         {
             "role": "user",
-            "content": """# Synthesis Task
+            "content": """Answer the following question using the available tools.
 
+Available tools:
+
+No tools available.
+
+Question: Analyze this test-replica-execution alert and provide actionable recommendations.
+
+## Alert Details
+
+### Alert Metadata
 **Alert Type:** test-replica-execution
+**Severity:** warning
+**Timestamp:** {TIMESTAMP}
 **Environment:** production
-**Severity:** critical
 
-## Alert Data
-
+### Alert Data
 ```json
 {
   "description": "Test replica execution scenario",
@@ -920,30 +932,51 @@ Focus on investigation and providing recommendations for human operators to exec
 }
 ```
 
-## Runbook
-
+## Runbook Content
+```markdown
+<!-- RUNBOOK START -->
 # Test Runbook
 This is a test runbook for replica execution testing.
+<!-- RUNBOOK END -->
+```
 
-## Previous Stage Results
+## Previous Stage Data
+### Results from parallel stage 'analysis':
 
-### Stage: analysis (Parallel Execution - Replicas)
+**Parallel Execution Summary**: 3/3 agents succeeded
 
-**Agent: KubernetesAgent-1**
+#### Agent 1: KubernetesAgent-1 (google-default, native-thinking)
+**Status**: completed
 
+<!-- Analysis Result START -->
 Deployment web-app has no ready replicas (0/3). This indicates a critical availability issue. All pods may be failing to start or pass health checks.
+<!-- Analysis Result END -->
 
-**Agent: KubernetesAgent-2**
+#### Agent 2: KubernetesAgent-2 (google-default, native-thinking)
+**Status**: completed
 
+<!-- Analysis Result START -->
 Events show ImagePullBackOff for web-app:v2.0.0. The deployment cannot start because the specified container image cannot be pulled. This is the root cause of the 0/3 ready replicas.
+<!-- Analysis Result END -->
 
-**Agent: KubernetesAgent-3**
+#### Agent 3: KubernetesAgent-3 (google-default, native-thinking)
+**Status**: completed
 
+<!-- Analysis Result START -->
 Image web-app:v2.0.0 not found in container registry. The deployment is referencing a non-existent image version. Recommend verifying the image tag or rolling back to a known-good version.
+<!-- Analysis Result END -->
+
 
 ## Your Task
+Use the available tools to investigate this alert and provide:
+1. Root cause analysis
+2. Current system state assessment  
+3. Specific remediation steps for human operators
+4. Prevention recommendations
 
-Synthesize the parallel investigation results above into a unified root cause analysis and provide actionable recommendations."""
+Be thorough in your investigation before providing the final answer.
+
+Begin!"""
         },
         {
             "role": "assistant",
@@ -1522,44 +1555,44 @@ EXPECTED_REPLICA_STAGES = {
         "agents": {
             "KubernetesAgent-1": {
                 "llm_count": 2,
-                "mcp_count": 2,  # 1 tool discovery + 1 tool call
+                "mcp_count": 2,  # 1 tool discovery + 1 tool call (kubectl_get deployment)
                 "interactions": [
                     # MCP 1 - Tool list discovery
                     {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
-                    # LLM 1 - Initial ReAct iteration
-                    {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 245, 'output_tokens': 85, 'total_tokens': 330, 'interaction_type': 'investigation'},
-                    # MCP 2 - kubectl_get tool call
+                    # LLM 1 - Native thinking with function call (no assistant message added when text_content is empty)
+                    {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 2, 'input_tokens': 245, 'output_tokens': 85, 'total_tokens': 330, 'interaction_type': 'investigation'},
+                    # MCP 2 - kubectl_get tool call for deployment
                     {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
-                    # LLM 2 - Final answer
-                    {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 180, 'output_tokens': 65, 'total_tokens': 245, 'interaction_type': 'final_analysis'}
+                    # LLM 2 - Final answer after tool result
+                    {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 4, 'input_tokens': 180, 'output_tokens': 65, 'total_tokens': 245, 'interaction_type': 'final_analysis'}
                 ]
             },
             "KubernetesAgent-2": {
                 "llm_count": 2,
-                "mcp_count": 2,  # 1 tool discovery + 1 tool call
+                "mcp_count": 2,  # 1 tool discovery + 1 tool call (kubectl_get events)
                 "interactions": [
                     # MCP 1 - Tool list discovery
                     {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
-                    # LLM 1 - Initial ReAct iteration
-                    {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 235, 'output_tokens': 80, 'total_tokens': 315, 'interaction_type': 'investigation'},
-                    # MCP 2 - kubectl_get tool call
+                    # LLM 1 - Native thinking with function call (no assistant message added when text_content is empty)
+                    {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 2, 'input_tokens': 235, 'output_tokens': 80, 'total_tokens': 315, 'interaction_type': 'investigation'},
+                    # MCP 2 - kubectl_get tool call for events (different from replica 1)
                     {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
-                    # LLM 2 - Final answer
-                    {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 185, 'output_tokens': 70, 'total_tokens': 255, 'interaction_type': 'final_analysis'}
+                    # LLM 2 - Final answer after tool result
+                    {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 4, 'input_tokens': 185, 'output_tokens': 70, 'total_tokens': 255, 'interaction_type': 'final_analysis'}
                 ]
             },
             "KubernetesAgent-3": {
                 "llm_count": 2,
-                "mcp_count": 2,  # 1 tool discovery + 1 tool call
+                "mcp_count": 2,  # 1 tool discovery + 1 tool call (kubectl_describe)
                 "interactions": [
                     # MCP 1 - Tool list discovery
                     {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
-                    # LLM 1 - Initial ReAct iteration
-                    {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 240, 'output_tokens': 82, 'total_tokens': 322, 'interaction_type': 'investigation'},
-                    # MCP 2 - kubectl_describe tool call
+                    # LLM 1 - Native thinking with function call (no assistant message added when text_content is empty)
+                    {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 2, 'input_tokens': 240, 'output_tokens': 82, 'total_tokens': 322, 'interaction_type': 'investigation'},
+                    # MCP 2 - kubectl_describe tool call (different tool from replicas 1 & 2)
                     {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_describe', 'server_name': 'kubernetes-server'},
-                    # LLM 2 - Final answer
-                    {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 188, 'output_tokens': 72, 'total_tokens': 260, 'interaction_type': 'final_analysis'}
+                    # LLM 2 - Final answer after tool result
+                    {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 4, 'input_tokens': 188, 'output_tokens': 72, 'total_tokens': 260, 'interaction_type': 'final_analysis'}
                 ]
             }
         }

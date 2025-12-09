@@ -92,6 +92,9 @@ class E2ETestUtils:
             r"test-kubernetes_[a-f0-9]+_\d+", "test-kubernetes_{DATA_KEY}", content
         )
         
+        # Strip leading/trailing whitespace for consistent comparison
+        content = content.strip()
+        
         return content
 
     @staticmethod

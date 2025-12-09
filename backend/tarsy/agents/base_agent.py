@@ -128,6 +128,7 @@ class BaseAgent(ABC):
             from .iteration_controllers.native_thinking_controller import (
                 NativeThinkingController,
             )
+            print(f"[DEBUG-CONTROLLER] Creating NativeThinkingController")
             return NativeThinkingController(self.llm_manager, self._prompt_builder)
         else:
             assert_never(strategy)
