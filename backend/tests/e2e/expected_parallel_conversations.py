@@ -1560,7 +1560,7 @@ EXPECTED_REPLICA_STAGES = {
                     # MCP 1 - Tool list discovery
                     {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
                     # LLM 1 - Native thinking with function call (no assistant message added when text_content is empty)
-                    {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 2, 'input_tokens': 245, 'output_tokens': 85, 'total_tokens': 330, 'interaction_type': 'investigation'},
+                    {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 2, 'input_tokens': 240, 'output_tokens': 85, 'total_tokens': 325, 'interaction_type': 'investigation'},
                     # MCP 2 - kubectl_get tool call for deployment
                     {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
                     # LLM 2 - Final answer after tool result
@@ -1574,7 +1574,7 @@ EXPECTED_REPLICA_STAGES = {
                     # MCP 1 - Tool list discovery
                     {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
                     # LLM 1 - Native thinking with function call (no assistant message added when text_content is empty)
-                    {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 2, 'input_tokens': 235, 'output_tokens': 80, 'total_tokens': 315, 'interaction_type': 'investigation'},
+                    {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 2, 'input_tokens': 240, 'output_tokens': 80, 'total_tokens': 320, 'interaction_type': 'investigation'},
                     # MCP 2 - kubectl_get tool call for events (different from replica 1)
                     {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
                     # LLM 2 - Final answer after tool result

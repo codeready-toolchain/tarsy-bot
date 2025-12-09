@@ -101,9 +101,9 @@ class TestParallelReplicaE2E(ParallelTestBase):
                 "text_content": "",
                 "thinking_content": "I should check the deployment status to understand the issue.",
                 "function_calls": [{"name": "kubernetes-server__kubectl_get", "args": {"resource": "deployment", "name": "web-app", "replica_id": "1"}}],
-                "input_tokens": 245,
+                "input_tokens": 240,
                 "output_tokens": 85,
-                "total_tokens": 330
+                "total_tokens": 325
             },
             "replica-1-call-2": {
                 "text_content": "Deployment web-app has no ready replicas (0/3). This indicates a critical availability issue. All pods may be failing to start or pass health checks.",
@@ -118,9 +118,9 @@ class TestParallelReplicaE2E(ParallelTestBase):
                 "text_content": "",
                 "thinking_content": "I should check the pod events to see why replicas aren't ready.",
                 "function_calls": [{"name": "kubernetes-server__kubectl_get", "args": {"resource": "events", "field_selector": "involvedObject.name=web-app", "replica_id": "2"}}],
-                "input_tokens": 235,
+                "input_tokens": 240,
                 "output_tokens": 80,
-                "total_tokens": 315
+                "total_tokens": 320
             },
             "replica-2-call-2": {
                 "text_content": "Events show ImagePullBackOff for web-app:v2.0.0. The deployment cannot start because the specified container image cannot be pulled. This is the root cause of the 0/3 ready replicas.",
