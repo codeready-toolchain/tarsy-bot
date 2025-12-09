@@ -1005,10 +1005,8 @@ All three replicas converged on consistent findings with increasing detail. Repl
 # PARALLEL + REGULAR STAGE (No automatic synthesis)
 # ============================================================================
 
-EXPECTED_PARALLEL_NO_SYNTHESIS_AGENT_1_CONVERSATION = EXPECTED_PARALLEL_AGENT_1_CONVERSATION
-EXPECTED_PARALLEL_NO_SYNTHESIS_AGENT_2_CONVERSATION = EXPECTED_PARALLEL_AGENT_2_CONVERSATION
-
-EXPECTED_REGULAR_AFTER_PARALLEL_CONVERSATION = {
+# KubernetesAgent conversation for parallel+regular test (with correct alert type and description)
+EXPECTED_PARALLEL_NO_SYNTHESIS_AGENT_1_CONVERSATION = {
     "messages": [
         {
             "role": "system",
@@ -1044,7 +1042,101 @@ For Kubernetes operations:
 
 ## Agent-Specific Instructions
 
-You are a command execution specialist that formulates remediation steps based on investigation results.
+You are a Kubernetes specialist analyzing pod health and resource issues.
+Focus on pod status, events, and resource constraints.
+
+You are an SRE agent analyzing incidents. Use the available tools to investigate and provide actionable recommendations.
+
+When you have gathered sufficient information, provide your final analysis with:
+1. Root cause analysis
+2. Current system state assessment
+3. Specific remediation steps for human operators
+4. Prevention recommendations
+
+Focus on investigation and providing recommendations for human operators to execute."""
+        },
+        {
+            "role": "user",
+            "content": """Analyze this test-parallel-regular-execution alert and provide actionable recommendations.
+
+## Alert Details
+
+### Alert Metadata
+**Alert Type:** test-parallel-regular-execution
+**Severity:** warning
+**Timestamp:** {TIMESTAMP}
+**Environment:** production
+
+### Alert Data
+```json
+{
+  "description": "Test parallel execution with regular stage",
+  "namespace": "test-namespace"
+}
+```
+
+## Runbook Content
+```markdown
+<!-- RUNBOOK START -->
+# Test Runbook
+This is a test runbook for parallel execution testing.
+<!-- RUNBOOK END -->
+```
+
+## Previous Stage Data
+No previous stage data is available for this alert. This is the first stage of analysis.
+
+## Your Task
+Investigate this alert using the available tools and provide:
+1. Root cause analysis based on your investigation
+2. Current system state assessment from tool observations
+3. Specific remediation steps for human operators
+4. Prevention recommendations
+
+Use tools as needed to gather information. When you have sufficient data, provide your complete analysis."""
+        }
+    ]
+}
+
+# LogAgent conversation for parallel+regular test (with correct alert type and description)
+EXPECTED_PARALLEL_NO_SYNTHESIS_AGENT_2_CONVERSATION = {
+    "messages": [
+        {
+            "role": "system",
+            "content": """## General SRE Agent Instructions
+
+You are an expert Site Reliability Engineer (SRE) with deep knowledge of:
+- Kubernetes and container orchestration
+- Cloud infrastructure and services
+- Incident response and troubleshooting
+- System monitoring and alerting
+- GitOps and deployment practices
+
+Analyze alerts thoroughly and provide actionable insights based on:
+1. Alert information and context
+2. Associated runbook procedures
+3. Real-time system data from available tools
+
+Always be specific, reference actual data, and provide clear next steps.
+Focus on root cause analysis and sustainable solutions.
+
+## Kubernetes Server Instructions
+
+For Kubernetes operations:
+- **IMPORTANT: In multi-cluster environments** (when the 'configuration_contexts_list' tool is available):
+  * ALWAYS start by calling 'configuration_contexts_list' to see all available contexts and their server URLs
+  * Use this information to determine which context to target before performing any operations
+  * This prevents working on the wrong cluster and helps you understand the environment
+- Be careful with cluster-scoped resource listings in large clusters
+- Always prefer namespaced queries when possible
+- If you get "server could not find the requested resource" error, check if you're using the namespace parameter correctly:
+  * Cluster-scoped resources (Namespace, Node, ClusterRole, PersistentVolume) should NOT have a namespace parameter
+  * Namespace-scoped resources (Pod, Deployment, Service, ConfigMap) REQUIRE a namespace parameter
+
+## Agent-Specific Instructions
+
+You are a log analysis specialist focusing on application errors and patterns.
+Analyze logs to identify root causes and anomalies.
 
 You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
 
@@ -1117,41 +1209,153 @@ Focus on investigation and providing recommendations for human operators to exec
         },
         {
             "role": "user",
-            "content": """# Command Formulation Task
+            "content": """Answer the following question using the available tools.
 
-**Alert Type:** test-parallel-execution
-**Environment:** production
+Available tools:
+
+1. **kubernetes-server.generic_tool**: Generic test tool
+    **Parameters**: None
+
+Question: Analyze this test-parallel-regular-execution alert and provide actionable recommendations.
+
+## Alert Details
+
+### Alert Metadata
+**Alert Type:** test-parallel-regular-execution
 **Severity:** warning
+**Timestamp:** {TIMESTAMP}
+**Environment:** production
 
-## Alert Data
-
+### Alert Data
 ```json
 {
-  "description": "Test parallel execution scenario",
+  "description": "Test parallel execution with regular stage",
   "namespace": "test-namespace"
 }
 ```
 
-## Runbook
-
+## Runbook Content
+```markdown
+<!-- RUNBOOK START -->
 # Test Runbook
 This is a test runbook for parallel execution testing.
+<!-- RUNBOOK END -->
+```
 
-## Previous Stage Results
-
-### Stage: investigation (Parallel Execution)
-
-**Agent: KubernetesAgent**
-
-Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause.
-
-**Agent: LogAgent**
-
-Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity.
+## Previous Stage Data
+No previous stage data is available for this alert. This is the first stage of analysis.
 
 ## Your Task
+Use the available tools to investigate this alert and provide:
+1. Root cause analysis
+2. Current system state assessment  
+3. Specific remediation steps for human operators
+4. Prevention recommendations
 
-Based on the parallel investigation results, formulate specific command recommendations for remediation."""
+Be thorough in your investigation before providing the final answer.
+
+Begin!"""
+        }
+    ]
+}
+
+EXPECTED_REGULAR_AFTER_PARALLEL_CONVERSATION = {
+    "messages": [
+        {
+            "role": "system",
+            "content": """## General SRE Agent Instructions
+
+You are an expert Site Reliability Engineer (SRE) with deep knowledge of:
+- Kubernetes and container orchestration
+- Cloud infrastructure and services
+- Incident response and troubleshooting
+- System monitoring and alerting
+- GitOps and deployment practices
+
+Analyze alerts thoroughly and provide actionable insights based on:
+1. Alert information and context
+2. Associated runbook procedures
+3. Real-time system data from available tools
+
+Always be specific, reference actual data, and provide clear next steps.
+Focus on root cause analysis and sustainable solutions.
+
+## Agent-Specific Instructions
+You are a command execution specialist that formulates remediation steps based on investigation results."""
+        },
+        {
+            "role": "user",
+            "content": """# Final Analysis Task
+
+
+**Stage:** command (Final Analysis Stage)
+
+
+# SRE Alert Analysis Request
+
+You are an expert Site Reliability Engineer (SRE) analyzing a system alert using the ConfigurableAgent.
+This agent specializes in kubernetes-server operations and has access to domain-specific tools and knowledge.
+
+Your task is to provide a comprehensive analysis of the incident based on:
+1. The alert information
+2. The associated runbook
+3. Real-time system data from MCP servers
+
+Please provide detailed, actionable insights about what's happening and potential next steps.
+
+## Alert Details
+
+### Alert Metadata
+**Alert Type:** test-parallel-regular-execution
+**Severity:** warning
+**Timestamp:** {TIMESTAMP}
+**Environment:** production
+
+### Alert Data
+```json
+{
+  "description": "Test parallel execution with regular stage",
+  "namespace": "test-namespace"
+}
+```
+
+## Runbook Content
+```markdown
+<!-- RUNBOOK START -->
+# Test Runbook
+This is a test runbook for parallel execution testing.
+<!-- RUNBOOK END -->
+```
+
+## Previous Stage Data
+### Results from parallel stage 'investigation':
+
+**Parallel Execution Summary**: 2/2 agents succeeded
+
+#### Agent 1: KubernetesAgent (google-default, native-thinking)
+**Status**: completed
+
+<!-- Analysis Result START -->
+Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause.
+<!-- Analysis Result END -->
+
+#### Agent 2: LogAgent (anthropic-default, react)
+**Status**: completed
+
+<!-- Analysis Result START -->
+Thought: I have analyzed the logs and found the root cause.
+Final Answer: Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity.
+<!-- Analysis Result END -->
+
+
+## Instructions
+Provide comprehensive final analysis based on ALL collected data:
+1. Root cause analysis
+2. Impact assessment  
+3. Recommended actions
+4. Prevention strategies
+
+Do NOT call any tools - use only the provided data."""
         },
         {
             "role": "assistant",

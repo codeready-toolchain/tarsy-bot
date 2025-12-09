@@ -198,8 +198,6 @@ class TestParallelReplicaE2E(ParallelTestBase):
                 # Build response key
                 response_key = f"replica-{replica_num}-call-{call_num_for_agent}"
                 
-                print(f"[MOCK] stage_id={stage_execution_id[:8] if stage_execution_id else 'None'}, agent={agent_name}, call={call_num_for_agent}, key={response_key}")
-                
                 response_data = response_map.get(response_key, {
                     "text_content": f"Fallback response for {response_key}",
                     "thinking_content": None,
@@ -354,7 +352,6 @@ All three replicas converged on consistent findings with increasing detail. Repl
                 agent_name = stage.agent
                 with map_lock:
                     stage_to_agent_map[execution_id] = agent_name
-                    print(f"[MAPPING] stage_id={execution_id[:8]} → agent={agent_name}")
             
             return execution_id
         
