@@ -66,8 +66,8 @@ class TestAlertServiceResumePausedSession:
         mock_summarizer.generate_executive_summary = AsyncMock(return_value="Executive summary of resumed analysis")
         alert_service.final_analysis_summarizer = mock_summarizer
         
-        # Mock _update_session_status and _execute_chain_stages
-        alert_service._update_session_status = MagicMock()
+        # Mock session_manager.update_session_status and _execute_chain_stages
+        alert_service.session_manager.update_session_status = MagicMock()
         alert_service._execute_chain_stages = AsyncMock(
             return_value=ChainExecutionResult(
                 status=ChainStatus.COMPLETED,
@@ -94,8 +94,8 @@ class TestAlertServiceResumePausedSession:
         assert "**Processing Chain:** test-chain" in result
         
         # Verify session status updated to IN_PROGRESS
-        assert alert_service._update_session_status.call_count >= 1
-        first_call = alert_service._update_session_status.call_args_list[0]
+        assert alert_service.session_manager.update_session_status.call_count >= 1
+        first_call = alert_service.session_manager.update_session_status.call_args_list[0]
         assert first_call[0][0] == session_id
         assert first_call[0][1] == AlertSessionStatus.IN_PROGRESS.value
         
@@ -105,7 +105,7 @@ class TestAlertServiceResumePausedSession:
         
         # Verify session was eventually marked COMPLETED with summary
         completed_call = None
-        for call_args in alert_service._update_session_status.call_args_list:
+        for call_args in alert_service.session_manager.update_session_status.call_args_list:
             if call_args[0][1] == AlertSessionStatus.COMPLETED.value:
                 completed_call = call_args
                 break
@@ -240,7 +240,7 @@ class TestAlertServiceResumePausedSession:
             alert_service = AlertService(settings=mock_settings)
         
         alert_service.history_service = mock_history_service
-        alert_service._update_session_status = MagicMock()
+        alert_service.session_manager.update_session_status = MagicMock()
         
         # Mock final_analysis_summarizer (not used in this test, but needs to exist)
         mock_summarizer = AsyncMock()
@@ -310,7 +310,7 @@ class TestAlertServiceResumePausedSession:
             alert_service = AlertService(settings=mock_settings)
         
         alert_service.history_service = mock_history_service
-        alert_service._update_session_status = MagicMock()
+        alert_service.session_manager.update_session_status = MagicMock()
         
         # Mock final_analysis_summarizer (not used for PAUSED status)
         mock_summarizer = AsyncMock()
@@ -339,7 +339,7 @@ class TestAlertServiceResumePausedSession:
         assert "**Processing Chain:** test-chain" in result
         
         # Verify no COMPLETED status was set (should stay PAUSED)
-        status_calls = [call[0][1] for call in alert_service._update_session_status.call_args_list]
+        status_calls = [call[0][1] for call in alert_service.session_manager.update_session_status.call_args_list]
         assert AlertSessionStatus.COMPLETED.value not in status_calls
     
     @pytest.mark.asyncio
@@ -392,7 +392,7 @@ class TestAlertServiceResumePausedSession:
         alert_service.history_service = mock_history_service
         alert_service.runbook_service = MagicMock()
         alert_service.runbook_service.download_runbook = AsyncMock(return_value="# Default runbook")
-        alert_service._update_session_status = MagicMock()
+        alert_service.session_manager.update_session_status = MagicMock()
         
         # Mock final_analysis_summarizer (not used for FAILED status)
         mock_summarizer = AsyncMock()
@@ -424,7 +424,7 @@ class TestAlertServiceResumePausedSession:
         assert "## Troubleshooting" in result
         
         # Verify session status updated to FAILED
-        status_calls = [call[0][1] for call in alert_service._update_session_status.call_args_list]
+        status_calls = [call[0][1] for call in alert_service.session_manager.update_session_status.call_args_list]
         assert AlertSessionStatus.FAILED.value in status_calls
         
         # Verify failed event was published

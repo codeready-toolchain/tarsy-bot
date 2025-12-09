@@ -299,11 +299,11 @@ All three replicas converged on consistent findings with increasing detail. Repl
                 # Reset contextvar
                 _current_stage_execution_id.reset(token)
         
-        # Patch AlertService._create_stage_execution to capture the mapping
-        from tarsy.services.alert_service import AlertService
-        original_create_stage = AlertService._create_stage_execution
+        # Patch StageExecutionManager.create_stage_execution to capture the mapping
+        from tarsy.services.stage_execution_manager import StageExecutionManager
+        original_create_stage = StageExecutionManager.create_stage_execution
         
-        async def patched_create_stage(self, session_id, stage, stage_index, parent_stage_execution_id=None, parallel_index=None, parallel_type=None):
+        async def patched_create_stage(self, session_id, stage, stage_index, parent_stage_execution_id=None, parallel_index=0, parallel_type="single"):
             """Patched version that captures stage_execution_id → agent_name mapping."""
             # Call original to get the execution_id
             execution_id = await original_create_stage(self, session_id, stage, stage_index, parent_stage_execution_id, parallel_index, parallel_type)
@@ -319,7 +319,7 @@ All three replicas converged on consistent findings with increasing detail. Repl
         # Patch LLM clients (both Gemini SDK and LangChain)
         with self._create_llm_patch_context(gemini_mock_factory, streaming_mock), \
              patch("tarsy.integrations.llm.gemini_client.llm_interaction_context", patched_llm_context), \
-             patch.object(AlertService, '_create_stage_execution', patched_create_stage):
+             patch.object(StageExecutionManager, 'create_stage_execution', patched_create_stage):
             
             with patch('tarsy.integrations.mcp.client.MCPClient.list_tools', mock_list_tools):
                 with patch('tarsy.integrations.mcp.client.MCPClient.call_tool', mock_call_tool):
