@@ -12,6 +12,8 @@ from .native_thinking_controller import NativeThinkingController
 from .react_controller import SimpleReActController
 from .react_final_analysis_controller import ReactFinalAnalysisController
 from .react_stage_controller import ReactStageController
+from .synthesis_controller import SynthesisController
+from .synthesis_native_thinking_controller import SynthesisNativeThinkingController
 
 __all__ = [
     'IterationController',
@@ -22,4 +24,6 @@ __all__ = [
     'ChatReActController',
     'NativeThinkingController',
     'ChatNativeThinkingController',
+    'SynthesisController',
+    'SynthesisNativeThinkingController',
 ]

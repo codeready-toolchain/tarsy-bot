@@ -119,11 +119,15 @@ class IterationStrategy(str, Enum):
     - REACT_STAGE: ReAct pattern for stage-specific analysis within multi-stage chains
     - REACT_FINAL_ANALYSIS: ReAct final analysis only, no tools, uses all accumulated data
     - NATIVE_THINKING: Gemini-specific native thinking with structured function calling (no text parsing)
+    - SYNTHESIS: Generic synthesis strategy for parallel results (no tools, provider-agnostic)
+    - SYNTHESIS_NATIVE_THINKING: Gemini synthesis with native thinking for deep reasoning
     """
     REACT = "react"
     REACT_STAGE = "react-stage"           # ReAct pattern for stage-specific analysis
     REACT_FINAL_ANALYSIS = "react-final-analysis"   # ReAct final analysis only, no tools
     NATIVE_THINKING = "native-thinking"   # Gemini native thinking + function calling
+    SYNTHESIS = "synthesis"               # Generic synthesis (no tools)
+    SYNTHESIS_NATIVE_THINKING = "synthesis-native-thinking"  # Gemini synthesis with thinking
 
 
 class LLMInteractionType(str, Enum):

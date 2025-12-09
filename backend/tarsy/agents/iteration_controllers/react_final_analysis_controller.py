@@ -89,6 +89,7 @@ class ReactFinalAnalysisController(IterationController):
             latest_message = updated_conversation.get_latest_assistant_message()
             
             if latest_message:
+                self._last_conversation = updated_conversation  # Store for investigation_history
                 return latest_message.content
             else:
                 # No response from LLM - this is a failure condition for final analysis

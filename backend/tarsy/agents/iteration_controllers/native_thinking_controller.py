@@ -258,6 +258,7 @@ class NativeThinkingController(IterationController):
                 # Check if we have a final answer (no tool calls)
                 if response.is_final:
                     self.logger.info("Native thinking completed with final answer")
+                    self._last_conversation = conversation  # Store for investigation_history
                     return self._build_final_result(response.content, all_thinking_content)
                 
                 # Execute tool calls
@@ -322,6 +323,7 @@ class NativeThinkingController(IterationController):
                 else:
                     # No tool calls and not marked as final - unusual state
                     self.logger.warning("Response has no tool calls but is not marked as final")
+                    self._last_conversation = conversation  # Store for investigation_history
                     return self._build_final_result(response.content, all_thinking_content)
                     
             except asyncio.TimeoutError:

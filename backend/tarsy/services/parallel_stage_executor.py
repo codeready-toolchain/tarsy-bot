@@ -830,33 +830,39 @@ class ParallelStageExecutor:
         parallel_result: ParallelStageResult,
         chain_context: ChainContext,
         session_mcp_client: MCPClient,
+        stage_config: "ChainStageConfigModel",
         chain_definition: "ChainConfigModel"
     ) -> AgentExecutionResult:
         """
-        Automatically invoke built-in SynthesisAgent to synthesize parallel results.
+        Automatically invoke synthesis agent to synthesize parallel results.
         
         Called when parallel stage is the final stage (no follow-up stage).
-        Creates a synthetic stage execution for SynthesisAgent.
+        Creates a synthetic stage execution for synthesis agent.
         Returns synthesized final analysis.
         
         Args:
             parallel_result: The parallel stage result to synthesize
             chain_context: Chain context for this session
             session_mcp_client: Session-scoped MCP client
+            stage_config: Stage configuration (contains synthesis config)
             chain_definition: Full chain definition
             
         Returns:
-            Synthesized AgentExecutionResult from SynthesisAgent
+            Synthesized AgentExecutionResult from synthesis agent
         """
-        logger.info("Invoking automatic SynthesisAgent synthesis for final parallel stage")
+        logger.info("Invoking automatic synthesis for final parallel stage")
         
-        # Create synthetic stage for SynthesisAgent
+        # Get synthesis configuration with defaults
+        from tarsy.models.agent_config import SynthesisConfig
+        synthesis_config = stage_config.synthesis or SynthesisConfig()
+        
+        # Create synthetic stage for synthesis agent
         from tarsy.models.agent_config import ChainStageConfigModel
         
         synthesis_stage = ChainStageConfigModel(
             name="synthesis",
-            agent="SynthesisAgent",
-            llm_provider=chain_definition.llm_provider  # Use chain-level provider if set
+            agent=synthesis_config.agent,
+            llm_provider=synthesis_config.llm_provider or stage_config.llm_provider or chain_definition.llm_provider
         )
         
         # Create stage execution record for synthesis
@@ -871,14 +877,18 @@ class ParallelStageExecutor:
             # Mark synthesis stage as started
             await self.stage_manager.update_stage_execution_started(synthesis_stage_execution_id)
             
-            # Resolve effective LLM provider for SynthesisAgent
-            effective_provider = chain_definition.llm_provider
+            # Resolve effective LLM provider for synthesis agent
+            effective_provider = (
+                synthesis_config.llm_provider 
+                or stage_config.llm_provider 
+                or chain_definition.llm_provider
+            )
             
-            # Get SynthesisAgent from factory
+            # Get synthesis agent from factory (configurable!)
             synthesis_agent = self.agent_factory.get_agent(
-                agent_identifier="SynthesisAgent",
+                agent_identifier=synthesis_config.agent,
                 mcp_client=session_mcp_client,
-                iteration_strategy=None,  # Uses SynthesisAgent's default (react)
+                iteration_strategy=synthesis_config.iteration_strategy,  # Configurable strategy
                 llm_provider=effective_provider
             )
             
@@ -889,8 +899,8 @@ class ParallelStageExecutor:
             original_stage = chain_context.current_stage_name
             chain_context.current_stage_name = "synthesis"
             
-            # Execute SynthesisAgent with parallel results already in context
-            logger.info("Executing SynthesisAgent to synthesize parallel investigation results")
+            # Execute synthesis agent with parallel results already in context
+            logger.info(f"Executing {synthesis_config.agent} with {synthesis_config.iteration_strategy} strategy to synthesize parallel investigation results")
             synthesis_result = await synthesis_agent.process_alert(chain_context)
             
             # Restore original stage name (for proper context)
@@ -899,11 +909,11 @@ class ParallelStageExecutor:
             # Update synthesis stage execution as completed
             await self.stage_manager.update_stage_execution_completed(synthesis_stage_execution_id, synthesis_result)
             
-            logger.info("SynthesisAgent synthesis completed successfully")
+            logger.info(f"{synthesis_config.agent} synthesis completed successfully")
             return synthesis_result
             
         except Exception as e:
-            error_msg = f"SynthesisAgent synthesis failed: {str(e)}"
+            error_msg = f"{synthesis_config.agent} synthesis failed: {str(e)}"
             logger.error(error_msg, exc_info=True)
             
             # Update synthesis stage as failed
@@ -912,7 +922,7 @@ class ParallelStageExecutor:
             # Create error result
             error_result = AgentExecutionResult(
                 status=StageStatus.FAILED,
-                agent_name="SynthesisAgent",
+                agent_name=synthesis_config.agent,
                 stage_name="synthesis",
                 timestamp_us=now_us(),
                 result_summary=f"Synthesis failed: {str(e)}",

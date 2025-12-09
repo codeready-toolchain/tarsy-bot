@@ -263,6 +263,28 @@ class ParallelAgentConfig(BaseModel):
     )
 
 
+class SynthesisConfig(BaseModel):
+    """Configuration for parallel stage synthesis."""
+    
+    model_config = ConfigDict(
+        extra='forbid',
+        str_strip_whitespace=True
+    )
+    
+    agent: str = Field(
+        default="SynthesisAgent",
+        description="Agent to use for synthesis (default: SynthesisAgent)"
+    )
+    iteration_strategy: str = Field(
+        default="synthesis",
+        description="Iteration strategy for synthesis (default: synthesis)"
+    )
+    llm_provider: Optional[str] = Field(
+        None,
+        description="Optional LLM provider for synthesis (uses stage/chain/system default if not specified)"
+    )
+
+
 class ChainStageConfigModel(BaseModel):
     """Configuration model for a single stage in a chain."""
     
@@ -301,6 +323,10 @@ class ChainStageConfigModel(BaseModel):
     llm_provider: Optional[str] = Field(
         None,
         description="Optional LLM provider override for this stage (uses chain's provider if not specified)"
+    )
+    synthesis: Optional[SynthesisConfig] = Field(
+        None,
+        description="Optional synthesis configuration for parallel stages"
     )
     
     @model_validator(mode='after')

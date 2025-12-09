@@ -130,6 +130,16 @@ class BaseAgent(ABC):
             )
             print(f"[DEBUG-CONTROLLER] Creating NativeThinkingController")
             return NativeThinkingController(self.llm_manager, self._prompt_builder)
+        elif strategy == IterationStrategy.SYNTHESIS:
+            from .iteration_controllers.synthesis_controller import (
+                SynthesisController,
+            )
+            return SynthesisController()
+        elif strategy == IterationStrategy.SYNTHESIS_NATIVE_THINKING:
+            from .iteration_controllers.synthesis_native_thinking_controller import (
+                SynthesisNativeThinkingController,
+            )
+            return SynthesisNativeThinkingController()
         else:
             assert_never(strategy)
     
@@ -225,12 +235,19 @@ class BaseAgent(ABC):
                 context=stage_context
             )
             
+            # Generate investigation history for synthesis strategies
+            investigation_history = ""
+            last_conversation = self._iteration_controller.get_last_conversation()
+            if last_conversation:
+                investigation_history = self._iteration_controller.build_synthesis_conversation(last_conversation)
+            
             return AgentExecutionResult(
                 status=StageStatus.COMPLETED,
                 agent_name=self.__class__.__name__,
                 timestamp_us=now_us(),
                 result_summary=result_summary,
-                complete_conversation_history=analysis_result,
+                complete_conversation_history=analysis_result,  # Last assistant message
+                investigation_history=investigation_history,  # Full conversation for synthesis
                 final_analysis=final_analysis,
                 iteration_strategy=self._iteration_strategy.value,
                 llm_provider=self._llm_provider_name

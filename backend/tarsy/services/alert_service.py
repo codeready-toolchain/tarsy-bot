@@ -626,10 +626,12 @@ class AlertService:
                         if self.parallel_executor.is_final_stage_parallel(chain_definition):
                             from tarsy.models.agent_execution_result import ParallelStageResult
                             
-                            logger.info("Final stage is parallel - invoking automatic SynthesisAgent synthesis")
+                            logger.info("Final stage is parallel - invoking automatic synthesis")
                             try:
+                                # Get stage config for synthesis configuration
+                                stage_config = chain_definition.stages[stage_index]
                                 synthesis_result = await self.parallel_executor.synthesize_parallel_results(
-                                    parallel_result, chain_context, session_mcp_client, chain_definition
+                                    parallel_result, chain_context, session_mcp_client, stage_config, chain_definition
                                 )
                                 # Add synthesis result as final stage
                                 chain_context.add_stage_result("synthesis", synthesis_result)
@@ -1029,10 +1031,12 @@ class AlertService:
                 
                 last_result = chain_context.get_last_stage_result()
                 if isinstance(last_result, ParallelStageResult):
-                    logger.info("Final stage is parallel - invoking automatic SynthesisAgent synthesis")
+                    logger.info("Final stage is parallel - invoking automatic synthesis")
                     try:
+                        # Get last stage config for synthesis configuration
+                        last_stage_config = chain_definition.stages[-1]
                         synthesis_result = await self.parallel_executor.synthesize_parallel_results(
-                            last_result, chain_context, session_mcp_client, chain_definition
+                            last_result, chain_context, session_mcp_client, last_stage_config, chain_definition
                         )
                         # Add synthesis result as final stage
                         chain_context.add_stage_result("synthesis", synthesis_result)

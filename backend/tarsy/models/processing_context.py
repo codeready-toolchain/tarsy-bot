@@ -253,6 +253,12 @@ class StageContext:
         """Check if there are completed previous stages."""
         return len(self.previous_stages_results) > 0
     
+    def _is_synthesis_strategy(self) -> bool:
+        """Check if current agent uses synthesis strategy."""
+        from tarsy.models.constants import IterationStrategy
+        strategy = self.agent.iteration_strategy
+        return strategy in [IterationStrategy.SYNTHESIS, IterationStrategy.SYNTHESIS_NATIVE_THINKING]
+    
     def format_previous_stages_context(self) -> str:
         """
         Format previous stage results for prompts in execution order.
@@ -280,8 +286,11 @@ class StageContext:
                         sections.append(f"**Error**: {agent_meta.error_message}")
                     sections.append("")
                     
-                    # Use complete conversation history if available, otherwise fall back to result_summary
-                    content = agent_result.complete_conversation_history or agent_result.result_summary or ""
+                    # Use investigation_history for synthesis strategies, complete_conversation_history for others
+                    if self._is_synthesis_strategy():
+                        content = agent_result.investigation_history or agent_result.result_summary or ""
+                    else:
+                        content = agent_result.complete_conversation_history or agent_result.result_summary or ""
                     
                     # Wrap the analysis result content with HTML comment boundaries
                     sections.append("<!-- Analysis Result START -->")

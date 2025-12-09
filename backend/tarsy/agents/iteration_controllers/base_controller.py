@@ -29,6 +29,9 @@ class IterationController(ABC):
     # LLM provider override (set by agent for per-stage/per-chain providers)
     _llm_provider_name: Optional[str] = None
     
+    # Last conversation (stored for investigation_history generation)
+    _last_conversation: Optional['LLMConversation'] = None
+    
     def set_llm_provider(self, provider_name: Optional[str]):
         """
         Set the LLM provider override for this controller.
@@ -46,6 +49,15 @@ class IterationController(ABC):
             Provider name if set, or None for global default
         """
         return self._llm_provider_name
+    
+    def get_last_conversation(self) -> Optional['LLMConversation']:
+        """
+        Get the last conversation from execute_analysis_loop.
+        
+        Returns:
+            LLMConversation if available, None otherwise
+        """
+        return self._last_conversation
     
     def _get_native_tools_override(self, context: 'StageContext'):
         """
@@ -179,6 +191,49 @@ class IterationController(ABC):
             Final analysis result string
         """
         pass
+    
+    def build_synthesis_conversation(self, conversation: 'LLMConversation') -> str:
+        """
+        Build investigation history for synthesis strategies.
+        
+        Default implementation filters conversation to include thoughts and observations
+        while excluding system messages and initial alert data.
+        
+        Excludes:
+        - System messages (internal instructions)
+        - First user message (alert data - already in context)
+        
+        Includes:
+        - All assistant messages (thoughts, reasoning)
+        - All tool observations (user messages with tool results)
+        - Final answers
+        
+        Args:
+            conversation: LLM conversation from execute_analysis_loop
+            
+        Returns:
+            Formatted investigation history string for synthesis
+        """
+        if not hasattr(conversation, 'messages') or not conversation.messages:
+            return ""
+        
+        sections = []
+        first_user_seen = False
+        
+        for message in conversation.messages:
+            # Skip system messages
+            if message.role == MessageRole.SYSTEM:
+                continue
+            
+            # Skip first user message (alert data)
+            if message.role == MessageRole.USER and not first_user_seen:
+                first_user_seen = True
+                continue
+            
+            # Include all other messages
+            sections.append(f"{message.role.value.upper()}: {message.content}")
+        
+        return "\n\n".join(sections)
 
     def create_result_summary(
         self, 
@@ -342,6 +397,7 @@ class ReactController(IterationController):
                     # 5. Handle final answer (completion)
                     if parsed_response.is_final_answer:
                         self.logger.info("ReAct analysis completed with final answer")
+                        self._last_conversation = conversation_result  # Store for investigation_history
                         return self._build_final_result(conversation_result, parsed_response.final_answer)
                     
                     # 6. Handle unknown tool (tool name doesn't match available tools)

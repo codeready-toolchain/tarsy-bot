@@ -31,10 +31,16 @@ class AgentExecutionResult(BaseModel):
     # The key field - agent decides the format (could be ReAct JSON, markdown, plain text, etc.)
     result_summary: str = Field(..., description="Agent-provided summary in whatever format the agent chooses")
     
-    # Complete conversation history for stage context passing (string format for inter-stage context)
+    # Conversation history for sequential stages. Last assistant message only.
     complete_conversation_history: Optional[str] = Field(
         None, 
-        description="Formatted ReAct conversation for passing context to subsequent stages (string format)"
+        description="Last assistant message for passing to sequential stages"
+    )
+    
+    # Rich conversation history for synthesis strategies (includes thoughts and observations)
+    investigation_history: Optional[str] = Field(
+        None,
+        description="Full conversation (minus system/first user) for synthesis strategies"
     )
     
     # Conversation state for pause/resume (dict format for exact state restoration)
