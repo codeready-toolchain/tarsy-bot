@@ -822,21 +822,36 @@ This is a test runbook for replica execution testing.
 **Status**: completed
 
 <!-- Analysis Result START -->
-Deployment web-app has no ready replicas (0/3). This indicates a critical availability issue. All pods may be failing to start or pass health checks.
+USER: Tool Result: kubernetes-server.kubectl_get:
+{
+  "result": "Deployment web-app has 0/3 replicas ready"
+}
+
+ASSISTANT: Deployment web-app has no ready replicas (0/3). This indicates a critical availability issue. All pods may be failing to start or pass health checks.
 <!-- Analysis Result END -->
 
 #### Agent 2: KubernetesAgent-2 (google-default, native-thinking)
 **Status**: completed
 
 <!-- Analysis Result START -->
-Events show ImagePullBackOff for web-app:v2.0.0. The deployment cannot start because the specified container image cannot be pulled. This is the root cause of the 0/3 ready replicas.
+USER: Tool Result: kubernetes-server.kubectl_get:
+{
+  "result": "Warning: ImagePullBackOff - Failed to pull image 'web-app:v2.0.0'"
+}
+
+ASSISTANT: Events show ImagePullBackOff for web-app:v2.0.0. The deployment cannot start because the specified container image cannot be pulled. This is the root cause of the 0/3 ready replicas.
 <!-- Analysis Result END -->
 
 #### Agent 3: KubernetesAgent-3 (google-default, native-thinking)
 **Status**: completed
 
 <!-- Analysis Result START -->
-Image web-app:v2.0.0 not found in container registry. The deployment is referencing a non-existent image version. Recommend verifying the image tag or rolling back to a known-good version.
+USER: Tool Result: kubernetes-server.kubectl_describe:
+{
+  "result": "Image: web-app:v2.0.0, Status: ErrImagePull - Image not found in registry"
+}
+
+ASSISTANT: Image web-app:v2.0.0 not found in container registry. The deployment is referencing a non-existent image version. Recommend verifying the image tag or rolling back to a known-good version.
 <!-- Analysis Result END -->
 
 
