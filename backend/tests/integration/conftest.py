@@ -929,8 +929,8 @@ async def alert_service(ensure_integration_test_isolation, mock_settings, mock_r
     service.history_service = mock_history_service
     
     # Update manager classes with mocked history service
-    from tarsy.services.stage_execution_manager import StageExecutionManager
     from tarsy.services.session_manager import SessionManager
+    from tarsy.services.stage_execution_manager import StageExecutionManager
     service.stage_manager = StageExecutionManager(history_service=mock_history_service)
     service.session_manager = SessionManager(history_service=mock_history_service)
     
@@ -1012,8 +1012,8 @@ def alert_service_with_mocks(
     service.history_service = mock_history_service
     
     # Initialize manager classes AFTER all history_service mocks are set up
-    from tarsy.services.stage_execution_manager import StageExecutionManager
     from tarsy.services.session_manager import SessionManager
+    from tarsy.services.stage_execution_manager import StageExecutionManager
     service.stage_manager = StageExecutionManager(mock_history_service)
     service.session_manager = SessionManager(mock_history_service)
     

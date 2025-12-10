@@ -841,9 +841,9 @@ def e2e_parallel_test_client(isolated_parallel_settings):
     """Create an isolated FastAPI test client for parallel agent e2e tests."""
     # Ensure settings cache is cleared before importing app
     # This ensures the app is created with the test configuration
+    import sys
     from contextlib import suppress
     from unittest.mock import patch
-    import sys
 
     from fastapi.testclient import TestClient
     with suppress(Exception):

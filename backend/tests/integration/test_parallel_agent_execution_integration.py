@@ -5,11 +5,15 @@ Tests actual parallel execution flow including concurrent agent execution,
 result aggregation, and failure policy handling.
 """
 
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 
-from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel, ParallelAgentConfig
+from tarsy.models.agent_config import (
+    ChainConfigModel,
+    ChainStageConfigModel,
+    ParallelAgentConfig,
+)
 from tarsy.models.agent_execution_result import AgentExecutionResult
 from tarsy.models.alert import ProcessingAlert
 from tarsy.models.constants import FailurePolicy, StageStatus

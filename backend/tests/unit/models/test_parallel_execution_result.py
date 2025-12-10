@@ -1,7 +1,6 @@
 """Unit tests for parallel execution result models."""
 
 import pytest
-from pydantic import ValidationError
 
 from tarsy.models.agent_execution_result import (
     AgentExecutionMetadata,

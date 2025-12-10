@@ -21,9 +21,9 @@ from .e2e_utils import E2ETestUtils
 from .expected_parallel_conversations import (
     EXPECTED_PARALLEL_NO_SYNTHESIS_AGENT_1_CONVERSATION,
     EXPECTED_PARALLEL_NO_SYNTHESIS_AGENT_2_CONVERSATION,
+    EXPECTED_PARALLEL_REGULAR_STAGES,
     EXPECTED_PARALLEL_REGULAR_SYNTHESIS_CONVERSATION,
     EXPECTED_REGULAR_AFTER_PARALLEL_CONVERSATION,
-    EXPECTED_PARALLEL_REGULAR_STAGES,
 )
 from .parallel_test_base import ParallelTestBase
 
@@ -189,7 +189,8 @@ kubectl rollout undo deployment/app -n test-namespace
         
         # Create tool-aware MCP mock that returns different responses based on tool called
         def create_tool_aware_mock():
-            from unittest.mock import Mock, AsyncMock
+            from unittest.mock import AsyncMock, Mock
+
             from mcp.types import Tool
             
             mock_session = AsyncMock()

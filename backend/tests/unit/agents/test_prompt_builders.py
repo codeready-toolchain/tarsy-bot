@@ -735,10 +735,15 @@ class TestNativeThinkingPromptBuilding:
     @pytest.fixture
     def stage_context_first_stage(self):
         """Create StageContext for first stage (no previous results)."""
-        from tarsy.models.processing_context import ChainContext, StageContext, AvailableTools
-        from tarsy.models.alert import ProcessingAlert
-        from tarsy.utils.timestamp import now_us
         from unittest.mock import Mock
+
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.processing_context import (
+            AvailableTools,
+            ChainContext,
+            StageContext,
+        )
+        from tarsy.utils.timestamp import now_us
         
         processing_alert = ProcessingAlert(
             alert_type="kubernetes",
@@ -772,12 +777,17 @@ class TestNativeThinkingPromptBuilding:
     @pytest.fixture
     def stage_context_with_previous_stages(self):
         """Create StageContext with previous stage results."""
-        from tarsy.models.processing_context import ChainContext, StageContext, AvailableTools
-        from tarsy.models.alert import ProcessingAlert
-        from tarsy.models.agent_execution_result import AgentExecutionResult
-        from tarsy.models.constants import StageStatus
-        from tarsy.utils.timestamp import now_us
         from unittest.mock import Mock
+
+        from tarsy.models.agent_execution_result import AgentExecutionResult
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.constants import StageStatus
+        from tarsy.models.processing_context import (
+            AvailableTools,
+            ChainContext,
+            StageContext,
+        )
+        from tarsy.utils.timestamp import now_us
         
         processing_alert = ProcessingAlert(
             alert_type="kubernetes",
@@ -871,10 +881,15 @@ class TestNativeThinkingPromptBuilding:
     
     def test_build_native_thinking_prompt_handles_no_runbook(self, builder):
         """Test building prompt when runbook is None or empty."""
-        from tarsy.models.processing_context import ChainContext, StageContext, AvailableTools
-        from tarsy.models.alert import ProcessingAlert
-        from tarsy.utils.timestamp import now_us
         from unittest.mock import Mock
+
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.processing_context import (
+            AvailableTools,
+            ChainContext,
+            StageContext,
+        )
+        from tarsy.utils.timestamp import now_us
         
         processing_alert = ProcessingAlert(
             alert_type="kubernetes",
@@ -917,17 +932,22 @@ class TestNativeThinkingPromptBuilding:
     
     def test_build_native_thinking_prompt_with_parallel_previous_stage(self, builder):
         """Test building prompt when previous stage was parallel execution."""
-        from tarsy.models.processing_context import ChainContext, StageContext, AvailableTools
-        from tarsy.models.alert import ProcessingAlert
-        from tarsy.models.agent_execution_result import (
-            AgentExecutionResult,
-            ParallelStageResult,
-            ParallelStageMetadata,
-            AgentExecutionMetadata,
-        )
-        from tarsy.models.constants import StageStatus, FailurePolicy
-        from tarsy.utils.timestamp import now_us
         from unittest.mock import Mock
+
+        from tarsy.models.agent_execution_result import (
+            AgentExecutionMetadata,
+            AgentExecutionResult,
+            ParallelStageMetadata,
+            ParallelStageResult,
+        )
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.constants import FailurePolicy, StageStatus
+        from tarsy.models.processing_context import (
+            AvailableTools,
+            ChainContext,
+            StageContext,
+        )
+        from tarsy.utils.timestamp import now_us
         
         timestamp = now_us()
         

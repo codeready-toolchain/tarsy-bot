@@ -260,8 +260,8 @@ class TestAlertProcessing:
     @pytest.fixture
     async def initialized_service(self, sample_alert):
         """Create fully initialized AlertService."""
-        from tarsy.services.stage_execution_manager import StageExecutionManager
         from tarsy.services.session_manager import SessionManager
+        from tarsy.services.stage_execution_manager import StageExecutionManager
         
         mock_settings = MockFactory.create_mock_settings(
             github_token="test_token",
@@ -1092,8 +1092,8 @@ class TestEnhancedChainExecution:
     @pytest.fixture
     async def initialized_service(self):
         """Create fully initialized AlertService for chain execution tests."""
-        from tarsy.services.stage_execution_manager import StageExecutionManager
         from tarsy.services.session_manager import SessionManager
+        from tarsy.services.stage_execution_manager import StageExecutionManager
         
         mock_settings = MockFactory.create_mock_settings(
             github_token="test_token",
@@ -1349,8 +1349,8 @@ class TestFullErrorPropagation:
     @pytest.fixture
     async def service_with_failing_stages(self):
         """Create service setup to simulate stage failures."""
-        from tarsy.services.stage_execution_manager import StageExecutionManager
         from tarsy.services.session_manager import SessionManager
+        from tarsy.services.stage_execution_manager import StageExecutionManager
         
         mock_settings = MockFactory.create_mock_settings(
             github_token="test_token", 

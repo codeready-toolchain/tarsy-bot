@@ -617,8 +617,8 @@ class TestAlertServiceHistoryIntegration:
     @pytest.fixture
     def alert_service_with_history(self, mock_settings):
         """Create AlertService with history integration."""
-        from tarsy.services.stage_execution_manager import StageExecutionManager
         from tarsy.services.session_manager import SessionManager
+        from tarsy.services.stage_execution_manager import StageExecutionManager
         
         # Create AlertService directly with mock settings
         service = AlertService(mock_settings)

@@ -5,9 +5,10 @@ Tests the stage execution lifecycle management including creation,
 status transitions, and hook triggering.
 """
 
-import pytest
-from unittest.mock import AsyncMock, Mock, patch
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock, patch
+
+import pytest
 
 from tarsy.models.agent_execution_result import AgentExecutionResult
 from tarsy.models.constants import ParallelType, StageStatus

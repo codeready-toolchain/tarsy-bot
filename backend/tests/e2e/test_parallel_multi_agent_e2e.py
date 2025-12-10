@@ -22,13 +22,13 @@ from mcp.types import Tool
 
 from .e2e_utils import E2ETestUtils
 from .expected_parallel_conversations import (
+    EXPECTED_MULTI_AGENT_STAGES,
     EXPECTED_PARALLEL_AGENT_1_CONVERSATION,
     EXPECTED_PARALLEL_AGENT_2_CONVERSATION,
-    EXPECTED_SYNTHESIS_CONVERSATION,
-    EXPECTED_MULTI_AGENT_STAGES,
+    EXPECTED_PARALLEL_CHAT_INTERACTIONS,
     EXPECTED_PARALLEL_CHAT_MESSAGE_1_CONVERSATION,
     EXPECTED_PARALLEL_CHAT_MESSAGE_2_CONVERSATION,
-    EXPECTED_PARALLEL_CHAT_INTERACTIONS,
+    EXPECTED_SYNTHESIS_CONVERSATION,
 )
 from .parallel_test_base import ParallelTestBase
 
@@ -473,7 +473,6 @@ Action Input: {"resource": "pods", "label_selector": "app=database", "namespace"
             message_key: Key to look up expected interactions (e.g., 'message_1', 'message_2')
             expected_conversation: Expected conversation structure for this message
         """
-        from .e2e_utils import assert_conversation_messages
         
         # Verify basic stage structure
         assert chat_stage is not None, "Chat stage not found"

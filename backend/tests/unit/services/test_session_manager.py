@@ -5,9 +5,10 @@ Tests the session management functionality including creation,
 status updates, and error handling.
 """
 
-import pytest
-from unittest.mock import Mock
 from types import SimpleNamespace
+from unittest.mock import Mock
+
+import pytest
 
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.services.session_manager import SessionManager
@@ -40,8 +41,8 @@ class TestCreateChainHistorySession:
         manager = SessionManager(history_service=history_service)
         
         # Create mock chain context
-        from tarsy.models.processing_context import ChainContext
         from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.processing_context import ChainContext
         
         alert = AlertFactory.create_kubernetes_alert()
         processing_alert = ProcessingAlert(
@@ -79,8 +80,8 @@ class TestCreateChainHistorySession:
         
         manager = SessionManager(history_service=history_service)
         
-        from tarsy.models.processing_context import ChainContext
         from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.processing_context import ChainContext
         
         alert = AlertFactory.create_kubernetes_alert()
         processing_alert = ProcessingAlert(
@@ -111,8 +112,8 @@ class TestCreateChainHistorySession:
         
         manager = SessionManager(history_service=history_service)
         
-        from tarsy.models.processing_context import ChainContext
         from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.processing_context import ChainContext
         
         alert = AlertFactory.create_kubernetes_alert()
         processing_alert = ProcessingAlert(

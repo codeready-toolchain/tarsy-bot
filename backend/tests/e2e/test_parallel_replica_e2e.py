@@ -19,14 +19,13 @@ from unittest.mock import patch
 
 import pytest
 
-from .conftest import create_mock_stream
 from .e2e_utils import E2ETestUtils
 from .expected_parallel_conversations import (
     EXPECTED_REPLICA_1_CONVERSATION,
     EXPECTED_REPLICA_2_CONVERSATION,
     EXPECTED_REPLICA_3_CONVERSATION,
-    EXPECTED_REPLICA_SYNTHESIS_CONVERSATION,
     EXPECTED_REPLICA_STAGES,
+    EXPECTED_REPLICA_SYNTHESIS_CONVERSATION,
 )
 from .parallel_test_base import ParallelTestBase
 
@@ -283,8 +282,11 @@ All three replicas converged on consistent findings with increasing detail. Repl
         mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
         
         # Patch llm_interaction_context to set the contextvar
-        from tarsy.hooks.hook_context import llm_interaction_context as original_llm_context
         from contextlib import asynccontextmanager
+
+        from tarsy.hooks.hook_context import (
+            llm_interaction_context as original_llm_context,
+        )
         
         @asynccontextmanager
         async def patched_llm_context(session_id, request_data, stage_execution_id=None, native_tools_config=None):

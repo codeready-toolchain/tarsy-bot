@@ -8,7 +8,7 @@ reducing duplication and improving maintainability.
 import asyncio
 from typing import Callable, Optional
 
-from .e2e_utils import assert_conversation_messages, E2ETestUtils
+from .e2e_utils import E2ETestUtils, assert_conversation_messages
 
 
 class ParallelTestBase:

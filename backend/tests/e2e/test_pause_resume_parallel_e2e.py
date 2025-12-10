@@ -23,7 +23,6 @@ from mcp.types import Tool
 from tarsy.config.builtin_config import BUILTIN_MCP_SERVERS
 from tarsy.integrations.mcp.client import MCPClient
 
-from .conftest import create_mock_stream
 from .e2e_utils import E2ETestUtils
 from .parallel_test_base import ParallelTestBase
 
@@ -79,7 +78,7 @@ class TestPauseResumeParallelE2E(ParallelTestBase):
         
         try:
             settings.max_llm_mcp_iterations = 2
-            print(f"🔧 Set max_llm_mcp_iterations to 2")
+            print("🔧 Set max_llm_mcp_iterations to 2")
             
             # ============================================================================
             # NATIVE THINKING MOCK (for KubernetesAgent using Gemini)
@@ -309,9 +308,9 @@ Pod is failing due to database connectivity issues. The pod attempts to connect 
                         assert len(k8s_exec.get("llm_interactions", [])) == 2, "Kubernetes should have 2 LLM interactions"
                         assert len(log_exec.get("llm_interactions", [])) == 2, "Log should have 2 LLM interactions"
                         
-                        print(f"✅ Parallel stage verified:")
-                        print(f"   - KubernetesAgent: PAUSED (2 interactions)")
-                        print(f"   - LogAgent: COMPLETED (2 interactions)")
+                        print("✅ Parallel stage verified:")
+                        print("   - KubernetesAgent: PAUSED (2 interactions)")
+                        print("   - LogAgent: COMPLETED (2 interactions)")
                         
                         # ===== Phase 2: Resume with higher max_iterations =====
                         print("\n⏳ Phase 2: Resume (max_iterations=4)")
@@ -390,11 +389,11 @@ Pod is failing due to database connectivity issues. The pod attempts to connect 
                         assert final_detail.get("final_analysis_summary") is not None
                         assert len(final_detail.get("final_analysis_summary", "")) > 0
                         
-                        print(f"✅ ALL VALIDATIONS PASSED!")
-                        print(f"   - Kubernetes resumed and completed (3 total interactions)")
-                        print(f"   - Log preserved from initial execution (2 interactions)")
-                        print(f"   - Synthesis combined both results")
-                        print(f"   - Executive summary generated")
+                        print("✅ ALL VALIDATIONS PASSED!")
+                        print("   - Kubernetes resumed and completed (3 total interactions)")
+                        print("   - Log preserved from initial execution (2 interactions)")
+                        print("   - Synthesis combined both results")
+                        print("   - Executive summary generated")
                         
                         return final_detail
         

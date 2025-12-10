@@ -5,8 +5,9 @@ Tests the response formatting functions for success responses,
 chain responses, and error responses.
 """
 
-import pytest
 from types import SimpleNamespace
+
+import pytest
 
 from tarsy.models.alert import ProcessingAlert
 from tarsy.services.response_formatter import (
@@ -278,8 +279,8 @@ class TestResponseFormatting:
     
     def test_format_response_with_missing_alert_data_fields(self):
         """Test that responses handle missing alert data fields gracefully."""
-        from tarsy.models.processing_context import ChainContext
         from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.processing_context import ChainContext
         
         # Create alert with minimal data
         alert = ProcessingAlert(

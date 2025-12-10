@@ -6,16 +6,17 @@ replicated agent execution, and result aggregation.
 """
 
 import asyncio
-import pytest
-from unittest.mock import AsyncMock, Mock, patch
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock
+
+import pytest
 
 from tarsy.models.agent_execution_result import (
     AgentExecutionMetadata,
     AgentExecutionResult,
     ParallelStageResult,
 )
-from tarsy.models.constants import FailurePolicy, ParallelType, StageStatus
+from tarsy.models.constants import FailurePolicy, StageStatus
 from tarsy.models.processing_context import ChainContext
 from tarsy.services.parallel_stage_executor import ParallelStageExecutor
 from tarsy.utils.timestamp import now_us
