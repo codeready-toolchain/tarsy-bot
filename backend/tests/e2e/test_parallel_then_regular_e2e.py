@@ -187,9 +187,43 @@ kubectl rollout undo deployment/app -n test-namespace
             agent_counters, agent_responses, agent_identifiers
         )
         
-        # Create MCP mocks
-        mock_k8s_session = E2ETestUtils.create_generic_mcp_session_mock("Mock kubectl response")
-        mock_log_session = E2ETestUtils.create_generic_mcp_session_mock("Mock log response")
+        # Create tool-aware MCP mock that returns different responses based on tool called
+        def create_tool_aware_mock():
+            from unittest.mock import Mock, AsyncMock
+            from mcp.types import Tool
+            
+            mock_session = AsyncMock()
+            
+            async def mock_call_tool(tool_name, _parameters):
+                mock_result = Mock()
+                mock_content = Mock()
+                # Return different responses based on tool name
+                if 'kubectl_get' in tool_name or tool_name == 'kubectl_get':
+                    mock_content.text = '{"result": "Pod pod-1 is in CrashLoopBackOff state"}'
+                elif 'get_logs' in tool_name or tool_name == 'get_logs':
+                    mock_content.text = '{"logs": "Error: Failed to connect to database at db.example.com:5432 - connection timeout"}'
+                else:
+                    mock_content.text = f"Mock {tool_name} response"
+                mock_result.content = [mock_content]
+                return mock_result
+            
+            async def mock_list_tools():
+                mock_tool = Tool(
+                    name="generic_tool",
+                    description="Generic test tool",
+                    inputSchema={"type": "object", "properties": {}}
+                )
+                mock_result = Mock()
+                mock_result.tools = [mock_tool]
+                return mock_result
+            
+            mock_session.call_tool.side_effect = mock_call_tool
+            mock_session.list_tools.side_effect = mock_list_tools
+            return mock_session
+        
+        # Create MCP mocks - both agents use kubernetes-server but call different tools
+        mock_k8s_session = create_tool_aware_mock()
+        mock_log_session = create_tool_aware_mock()
         mock_sessions = {
             "kubernetes-server": mock_k8s_session,
             "log-server": mock_log_session

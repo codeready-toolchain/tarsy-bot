@@ -831,7 +831,8 @@ class ParallelStageExecutor:
         chain_context: ChainContext,
         session_mcp_client: MCPClient,
         stage_config: "ChainStageConfigModel",
-        chain_definition: "ChainConfigModel"
+        chain_definition: "ChainConfigModel",
+        current_stage_index: int
     ) -> AgentExecutionResult:
         """
         Automatically invoke synthesis agent to synthesize parallel results.
@@ -849,6 +850,7 @@ class ParallelStageExecutor:
             session_mcp_client: Session-scoped MCP client
             stage_config: Stage configuration (may contain optional synthesis config)
             chain_definition: Full chain definition
+            current_stage_index: Stage index to use for synthesis (accounts for all executed stages so far)
             
         Returns:
             Synthesized AgentExecutionResult from synthesis agent
@@ -869,11 +871,11 @@ class ParallelStageExecutor:
         )
         
         # Create stage execution record for synthesis
-        synthesis_stage_index = len(chain_definition.stages)  # After all defined stages
+        # Use the provided stage index (which accounts for previously executed stages including other synthesis stages)
         synthesis_stage_execution_id = await self.stage_manager.create_stage_execution(
             chain_context.session_id,
             synthesis_stage,
-            synthesis_stage_index
+            current_stage_index  # This is the actual executed stage count
         )
         
         try:

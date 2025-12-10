@@ -1334,13 +1334,23 @@ You are a command execution specialist that formulates remediation steps based o
         },
         {
             "role": "user",
-            "content": """Answer the following question using the available tools.
+            "content": """# Final Analysis Task
 
-Available tools:
 
-No tools available.
+**Stage:** command (Final Analysis Stage)
 
-Question: Analyze this test-parallel-regular-execution alert and provide actionable recommendations.
+
+# SRE Alert Analysis Request
+
+You are an expert Site Reliability Engineer (SRE) analyzing a system alert using the ConfigurableAgent.
+This agent specializes in kubernetes-server operations and has access to domain-specific tools and knowledge.
+
+Your task is to provide a comprehensive analysis of the incident based on:
+1. The alert information
+2. The associated runbook
+3. Real-time system data from MCP servers
+
+Please provide detailed, actionable insights about what's happening and potential next steps.
 
 ## Alert Details
 
@@ -1386,9 +1396,12 @@ Thought: I have analyzed the logs and found the root cause.
 Final Answer: Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity.
 <!-- Analysis Result END -->
 
-### Results from stage 'synthesis':
+### Results from 'synthesis' stage:
 
-**Synthesis of Parallel Investigations**
+#### Analysis Result
+
+<!-- Analysis Result START -->
+Final Answer: **Synthesis of Parallel Investigations**
 
 Both investigations provide complementary evidence. The Kubernetes agent identified the symptom (CrashLoopBackOff), while the log agent uncovered the root cause (database connection timeout).
 
@@ -1401,17 +1414,17 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
 4. Review database connection timeout settings in application config
 
 **Priority:** High - Application is currently non-functional
+<!-- Analysis Result END -->
 
-## Your Task
-Use the available tools to investigate this alert and provide:
+
+## Instructions
+Provide comprehensive final analysis based on ALL collected data:
 1. Root cause analysis
-2. Current system state assessment  
-3. Specific remediation steps for human operators
-4. Prevention recommendations
+2. Impact assessment  
+3. Recommended actions
+4. Prevention strategies
 
-Be thorough in your investigation before providing the final answer.
-
-Begin!"""
+Do NOT call any tools - use only the provided data."""
         },
         {
             "role": "assistant",

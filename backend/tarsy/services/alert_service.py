@@ -609,10 +609,18 @@ class AlertService:
                 if parallel_result.status == StageStatus.COMPLETED:
                     # ALWAYS invoke synthesis after parallel stage completion
                     logger.info(f"Invoking automatic synthesis for resumed parallel stage '{paused_stage.stage_name}'")
+                    
+                    # Count existing stage executions to determine correct synthesis index
+                    # This accounts for all stages executed so far (including any previous synthesis stages)
+                    existing_stages = await self.history_service.get_stage_executions(session_id)
+                    # Filter to non-parallel-child stages (parents and single stages only)
+                    non_child_stages = [s for s in existing_stages if s.parent_stage_execution_id is None]
+                    synthesis_index = len(non_child_stages)
+                    
                     try:
                         stage_config = chain_definition.stages[stage_index]
                         synthesis_result = await self.parallel_executor.synthesize_parallel_results(
-                            parallel_result, chain_context, session_mcp_client, stage_config, chain_definition
+                            parallel_result, chain_context, session_mcp_client, stage_config, chain_definition, synthesis_index
                         )
                         # Add synthesis result as final stage
                         chain_context.add_stage_result("synthesis", synthesis_result)
@@ -766,6 +774,17 @@ class AlertService:
                         logger.info(f"Resuming from stage {i+1}: '{stage.name}'")
                         break
             
+            # Track actual executed stage count (including dynamically added synthesis stages)
+            # When resuming, count existing stages to get accurate count
+            if chain_context.current_stage_name:
+                existing_stages = await self.history_service.get_stage_executions(chain_context.session_id)
+                # Filter to non-parallel-child stages (parents and single stages only)
+                non_child_stages = [s for s in existing_stages if s.parent_stage_execution_id is None]
+                executed_stage_count = len(non_child_stages)
+                logger.info(f"Resuming with {executed_stage_count} stages already executed")
+            else:
+                executed_stage_count = start_from_stage
+            
             for i, stage in enumerate(chain_definition.stages):
                 # Skip stages before the resume point
                 if i < start_from_stage:
@@ -793,10 +812,10 @@ class AlertService:
                         else:
                             # Fallback: create new if not found (shouldn't happen)
                             logger.warning(f"Could not find paused stage execution for '{stage.name}', creating new")
-                            stage_execution_id = await self.stage_manager.create_stage_execution(chain_context.session_id, stage, i)
+                            stage_execution_id = await self.stage_manager.create_stage_execution(chain_context.session_id, stage, executed_stage_count)
                     else:
                         # Create new stage execution record
-                        stage_execution_id = await self.stage_manager.create_stage_execution(chain_context.session_id, stage, i)
+                        stage_execution_id = await self.stage_manager.create_stage_execution(chain_context.session_id, stage, executed_stage_count)
                     
                     # Update session current stage
                     await self.stage_manager.update_session_current_stage(chain_context.session_id, i, stage_execution_id)
@@ -814,12 +833,12 @@ class AlertService:
                         if stage.agents:
                             # Multi-agent parallelism
                             stage_result = await self.parallel_executor.execute_parallel_agents(
-                                stage, chain_context, session_mcp_client, chain_definition, i
+                                stage, chain_context, session_mcp_client, chain_definition, executed_stage_count
                             )
                         else:
                             # Replica parallelism (stage.replicas > 1)
                             stage_result = await self.parallel_executor.execute_replicated_agent(
-                                stage, chain_context, session_mcp_client, chain_definition, i
+                                stage, chain_context, session_mcp_client, chain_definition, executed_stage_count
                             )
                         
                         # Get parent stage execution ID from result metadata
@@ -848,8 +867,12 @@ class AlertService:
                             # ALWAYS invoke synthesis after parallel stage completion
                             logger.info(f"Invoking automatic synthesis for parallel stage '{stage.name}'")
                             try:
+                                # Increment executed stage count for the parallel stage we just completed
+                                executed_stage_count += 1
+                                
+                                # Synthesis gets the next stage index
                                 synthesis_result = await self.parallel_executor.synthesize_parallel_results(
-                                    stage_result, chain_context, session_mcp_client, stage, chain_definition
+                                    stage_result, chain_context, session_mcp_client, stage, chain_definition, executed_stage_count
                                 )
                                 
                                 # Replace parallel result with synthesized result in chain context
@@ -859,6 +882,7 @@ class AlertService:
                                 # Update stage counters based on synthesis result
                                 if synthesis_result.status == StageStatus.COMPLETED:
                                     successful_stages += 1
+                                    executed_stage_count += 1  # Increment for the synthesis stage
                                 else:
                                     failed_stages += 1
                                     logger.error(f"Synthesis for parallel stage '{stage.name}' failed")
@@ -955,6 +979,7 @@ class AlertService:
                             # Update stage execution as completed
                             await self.stage_manager.update_stage_execution_completed(stage_execution_id, stage_result)
                             successful_stages += 1
+                            executed_stage_count += 1  # Increment for completed stage
                             logger.info(f"Stage '{stage.name}' completed successfully with agent '{stage_result.agent_name}'")
                         else:
                             # Stage failed - treat as failed even though no exception was thrown
