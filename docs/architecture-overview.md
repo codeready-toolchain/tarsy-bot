@@ -40,11 +40,13 @@ graph LR
 - Each chain consists of **sequential stages** executed by domain expert agents
 - **Progressive data enrichment** as data flows from stage to stage
 - **Flexible chain definitions** supporting both single-stage (traditional) and multi-stage processing
+- **Parallel execution support** where multiple agents can investigate independently within a stage, with automatic synthesis of results
 
 ### 3. Specialized Agents (Enhanced for Chains)
 - **Domain experts** for different infrastructure areas (Kubernetes, databases, networks, etc.)
 - Each agent comes with its own **dedicated MCP servers/tools** (kubectl, database clients, network diagnostics, etc.)
-- **Advanced processing approaches**: ReAct (systematic reasoning), ReAct Stage (stage-specific analysis within chains), ReAct Final Analysis (comprehensive analysis of data collected by previous stages, no tool calling)
+- **Advanced processing approaches**: ReAct (systematic reasoning), ReAct Stage (stage-specific analysis within chains), ReAct Final Analysis (comprehensive analysis of data collected by previous stages, no tool calling), ReAct Synthesis (parallel result synthesis)
+- **Built-in SynthesisAgent**: Specialized agent for unifying findings from parallel investigations - automatically invoked after parallel stages to critically evaluate and synthesize multiple agent results
 - **Stage-aware processing**: Agents can access data from all previous stages in the chain
 - Uses AI to intelligently select and use the right tools based on stage requirements and accumulated data
 
@@ -253,6 +255,24 @@ The AI combines all four to make intelligent decisions about investigation appro
       # - Each stage can use different LLM providers (cost/performance optimization)
       # - Chain-level provider serves as default for stages without explicit override
       # - Follow-up chat and executive summary use chain-level provider
+
+    # Parallel execution example
+    multi-perspective-investigation-chain:
+      alert_types:
+        - "ComplexOutage"
+      stages:
+        - name: "parallel-investigation"
+          agents:  # Multiple agents run in parallel
+            - name: "kubernetes"
+              llm_provider: "openai"
+            - name: "vm"
+              llm_provider: "anthropic"
+          failure_policy: "any"  # Continue if at least one succeeds
+          synthesis:
+            iteration_strategy: "react-synthesis"  # Automatically synthesizes results
+        - name: "recommendations"
+          agent: "SynthesisAgent"
+      description: "Multi-domain parallel investigation with automatic synthesis"
   ```
 - **Integration Points**: Connect with existing monitoring and ticketing systems
   - *Examples: AlertManager, PagerDuty, Jira, ServiceNow integrations*
