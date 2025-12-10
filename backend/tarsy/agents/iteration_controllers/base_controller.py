@@ -372,12 +372,16 @@ class ReactController(IterationController):
                     # Extract native tools override from context (if specified)
                     native_tools_override = self._get_native_tools_override(context)
                     
+                    # Get parallel execution metadata for streaming
+                    parallel_metadata = context.agent.get_parallel_execution_metadata()
+                    
                     conversation_result = await self.llm_manager.generate_response(
                         conversation=conversation,
                         session_id=context.session_id,
                         stage_execution_id=context.agent.get_current_stage_execution_id(),
                         provider=self._llm_provider_name,
-                        native_tools_override=native_tools_override
+                        native_tools_override=native_tools_override,
+                        parallel_metadata=parallel_metadata
                     )
                     
                     # 4. Extract and parse assistant response

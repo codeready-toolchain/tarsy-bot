@@ -108,6 +108,7 @@ export interface StageExecution {
   parent_stage_execution_id?: string | null;
   parallel_index?: number;
   parallel_type?: string; // "single" | "multi_agent" | "replica"
+  expected_parallel_count?: number | null; // Expected number of parallel children (for parent stages)
   parallel_executions?: StageExecution[]; // Nested children for parallel stages
 }
 

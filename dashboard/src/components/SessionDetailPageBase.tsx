@@ -114,7 +114,8 @@ function SessionDetailPageBase({
     error, 
     refetch, 
     refreshSessionSummary,
-    refreshSessionStages
+    refreshSessionStages,
+    handleParallelStageStarted
   } = useSession(sessionId);
 
   // Auth context for user information
@@ -407,6 +408,44 @@ function SessionDetailPageBase({
       else if (eventType.startsWith('stage.')) {
         // Stage events (stage.started, stage.completed, stage.failed)
         console.log('🔄 Stage event, using partial refresh');
+        
+        // Check if this is a parallel stage starting (has expected_parallel_count)
+        if (eventType === 'stage.started' && update.expected_parallel_count && update.expected_parallel_count > 0) {
+          console.log('🚀 Parallel parent stage starting - injecting placeholders immediately');
+          
+          // Create a minimal StageExecution object for placeholder injection
+          const parentStage = {
+            execution_id: update.stage_id,
+            session_id: update.session_id,
+            stage_id: update.stage_id,
+            stage_index: 0, // Will be updated by full refresh
+            stage_name: update.stage_name,
+            agent: 'parallel', // Placeholder
+            status: 'active' as const,
+            started_at_us: null,
+            completed_at_us: null,
+            duration_ms: null,
+            stage_output: null,
+            error_message: null,
+            current_iteration: null,
+            parent_stage_execution_id: null,
+            parallel_index: 0,
+            parallel_type: update.parallel_type,
+            expected_parallel_count: update.expected_parallel_count,
+            llm_interactions: [],
+            mcp_communications: [],
+            llm_interaction_count: 0,
+            mcp_communication_count: 0,
+            total_interactions: 0,
+            stage_interactions_duration_ms: null,
+            chronological_interactions: []
+          };
+          
+          handleParallelStageStarted(parentStage);
+        } else if (eventType === 'stage.started' && update.parent_stage_execution_id) {
+          console.log('🔄 Parallel child stage starting - will replace placeholder');
+          // Child stage starting - will be handled by full refresh which will replace placeholder
+        }
         
         // Update summary immediately
         if (sessionId) {

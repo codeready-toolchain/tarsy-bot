@@ -83,12 +83,16 @@ class SynthesisController(IterationController):
         
         # Single LLM call for synthesis using llm_manager
         try:
+            # Get parallel execution metadata for streaming
+            parallel_metadata = agent.get_parallel_execution_metadata()
+            
             conversation_result = await self.llm_manager.generate_response(
                 conversation=conversation,
                 session_id=context.session_id,
                 stage_execution_id=stage_execution_id,
                 provider=agent._llm_provider_name,
-                native_tools_override=native_tools_override
+                native_tools_override=native_tools_override,
+                parallel_metadata=parallel_metadata
             )
             
             # Extract assistant response

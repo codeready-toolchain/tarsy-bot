@@ -48,6 +48,7 @@ from tarsy.integrations.llm.streaming import StreamingPublisher
 from tarsy.models.constants import LLMInteractionType, StreamingEventType
 from tarsy.models.llm_models import GoogleNativeTool, LLMProviderConfig, LLMProviderType
 from tarsy.models.mcp_selection_models import NativeToolsConfig
+from tarsy.models.parallel_metadata import ParallelExecutionMetadata
 from tarsy.models.processing_context import ToolWithServer
 from tarsy.models.unified_interactions import LLMConversation, MessageRole
 from tarsy.utils.error_details import extract_error_details
@@ -366,7 +367,8 @@ class LLMClient:
         max_retries: int = 3,
         timeout_seconds: int = 120,
         mcp_event_id: Optional[str] = None,
-        native_tools_override: Optional[NativeToolsConfig] = None
+        native_tools_override: Optional[NativeToolsConfig] = None,
+        parallel_metadata: Optional['ParallelExecutionMetadata'] = None
     ) -> LLMConversation:
         """
         Generate response with streaming to WebSocket.
@@ -525,7 +527,8 @@ class LLMClient:
                                         session_id, stage_execution_id,
                                         StreamingEventType.THOUGHT, clean_thought,
                                         is_complete=True,
-                                        llm_interaction_id=ctx.interaction.interaction_id
+                                        llm_interaction_id=ctx.interaction.interaction_id,
+                                        parallel_metadata=parallel_metadata
                                     )
                                 else:
                                     # Send completion marker
@@ -533,7 +536,8 @@ class LLMClient:
                                         session_id, stage_execution_id,
                                         StreamingEventType.THOUGHT, "",
                                         is_complete=True,
-                                        llm_interaction_id=ctx.interaction.interaction_id
+                                        llm_interaction_id=ctx.interaction.interaction_id,
+                                        parallel_metadata=parallel_metadata
                                     )
                                 is_streaming_thought = False
                                 token_count_since_last_send = 0
@@ -577,7 +581,8 @@ class LLMClient:
                                                 session_id, stage_execution_id,
                                                 StreamingEventType.THOUGHT, current_thought,
                                                 is_complete=False,
-                                                llm_interaction_id=ctx.interaction.interaction_id
+                                                llm_interaction_id=ctx.interaction.interaction_id,
+                                                parallel_metadata=parallel_metadata
                                             )
                                     
                                     elif is_streaming_final_answer:
@@ -589,7 +594,8 @@ class LLMClient:
                                                 session_id, stage_execution_id,
                                                 StreamingEventType.FINAL_ANSWER, current_final_answer,
                                                 is_complete=False,
-                                                llm_interaction_id=ctx.interaction.interaction_id
+                                                llm_interaction_id=ctx.interaction.interaction_id,
+                                                parallel_metadata=parallel_metadata
                                             )
                                     
                                     elif is_streaming_summarization:
@@ -599,7 +605,8 @@ class LLMClient:
                                                 session_id, stage_execution_id,
                                                 StreamingEventType.SUMMARIZATION, accumulated_content.strip(),
                                                 is_complete=False,
-                                                mcp_event_id=mcp_event_id
+                                                mcp_event_id=mcp_event_id,
+                                                parallel_metadata=parallel_metadata
                                             )
                                     
                                     token_count_since_last_send = 0
@@ -620,7 +627,8 @@ class LLMClient:
                                 session_id, stage_execution_id,
                                 StreamingEventType.THOUGHT, final_thought,
                                 is_complete=True,
-                                llm_interaction_id=ctx.interaction.interaction_id
+                                llm_interaction_id=ctx.interaction.interaction_id,
+                                parallel_metadata=parallel_metadata
                             )
                         else:
                             # Send completion marker
@@ -628,7 +636,8 @@ class LLMClient:
                                 session_id, stage_execution_id,
                                 StreamingEventType.THOUGHT, "",
                                 is_complete=True,
-                                llm_interaction_id=ctx.interaction.interaction_id
+                                llm_interaction_id=ctx.interaction.interaction_id,
+                                parallel_metadata=parallel_metadata
                             )
                     
                     # Send final complete final answer if streaming is still active
@@ -641,7 +650,8 @@ class LLMClient:
                                 session_id, stage_execution_id,
                                 StreamingEventType.FINAL_ANSWER, final_answer,
                                 is_complete=True,
-                                llm_interaction_id=ctx.interaction.interaction_id
+                                llm_interaction_id=ctx.interaction.interaction_id,
+                                parallel_metadata=parallel_metadata
                             )
                         else:
                             # Send completion marker
@@ -649,7 +659,8 @@ class LLMClient:
                                 session_id, stage_execution_id,
                                 StreamingEventType.FINAL_ANSWER, "",
                                 is_complete=True,
-                                llm_interaction_id=ctx.interaction.interaction_id
+                                llm_interaction_id=ctx.interaction.interaction_id,
+                                parallel_metadata=parallel_metadata
                             )
                     
                     # Send final complete summarization if streaming is still active
@@ -661,7 +672,8 @@ class LLMClient:
                                 session_id, stage_execution_id,
                                 StreamingEventType.SUMMARIZATION, final_summarization,
                                 is_complete=True,
-                                mcp_event_id=mcp_event_id
+                                mcp_event_id=mcp_event_id,
+                                parallel_metadata=parallel_metadata
                             )
                         else:
                             # Send completion marker
@@ -669,7 +681,8 @@ class LLMClient:
                                 session_id, stage_execution_id,
                                 StreamingEventType.SUMMARIZATION, "",
                                 is_complete=True,
-                                mcp_event_id=mcp_event_id
+                                mcp_event_id=mcp_event_id,
+                                parallel_metadata=parallel_metadata
                             )
                     
                     # Check for empty response and retry if needed

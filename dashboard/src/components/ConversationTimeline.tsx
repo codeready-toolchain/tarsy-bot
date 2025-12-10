@@ -97,6 +97,13 @@ interface ConversationStreamingItem extends StreamingItem {
   serverName?: string;
   // User message specific fields
   author?: string;
+  // Parallel execution metadata (now provided by backend)
+  executionId?: string;
+  executionAgent?: string;
+  isParallelStage?: boolean;
+  parent_stage_execution_id?: string;  // Backend provides this
+  parallel_index?: number;              // Backend provides this
+  agent_name?: string;                  // Backend provides this
 }
 
 /**
@@ -356,13 +363,11 @@ function ConversationTimeline({
 
   // Filter and sort streaming items for display
   // Uses ID-based matching for reliable deduplication
+  // Backend now provides complete metadata (EP-0030) - no complex enrichment needed!
   const displayedStreamingItems = useMemo(() => {
     if (streamingItems.size === 0) return [];
     
     // Build a set of IDs from DB items for O(1) lookup
-    // For thought/final_answer/native_thinking: use llm_interaction_id
-    // For tool_call/summarization: use mcp_event_id
-    // For user_message: use messageId
     const dbInteractionIds = new Set<string>();
     const dbMcpEventIds = new Set<string>();
     const dbMessageIds = new Set<string>();
@@ -381,41 +386,35 @@ function ConversationTimeline({
     
     return Array.from(streamingItems.entries())
       .filter(([, streamItem]) => {
-        // ID-based deduplication: check if DB already has this item
+        // ID-based deduplication
         if (
           streamItem.type === STREAMING_CONTENT_TYPES.THOUGHT ||
           streamItem.type === STREAMING_CONTENT_TYPES.FINAL_ANSWER ||
           streamItem.type === STREAMING_CONTENT_TYPES.NATIVE_THINKING
         ) {
-          // If streaming item has llm_interaction_id and DB has it, hide
-          if (streamItem.llm_interaction_id && dbInteractionIds.has(streamItem.llm_interaction_id)) {
-            return false;
-          }
-          // Show streaming item (DB doesn't have it yet)
-          return true;
+          return !(streamItem.llm_interaction_id && dbInteractionIds.has(streamItem.llm_interaction_id));
         }
         
         if (streamItem.type === 'tool_call' || streamItem.type === STREAMING_CONTENT_TYPES.SUMMARIZATION) {
-          // Match by mcp_event_id
-          if (streamItem.mcp_event_id && dbMcpEventIds.has(streamItem.mcp_event_id)) {
-            return false;
-          }
-          return true;
+          return !(streamItem.mcp_event_id && dbMcpEventIds.has(streamItem.mcp_event_id));
         }
         
         if (streamItem.type === 'user_message') {
-          // Match by messageId
-          if (streamItem.messageId && dbMessageIds.has(streamItem.messageId)) {
-            return false;
-          }
-          return true;
+          return !(streamItem.messageId && dbMessageIds.has(streamItem.messageId));
         }
         
-        // Unknown type - show it
         return true;
       })
+      .map(([key, streamItem]) => {
+        // Metadata is already enriched from backend - just add display fields
+        return [key, {
+          ...streamItem,
+          executionId: streamItem.stage_execution_id,
+          executionAgent: streamItem.agent_name,
+          isParallelStage: !!(streamItem.parallel_index && streamItem.parallel_index > 0)
+        }] as [string, ConversationStreamingItem & { executionId?: string; executionAgent?: string; isParallelStage: boolean }];
+      })
       .sort(([_keyA, itemA], [_keyB, itemB]) => {
-        // Sort by type priority: thoughts/native_thinking first, then others
         const getPriority = (type: string) => {
           if (type === STREAMING_CONTENT_TYPES.THOUGHT || type === STREAMING_CONTENT_TYPES.NATIVE_THINKING) return 0;
           return 1;
@@ -425,31 +424,111 @@ function ConversationTimeline({
   }, [streamingItems, chatFlow]);
 
   // Parse session data into chat flow
+  // Also merge in enriched streaming items for real-time display
   useEffect(() => {
     if (session) {
       try {
         const flow = parseSessionChatFlow(session);
+        
+        // Merge enriched streaming items into flow
+        // Streaming items that aren't in DB yet should be added to the flow
+        // IMPORTANT: Insert them into the correct stage group, not at the end
+        const enrichedStreamingItems: ChatFlowItemData[] = [];
+        for (const [, streamItem] of displayedStreamingItems) {
+          enrichedStreamingItems.push({
+            type: streamItem.type as any,
+            timestamp_us: Date.now() * 1000, // Use current time for streaming items
+            content: streamItem.content,
+            stageId: undefined, // Will be set by grouping logic
+            executionId: streamItem.executionId,
+            executionAgent: streamItem.executionAgent,
+            isParallelStage: streamItem.isParallelStage,
+            llm_interaction_id: streamItem.llm_interaction_id,
+            mcp_event_id: streamItem.mcp_event_id,
+            toolName: streamItem.toolName,
+            toolArguments: streamItem.toolArguments,
+            serverName: streamItem.serverName,
+          });
+        }
+        
+        // Backend now provides parent_stage_execution_id (EP-0030) - no map building needed!
+        // Group streaming items by their parent stage for correct positioning
+        const streamingByParentStage = new Map<string, ChatFlowItemData[]>();
+        for (const item of enrichedStreamingItems) {
+          if (item.executionId) {
+            // Use parent_id from backend if available (parallel stage), otherwise use execution_id itself (single stage)
+            const parentId = (item as any).parent_stage_execution_id || item.executionId;
+            if (!streamingByParentStage.has(parentId)) {
+              streamingByParentStage.set(parentId, []);
+            }
+            streamingByParentStage.get(parentId)!.push(item);
+          }
+        }
+        
+        // Insert streaming items after their parent stage's content
+        const combinedFlow: ChatFlowItemData[] = [];
+        let currentStageExecutionId: string | undefined;
+        
+        for (let i = 0; i < flow.length; i++) {
+          const item = flow[i];
+          combinedFlow.push(item);
+          
+          // Track current stage execution ID from stage_start items
+          if (item.type === 'stage_start' && item.executionId) {
+            currentStageExecutionId = item.executionId;
+          }
+          
+          // At the end of this stage (next stage_start or end of flow), insert streaming items
+          const isLastItem = i === flow.length - 1;
+          const nextItemIsStageStart = !isLastItem && flow[i + 1].type === 'stage_start';
+          
+          if ((isLastItem || nextItemIsStageStart) && currentStageExecutionId) {
+            const streamingForThisStage = streamingByParentStage.get(currentStageExecutionId);
+            if (streamingForThisStage && streamingForThisStage.length > 0) {
+              combinedFlow.push(...streamingForThisStage);
+              // Remove from map so we don't insert twice
+              streamingByParentStage.delete(currentStageExecutionId);
+            }
+          }
+        }
+        
+        // Add any remaining streaming items that didn't match a stage (shouldn't happen, but fallback)
+        for (const [, items] of streamingByParentStage) {
+          combinedFlow.push(...items);
+        }
         
         // Check if this is a meaningful update
         setChatFlow(prevFlow => {
           // If no previous data, always update
           if (prevFlow.length === 0) {
             console.log('🔄 Initial chat flow parsing');
-            return flow;
+            return combinedFlow;
           }
           
           // Check if meaningful data has changed
-          if (prevFlow.length !== flow.length) {
+          if (prevFlow.length !== combinedFlow.length) {
             console.log('🔄 Chat flow length changed, updating');
-            return flow;
+            return combinedFlow;
           }
           
-          // Check if last item changed
-          const prevLast = prevFlow[prevFlow.length - 1];
-          const newLast = flow[flow.length - 1];
-          if (JSON.stringify(prevLast) !== JSON.stringify(newLast)) {
-            console.log('🔄 Last chat item changed, updating');
-            return flow;
+          // Check if content has changed (use hash for performance)
+          // Note: Can't just check last item because streaming items are inserted in the middle!
+          const prevHash = JSON.stringify(prevFlow.map(item => ({
+            type: item.type,
+            timestamp: item.timestamp_us,
+            llm_id: item.llm_interaction_id,
+            mcp_id: item.mcp_event_id
+          })));
+          const newHash = JSON.stringify(combinedFlow.map(item => ({
+            type: item.type,
+            timestamp: item.timestamp_us,
+            llm_id: item.llm_interaction_id,
+            mcp_id: item.mcp_event_id
+          })));
+          
+          if (prevHash !== newHash) {
+            console.log('🔄 Chat flow content changed, updating');
+            return combinedFlow;
           }
           
           console.log('🔄 No meaningful chat flow changes, keeping existing data');
@@ -463,7 +542,7 @@ function ConversationTimeline({
         setChatFlow([]);
       }
     }
-  }, [session]);
+  }, [session, displayedStreamingItems]);
 
   // Clear streaming items when switching sessions (prevents stale data from previous session)
   useEffect(() => {
@@ -938,10 +1017,12 @@ function ConversationTimeline({
               );
             })}
             
-            {/* Show streaming items at the end (will be cleared by deduplication when DB data arrives) */}
-            {displayedStreamingItems.map(([entryKey, entryValue]) => (
-              <StreamingItemRenderer key={entryKey} item={entryValue} />
-            ))}
+            {/* Show streaming items at the end - but exclude parallel stage items (they're rendered in tabs) */}
+            {displayedStreamingItems
+              .filter(([, item]) => !item.isParallelStage)
+              .map(([entryKey, entryValue]) => (
+                <StreamingItemRenderer key={entryKey} item={entryValue} />
+              ))}
 
             {/* Processing indicator at bottom when session/chat is in progress OR when there are streaming items */}
             {(session.status === SESSION_STATUS.IN_PROGRESS || streamingItems.size > 0 || activeChatStageInProgress) && <ProcessingIndicator />}

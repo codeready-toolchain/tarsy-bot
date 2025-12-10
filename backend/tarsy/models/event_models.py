@@ -163,6 +163,9 @@ class StageStartedEvent(BaseEvent):
     chat_user_message_id: Optional[str] = Field(default=None, description="User message ID if this is a chat response")
     chat_user_message_content: Optional[str] = Field(default=None, description="User message content")
     chat_user_message_author: Optional[str] = Field(default=None, description="User message author")
+    # Parallel execution metadata (for parent parallel stages)
+    parallel_type: Optional[str] = Field(default=None, description="Parallel execution type: 'multi_agent' or 'replica'")
+    expected_parallel_count: Optional[int] = Field(default=None, description="Expected number of parallel children")
 
 
 class StageCompletedEvent(BaseEvent):
@@ -185,7 +188,7 @@ class LLMStreamChunkEvent(BaseEvent):
     type: Literal["llm.stream.chunk"] = "llm.stream.chunk"
     session_id: str = Field(description="Session identifier")
     stage_execution_id: Optional[str] = Field(
-        default=None, description="Stage execution identifier"
+        default=None, description="Stage execution identifier (child execution ID for parallel stages)"
     )
     chunk: str = Field(description="Content chunk (accumulated tokens)")
     stream_type: str = Field(description="Type of content being streamed: 'thought', 'final_answer', 'summarization', or 'native_thinking'")
@@ -195,6 +198,16 @@ class LLMStreamChunkEvent(BaseEvent):
     )
     llm_interaction_id: Optional[str] = Field(
         default=None, description="LLM interaction ID for deduplication of thought/final_answer/native_thinking streams"
+    )
+    # Parallel execution metadata
+    parent_stage_execution_id: Optional[str] = Field(
+        default=None, description="Parent stage execution ID for parallel child stages"
+    )
+    parallel_index: Optional[int] = Field(
+        default=None, description="Position in parallel group (1-N for parallel children, None for single stages)"
+    )
+    agent_name: Optional[str] = Field(
+        default=None, description="Agent name for this execution"
     )
 
 

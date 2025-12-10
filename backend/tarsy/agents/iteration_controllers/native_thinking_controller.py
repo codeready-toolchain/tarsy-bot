@@ -225,6 +225,9 @@ class NativeThinkingController(IterationController):
                 raise Exception(error_msg)
             
             try:
+                # Get parallel execution metadata for streaming
+                parallel_metadata = agent.get_parallel_execution_metadata()
+                
                 # Call LLM with native thinking
                 response = await asyncio.wait_for(
                     native_client.generate(
@@ -234,7 +237,8 @@ class NativeThinkingController(IterationController):
                         stage_execution_id=agent.get_current_stage_execution_id(),
                         thinking_level="high",  # Use high thinking for complex SRE analysis
                         thought_signature=thought_signature,
-                        native_tools_override=native_tools_override
+                        native_tools_override=native_tools_override,
+                        parallel_metadata=parallel_metadata
                     ),
                     timeout=iteration_timeout
                 )

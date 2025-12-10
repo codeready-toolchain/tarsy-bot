@@ -242,6 +242,10 @@ class StageExecution(SQLModel, table=True):
         default="single",
         description="Execution type: 'single', 'multi_agent', or 'replica' (use ParallelType constants)"
     )
+    expected_parallel_count: Optional[int] = Field(
+        default=None,
+        description="Expected number of parallel children (only set for parent parallel stages)"
+    )
     
     # Note: Relationship to AlertSession would be: session: AlertSession = Relationship(back_populates="stage_executions")
     # Omitted to avoid circular imports - use session_id for queries instead

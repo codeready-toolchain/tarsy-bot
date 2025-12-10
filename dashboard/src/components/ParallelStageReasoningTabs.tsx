@@ -46,24 +46,26 @@ function TabPanel(props: TabPanelProps) {
   );
 }
 
-// Helper to get status icon (based on success/failure of items)
-const getStatusIcon = (items: ChatFlowItemData[]) => {
-  const hasErrors = items.some(item => item.type === 'tool_call' && !item.success);
-  const hasCompleted = items.some(item => item.type === 'final_answer');
-  
-  if (hasErrors) return <ErrorIcon fontSize="small" />;
-  if (hasCompleted) return <CheckCircle fontSize="small" />;
+// Helper to get status icon from stage execution status (stable, doesn't blink)
+const getStatusIcon = (status: string) => {
+  if (status === 'failed') return <ErrorIcon fontSize="small" />;
+  if (status === 'completed') return <CheckCircle fontSize="small" />;
   return <PlayArrow fontSize="small" />;
 };
 
-// Helper to get status color
-const getStatusColor = (items: ChatFlowItemData[]) => {
-  const hasErrors = items.some(item => item.type === 'tool_call' && !item.success);
-  const hasCompleted = items.some(item => item.type === 'final_answer');
-  
-  if (hasErrors) return 'error';
-  if (hasCompleted) return 'success';
+// Helper to get status color from stage execution status (stable, doesn't blink)
+const getStatusColor = (status: string) => {
+  if (status === 'failed') return 'error';
+  if (status === 'completed') return 'success';
   return 'primary';
+};
+
+// Helper to get user-friendly status label
+const getStatusLabel = (status: string) => {
+  if (status === 'failed') return 'Failed';
+  if (status === 'completed') return 'Complete';
+  if (status === 'active') return 'Running';
+  return 'Pending';
 };
 
 /**
@@ -111,15 +113,27 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
         index,
         items,
       };
-    })
-    .filter(exec => exec.items.length > 0); // Only show executions that have items
+    });
+    // NOTE: Do NOT filter by items.length > 0 to avoid tab flickering during streaming
+    // Tabs should remain stable even when streaming items are being deduplicated
 
-  // Safety check
-  if (executions.length === 0) {
+  // Safety check - only show alert if there are truly no parallel executions
+  if (executions.length === 0 && parallelExecutions.length === 0) {
     return (
       <Alert severity="info">
         <Typography variant="body2">
           No parallel agent reasoning flows found for this stage.
+        </Typography>
+      </Alert>
+    );
+  }
+  
+  // If we have executions but no items yet, still render the tabs (streaming will populate them)
+  if (executions.length === 0 && parallelExecutions.length > 0) {
+    return (
+      <Alert severity="info">
+        <Typography variant="body2">
+          Waiting for parallel agent data...
         </Typography>
       </Alert>
     );
@@ -160,8 +174,9 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
           }}
         >
           {executions.map((execution, tabIndex) => {
-            const statusColor = getStatusColor(execution.items);
-            const statusIcon = getStatusIcon(execution.items);
+            // Use actual execution status (stable) instead of deriving from items (changes during streaming)
+            const statusColor = getStatusColor(execution.stageExecution.status);
+            const statusIcon = getStatusIcon(execution.stageExecution.status);
             const label = getParallelStageLabel(
               execution.stageExecution,
               execution.index,
@@ -217,7 +232,7 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
                     </Typography>
                   )}
                   <Chip
-                    label={statusColor === 'success' ? 'Complete' : statusColor === 'error' ? 'Failed' : 'Running'}
+                    label={getStatusLabel(execution.stageExecution.status)}
                     size="small"
                     color={statusColor as any}
                     sx={{ height: 18, fontSize: '0.65rem' }}

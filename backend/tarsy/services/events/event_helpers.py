@@ -292,7 +292,9 @@ async def publish_stage_started(
     chat_id: Optional[str] = None,
     chat_user_message_id: Optional[str] = None,
     chat_user_message_content: Optional[str] = None,
-    chat_user_message_author: Optional[str] = None
+    chat_user_message_author: Optional[str] = None,
+    parallel_type: Optional[str] = None,
+    expected_parallel_count: Optional[int] = None,
 ) -> None:
     """
     Publish stage.started event.
@@ -305,6 +307,8 @@ async def publish_stage_started(
         chat_user_message_id: Optional user message ID
         chat_user_message_content: Optional user message content
         chat_user_message_author: Optional user message author
+        parallel_type: Optional parallel execution type ('multi_agent' or 'replica')
+        expected_parallel_count: Optional expected number of parallel children
     """
     try:
         async_session_factory = get_async_session_factory()
@@ -316,7 +320,9 @@ async def publish_stage_started(
                 chat_id=chat_id,
                 chat_user_message_id=chat_user_message_id,
                 chat_user_message_content=chat_user_message_content,
-                chat_user_message_author=chat_user_message_author
+                chat_user_message_author=chat_user_message_author,
+                parallel_type=parallel_type,
+                expected_parallel_count=expected_parallel_count,
             )
             await publish_event(
                 session, EventChannel.session_details(session_id), event

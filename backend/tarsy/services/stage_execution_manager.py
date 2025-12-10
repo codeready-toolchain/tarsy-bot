@@ -49,6 +49,7 @@ class StageExecutionManager:
         parent_stage_execution_id: Optional[str] = None,
         parallel_index: int = 0,
         parallel_type: str = ParallelType.SINGLE.value,
+        expected_parallel_count: Optional[int] = None,
     ) -> str:
         """
         Create a stage execution record with optional parallel execution tracking.
@@ -60,6 +61,7 @@ class StageExecutionManager:
             parent_stage_execution_id: Parent stage execution ID for parallel child stages
             parallel_index: Position in parallel group (0 for single/parent, 1-N for children)
             parallel_type: Execution type (ParallelType.SINGLE, MULTI_AGENT, or REPLICA)
+            expected_parallel_count: Expected number of parallel children (only for parent stages)
             
         Returns:
             Stage execution ID
@@ -84,6 +86,7 @@ class StageExecutionManager:
             parent_stage_execution_id=parent_stage_execution_id,
             parallel_index=parallel_index,
             parallel_type=parallel_type,
+            expected_parallel_count=expected_parallel_count,
         )
         
         # Trigger stage execution hooks (history + dashboard) via context manager

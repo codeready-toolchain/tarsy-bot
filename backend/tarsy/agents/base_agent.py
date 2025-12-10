@@ -16,6 +16,7 @@ from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.agent_execution_result import AgentExecutionResult
 from tarsy.models.constants import StageStatus
 from tarsy.models.mcp_selection_models import MCPSelectionConfig
+from tarsy.models.parallel_metadata import ParallelExecutionMetadata
 from tarsy.models.processing_context import (
     AvailableTools,
     ChainContext,
@@ -92,6 +93,9 @@ class BaseAgent(ABC):
         
         # Stage execution tracking for chain processing
         self._current_stage_execution_id: Optional[str] = None
+        
+        # Parallel execution metadata (for streaming events)
+        self._parallel_metadata: Optional['ParallelExecutionMetadata'] = None
         
         # Chat tracking for interaction recording
         self._current_chat_id: Optional[str] = None
@@ -339,6 +343,14 @@ class BaseAgent(ABC):
     def get_current_stage_execution_id(self) -> Optional[str]:
         """Get the current stage execution ID."""
         return self._current_stage_execution_id
+    
+    def set_parallel_execution_metadata(self, metadata: 'ParallelExecutionMetadata'):
+        """Set parallel execution metadata for streaming events."""
+        self._parallel_metadata = metadata
+    
+    def get_parallel_execution_metadata(self) -> Optional['ParallelExecutionMetadata']:
+        """Get parallel execution metadata for streaming events."""
+        return self._parallel_metadata
     
     def set_current_chat_id(self, chat_id: Optional[str]):
         """Set the current chat ID for interaction recording."""

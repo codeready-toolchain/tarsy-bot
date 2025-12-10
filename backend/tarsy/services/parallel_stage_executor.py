@@ -163,7 +163,7 @@ class ParallelStageExecutor:
             agent=f"parallel-{parallel_type}"  # Synthetic agent name for parent record
         )
         
-        # Create parent stage execution record with parallel_type
+        # Create parent stage execution record with parallel_type and expected count
         parent_stage_execution_id = await self.stage_manager.create_stage_execution(
             chain_context.session_id,
             parent_stage,
@@ -171,6 +171,7 @@ class ParallelStageExecutor:
             parent_stage_execution_id=None,  # This is the parent
             parallel_index=0,  # Parent is always index 0
             parallel_type=parallel_type,  # "multi_agent" or "replica"
+            expected_parallel_count=len(execution_configs),  # Number of parallel agents
         )
         await self.stage_manager.update_stage_execution_started(parent_stage_execution_id)
         
@@ -214,6 +215,16 @@ class ParallelStageExecutor:
                 
                 # Set current stage execution ID for interaction tagging (hooks need this!)
                 agent.set_current_stage_execution_id(child_execution_id)
+                
+                # Set parallel execution metadata for streaming events
+                from tarsy.models.parallel_metadata import ParallelExecutionMetadata
+                agent.set_parallel_execution_metadata(
+                    ParallelExecutionMetadata(
+                        parent_stage_execution_id=parent_stage_execution_id,
+                        parallel_index=idx + 1,  # 1-indexed for display
+                        agent_name=agent_name
+                    )
+                )
                 
                 # Execute agent with timeout protection
                 # Use alert_processing_timeout as maximum time for any single agent
@@ -589,6 +600,9 @@ class ParallelStageExecutor:
         # 8. Execute ONLY paused children directly (without creating new parent stage)
         logger.info(f"Re-executing {len(paused_children)} paused agents")
         
+        # Get parent execution ID for metadata
+        parent_execution_id = paused_parent_stage.execution_id
+        
         # Execute paused agents concurrently
         async def execute_single_child(config: dict, idx: int):
             """Execute a single resumed agent/replica and return (result, metadata) tuple."""
@@ -616,6 +630,13 @@ class ParallelStageExecutor:
                 
                 # Set current stage execution ID for interaction tagging (hooks need this!)
                 agent.set_current_stage_execution_id(child_execution_id)
+                
+                # Set parallel execution metadata for streaming events
+                agent.set_parallel_execution_metadata(
+                    parent_stage_execution_id=parent_execution_id,
+                    parallel_index=idx + 1,  # 1-indexed for display
+                    agent_name=agent_name
+                )
                 
                 # Execute agent with timeout protection
                 # Use alert_processing_timeout as maximum time for any single agent
