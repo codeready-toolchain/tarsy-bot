@@ -13,8 +13,9 @@ import {
   Box,
   Button,
   TableSortLabel,
+  Tooltip,
 } from '@mui/material';
-import { Refresh, SearchOff } from '@mui/icons-material';
+import { Refresh, SearchOff, CallSplit } from '@mui/icons-material';
 import AlertListItem from './AlertListItem';
 import PaginationControls from './PaginationControls';
 import { hasActiveFilters } from '../utils/search';
@@ -71,7 +72,6 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
 
   // Phase 6: Sortable columns configuration
   const sortableColumns = [
-    { field: 'status', label: 'Status' },
     { field: 'alert_type', label: 'Type' },
     { field: 'agent_type', label: 'Agent Chain' },
     { field: 'author', label: 'Submitted by' },
@@ -136,6 +136,35 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
             <Table>
               <TableHead>
                 <TableRow>
+                  {/* Status column - sortable */}
+                  <TableCell sx={{ fontWeight: 600 }}>
+                    {onSortChange ? (
+                      <TableSortLabel
+                        active={sortState?.field === 'status'}
+                        direction={sortState?.field === 'status' ? sortState.direction : 'asc'}
+                        onClick={() => handleSortClick('status')}
+                      >
+                        Status
+                      </TableSortLabel>
+                    ) : (
+                      'Status'
+                    )}
+                  </TableCell>
+                  {/* Parallel agents indicator column - icon header */}
+                  <TableCell sx={{ width: 40, px: 0.5, textAlign: 'center' }}>
+                    <Tooltip title="Parallel Agents" arrow>
+                      <CallSplit 
+                        sx={{ 
+                          fontSize: '1.1rem', 
+                          color: 'secondary.main',
+                          verticalAlign: 'middle',
+                          cursor: 'help'
+                        }} 
+                        aria-label="Parallel Agents"
+                      />
+                    </Tooltip>
+                  </TableCell>
+                  {/* Other sortable columns */}
                   {sortableColumns.map((column) => (
                     <TableCell key={column.field} sx={{ fontWeight: 600 }}>
                       {onSortChange ? (
@@ -159,7 +188,7 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
               <TableBody>
                 {sessions.length === 0 ? (
                   <TableRow key="empty-state">
-                    <TableCell colSpan={9} align="center">
+                    <TableCell colSpan={10} align="center">
                       <Box sx={{ py: 6, textAlign: 'center' }}>
                         {/* Phase 4: Different empty states for filtered vs unfiltered */}
                         {filters && hasActiveFilters(filters) ? (

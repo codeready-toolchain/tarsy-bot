@@ -625,7 +625,28 @@ class HistoryRepository:
                                 chat_message_counts[session_id] = count
                 except Exception as e:
                     # Don't fail entire query if chat counting fails
-                    logger.warning(f"Failed to count chat messages for sessions: {e}")
+                    logger.error(f"Failed to count chat messages for sessions: {e}")
+                
+                # Check for parallel stages in sessions
+                parallel_stages_flags = {}
+                try:
+                    # Query for sessions that have at least one stage with parallel executions
+                    # A stage has parallel executions if it has children (parent_stage_execution_id points to it)
+                    # OR if its parallel_type is not 'single'
+                    parallel_stages_query = select(StageExecution.session_id).where(
+                        and_(
+                            StageExecution.session_id.in_(session_ids),
+                            or_(
+                                StageExecution.parallel_type != ParallelType.SINGLE.value,
+                                StageExecution.parent_stage_execution_id.is_not(None)
+                            )
+                        )
+                    ).distinct()
+                    parallel_results = self.session.exec(parallel_stages_query).all()
+                    parallel_stages_flags = {session_id: True for session_id in parallel_results}
+                except Exception as e:
+                    # Don't fail entire query if parallel stages check fails
+                    logger.error(f"Failed to check for parallel stages: {e}")
                 
                 # Combine counts for each session
                 for session_id in session_ids:
@@ -636,7 +657,8 @@ class HistoryRepository:
                         'input_tokens': tokens.get('input_tokens'),
                         'output_tokens': tokens.get('output_tokens'),
                         'total_tokens': tokens.get('total_tokens'),
-                        'chat_message_count': chat_message_counts.get(session_id)
+                        'chat_message_count': chat_message_counts.get(session_id),
+                        'has_parallel_stages': parallel_stages_flags.get(session_id, False)
                     }
             
             session_overviews = []
@@ -674,6 +696,7 @@ class HistoryRepository:
                     # Chain progress info
                     chain_id=alert_session.chain_id,
                     current_stage_index=alert_session.current_stage_index,
+                    has_parallel_stages=session_counts.get('has_parallel_stages', False),
                     
                     # MCP configuration override
                     mcp_selection=alert_session.mcp_selection,

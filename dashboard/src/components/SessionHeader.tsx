@@ -16,13 +16,14 @@ import {
   Alert,
   AlertTitle,
 } from '@mui/material';
-import { CancelOutlined, Replay as ReplayIcon, PlayArrow, PauseCircle } from '@mui/icons-material';
+import { CancelOutlined, Replay as ReplayIcon, PlayArrow, PauseCircle, CallSplit } from '@mui/icons-material';
 import StatusBadge from './StatusBadge';
 import ProgressIndicator from './ProgressIndicator';
 import TokenUsageDisplay from './TokenUsageDisplay';
 import { formatTimestamp } from '../utils/timestamp';
 import { apiClient, handleAPIError } from '../services/api';
 import { isTerminalSessionStatus, SESSION_STATUS } from '../utils/statusConstants';
+import { sessionHasParallelStages, getParallelStageStats } from '../utils/parallelStageHelpers';
 import type { SessionHeaderProps } from '../types';
 
 /**
@@ -601,6 +602,56 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
               <Box sx={{ transform: 'scale(1.1)' }}>
                 <StatusBadge status={session.status} />
               </Box>
+              
+              {/* Parallel Agents indicator - positioned prominently next to status */}
+              {session.stages && sessionHasParallelStages(session.stages) && (
+                <Tooltip 
+                  title={
+                    <Box sx={{ py: 0.5 }}>
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 0.5 }}>
+                        Parallel Agent Execution
+                      </Typography>
+                      <Typography variant="body2">
+                        This session contains stages with multiple agents running in parallel.
+                      </Typography>
+                      {(() => {
+                        const stats = getParallelStageStats(session.stages);
+                        return (
+                          <Typography variant="body2" sx={{ mt: 0.5, fontWeight: 500 }}>
+                            {stats.parallelStageCount} stage{stats.parallelStageCount !== 1 ? 's' : ''} • {stats.totalParallelAgents} parallel agent{stats.totalParallelAgents !== 1 ? 's' : ''}
+                          </Typography>
+                        );
+                      })()}
+                    </Box>
+                  }
+                  placement="top"
+                  arrow
+                >
+                  <Box sx={(theme) => ({ 
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.5,
+                    px: 1.5,
+                    py: 0.5,
+                    backgroundColor: alpha(theme.palette.secondary.main, 0.08),
+                    borderRadius: '16px',
+                    border: '1px solid',
+                    borderColor: alpha(theme.palette.secondary.main, 0.3),
+                    cursor: 'pointer',
+                    transition: 'all 0.2s ease-in-out',
+                    transform: 'scale(1.05)',
+                    '&:hover': {
+                      backgroundColor: alpha(theme.palette.secondary.main, 0.12),
+                      borderColor: alpha(theme.palette.secondary.main, 0.4),
+                    }
+                  })}>
+                    <CallSplit sx={{ fontSize: '1.1rem', color: 'secondary.main' }} />
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: 'secondary.main', fontSize: '0.875rem' }}>
+                      Parallel Agents
+                    </Typography>
+                  </Box>
+                </Tooltip>
+              )}
             </Box>
             
             {/* Chain details */}

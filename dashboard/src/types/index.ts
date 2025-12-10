@@ -36,6 +36,7 @@ export interface Session {
   completed_stages: number | null;
   failed_stages: number;
   current_stage_index: number | null;
+  has_parallel_stages: boolean; // Indicates if session has any stages with parallel execution
   
   // Session-level token aggregations
   session_input_tokens: number | null;

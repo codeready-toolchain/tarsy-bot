@@ -219,6 +219,7 @@ class SessionOverview(BaseModel):
     completed_stages: Optional[int] = None
     failed_stages: int = 0
     current_stage_index: Optional[int] = None  # Matches AlertSession field type
+    has_parallel_stages: bool = False  # Indicates if session has any stages with parallel execution
     
     # MCP configuration override
     mcp_selection: Optional[MCPSelectionConfig] = None

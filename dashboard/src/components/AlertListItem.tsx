@@ -1,6 +1,6 @@
 import React from 'react';
-import { TableRow, TableCell, Typography, IconButton, Tooltip, Chip } from '@mui/material';
-import { OpenInNew, Chat as ChatIcon } from '@mui/icons-material';
+import { TableRow, TableCell, Typography, IconButton, Tooltip, Chip, Box, alpha } from '@mui/material';
+import { OpenInNew, Chat as ChatIcon, CallSplit } from '@mui/icons-material';
 import StatusBadge from './StatusBadge';
 import TokenUsageDisplay from './TokenUsageDisplay';
 import { highlightSearchTermNodes } from '../utils/search';
@@ -49,6 +49,30 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
     >
       <TableCell>
         <StatusBadge status={session.status} />
+      </TableCell>
+      {/* Parallel agents indicator column - narrow, no header */}
+      <TableCell sx={{ width: 40, textAlign: 'center', px: 0.5 }}>
+        {session.has_parallel_stages && (
+          <Tooltip title="Parallel Agents - Multiple agents run in parallel">
+            <Box
+              sx={(theme) => ({
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                width: 24,
+                height: 24,
+                borderRadius: '4px',
+                border: '1.5px solid',
+                borderColor: theme.palette.secondary.main,
+                color: 'secondary.main',
+                backgroundColor: alpha(theme.palette.secondary.main, 0.08),
+                margin: '0 auto',
+              })}
+            >
+              <CallSplit sx={{ fontSize: '0.9rem' }} />
+            </Box>
+          </Tooltip>
+        )}
       </TableCell>
       <TableCell>
         <Typography 

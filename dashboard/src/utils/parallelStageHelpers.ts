@@ -225,3 +225,42 @@ export function getAggregateInteractionCounts(parallelExecutions: ParallelStageB
   };
 }
 
+/**
+ * Check if a session has any stages with parallel executions
+ * Useful for showing indicators in session lists and headers
+ */
+export function sessionHasParallelStages(stages?: ParallelStageBase[]): boolean {
+  if (!stages || stages.length === 0) {
+    return false;
+  }
+  
+  return stages.some(stage => isParallelStage(stage));
+}
+
+/**
+ * Count total number of parallel stages in a session
+ * Returns both count of stages with parallel execution and total parallel agents
+ */
+export function getParallelStageStats(stages?: ParallelStageBase[]): {
+  parallelStageCount: number;
+  totalParallelAgents: number;
+} {
+  if (!stages || stages.length === 0) {
+    return { parallelStageCount: 0, totalParallelAgents: 0 };
+  }
+  
+  let parallelStageCount = 0;
+  let totalParallelAgents = 0;
+  
+  for (const stage of stages) {
+    if (isParallelStage(stage)) {
+      parallelStageCount++;
+      if (stage.parallel_executions && stage.parallel_executions.length > 0) {
+        totalParallelAgents += stage.parallel_executions.length;
+      }
+    }
+  }
+  
+  return { parallelStageCount, totalParallelAgents };
+}
+
