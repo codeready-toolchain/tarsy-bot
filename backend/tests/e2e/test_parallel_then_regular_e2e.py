@@ -3,9 +3,9 @@ End-to-End Test for Parallel Stage Followed by Regular Stage.
 
 This test verifies:
 - Parallel stage followed by regular stage works
-- No automatic synthesis when not final stage
-- ParallelStageResult is passed to next stage
-- Regular stage can reference parallel results
+- Automatic synthesis ALWAYS happens after parallel stage
+- Synthesized result is passed to next stage (not raw ParallelStageResult)
+- Regular stage can reference synthesized results
 
 Architecture:
 - REAL: FastAPI app, AlertService, HistoryService, hook system, database
@@ -17,11 +17,11 @@ from unittest.mock import patch
 
 import pytest
 
-from .conftest import create_mock_stream
 from .e2e_utils import E2ETestUtils
 from .expected_parallel_conversations import (
     EXPECTED_PARALLEL_NO_SYNTHESIS_AGENT_1_CONVERSATION,
     EXPECTED_PARALLEL_NO_SYNTHESIS_AGENT_2_CONVERSATION,
+    EXPECTED_PARALLEL_REGULAR_SYNTHESIS_CONVERSATION,
     EXPECTED_REGULAR_AFTER_PARALLEL_CONVERSATION,
     EXPECTED_PARALLEL_REGULAR_STAGES,
 )
@@ -40,21 +40,22 @@ class TestParallelThenRegularE2E(ParallelTestBase):
         self, e2e_parallel_test_client, e2e_parallel_regular_alert
     ):
         """
-        Test parallel stage followed by regular stage (no automatic synthesis).
+        Test parallel stage followed by synthesis followed by regular stage.
 
         Flow:
         1. POST alert to /api/v1/alerts -> queued
         2. Wait for processing to complete
         3. Verify session was created and completed
         4. Verify parallel stage with 2 agents
-        5. Verify regular stage follows (NO synthesis stage)
-        6. Verify regular stage received ParallelStageResult
+        5. Verify automatic synthesis stage
+        6. Verify regular stage follows
+        7. Verify regular stage received synthesized result
 
         This test verifies:
         - Parallel stage followed by regular stage works
-        - No automatic synthesis when not final stage
-        - ParallelStageResult is passed to next stage
-        - Regular stage can reference parallel results
+        - Automatic synthesis ALWAYS happens after parallel stage
+        - Synthesized result is passed to next stage (not raw parallel data)
+        - Regular stage can reference synthesized results
         """
         return await self._run_with_timeout(
             lambda: self._execute_parallel_regular_test(e2e_parallel_test_client, e2e_parallel_regular_alert),
@@ -98,6 +99,7 @@ class TestParallelThenRegularE2E(ParallelTestBase):
         # Agent-specific interaction counters for LangChain-based agents
         agent_counters = {
             "LogAgent": 0,
+            "SynthesisAgent": 0,
             "CommandAgent": 0
         }
         
@@ -116,11 +118,29 @@ Final Answer: Log analysis reveals database connection timeout errors. The pod i
                     "input_tokens": 190, "output_tokens": 70, "total_tokens": 260
                 }
             ],
+            "SynthesisAgent": [
+                {  # Interaction 1 - Synthesis final answer (no tools)
+                    "response_content": """Final Answer: **Synthesis of Parallel Investigations**
+
+Both investigations provide complementary evidence. The Kubernetes agent identified the symptom (CrashLoopBackOff), while the log agent uncovered the root cause (database connection timeout).
+
+**Root Cause:** Pod-1 in test-namespace is crashing due to inability to connect to database at db.example.com:5432, resulting in repeated restart attempts (CrashLoopBackOff).
+
+**Recommended Actions:**
+1. Verify database service is running and accessible
+2. Check network policies and firewall rules for connectivity to db.example.com:5432
+3. Validate database credentials in pod configuration
+4. Review database connection timeout settings in application config
+
+**Priority:** High - Application is currently non-functional""",
+                    "input_tokens": 420, "output_tokens": 180, "total_tokens": 600
+                }
+            ],
             "CommandAgent": [
                 {  # Interaction 1 - Command agent final answer
                     "response_content": """Final Answer: **Remediation Commands**
 
-Based on parallel investigations showing database connectivity issues causing CrashLoopBackOff:
+Based on synthesis of parallel investigations showing database connectivity issues causing CrashLoopBackOff:
 
 **Diagnostic Commands:**
 ```bash
@@ -147,7 +167,7 @@ kubectl exec -n test-namespace pod-1 -- nc -zv db.example.com 5432
 # If needed, rollback to previous working version
 kubectl rollout undo deployment/app -n test-namespace
 ```""",
-                    "input_tokens": 400, "output_tokens": 170, "total_tokens": 570
+                    "input_tokens": 450, "output_tokens": 170, "total_tokens": 620
                 }
             ]
         }
@@ -159,6 +179,7 @@ kubectl rollout undo deployment/app -n test-namespace
         # Create agent-aware streaming mock for LangChain agents
         agent_identifiers = {
             "LogAgent": "log analysis specialist",
+            "SynthesisAgent": "Incident Commander synthesizing results from multiple parallel investigations",
             "CommandAgent": "command execution specialist"
         }
         
@@ -187,6 +208,7 @@ kubectl rollout undo deployment/app -n test-namespace
                                 "KubernetesAgent": EXPECTED_PARALLEL_NO_SYNTHESIS_AGENT_1_CONVERSATION,
                                 "LogAgent": EXPECTED_PARALLEL_NO_SYNTHESIS_AGENT_2_CONVERSATION
                             },
+                            "synthesis": EXPECTED_PARALLEL_REGULAR_SYNTHESIS_CONVERSATION,
                             "command": EXPECTED_REGULAR_AFTER_PARALLEL_CONVERSATION
                         }
                         
@@ -199,6 +221,6 @@ kubectl rollout undo deployment/app -n test-namespace
                             max_wait_seconds=30
                         )
                         
-                        print("✅ Parallel + regular stage test passed!")
+                        print("✅ Parallel + synthesis + regular stage test passed!")
                         return detail_data
 

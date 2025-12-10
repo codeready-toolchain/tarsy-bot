@@ -108,19 +108,48 @@ stages:
 
 ## Result Handling Logic
 
-### Case 1: Parallel Stage + Follow-up Stage
+### Automatic Synthesis After ALL Parallel Stages
 
-- Pass raw `ParallelStageResult` (pure data, no synthesis) to next stage
-- Next stage (user's judge/analysis agent) performs all analysis
+**IMPORTANT**: Synthesis is ALWAYS invoked automatically after ANY parallel stage completes successfully, regardless of whether there are follow-up stages or not.
 
-### Case 2: Parallel Stage is Final Stage
+#### Rationale
 
-- Automatically invoke built-in `SynthesisAgent` to synthesize results
-- Generates unified final analysis from multiple parallel investigations
+Parallel execution produces multiple independent analyses that need to be synthesized into a coherent, unified result. Without synthesis:
+- Next stages receive raw parallel data structure (difficult to process)
+- Final output is fragmented across multiple agent results
+- Users must manually reconcile conflicting findings
 
-### Case 3: Single Agent Final Stage (Existing Behavior)
+By always synthesizing, we ensure:
+- Consistent output format (single coherent analysis)
+- Quality-filtered results (low-evidence findings deprioritized)
+- Reconciled conflicts between parallel agents
+- Clean input for subsequent stages
 
-- Use agent's own final analysis (unchanged)
+#### Synthesis Configuration
+
+The `synthesis` field in stage configuration is **optional**. If not provided, defaults are used:
+
+```yaml
+synthesis:
+  agent: "SynthesisAgent"           # Default
+  iteration_strategy: "synthesis"   # Default
+  llm_provider: null                # Uses stage/chain/system default
+```
+
+#### Result Flow Examples
+
+**Case 1: Parallel Stage + Follow-up Stage**
+1. Multiple agents execute in parallel → `ParallelStageResult`
+2. **Synthesis automatically invoked** → Synthesized `AgentExecutionResult`
+3. Next stage receives synthesized result (clean, unified analysis)
+
+**Case 2: Parallel Stage is Final Stage**
+1. Multiple agents execute in parallel → `ParallelStageResult`
+2. **Synthesis automatically invoked** → Synthesized `AgentExecutionResult`
+3. Synthesized result used as final analysis
+
+**Case 3: Single Agent Stage (Existing Behavior)**
+- Use agent's own result directly (unchanged)
 
 ## Pause/Resume Behavior
 
@@ -278,18 +307,18 @@ When resuming a paused parallel stage:
 - Update `_execute_chain_stages()` to:
   - Detect parallel stages (check for `agents` list or `replicas > 1`)
   - Route to appropriate executor (`_execute_parallel_agents()` or `_execute_replicated_agent()`)
-  - Handle `ParallelStageResult` status aggregation
-- Add `_is_final_stage_parallel()` helper to check if last stage is parallel
-- Add `_synthesize_parallel_results()` method:
-  - Automatically invoke synthesis agent when parallel stage is final
+  - **ALWAYS invoke synthesis immediately after parallel stage completion**
+  - Replace parallel result with synthesized result in chain context
+  - Pass synthesized result to next stages (not raw parallel data)
+- Add `synthesize_parallel_results()` method in `ParallelStageExecutor`:
+  - Automatically invoke synthesis agent after ANY parallel stage completion
   - Use stage's `synthesis` config (agent, iteration_strategy, llm_provider)
-  - Default to `SynthesisAgent` with `react-synthesis` if no config provided
+  - Default to `SynthesisAgent` with `synthesis` iteration strategy if no config provided
   - Resolve effective LLM provider: synthesis.llm_provider → stage.llm_provider → chain.llm_provider
   - Pass `ParallelStageResult` to synthesis agent
-  - Return synthesized final analysis
+  - Return synthesized final analysis as `AgentExecutionResult`
 - Update `_extract_final_analysis_from_stages()`:
-  - Check if final stage is parallel
-  - If yes and no follow-up stage: invoke automatic synthesis
+  - Extract from synthesis stage result if present
   - Otherwise: extract from last stage as normal
 
 ### 6. Database Schema ([backend/tarsy/models/db_models.py](backend/tarsy/models/db_models.py))

@@ -836,21 +836,24 @@ class ParallelStageExecutor:
         """
         Automatically invoke synthesis agent to synthesize parallel results.
         
-        Called when parallel stage is the final stage (no follow-up stage).
-        Creates a synthetic stage execution for synthesis agent.
-        Returns synthesized final analysis.
+        ALWAYS called immediately after any parallel stage completes successfully.
+        This ensures parallel results are synthesized into a coherent analysis
+        before being passed to subsequent stages or used as final output.
+        
+        Synthesis configuration is optional - if not provided in stage config,
+        defaults are used (SynthesisAgent with 'synthesis' iteration strategy).
         
         Args:
             parallel_result: The parallel stage result to synthesize
             chain_context: Chain context for this session
             session_mcp_client: Session-scoped MCP client
-            stage_config: Stage configuration (contains synthesis config)
+            stage_config: Stage configuration (may contain optional synthesis config)
             chain_definition: Full chain definition
             
         Returns:
             Synthesized AgentExecutionResult from synthesis agent
         """
-        logger.info("Invoking automatic synthesis for final parallel stage")
+        logger.info("Invoking automatic synthesis for parallel stage")
         
         # Get synthesis configuration with defaults
         from tarsy.models.agent_config import SynthesisConfig

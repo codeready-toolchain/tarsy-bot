@@ -69,7 +69,7 @@ agent_chains:
           llm_provider: "anthropic-default"
     description: "Replica parallel stage (3 replicas) with automatic synthesis"
   
-  # Test chain 3: Parallel stage followed by regular stage (no auto synthesis)
+  # Test chain 3: Parallel stage with auto-synthesis followed by regular stage
   parallel-then-regular-chain:
     alert_types:
       - "test-parallel-regular-execution"
@@ -83,8 +83,11 @@ agent_chains:
             llm_provider: "anthropic-default"
             iteration_strategy: "react"
         failure_policy: "all"
+        # Note: synthesis config is optional and omitted here to test defaults
+        # Automatic synthesis will use: SynthesisAgent with 'synthesis' strategy
       - name: "command"
         agent: "CommandAgent"
         iteration_strategy: "react-final-analysis"
-    description: "Parallel stage followed by regular stage for manual synthesis"
+        llm_provider: "google-default"
+    description: "Parallel stage with automatic synthesis followed by regular stage"
   

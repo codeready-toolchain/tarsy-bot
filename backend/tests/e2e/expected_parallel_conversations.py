@@ -890,7 +890,7 @@ All three replicas converged on consistent findings with increasing detail. Repl
 }
 
 # ============================================================================
-# PARALLEL + REGULAR STAGE (No automatic synthesis)
+# PARALLEL + SYNTHESIS + REGULAR STAGE
 # ============================================================================
 
 # KubernetesAgent conversation for parallel+regular test (with correct alert type and description)
@@ -982,6 +982,17 @@ Investigate this alert using the available tools and provide:
 4. Prevention recommendations
 
 Use tools as needed to gather information. When you have sufficient data, provide your complete analysis."""
+        },
+        {
+            "role": "user",
+            "content": """Tool Result: kubernetes-server.kubectl_get:
+{
+  "result": "{\\\"result\\\": \\\"Pod pod-1 is in CrashLoopBackOff state\\\"}"
+}"""
+        },
+        {
+            "role": "assistant",
+            "content": """Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause."""
         }
     ]
 }
@@ -1143,6 +1154,156 @@ Use the available tools to investigate this alert and provide:
 Be thorough in your investigation before providing the final answer.
 
 Begin!"""
+        },
+        {
+            "role": "assistant",
+            "content": """Thought: I should analyze the application logs to find error patterns.
+Action: kubernetes-server.get_logs
+Action Input: {"namespace": "test-namespace", "pod": "pod-1"}"""
+        },
+        {
+            "role": "user",
+            "content": """Observation: kubernetes-server.get_logs: {
+  "result": "{\\\"logs\\\": \\\"Error: Failed to connect to database at db.example.com:5432 - connection timeout\\\"}"
+}"""
+        },
+        {
+            "role": "assistant",
+            "content": """Thought: I have analyzed the logs and found the root cause.
+Final Answer: Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity."""
+        }
+    ]
+}
+
+EXPECTED_PARALLEL_REGULAR_SYNTHESIS_CONVERSATION = {
+    "messages": [
+        {
+            "role": "system",
+            "content": """## General SRE Agent Instructions
+
+You are an expert Site Reliability Engineer (SRE) with deep knowledge of:
+- Kubernetes and container orchestration
+- Cloud infrastructure and services
+- Incident response and troubleshooting
+- System monitoring and alerting
+- GitOps and deployment practices
+
+Analyze alerts thoroughly and provide actionable insights based on:
+1. Alert information and context
+2. Associated runbook procedures
+3. Real-time system data from available tools
+
+Always be specific, reference actual data, and provide clear next steps.
+Focus on root cause analysis and sustainable solutions.
+
+## Agent-Specific Instructions
+You are an Incident Commander synthesizing results from multiple parallel investigations.
+
+Your task:
+1. CRITICALLY EVALUATE each investigation's quality - prioritize results with strong evidence and sound reasoning
+2. DISREGARD or deprioritize low-quality results that lack supporting evidence or contain logical errors
+3. ANALYZE the original alert using the best available data from parallel investigations
+4. INTEGRATE findings from high-quality investigations into a unified understanding
+5. RECONCILE conflicting information by assessing which analysis provides better evidence
+6. PROVIDE definitive root cause analysis based on the most reliable evidence
+7. GENERATE actionable recommendations leveraging insights from the strongest investigations
+
+Focus on solving the original alert/issue, not on meta-analyzing agent performance or comparing approaches."""
+        },
+        {
+            "role": "user",
+            "content": """Answer the following question using the available tools.
+
+Available tools:
+
+No tools available.
+
+Question: Analyze this test-parallel-regular-execution alert and provide actionable recommendations.
+
+## Alert Details
+
+### Alert Metadata
+**Alert Type:** test-parallel-regular-execution
+**Severity:** warning
+**Timestamp:** {TIMESTAMP}
+**Environment:** production
+
+### Alert Data
+```json
+{
+  "description": "Test parallel execution with regular stage",
+  "namespace": "test-namespace"
+}
+```
+
+## Runbook Content
+```markdown
+<!-- RUNBOOK START -->
+# Test Runbook
+This is a test runbook for parallel execution testing.
+<!-- RUNBOOK END -->
+```
+
+## Previous Stage Data
+### Results from parallel stage 'investigation':
+
+**Parallel Execution Summary**: 2/2 agents succeeded
+
+#### Agent 1: KubernetesAgent (google-default, native-thinking)
+**Status**: completed
+
+<!-- Analysis Result START -->
+USER: Tool Result: kubernetes-server.kubectl_get:
+{
+  "result": "{\\"result\\": \\"Pod pod-1 is in CrashLoopBackOff state\\"}"
+}
+
+ASSISTANT: Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause.
+<!-- Analysis Result END -->
+
+#### Agent 2: LogAgent (anthropic-default, react)
+**Status**: completed
+
+<!-- Analysis Result START -->
+ASSISTANT: Thought: I should analyze the application logs to find error patterns.
+Action: kubernetes-server.get_logs
+Action Input: {"namespace": "test-namespace", "pod": "pod-1"}
+
+USER: Observation: kubernetes-server.get_logs: {
+  "result": "{\\"logs\\": \\"Error: Failed to connect to database at db.example.com:5432 - connection timeout\\"}"
+}
+
+ASSISTANT: Thought: I have analyzed the logs and found the root cause.
+Final Answer: Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity.
+<!-- Analysis Result END -->
+
+
+## Your Task
+Use the available tools to investigate this alert and provide:
+1. Root cause analysis
+2. Current system state assessment  
+3. Specific remediation steps for human operators
+4. Prevention recommendations
+
+Be thorough in your investigation before providing the final answer.
+
+Begin!"""
+        },
+        {
+            "role": "assistant",
+            "content": """Final Answer: **Synthesis of Parallel Investigations**
+
+Both investigations provide complementary evidence. The Kubernetes agent identified the symptom (CrashLoopBackOff), while the log agent uncovered the root cause (database connection timeout).
+
+**Root Cause:** Pod-1 in test-namespace is crashing due to inability to connect to database at db.example.com:5432, resulting in repeated restart attempts (CrashLoopBackOff).
+
+**Recommended Actions:**
+1. Verify database service is running and accessible
+2. Check network policies and firewall rules for connectivity to db.example.com:5432
+3. Validate database credentials in pod configuration
+4. Review database connection timeout settings in application config
+
+**Priority:** High - Application is currently non-functional"""
         }
     ]
 }
@@ -1173,23 +1334,13 @@ You are a command execution specialist that formulates remediation steps based o
         },
         {
             "role": "user",
-            "content": """# Final Analysis Task
+            "content": """Answer the following question using the available tools.
 
+Available tools:
 
-**Stage:** command (Final Analysis Stage)
+No tools available.
 
-
-# SRE Alert Analysis Request
-
-You are an expert Site Reliability Engineer (SRE) analyzing a system alert using the ConfigurableAgent.
-This agent specializes in kubernetes-server operations and has access to domain-specific tools and knowledge.
-
-Your task is to provide a comprehensive analysis of the incident based on:
-1. The alert information
-2. The associated runbook
-3. Real-time system data from MCP servers
-
-Please provide detailed, actionable insights about what's happening and potential next steps.
+Question: Analyze this test-parallel-regular-execution alert and provide actionable recommendations.
 
 ## Alert Details
 
@@ -1235,21 +1386,38 @@ Thought: I have analyzed the logs and found the root cause.
 Final Answer: Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity.
 <!-- Analysis Result END -->
 
+### Results from stage 'synthesis':
 
-## Instructions
-Provide comprehensive final analysis based on ALL collected data:
+**Synthesis of Parallel Investigations**
+
+Both investigations provide complementary evidence. The Kubernetes agent identified the symptom (CrashLoopBackOff), while the log agent uncovered the root cause (database connection timeout).
+
+**Root Cause:** Pod-1 in test-namespace is crashing due to inability to connect to database at db.example.com:5432, resulting in repeated restart attempts (CrashLoopBackOff).
+
+**Recommended Actions:**
+1. Verify database service is running and accessible
+2. Check network policies and firewall rules for connectivity to db.example.com:5432
+3. Validate database credentials in pod configuration
+4. Review database connection timeout settings in application config
+
+**Priority:** High - Application is currently non-functional
+
+## Your Task
+Use the available tools to investigate this alert and provide:
 1. Root cause analysis
-2. Impact assessment  
-3. Recommended actions
-4. Prevention strategies
+2. Current system state assessment  
+3. Specific remediation steps for human operators
+4. Prevention recommendations
 
-Do NOT call any tools - use only the provided data."""
+Be thorough in your investigation before providing the final answer.
+
+Begin!"""
         },
         {
             "role": "assistant",
             "content": """Final Answer: **Remediation Commands**
 
-Based on parallel investigations showing database connectivity issues causing CrashLoopBackOff:
+Based on synthesis of parallel investigations showing database connectivity issues causing CrashLoopBackOff:
 
 **Diagnostic Commands:**
 ```bash
@@ -1729,7 +1897,7 @@ EXPECTED_REPLICA_STAGES = {
     }
 }
 
-# Parallel + regular stage (no synthesis)
+# Parallel + synthesis + regular stage
 EXPECTED_PARALLEL_REGULAR_STAGES = {
     "investigation": {
         "type": "parallel",
@@ -1766,13 +1934,22 @@ EXPECTED_PARALLEL_REGULAR_STAGES = {
             }
         }
     },
+    "synthesis": {
+        "type": "single",
+        "llm_count": 1,
+        "mcp_count": 0,
+        "interactions": [
+            # LLM 1 - Synthesis (no tools)
+            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 420, 'output_tokens': 180, 'total_tokens': 600, 'interaction_type': 'final_analysis'}
+        ]
+    },
     "command": {
         "type": "single",
         "llm_count": 1,
         "mcp_count": 0,
         "interactions": [
             # LLM 1 - Command formulation (no tools)
-            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 400, 'output_tokens': 170, 'total_tokens': 570, 'interaction_type': 'final_analysis'}
+            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 450, 'output_tokens': 170, 'total_tokens': 620, 'interaction_type': 'final_analysis'}
         ]
     }
 }

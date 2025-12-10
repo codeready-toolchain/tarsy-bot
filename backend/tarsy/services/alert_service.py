@@ -607,6 +607,18 @@ class AlertService:
                 
                 # Check if we need to continue to next stages
                 if parallel_result.status == StageStatus.COMPLETED:
+                    # ALWAYS invoke synthesis after parallel stage completion
+                    logger.info(f"Invoking automatic synthesis for resumed parallel stage '{paused_stage.stage_name}'")
+                    try:
+                        stage_config = chain_definition.stages[stage_index]
+                        synthesis_result = await self.parallel_executor.synthesize_parallel_results(
+                            parallel_result, chain_context, session_mcp_client, stage_config, chain_definition
+                        )
+                        # Add synthesis result as final stage
+                        chain_context.add_stage_result("synthesis", synthesis_result)
+                    except Exception as e:
+                        logger.error(f"Automatic synthesis failed for resumed parallel stage: {e}", exc_info=True)
+                    
                     # Check if there are more stages after the resumed parallel stage
                     next_stage_idx = stage_index + 1
                     if next_stage_idx < len(chain_definition.stages):
@@ -619,26 +631,10 @@ class AlertService:
                             session_mcp_client
                         )
                     else:
-                        # No more stages - handle final analysis directly
-                        logger.info("Parallel stage was last stage, handling synthesis/final analysis")
+                        # No more stages - extract final analysis
+                        logger.info("Parallel stage was last stage, extracting final analysis from synthesis")
                         
-                        # Check if we need automatic synthesis for final parallel stage
-                        if self.parallel_executor.is_final_stage_parallel(chain_definition):
-                            from tarsy.models.agent_execution_result import ParallelStageResult
-                            
-                            logger.info("Final stage is parallel - invoking automatic synthesis")
-                            try:
-                                # Get stage config for synthesis configuration
-                                stage_config = chain_definition.stages[stage_index]
-                                synthesis_result = await self.parallel_executor.synthesize_parallel_results(
-                                    parallel_result, chain_context, session_mcp_client, stage_config, chain_definition
-                                )
-                                # Add synthesis result as final stage
-                                chain_context.add_stage_result("synthesis", synthesis_result)
-                            except Exception as e:
-                                logger.error(f"Automatic synthesis failed: {e}", exc_info=True)
-                        
-                        # Extract final analysis from stages
+                        # Extract final analysis from stages (includes synthesis result)
                         final_analysis = self._extract_final_analysis_from_stages(chain_context)
                         
                         result = ChainExecutionResult(
@@ -848,6 +844,27 @@ class AlertService:
                         if stage_result.status == StageStatus.COMPLETED:
                             successful_stages += 1
                             logger.info(f"Parallel stage '{stage.name}' completed successfully")
+                            
+                            # ALWAYS invoke synthesis after parallel stage completion
+                            logger.info(f"Invoking automatic synthesis for parallel stage '{stage.name}'")
+                            try:
+                                synthesis_result = await self.parallel_executor.synthesize_parallel_results(
+                                    stage_result, chain_context, session_mcp_client, stage, chain_definition
+                                )
+                                
+                                # Replace parallel result with synthesized result in chain context
+                                # This ensures next stages receive coherent synthesized output, not raw parallel data
+                                chain_context.add_stage_result("synthesis", synthesis_result)
+                                
+                                # Update stage counters based on synthesis result
+                                if synthesis_result.status == StageStatus.COMPLETED:
+                                    successful_stages += 1
+                                else:
+                                    failed_stages += 1
+                                    logger.error(f"Synthesis for parallel stage '{stage.name}' failed")
+                            except Exception as e:
+                                logger.error(f"Automatic synthesis failed for parallel stage '{stage.name}': {e}", exc_info=True)
+                                failed_stages += 1
                         elif stage_result.status == StageStatus.PAUSED:
                             # Parallel stage paused - propagate pause to session level
                             logger.info(f"Parallel stage '{stage.name}' paused")
@@ -1024,31 +1041,6 @@ class AlertService:
                     # DECISION: Continue to next stage even if this one failed
                     # This allows data collection stages to fail while analysis stages still run
                     logger.warning(f"Continuing chain execution despite stage failure: {error_msg}")
-            
-            # Check if we need automatic synthesis for final parallel stage
-            if self.parallel_executor.is_final_stage_parallel(chain_definition):
-                from tarsy.models.agent_execution_result import ParallelStageResult
-                
-                last_result = chain_context.get_last_stage_result()
-                if isinstance(last_result, ParallelStageResult):
-                    logger.info("Final stage is parallel - invoking automatic synthesis")
-                    try:
-                        # Get last stage config for synthesis configuration
-                        last_stage_config = chain_definition.stages[-1]
-                        synthesis_result = await self.parallel_executor.synthesize_parallel_results(
-                            last_result, chain_context, session_mcp_client, last_stage_config, chain_definition
-                        )
-                        # Add synthesis result as final stage
-                        chain_context.add_stage_result("synthesis", synthesis_result)
-                        
-                        # Update stage counters based on synthesis result
-                        if synthesis_result.status == StageStatus.COMPLETED:
-                            successful_stages += 1
-                        else:
-                            failed_stages += 1
-                    except Exception as e:
-                        logger.error(f"Automatic synthesis failed: {e}", exc_info=True)
-                        failed_stages += 1
             
             # Extract final analysis from stages
             final_analysis = self._extract_final_analysis_from_stages(chain_context)
