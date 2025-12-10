@@ -15,7 +15,7 @@ import {
   TableSortLabel,
   Tooltip,
 } from '@mui/material';
-import { Refresh, SearchOff, CallSplit } from '@mui/icons-material';
+import { Refresh, SearchOff, CallSplit, Chat as ChatIcon } from '@mui/icons-material';
 import AlertListItem from './AlertListItem';
 import PaginationControls from './PaginationControls';
 import { hasActiveFilters } from '../utils/search';
@@ -181,7 +181,19 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
                     </TableCell>
                   ))}
                   <TableCell sx={{ fontWeight: 600 }}>Tokens</TableCell>
-                  <TableCell sx={{ fontWeight: 600, width: 60, textAlign: 'center' }}>Chats</TableCell>
+                  <TableCell sx={{ width: 40, px: 0.5, textAlign: 'center' }}>
+                    <Tooltip title="Follow-up Chats" arrow>
+                      <ChatIcon 
+                        sx={{ 
+                          fontSize: '1.1rem', 
+                          color: 'primary.main',
+                          verticalAlign: 'middle',
+                          cursor: 'help'
+                        }} 
+                        aria-label="Follow-up Chats"
+                      />
+                    </Tooltip>
+                  </TableCell>
                   <TableCell sx={{ fontWeight: 600, width: 60, textAlign: 'center' }}></TableCell>
                 </TableRow>
               </TableHead>

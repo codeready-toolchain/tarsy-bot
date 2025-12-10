@@ -1,5 +1,5 @@
 import React from 'react';
-import { TableRow, TableCell, Typography, IconButton, Tooltip, Chip, Box, alpha } from '@mui/material';
+import { TableRow, TableCell, Typography, IconButton, Tooltip, Chip } from '@mui/material';
 import { OpenInNew, Chat as ChatIcon, CallSplit } from '@mui/icons-material';
 import StatusBadge from './StatusBadge';
 import TokenUsageDisplay from './TokenUsageDisplay';
@@ -54,23 +54,18 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
       <TableCell sx={{ width: 40, textAlign: 'center', px: 0.5 }}>
         {session.has_parallel_stages && (
           <Tooltip title="Parallel Agents - Multiple agents run in parallel">
-            <Box
-              sx={(theme) => ({
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 24,
-                height: 24,
-                borderRadius: '4px',
-                border: '1.5px solid',
-                borderColor: theme.palette.secondary.main,
-                color: 'secondary.main',
-                backgroundColor: alpha(theme.palette.secondary.main, 0.08),
-                margin: '0 auto',
-              })}
-            >
-              <CallSplit sx={{ fontSize: '0.9rem' }} />
-            </Box>
+            <Chip
+              icon={<CallSplit sx={{ fontSize: '0.875rem' }} />}
+              size="small"
+              color="secondary"
+              variant="outlined"
+              sx={{ 
+                height: 24, 
+                minWidth: 24,
+                '& .MuiChip-label': { px: 0, display: 'none' },
+                '& .MuiChip-icon': { mx: 0 }
+              }}
+            />
           </Tooltip>
         )}
       </TableCell>
@@ -123,16 +118,20 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
         )}
       </TableCell>
       {/* Chat indicator badge */}
-      <TableCell sx={{ width: 60, textAlign: 'center' }}>
+      <TableCell sx={{ width: 40, textAlign: 'center', px: 0.5 }}>
         {session.chat_message_count && session.chat_message_count > 0 && (
-          <Tooltip title="Follow-up chat active">
+          <Tooltip title={`Follow-up chat active (${session.chat_message_count} message${session.chat_message_count !== 1 ? 's' : ''})`}>
             <Chip
-              icon={<ChatIcon />}
-              label={session.chat_message_count}
+              icon={<ChatIcon sx={{ fontSize: '0.875rem' }} />}
               size="small"
               color="primary"
               variant="outlined"
-              sx={{ height: 24, fontSize: '0.75rem' }}
+              sx={{ 
+                height: 24, 
+                minWidth: 24,
+                '& .MuiChip-label': { px: 0, display: 'none' },
+                '& .MuiChip-icon': { mx: 0 }
+              }}
             />
           </Tooltip>
         )}
