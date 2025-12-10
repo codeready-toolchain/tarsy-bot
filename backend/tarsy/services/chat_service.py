@@ -95,8 +95,8 @@ class ChatService:
         Raises:
             ValueError: If session not found, not in terminal state, or chat disabled
         """
-        # Get session and validate
-        session = self.history_service.get_session(session_id)
+        # Get session and validate (wrap synchronous call in to_thread to avoid blocking)
+        session = await asyncio.to_thread(self.history_service.get_session, session_id)
         if not session:
             raise ValueError(f"Session {session_id} not found")
         
@@ -382,7 +382,7 @@ class ChatService:
             )
             
             # 9. Determine iteration strategy and LLM provider from parent session's chain config
-            session = self.history_service.get_session(chat.session_id)
+            session = await asyncio.to_thread(self.history_service.get_session, chat.session_id)
             iteration_strategy = self._determine_iteration_strategy_from_session(session) if session else None
             llm_provider = self._determine_llm_provider_from_session(session) if session else None
             
@@ -557,8 +557,8 @@ class ChatService:
             llm_interactions
         )
         
-        # Get session for metadata
-        session = self.history_service.get_session(session_id)
+        # Get session for metadata (wrap synchronous call in to_thread to avoid blocking)
+        session = await asyncio.to_thread(self.history_service.get_session, session_id)
         
         # Return typed dataclass
         return SessionContextData(
