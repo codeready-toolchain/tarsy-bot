@@ -289,7 +289,7 @@ class ChainRegistry:
     
     def get_default_alert_type(self) -> str:
         """
-        Get the default alert type for clietns.
+        Get the default alert type for clients.
         
         Returns:
             Default alert type (from config or DEFAULT_ALERT_TYPE constant)

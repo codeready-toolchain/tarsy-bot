@@ -233,8 +233,10 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
     const handleSessionUpdate = (update: any) => {
       const eventType = update.type || '';
       
-      // Update progress status based on event
-      if (eventType.startsWith('stage.') || eventType === 'session.progress_update') {
+      // Update progress status based on stage events only.
+      // `session.progress_update` is handled inline below so we can use
+      // the freshly computed label when building `updatedStatus`.
+      if (eventType.startsWith('stage.')) {
         const newStatus = mapEventToProgressStatus(update);
         setProgressStatus(newStatus);
       }
@@ -253,7 +255,19 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
         const isCompleted = eventType === SESSION_EVENTS.COMPLETED;
         const isFailed = eventType === SESSION_EVENTS.FAILED;
         const isCancelled = eventType === SESSION_EVENTS.CANCELLED;
-        
+        const isProgressUpdate = eventType === 'session.progress_update';
+
+        const dynamicStep =
+          isCompleted ? 'Processing completed' :
+          isFailed ? 'Processing failed' :
+          isCancelled ? 'Processing cancelled' :
+          isProgressUpdate ? mapEventToProgressStatus(update) :
+          progressStatus;
+
+        if (isProgressUpdate) {
+          setProgressStatus(dynamicStep);
+        }
+
         updatedStatus = {
           session_id: sessionId,
           status: isCompleted ? ALERT_PROCESSING_STATUS.COMPLETED : 
@@ -261,10 +275,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
                   isCancelled ? ALERT_PROCESSING_STATUS.CANCELLED : 
                   ALERT_PROCESSING_STATUS.PROCESSING,
           progress: 0,
-          current_step: isCompleted ? 'Processing completed' : 
-                       isFailed ? 'Processing failed' : 
-                       isCancelled ? 'Processing cancelled' : 
-                       progressStatus,
+          current_step: dynamicStep,
           timestamp: new Date().toISOString(),
           error: update.error_message || undefined,
           result: update.final_analysis || undefined
@@ -348,7 +359,10 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
     return () => {
       unsubscribeSession();
     };
-  }, [sessionId]); // sessionId dependency
+  // progressStatus is intentionally omitted to avoid recreating the subscription on every state change.
+  // We compute fresh values inline in the handler using mapEventToProgressStatus(update) to avoid stale closures.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
