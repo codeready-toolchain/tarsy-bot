@@ -701,7 +701,7 @@ async def get_jwks(response: Response) -> JSONResponse:
             }
         ) from e
 
-def mark_session_as_failed(alert: Optional[ChainContext], error_msg: str) -> None:
+async def mark_session_as_failed(alert: Optional[ChainContext], error_msg: str) -> None:
     """
     Mark a session as failed if alert context is available.
     
@@ -710,7 +710,11 @@ def mark_session_as_failed(alert: Optional[ChainContext], error_msg: str) -> Non
         error_msg: Error message describing the failure
     """
     if alert and hasattr(alert, 'session_id') and alert_service:
-        alert_service._update_session_error(alert.session_id, error_msg)
+        # Update session status to failed
+        alert_service.session_manager.update_session_error(alert.session_id, error_msg)
+        # Publish session.failed event
+        from tarsy.services.events.event_helpers import publish_session_failed
+        await publish_session_failed(alert.session_id)
 
 async def process_alert_background(session_id: str, alert: ChainContext) -> None:
     """Background task to process an alert with comprehensive error handling and concurrency control."""
@@ -821,7 +825,7 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
                     # Non-user cancellation (e.g., pod shutdown, other asyncio cancellation)
                     # Mark as failed with appropriate message
                     logger.warning(f"Session {session_id} cancelled (not user-requested) - marking as failed")
-                    mark_session_as_failed(alert, "Session cancelled due to system shutdown or timeout")
+                    await mark_session_as_failed(alert, "Session cancelled due to system shutdown or timeout")
             else:
                 # History service not available, log and exit
                 logger.warning(f"Session {session_id} cancelled but history service unavailable")
@@ -830,25 +834,25 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
             # Configuration or data validation errors
             error_msg = f"Invalid alert data: {str(e)}"
             logger.error(f"Session {session_id} validation failed: {error_msg}")
-            mark_session_as_failed(alert, error_msg)
+            await mark_session_as_failed(alert, error_msg)
             
         except TimeoutError as e:
             # Processing timeout
             error_msg = str(e)
             logger.error(f"Session {session_id} processing timeout: {error_msg}")
-            mark_session_as_failed(alert, error_msg)
+            await mark_session_as_failed(alert, error_msg)
             
         except ConnectionError as e:
             # Network or external service errors
             error_msg = f"Connection error during processing: {str(e)}"
             logger.error(f"Session {session_id} connection error: {error_msg}")
-            mark_session_as_failed(alert, error_msg)
+            await mark_session_as_failed(alert, error_msg)
             
         except MemoryError as e:
             # Memory issues with large payloads
             error_msg = f"Processing failed due to memory constraints: {str(e)}"
             logger.error(f"Session {session_id} memory error: {error_msg}")
-            mark_session_as_failed(alert, error_msg)
+            await mark_session_as_failed(alert, error_msg)
             
         except Exception as e:
             # Catch-all for unexpected errors
@@ -857,7 +861,7 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
             logger.exception(
                 f"Session {session_id} unexpected error after {duration:.2f}s: {error_msg}"
             )
-            mark_session_as_failed(alert, error_msg)
+            await mark_session_as_failed(alert, error_msg)
         
         finally:
             # Always remove task from active_tasks when done (success, failure, or cancellation)

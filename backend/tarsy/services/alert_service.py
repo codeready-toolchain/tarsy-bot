@@ -355,7 +355,7 @@ class AlertService:
             chain_context.set_chain_context(chain_definition.chain_id)
             chain_context.set_runbook_content(runbook_content)
             
-            # Step 6: Execute chain stages sequentially with 600s overall timeout
+            # Step 6: Execute chain stages sequentially with configurable timeout
             try:
                 chain_result = await asyncio.wait_for(
                     self._execute_chain_stages(
@@ -363,10 +363,10 @@ class AlertService:
                         chain_context=chain_context,
                         session_mcp_client=session_mcp_client
                     ),
-                    timeout=600.0  # 10 minute overall session limit
+                    timeout=self.settings.alert_processing_timeout
                 )
             except asyncio.TimeoutError:
-                error_msg = "Alert processing exceeded 600s overall timeout"
+                error_msg = f"Alert processing exceeded {self.settings.alert_processing_timeout}s timeout"
                 logger.error(f"{error_msg} for session {chain_context.session_id}")
                 # Update history session with timeout error
                 self.session_manager.update_session_error(chain_context.session_id, error_msg)
