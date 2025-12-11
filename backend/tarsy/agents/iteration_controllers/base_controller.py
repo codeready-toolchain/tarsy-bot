@@ -87,6 +87,10 @@ class IterationController(ABC):
         """
         Check for paused session state and restore conversation if found.
         
+        Uses stage execution_id as the lookup key, which is ALWAYS set before
+        agent execution (in both parallel and non-parallel stages). This design
+        eliminates naming conflicts and works consistently across all scenarios.
+        
         Args:
             context: StageContext containing stage processing data
             logger: Optional logger for debug messages
@@ -94,11 +98,27 @@ class IterationController(ABC):
         Returns:
             Restored LLMConversation if resuming from paused state, None otherwise
         """
-        if context.stage_name not in context.chain_context.stage_outputs:
+        # Get execution_id (always set before agent.process_alert() is called)
+        stage_execution_id = context.agent.get_current_stage_execution_id()
+        if not stage_execution_id:
+            # This should never happen in production (execution_id always set before execution)
+            if logger:
+                logger.error("Agent execution_id not set - cannot restore paused conversation")
             return None
-            
-        stage_result = context.chain_context.stage_outputs[context.stage_name]
+        
+        if logger:
+            logger.debug(f"Looking up paused state with execution_id: {stage_execution_id}")
+        
+        # Lookup the stage result by execution_id
+        if stage_execution_id not in context.chain_context.stage_outputs:
+            return None
+        
+        stage_result = context.chain_context.stage_outputs[stage_execution_id]
+        
+        # Validate it's a paused AgentExecutionResult with conversation state
         if not hasattr(stage_result, 'status') or not hasattr(stage_result, 'paused_conversation_state'):
+            if logger:
+                logger.debug(f"Stage result missing required fields for restoration")
             return None
         
         # Type-safe status comparison (handle both enum and string values)

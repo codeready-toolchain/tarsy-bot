@@ -594,8 +594,12 @@ class ParallelStageExecutor:
             if child.stage_output:
                 paused_result = AgentExecutionResult.model_validate(child.stage_output)
                 # Add to context so agent can resume from paused state
-                chain_context.add_stage_result(child.stage_name, paused_result)
-                logger.info(f"Restored paused state for {child.agent}")
+                # CRITICAL: Use execution_id as the SOLE key to avoid any naming mismatches
+                # The child.stage_name includes agent name ("investigation - KubernetesAgent")
+                # but context.stage_name during lookup is just parent name ("investigation")
+                # Using only execution_id guarantees correct lookup
+                chain_context.add_stage_result(child.execution_id, paused_result)
+                logger.info(f"Restored paused state for {child.agent} with key {child.execution_id}")
         
         # 8. Execute ONLY paused children directly (without creating new parent stage)
         logger.info(f"Re-executing {len(paused_children)} paused agents")
