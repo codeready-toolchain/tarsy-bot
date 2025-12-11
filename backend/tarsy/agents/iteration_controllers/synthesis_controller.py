@@ -57,7 +57,7 @@ class SynthesisController(IterationController):
         prompt = self.prompt_builder.build_synthesis_prompt(context)
         
         # Build system message with synthesis instructions
-        general_instructions = agent._get_general_instructions()
+        general_instructions = agent.get_general_instructions()
         custom_instructions = agent.custom_instructions()
         
         system_content_parts = [general_instructions]
@@ -90,7 +90,7 @@ class SynthesisController(IterationController):
                 conversation=conversation,
                 session_id=context.session_id,
                 stage_execution_id=stage_execution_id,
-                provider=agent._llm_provider_name,
+                provider=agent.get_llm_provider(),
                 native_tools_override=native_tools_override,
                 parallel_metadata=parallel_metadata
             )

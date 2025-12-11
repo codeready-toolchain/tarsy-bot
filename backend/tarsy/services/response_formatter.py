@@ -34,10 +34,7 @@ def format_success_response(
         Formatted response string
     """
     # Convert unix timestamp to string for display
-    if timestamp_us:
-        timestamp_str = f"{timestamp_us}"  # Keep as unix timestamp for consistency
-    else:
-        timestamp_str = f"{now_us()}"  # Current unix timestamp
+    timestamp_str = f"{timestamp_us}" if timestamp_us else f"{now_us()}"
     
     response_parts = [
         "# Alert Analysis Report",
@@ -76,10 +73,7 @@ def format_chain_success_response(
         Formatted response string
     """
     # Convert unix timestamp to string for display
-    if timestamp_us:
-        timestamp_str = f"{timestamp_us}"  # Keep as unix timestamp for consistency
-    else:
-        timestamp_str = f"{now_us()}"  # Current unix timestamp
+    timestamp_str = f"{timestamp_us}" if timestamp_us else f"{now_us()}"
     
     stage_count = len(chain_definition.stages)
     stage_word = "stage" if stage_count == 1 else "stages"

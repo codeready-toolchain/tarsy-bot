@@ -52,7 +52,7 @@ class ReactFinalAnalysisController(IterationController):
         
         # Single comprehensive analysis call with simplified system message
         # No ReAct or MCP instructions needed for final analysis
-        general_instructions = context.agent._get_general_instructions()
+        general_instructions = context.agent.get_general_instructions()
         custom_instructions = context.agent.custom_instructions()
         
         system_content_parts = [general_instructions]

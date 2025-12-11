@@ -54,7 +54,7 @@ class SynthesisNativeThinkingController(NativeThinkingController):
         prompt = self.prompt_builder.build_synthesis_prompt(context)
         
         # Build system message with synthesis instructions
-        general_instructions = agent._get_general_instructions()
+        general_instructions = agent.get_general_instructions()
         custom_instructions = agent.custom_instructions()
         
         system_content_parts = [general_instructions]
@@ -79,7 +79,7 @@ class SynthesisNativeThinkingController(NativeThinkingController):
         native_tools_override = self._get_native_tools_override(context)
         
         # Get Gemini native thinking client (from parent class method)
-        client = self._get_native_thinking_client(agent._llm_provider_name)
+        client = self._get_native_thinking_client(agent.get_llm_provider())
         
         # Single LLM call with native thinking for synthesis
         try:

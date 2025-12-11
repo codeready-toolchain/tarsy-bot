@@ -122,7 +122,7 @@ class TestChatAgent:
     
     def test_provides_chat_specific_general_instructions(self, chat_agent):
         """Test ChatAgent provides chat-specific general instructions, not alert analysis instructions."""
-        general_instructions = chat_agent._get_general_instructions()
+        general_instructions = chat_agent.get_general_instructions()
         
         assert general_instructions is not None
         assert len(general_instructions) > 0

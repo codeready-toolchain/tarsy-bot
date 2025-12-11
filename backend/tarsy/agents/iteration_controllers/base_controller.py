@@ -118,7 +118,7 @@ class IterationController(ABC):
         # Validate it's a paused AgentExecutionResult with conversation state
         if not hasattr(stage_result, 'status') or not hasattr(stage_result, 'paused_conversation_state'):
             if logger:
-                logger.debug(f"Stage result missing required fields for restoration")
+                logger.debug("Stage result missing required fields for restoration")
             return None
         
         # Type-safe status comparison (handle both enum and string values)

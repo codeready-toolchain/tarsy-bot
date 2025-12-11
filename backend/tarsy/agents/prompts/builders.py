@@ -677,8 +677,6 @@ Executive Summary (1-4 lines, facts only):"""
         Returns:
             Formatted string with parallel stage results and metadata
         """
-        from tarsy.models.agent_execution_result import ParallelStageResult
-        
         sections = []
         
         # Overall summary
@@ -687,7 +685,7 @@ Executive Summary (1-4 lines, facts only):"""
         sections.append("")
         
         # Individual agent results
-        for idx, (result, metadata) in enumerate(zip(parallel_result.results, parallel_result.metadata.agent_metadatas), 1):
+        for idx, (result, metadata) in enumerate(zip(parallel_result.results, parallel_result.metadata.agent_metadatas, strict=True), 1):
             # Header based on parallel type
             if parallel_result.metadata.parallel_type == "multi_agent":
                 sections.append(f"## {metadata.agent_name} Investigation")

@@ -11,8 +11,22 @@ import pytest
 from mcp.types import Tool
 
 from tarsy.agents.prompts.builders import PromptBuilder
-from tarsy.models.processing_context import ToolWithServer
+from tarsy.models.agent_execution_result import (
+    AgentExecutionMetadata,
+    AgentExecutionResult,
+    ParallelStageMetadata,
+    ParallelStageResult,
+)
+from tarsy.models.alert import ProcessingAlert
+from tarsy.models.constants import FailurePolicy, StageStatus
+from tarsy.models.processing_context import (
+    AvailableTools,
+    ChainContext,
+    StageContext,
+    ToolWithServer,
+)
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
+from tarsy.utils.timestamp import now_us
 
 
 @pytest.mark.unit
@@ -27,9 +41,6 @@ class TestPromptBuilding:
     @pytest.fixture
     def mock_stage_context(self):
         """Create mock StageContext with proper ToolWithServer objects for testing."""
-        from tarsy.models.alert import ProcessingAlert
-        from tarsy.utils.timestamp import now_us
-        
         context = Mock()
         
         # Create proper ProcessingAlert for chain_context
@@ -385,9 +396,6 @@ class TestPromptIntegration:
     @pytest.fixture
     def full_mock_context(self):
         """Create comprehensive mock StageContext."""
-        from tarsy.models.alert import ProcessingAlert
-        from tarsy.utils.timestamp import now_us
-        
         context = Mock()
         
         # Create proper ProcessingAlert for chain_context
@@ -735,16 +743,6 @@ class TestNativeThinkingPromptBuilding:
     @pytest.fixture
     def stage_context_first_stage(self):
         """Create StageContext for first stage (no previous results)."""
-        from unittest.mock import Mock
-
-        from tarsy.models.alert import ProcessingAlert
-        from tarsy.models.processing_context import (
-            AvailableTools,
-            ChainContext,
-            StageContext,
-        )
-        from tarsy.utils.timestamp import now_us
-        
         processing_alert = ProcessingAlert(
             alert_type="kubernetes",
             severity="critical",
@@ -777,18 +775,6 @@ class TestNativeThinkingPromptBuilding:
     @pytest.fixture
     def stage_context_with_previous_stages(self):
         """Create StageContext with previous stage results."""
-        from unittest.mock import Mock
-
-        from tarsy.models.agent_execution_result import AgentExecutionResult
-        from tarsy.models.alert import ProcessingAlert
-        from tarsy.models.constants import StageStatus
-        from tarsy.models.processing_context import (
-            AvailableTools,
-            ChainContext,
-            StageContext,
-        )
-        from tarsy.utils.timestamp import now_us
-        
         processing_alert = ProcessingAlert(
             alert_type="kubernetes",
             severity="critical",
@@ -881,16 +867,6 @@ class TestNativeThinkingPromptBuilding:
     
     def test_build_native_thinking_prompt_handles_no_runbook(self, builder):
         """Test building prompt when runbook is None or empty."""
-        from unittest.mock import Mock
-
-        from tarsy.models.alert import ProcessingAlert
-        from tarsy.models.processing_context import (
-            AvailableTools,
-            ChainContext,
-            StageContext,
-        )
-        from tarsy.utils.timestamp import now_us
-        
         processing_alert = ProcessingAlert(
             alert_type="kubernetes",
             severity="critical",
@@ -932,23 +908,6 @@ class TestNativeThinkingPromptBuilding:
     
     def test_build_native_thinking_prompt_with_parallel_previous_stage(self, builder):
         """Test building prompt when previous stage was parallel execution."""
-        from unittest.mock import Mock
-
-        from tarsy.models.agent_execution_result import (
-            AgentExecutionMetadata,
-            AgentExecutionResult,
-            ParallelStageMetadata,
-            ParallelStageResult,
-        )
-        from tarsy.models.alert import ProcessingAlert
-        from tarsy.models.constants import FailurePolicy, StageStatus
-        from tarsy.models.processing_context import (
-            AvailableTools,
-            ChainContext,
-            StageContext,
-        )
-        from tarsy.utils.timestamp import now_us
-        
         timestamp = now_us()
         
         processing_alert = ProcessingAlert(

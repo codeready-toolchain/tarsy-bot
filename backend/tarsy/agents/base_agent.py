@@ -339,6 +339,18 @@ class BaseAgent(ABC):
         """
         return self._prompt_builder.get_general_instructions()
     
+    def get_general_instructions(self) -> str:
+        """
+        Get general SRE instructions common to all agents.
+        
+        Public API for controllers and other components that need to access
+        general instructions for composing system messages.
+        
+        Returns:
+            General instruction text
+        """
+        return self._get_general_instructions()
+    
     def set_current_stage_execution_id(self, stage_execution_id: Optional[str]):
         """Set the current stage execution ID for chain processing context."""
         self._current_stage_execution_id = stage_execution_id

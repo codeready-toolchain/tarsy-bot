@@ -205,7 +205,8 @@ class HookManager:
             try:
                 # For critical hooks, don't catch exceptions - let them propagate
                 if allow_exceptions:
-                    hook_results = await asyncio.gather(*tasks)
+                    await asyncio.gather(*tasks)
+                    # All hooks succeeded if we reach here (exceptions would have propagated)
                     for hook_name in hook_names:
                         results[hook_name] = True
                 else:

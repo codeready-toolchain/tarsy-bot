@@ -299,10 +299,11 @@ class TestKubernetesAgentInheritedFunctionality:
     
     def test_compose_instructions_includes_kubernetes_server(self, kubernetes_agent):
         """Test that _compose_instructions includes kubernetes-server instructions."""
-        with patch.object(kubernetes_agent, '_get_general_instructions', return_value="General instructions"):
-            instructions = kubernetes_agent._compose_instructions()
+        instructions = kubernetes_agent._compose_instructions()
         
-        assert "General instructions" in instructions
+        # Check that it includes general SRE instructions
+        assert "## General SRE Agent Instructions" in instructions
+        # Check that it includes kubernetes-server specific instructions
         assert "Kubernetes Server Instructions" in instructions
         assert "K8s instructions" in instructions  # From the mock server config
     
