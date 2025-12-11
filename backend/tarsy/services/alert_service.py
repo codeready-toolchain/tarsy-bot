@@ -652,7 +652,37 @@ class AlertService:
                             timestamp_us=now_us()
                         )
                 elif parallel_result.status == StageStatus.PAUSED:
-                    # Paused again - return pause result
+                    # Paused again - need to update session status and publish event
+                    # (unlike normal _execute_chain_stages path, parallel resume doesn't do this automatically)
+                    logger.warning(f"Parallel stage '{paused_stage.stage_name}' paused again during resume")
+                    
+                    # Extract pause metadata from the merged result
+                    # The parallel executor creates pause metadata when agents hit max_iterations
+                    pause_meta = None
+                    for agent_result in parallel_result.results:
+                        if agent_result.status == StageStatus.PAUSED:
+                            # Found a paused agent - create pause metadata
+                            from tarsy.models.pause_metadata import PauseMetadata, PauseReason
+                            pause_meta = PauseMetadata(
+                                reason=PauseReason.MAX_ITERATIONS_REACHED,
+                                current_iteration=0,  # Not meaningful for parallel stages
+                                message=f"Agent '{agent_result.agent_name}' paused during resume - click resume to continue",
+                                paused_at_us=now_us()
+                            )
+                            break
+                    
+                    # Update session status to PAUSED with metadata
+                    pause_meta_dict = pause_meta.model_dump(mode='json') if pause_meta else None
+                    self.session_manager.update_session_status(
+                        session_id, 
+                        AlertSessionStatus.PAUSED.value,
+                        pause_metadata=pause_meta_dict
+                    )
+                    
+                    # Publish pause event for dashboard updates
+                    from tarsy.services.events.event_helpers import publish_session_paused
+                    await publish_session_paused(session_id)
+                    
                     result = ChainExecutionResult(
                         status=ChainStatus.PAUSED,
                         stage_results=[],
@@ -705,7 +735,8 @@ class AlertService:
                 return final_result
             elif result.status == ChainStatus.PAUSED:
                 # Session paused again - this is normal, not an error
-                # Status already updated to PAUSED and pause event already published in _execute_chain_stages
+                # Status already updated to PAUSED and pause event already published
+                # (either in parallel resume path above, or in _execute_chain_stages for non-parallel)
                 logger.info(f"Resumed session {session_id} paused again (hit max iterations)")
                 # Format the pause message consistently with initial execution path
                 pause_message = result.final_analysis or "Session paused again - waiting for user to resume"
