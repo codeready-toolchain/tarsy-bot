@@ -968,6 +968,7 @@ class TestNativeThinkingPromptBuilding:
         
         # Add parallel stage result
         parallel_result = ParallelStageResult(
+            stage_name="investigation",
             results=[
                 AgentExecutionResult(
                     status=StageStatus.COMPLETED,

@@ -150,6 +150,7 @@ class TestExecutionConfigGeneration:
             from tarsy.models.constants import FailurePolicy
             
             return ParallelStageResult(
+                stage_name="investigation",
                 results=[],
                 metadata=ParallelStageMetadata(
                     parent_stage_execution_id="stage-exec-1",
@@ -238,6 +239,7 @@ class TestExecutionConfigGeneration:
             from tarsy.models.constants import FailurePolicy
             
             return ParallelStageResult(
+                stage_name="investigation",
                 results=[],
                 metadata=ParallelStageMetadata(
                     parent_stage_execution_id="stage-exec-1",

@@ -413,6 +413,7 @@ class TestParallelStageChainExecution:
         timestamp = now_us()
         
         parallel_result = ParallelStageResult(
+            stage_name="investigation",
             results=[
                 AgentExecutionResult(
                     status=StageStatus.COMPLETED,
@@ -497,6 +498,7 @@ class TestParallelStageChainExecution:
         timestamp = now_us()
         
         parallel_result = ParallelStageResult(
+            stage_name="investigation",
             results=[
                 AgentExecutionResult(
                     status=StageStatus.COMPLETED,
@@ -586,6 +588,7 @@ class TestParallelStageChainExecution:
         chain_context.add_stage_result("data-collection", single_result)
         
         parallel_result = ParallelStageResult(
+            stage_name="parallel-analysis",
             results=[
                 AgentExecutionResult(
                     status=StageStatus.COMPLETED,

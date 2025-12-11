@@ -168,6 +168,10 @@ class ParallelStageResult(BaseModel):
     
     model_config = ConfigDict(extra="forbid")
     
+    stage_name: str = Field(
+        ...,
+        description="Name of the parallel stage (for universal key lookup)"
+    )
     results: List[AgentExecutionResult] = Field(
         ...,
         description="Full investigation results from each parallel agent execution"

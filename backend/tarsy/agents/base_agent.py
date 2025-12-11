@@ -248,6 +248,7 @@ class BaseAgent(ABC):
             return AgentExecutionResult(
                 status=StageStatus.COMPLETED,
                 agent_name=self.__class__.__name__,
+                stage_name=context.current_stage_name,
                 timestamp_us=now_us(),
                 result_summary=result_summary,
                 complete_conversation_history=analysis_result,  # Last assistant message
@@ -269,6 +270,7 @@ class BaseAgent(ABC):
             return AgentExecutionResult(
                 status=StageStatus.FAILED,
                 agent_name=self.__class__.__name__,
+                stage_name=context.current_stage_name,
                 timestamp_us=now_us(),
                 result_summary=f"Agent execution failed: {str(e)}",
                 error_message=str(e),
@@ -283,6 +285,7 @@ class BaseAgent(ABC):
             return AgentExecutionResult(
                 status=StageStatus.FAILED,
                 agent_name=self.__class__.__name__,
+                stage_name=context.current_stage_name,
                 timestamp_us=now_us(),
                 result_summary=f"Agent execution failed with unexpected error: {str(e)}",
                 error_message=error_msg,

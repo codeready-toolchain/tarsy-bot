@@ -41,6 +41,7 @@ class TestChainContextParallelHelpers:
         return AgentExecutionResult(
             status=StageStatus.COMPLETED,
             agent_name="KubernetesAgent",
+            stage_name="stage1",  # Required for get_previous_stages_results()
             timestamp_us=now_us(),
             result_summary="Single agent completed successfully"
         )
@@ -92,6 +93,7 @@ class TestChainContextParallelHelpers:
         )
         
         return ParallelStageResult(
+            stage_name="investigation",
             results=results,
             metadata=metadata,
             status=StageStatus.COMPLETED,
@@ -120,12 +122,12 @@ class TestChainContextParallelHelpers:
         self, base_chain_context: ChainContext, sample_parallel_stage_result: ParallelStageResult
     ) -> None:
         """Test get_previous_stage_results with parallel stage result."""
-        base_chain_context.add_stage_result("parallel-stage", sample_parallel_stage_result)
+        base_chain_context.add_stage_result("parallel-stage-exec-id", sample_parallel_stage_result)
         
         results = base_chain_context.get_previous_stage_results()
         
         assert len(results) == 1
-        assert results[0][0] == "parallel-stage"
+        assert results[0][0] == "investigation"  # Extracted from result.stage_name
         assert isinstance(results[0][1], ParallelStageResult)
         assert len(results[0][1].results) == 2
 
@@ -136,15 +138,15 @@ class TestChainContextParallelHelpers:
         sample_parallel_stage_result: ParallelStageResult
     ) -> None:
         """Test get_previous_stage_results with both single and parallel stages."""
-        base_chain_context.add_stage_result("stage1", sample_single_agent_result)
-        base_chain_context.add_stage_result("parallel-stage", sample_parallel_stage_result)
+        base_chain_context.add_stage_result("stage1-exec-id", sample_single_agent_result)
+        base_chain_context.add_stage_result("parallel-stage-exec-id", sample_parallel_stage_result)
         
         results = base_chain_context.get_previous_stage_results()
         
         assert len(results) == 2
-        assert results[0][0] == "stage1"
+        assert results[0][0] == "stage1"  # Extracted from result.stage_name
         assert isinstance(results[0][1], AgentExecutionResult)
-        assert results[1][0] == "parallel-stage"
+        assert results[1][0] == "investigation"  # Extracted from result.stage_name
         assert isinstance(results[1][1], ParallelStageResult)
 
     def test_get_previous_stages_results_alias(self, base_chain_context: ChainContext) -> None:
@@ -170,9 +172,10 @@ class TestChainContextParallelHelpers:
         self, base_chain_context: ChainContext, sample_parallel_stage_result: ParallelStageResult
     ) -> None:
         """Test is_parallel_stage returns True for parallel stage."""
-        base_chain_context.add_stage_result("parallel-stage", sample_parallel_stage_result)
+        base_chain_context.add_stage_result("parallel-stage-exec-id", sample_parallel_stage_result)
         
-        assert base_chain_context.is_parallel_stage("parallel-stage") is True
+        # Check by stage_name (extracted from result), not by key
+        assert base_chain_context.is_parallel_stage("investigation") is True
 
     def test_get_last_stage_result_with_no_stages(self, base_chain_context: ChainContext) -> None:
         """Test get_last_stage_result returns None when no stages completed."""
@@ -268,6 +271,7 @@ class TestChainContextParallelHelpers:
         completed_result = AgentExecutionResult(
             status=StageStatus.COMPLETED,
             agent_name="CompletedAgent",
+            stage_name="completed-stage",
             timestamp_us=now_us(),
             result_summary="Completed"
         )
@@ -275,13 +279,14 @@ class TestChainContextParallelHelpers:
         failed_result = AgentExecutionResult(
             status=StageStatus.FAILED,
             agent_name="FailedAgent",
+            stage_name="failed-stage",
             timestamp_us=now_us(),
             result_summary="",
             error_message="Failed"
         )
         
-        base_chain_context.add_stage_result("completed-stage", completed_result)
-        base_chain_context.add_stage_result("failed-stage", failed_result)
+        base_chain_context.add_stage_result("completed-stage-id", completed_result)
+        base_chain_context.add_stage_result("failed-stage-id", failed_result)
         
         results = base_chain_context.get_previous_stage_results()
         
@@ -295,6 +300,7 @@ class TestChainContextParallelHelpers:
         timestamp = now_us()
         
         parallel_result = ParallelStageResult(
+            stage_name="parallel-stage",
             results=[
                 AgentExecutionResult(
                     status=StageStatus.COMPLETED,
@@ -345,7 +351,7 @@ class TestChainContextParallelHelpers:
         results = base_chain_context.get_previous_stage_results()
         
         assert len(results) == 1
-        assert results[0][0] == "partial-parallel"
+        assert results[0][0] == "parallel-stage"  # Extracted from result.stage_name
         assert results[0][1].status == StageStatus.COMPLETED
 
 
@@ -409,11 +415,12 @@ class TestChainContextFormattingParallel:
         result = AgentExecutionResult(
             status=StageStatus.COMPLETED,
             agent_name="KubernetesAgent",
+            stage_name="investigation",
             timestamp_us=now_us(),
             result_summary="Pod analysis complete",
             complete_conversation_history="## Analysis\nPod is failing due to memory limit"
         )
-        base_chain_context.add_stage_result("investigation", result)
+        base_chain_context.add_stage_result("investigation-exec-id", result)
         
         stage_context = StageContext(
             chain_context=base_chain_context,
@@ -437,6 +444,7 @@ class TestChainContextFormattingParallel:
         timestamp = now_us()
         
         parallel_result = ParallelStageResult(
+            stage_name="investigation",
             results=[
                 AgentExecutionResult(
                     status=StageStatus.COMPLETED,
@@ -517,6 +525,7 @@ class TestChainContextFormattingParallel:
         timestamp = now_us()
         
         parallel_result = ParallelStageResult(
+            stage_name="investigation",
             results=[
                 AgentExecutionResult(
                     status=StageStatus.COMPLETED,
@@ -595,14 +604,16 @@ class TestChainContextFormattingParallel:
         single_result = AgentExecutionResult(
             status=StageStatus.COMPLETED,
             agent_name="AnalysisAgent",
+            stage_name="analysis",
             timestamp_us=timestamp,
             result_summary="Initial analysis",
             complete_conversation_history="Alert requires deeper investigation"
         )
-        base_chain_context.add_stage_result("analysis", single_result)
+        base_chain_context.add_stage_result("analysis-exec-id", single_result)
         
         # Add parallel stage
         parallel_result = ParallelStageResult(
+            stage_name="investigation",
             results=[
                 AgentExecutionResult(
                     status=StageStatus.COMPLETED,
@@ -703,10 +714,11 @@ class TestChainContextFormattingParallel:
         result = AgentExecutionResult(
             status=StageStatus.COMPLETED,
             agent_name="EmptyAgent",
+            stage_name="empty-stage",
             timestamp_us=now_us(),
             result_summary=""
         )
-        base_chain_context.add_stage_result("empty-stage", result)
+        base_chain_context.add_stage_result("empty-stage-exec-id", result)
         
         stage_context = StageContext(
             chain_context=base_chain_context,

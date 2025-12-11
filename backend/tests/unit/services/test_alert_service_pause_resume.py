@@ -196,6 +196,7 @@ class TestAlertServiceResumePausedSession:
     async def test_resume_restores_conversation_history(self) -> None:
         """Test that resume restores conversation history from paused stage."""
         session_id = "test-session"
+        execution_id = "test-execution-123"
         
         # Create paused stage with conversation history
         conversation_state = {
@@ -208,7 +209,9 @@ class TestAlertServiceResumePausedSession:
         mock_paused_stage = MagicMock(spec=StageExecution)
         mock_paused_stage.status = StageStatus.PAUSED.value
         mock_paused_stage.stage_name = "analysis"
+        mock_paused_stage.execution_id = execution_id
         mock_paused_stage.current_iteration = 30
+        mock_paused_stage.parallel_type = None  # Non-parallel stage
         mock_paused_stage.stage_output = {
             "status": "paused",
             "agent_name": "TestAgent",
@@ -273,8 +276,9 @@ class TestAlertServiceResumePausedSession:
         assert chain_definition_arg.chain_id == "test-chain"
         
         # Verify the paused stage output was reconstructed in ChainContext
-        assert "analysis" in chain_context_arg.stage_outputs
-        paused_result = chain_context_arg.stage_outputs["analysis"]
+        # Note: Paused non-parallel stages are now stored by execution_id (for lookup consistency)
+        assert execution_id in chain_context_arg.stage_outputs
+        paused_result = chain_context_arg.stage_outputs[execution_id]
         assert paused_result.paused_conversation_state == conversation_state
     
     @pytest.mark.asyncio

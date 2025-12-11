@@ -531,10 +531,10 @@ class AlertService:
                 chain_context.mcp = MCPSelectionConfig.model_validate(session.mcp_selection)
             
             # Reconstruct stage outputs from completed AND paused stages
-            # IMPORTANT: Paused stages need their conversation history restored
+            # UNIVERSAL APPROACH: Always use execution_id as key (consistent lookup for all scenarios)
             # NOTE: Parallel stages have ParallelStageResult, not AgentExecutionResult
             for stage_exec in stage_executions:
-                if stage_exec.status == StageStatus.COMPLETED.value and stage_exec.stage_output:
+                if stage_exec.stage_output and stage_exec.status in [StageStatus.COMPLETED.value, StageStatus.PAUSED.value]:
                     # Check if this is a parallel stage (parent execution)
                     if stage_exec.parallel_type in ParallelType.parallel_values():
                         # Reconstruct ParallelStageResult from stage_output
@@ -543,18 +543,12 @@ class AlertService:
                     else:
                         # Reconstruct AgentExecutionResult from stage_output
                         result = AgentExecutionResult.model_validate(stage_exec.stage_output)
-                    chain_context.add_stage_result(stage_exec.stage_name, result)
-                elif stage_exec.status == StageStatus.PAUSED.value and stage_exec.stage_output:
-                    # Check if this is a parallel stage (parent execution)
-                    if stage_exec.parallel_type in ParallelType.parallel_values():
-                        # Restore paused parallel stage's result for resume
-                        from tarsy.models.agent_execution_result import ParallelStageResult
-                        result = ParallelStageResult.model_validate(stage_exec.stage_output)
-                    else:
-                        # Restore paused stage's conversation history for resume
-                        result = AgentExecutionResult.model_validate(stage_exec.stage_output)
-                    chain_context.add_stage_result(stage_exec.stage_name, result)
-                    logger.info(f"Restored conversation history for paused stage '{stage_exec.stage_name}'")
+                    
+                    # UNIVERSAL: Always use execution_id as key (works for all cases)
+                    chain_context.add_stage_result(stage_exec.execution_id, result)
+                    
+                    if stage_exec.status == StageStatus.PAUSED.value:
+                        logger.info(f"Restored paused stage '{stage_exec.stage_name}' with execution_id {stage_exec.execution_id}")
             
             # Step 4: Get chain definition
             chain_definition = session.chain_config
@@ -602,8 +596,8 @@ class AlertService:
                     history_service=self.history_service
                 )
                 
-                # Add result to context
-                chain_context.add_stage_result(paused_stage.stage_name, parallel_result)
+                # Add result to context (use paused parent's execution_id as key)
+                chain_context.add_stage_result(paused_stage.execution_id, parallel_result)
                 
                 # Check if we need to continue to next stages
                 if parallel_result.status == StageStatus.COMPLETED:
@@ -619,11 +613,11 @@ class AlertService:
                     
                     try:
                         stage_config = chain_definition.stages[stage_index]
-                        synthesis_result = await self.parallel_executor.synthesize_parallel_results(
+                        synthesis_execution_id, synthesis_result = await self.parallel_executor.synthesize_parallel_results(
                             parallel_result, chain_context, session_mcp_client, stage_config, chain_definition, synthesis_index
                         )
-                        # Add synthesis result as final stage
-                        chain_context.add_stage_result("synthesis", synthesis_result)
+                        # Add synthesis result using execution_id as key
+                        chain_context.add_stage_result(synthesis_execution_id, synthesis_result)
                     except Exception as e:
                         logger.error(f"Automatic synthesis failed for resumed parallel stage: {e}", exc_info=True)
                     
@@ -887,8 +881,8 @@ class AlertService:
                             else:
                                 await asyncio.to_thread(rec, chain_context.session_id)
                         
-                        # Add parallel result to ChainContext
-                        chain_context.add_stage_result(stage.name, stage_result)
+                        # Add parallel result to ChainContext (use parent execution_id as key)
+                        chain_context.add_stage_result(parent_execution_id, stage_result)
                         
                         # Check parallel stage status
                         if stage_result.status == StageStatus.COMPLETED:
@@ -902,13 +896,13 @@ class AlertService:
                                 executed_stage_count += 1
                                 
                                 # Synthesis gets the next stage index
-                                synthesis_result = await self.parallel_executor.synthesize_parallel_results(
+                                synthesis_execution_id, synthesis_result = await self.parallel_executor.synthesize_parallel_results(
                                     stage_result, chain_context, session_mcp_client, stage, chain_definition, executed_stage_count
                                 )
                                 
-                                # Replace parallel result with synthesized result in chain context
+                                # Add synthesized result to chain context using execution_id as key
                                 # This ensures next stages receive coherent synthesized output, not raw parallel data
-                                chain_context.add_stage_result("synthesis", synthesis_result)
+                                chain_context.add_stage_result(synthesis_execution_id, synthesis_result)
                                 
                                 # Update stage counters based on synthesis result
                                 if synthesis_result.status == StageStatus.COMPLETED:
@@ -1002,8 +996,8 @@ class AlertService:
                         if not isinstance(stage_result, AgentExecutionResult):
                             raise ValueError(f"Invalid stage result format from agent '{stage.agent}': expected AgentExecutionResult, got {type(stage_result)}")
                         
-                        # Add stage result to ChainContext
-                        chain_context.add_stage_result(stage.name, stage_result)
+                        # Add stage result to ChainContext using execution_id as key
+                        chain_context.add_stage_result(stage_execution_id, stage_result)
                         
                         # Check if stage actually succeeded or failed based on status
                         if stage_result.status == StageStatus.COMPLETED:
@@ -1090,7 +1084,7 @@ class AlertService:
                         result_summary=f"Stage '{stage.name}' failed: {str(e)}",
                         error_message=str(e),
                     )
-                    chain_context.add_stage_result(stage.name, error_result)
+                    chain_context.add_stage_result(stage_execution_id, error_result)
                     
                     failed_stages += 1
                     
@@ -1150,9 +1144,10 @@ class AlertService:
         """
         error_messages = []
         
-        # Collect errors from stage outputs
-        for stage_name, stage_result in chain_context.stage_outputs.items():
+        # Collect errors from stage outputs (keys are execution_ids, extract stage_name from result)
+        for stage_result in chain_context.stage_outputs.values():
             if hasattr(stage_result, 'status') and stage_result.status == StageStatus.FAILED:
+                stage_name = getattr(stage_result, 'stage_name', 'unknown')
                 stage_agent = getattr(stage_result, 'agent_name', 'unknown')
                 stage_error = getattr(stage_result, 'error_message', None)
                 

@@ -54,6 +54,27 @@ def assert_conversation_messages(
         expected_content = E2ETestUtils.normalize_content(expected_msg.get("content", ""))
         actual_content = E2ETestUtils.normalize_content(actual_msg.get("content", ""))
         
+        if expected_content != actual_content:
+            # Show difference for debugging
+            print(f"\n❌ Content mismatch in message {i}:")
+            print(f"  Expected length: {len(expected_content)}")
+            print(f"  Actual length: {len(actual_content)}")
+            # Find where they differ
+            for idx, (e_char, a_char) in enumerate(zip(expected_content, actual_content)):
+                if e_char != a_char:
+                    print(f"  First difference at position {idx}:")
+                    print(f"    Expected: ...{expected_content[max(0,idx-50):idx+50]}...")
+                    print(f"    Actual:   ...{actual_content[max(0,idx-50):idx+50]}...")
+                    break
+            else:
+                # One is longer than the other
+                min_len = min(len(expected_content), len(actual_content))
+                print(f"  Strings match until position {min_len}, then one continues:")
+                if len(expected_content) > len(actual_content):
+                    print(f"    Expected has extra: {expected_content[min_len:]}")
+                else:
+                    print(f"    Actual has extra: {actual_content[min_len:]}")
+        
         assert (
             expected_content == actual_content
         ), f"Content mismatch in message {i}: expected length {len(expected_content)}, got {len(actual_content)}"

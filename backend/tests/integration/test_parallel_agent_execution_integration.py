@@ -309,6 +309,7 @@ class TestParallelAgentExecutionIntegration:
         )
 
         parallel_result = ParallelStageResult(
+            stage_name="investigation",
             results=results,
             metadata=metadata,
             status=StageStatus.COMPLETED,
@@ -379,6 +380,7 @@ class TestParallelAgentExecutionIntegration:
         )
 
         parallel_result = ParallelStageResult(
+            stage_name="investigation",
             results=results,
             metadata=metadata,
             status=StageStatus.FAILED,
@@ -446,6 +448,7 @@ class TestParallelAgentExecutionIntegration:
         )
 
         parallel_result = ParallelStageResult(
+            stage_name="investigation",
             results=results,
             metadata=metadata,
             status=StageStatus.COMPLETED,

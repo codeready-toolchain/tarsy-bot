@@ -293,6 +293,7 @@ class TestParallelStageResult:
         )
         
         parallel_result = ParallelStageResult(
+            stage_name="investigation",
             results=results,
             metadata=metadata,
             status=StageStatus.COMPLETED,
@@ -352,6 +353,7 @@ class TestParallelStageResult:
         )
         
         parallel_result = ParallelStageResult(
+            stage_name="investigation",
             results=results,
             metadata=metadata,
             status=StageStatus.COMPLETED,
@@ -407,6 +409,7 @@ class TestParallelStageResult:
         )
         
         parallel_result = ParallelStageResult(
+            stage_name="investigation",
             results=results,
             metadata=metadata,
             status=StageStatus.COMPLETED,
@@ -468,6 +471,7 @@ class TestParallelStageResult:
         )
         
         parallel_result = ParallelStageResult(
+            stage_name="investigation",
             results=results,
             metadata=metadata,
             status=StageStatus.FAILED,
@@ -515,6 +519,7 @@ class TestParallelStageResult:
         )
         
         parallel_result = ParallelStageResult(
+            stage_name="investigation",
             results=results,
             metadata=metadata,
             status=StageStatus.COMPLETED,

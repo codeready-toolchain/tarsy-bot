@@ -146,10 +146,13 @@ class ChainContext(BaseModel):
         Returns results as ordered list of (stage_name, result) tuples.
         Dict preserves insertion order (Python 3.7+) so iteration order = execution order.
         Includes both single agent and parallel stage results.
+        
+        Note: stage_outputs keys are execution_ids, but we return (stage_name, result) tuples
+        by extracting stage_name from the result object itself.
         """
         return [
-            (stage_name, result)
-            for stage_name, result in self.stage_outputs.items()
+            (result.stage_name, result)
+            for result in self.stage_outputs.values()
             if (isinstance(result, AgentExecutionResult) and result.status is StageStatus.COMPLETED)
             or (isinstance(result, ParallelStageResult) and result.status is StageStatus.COMPLETED)
         ]
@@ -172,8 +175,11 @@ class ChainContext(BaseModel):
         Returns:
             True if the stage result is a ParallelStageResult, False otherwise
         """
-        result = self.stage_outputs.get(stage_name)
-        return isinstance(result, ParallelStageResult)
+        # Search for result by stage_name (keys are execution_ids)
+        for result in self.stage_outputs.values():
+            if result.stage_name == stage_name and isinstance(result, ParallelStageResult):
+                return True
+        return False
     
     def get_last_stage_result(self) -> Optional[Union[AgentExecutionResult, ParallelStageResult]]:
         """

@@ -419,6 +419,7 @@ class ParallelStageExecutor:
         
         # Create parallel stage result
         parallel_result = ParallelStageResult(
+            stage_name=stage.name,
             results=results,
             metadata=stage_metadata,
             status=overall_status,
@@ -804,6 +805,7 @@ class ParallelStageExecutor:
         
         # 12. Create final merged result
         merged_result = ParallelStageResult(
+            stage_name=paused_parent_stage.stage_name,
             results=all_results,
             metadata=merged_metadata,
             status=final_status,
@@ -861,7 +863,7 @@ class ParallelStageExecutor:
         stage_config: "ChainStageConfigModel",
         chain_definition: "ChainConfigModel",
         current_stage_index: int
-    ) -> AgentExecutionResult:
+    ) -> tuple[str, AgentExecutionResult]:
         """
         Automatically invoke synthesis agent to synthesize parallel results.
         
@@ -943,7 +945,7 @@ class ParallelStageExecutor:
             await self.stage_manager.update_stage_execution_completed(synthesis_stage_execution_id, synthesis_result)
             
             logger.info(f"{synthesis_config.agent} synthesis completed successfully")
-            return synthesis_result
+            return (synthesis_stage_execution_id, synthesis_result)
             
         except Exception as e:
             error_msg = f"{synthesis_config.agent} synthesis failed: {str(e)}"
@@ -962,5 +964,5 @@ class ParallelStageExecutor:
                 error_message=error_msg
             )
             
-            return error_result
+            return (synthesis_stage_execution_id, error_result)
 
