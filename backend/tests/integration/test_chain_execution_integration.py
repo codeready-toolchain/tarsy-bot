@@ -396,6 +396,14 @@ class TestParallelStageChainExecution:
         from tarsy.models.constants import FailurePolicy, StageStatus
         from tarsy.utils.timestamp import now_us
         
+        # Validate chain structure from fixture
+        chain = parallel_stage_followed_by_single_chain
+        assert len(chain.stages) == 2
+        assert chain.stages[0].name == "investigation"
+        assert chain.stages[0].agents is not None  # Parallel stage
+        assert chain.stages[1].name == "synthesis"
+        assert chain.stages[1].agent == "SynthesisAgent"  # Single agent
+        
         processing_alert = ProcessingAlert(
             alert_type="parallel-integration",
             severity="high",
@@ -407,13 +415,14 @@ class TestParallelStageChainExecution:
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
             session_id="test-parallel-session",
-            current_stage_name="investigation"
+            current_stage_name=chain.stages[0].name  # Use fixture's stage name
         )
         
         timestamp = now_us()
         
+        # Create parallel result for first stage using fixture's stage name
         parallel_result = ParallelStageResult(
-            stage_name="investigation",
+            stage_name=chain.stages[0].name,  # "investigation"
             results=[
                 AgentExecutionResult(
                     status=StageStatus.COMPLETED,
@@ -457,13 +466,20 @@ class TestParallelStageChainExecution:
             timestamp_us=timestamp
         )
         
-        chain_context.add_stage_result("investigation", parallel_result)
+        chain_context.add_stage_result(chain.stages[0].name, parallel_result)
         
-        assert chain_context.is_parallel_stage("investigation")
+        # Verify parallel stage results and context
+        assert chain_context.is_parallel_stage(chain.stages[0].name)
         assert len(chain_context.stage_outputs) == 1
         
+        # Simulate moving to synthesis stage (second stage in chain)
+        chain_context.current_stage_name = chain.stages[1].name
+        
+        # get_previous_stage_results() returns ALL completed stages (not stage-aware)
+        # At this point, we have 1 completed stage ("investigation")
         previous_results = chain_context.get_previous_stage_results()
         assert len(previous_results) == 1
+        assert previous_results[0][0] == chain.stages[0].name  # stage name
         assert isinstance(previous_results[0][1], ParallelStageResult)
     
     @pytest.mark.asyncio
@@ -481,6 +497,12 @@ class TestParallelStageChainExecution:
         from tarsy.models.constants import FailurePolicy, StageStatus
         from tarsy.utils.timestamp import now_us
         
+        # Validate chain structure from fixture
+        chain = parallel_stage_as_final_chain
+        assert len(chain.stages) == 1
+        assert chain.stages[0].name == "investigation"
+        assert chain.stages[0].agents is not None  # Parallel stage as final
+        
         processing_alert = ProcessingAlert(
             alert_type="parallel-final",
             severity="high",
@@ -492,13 +514,14 @@ class TestParallelStageChainExecution:
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
             session_id="test-final-parallel",
-            current_stage_name="investigation"
+            current_stage_name=chain.stages[0].name  # Use fixture's stage name
         )
         
         timestamp = now_us()
         
+        # Create parallel result using fixture's stage name
         parallel_result = ParallelStageResult(
-            stage_name="investigation",
+            stage_name=chain.stages[0].name,  # "investigation"
             results=[
                 AgentExecutionResult(
                     status=StageStatus.COMPLETED,
@@ -542,10 +565,12 @@ class TestParallelStageChainExecution:
             timestamp_us=timestamp
         )
         
-        chain_context.add_stage_result("investigation", parallel_result)
+        chain_context.add_stage_result(chain.stages[0].name, parallel_result)
         
+        # Verify this is a parallel stage as final stage (requires auto-synthesis)
         last_result = chain_context.get_last_stage_result()
         assert isinstance(last_result, ParallelStageResult)
+        assert last_result.stage_name == chain.stages[0].name
         assert last_result.metadata.parallel_type == "multi_agent"
     
     @pytest.mark.asyncio
@@ -563,6 +588,16 @@ class TestParallelStageChainExecution:
         from tarsy.models.constants import FailurePolicy, StageStatus
         from tarsy.utils.timestamp import now_us
         
+        # Validate chain structure from fixture
+        chain = mixed_single_and_parallel_chain
+        assert len(chain.stages) == 3
+        assert chain.stages[0].name == "data-collection"
+        assert chain.stages[0].agent == "DataCollectorAgent"  # Single agent
+        assert chain.stages[1].name == "parallel-analysis"
+        assert chain.stages[1].agents is not None  # Parallel stage
+        assert chain.stages[2].name == "reporting"
+        assert chain.stages[2].agent == "ReportAgent"  # Single agent
+        
         processing_alert = ProcessingAlert(
             alert_type="mixed-test",
             severity="high",
@@ -574,21 +609,24 @@ class TestParallelStageChainExecution:
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
             session_id="test-mixed-session",
-            current_stage_name="data-collection"
+            current_stage_name=chain.stages[0].name  # Use fixture's stage name
         )
         
         timestamp = now_us()
         
+        # Stage 1: Single-agent data collection
         single_result = AgentExecutionResult(
             status=StageStatus.COMPLETED,
             agent_name="DataCollectorAgent",
+            stage_name=chain.stages[0].name,
             timestamp_us=timestamp,
             result_summary="Data collected"
         )
-        chain_context.add_stage_result("data-collection", single_result)
+        chain_context.add_stage_result(chain.stages[0].name, single_result)
         
+        # Stage 2: Parallel analysis
         parallel_result = ParallelStageResult(
-            stage_name="parallel-analysis",
+            stage_name=chain.stages[1].name,  # "parallel-analysis"
             results=[
                 AgentExecutionResult(
                     status=StageStatus.COMPLETED,
@@ -631,20 +669,31 @@ class TestParallelStageChainExecution:
             status=StageStatus.COMPLETED,
             timestamp_us=timestamp
         )
-        chain_context.add_stage_result("parallel-analysis", parallel_result)
+        chain_context.add_stage_result(chain.stages[1].name, parallel_result)
         
+        # Stage 3: Single-agent reporting
         final_result = AgentExecutionResult(
             status=StageStatus.COMPLETED,
             agent_name="ReportAgent",
+            stage_name=chain.stages[2].name,
             timestamp_us=timestamp,
             result_summary="Report generated"
         )
-        chain_context.add_stage_result("reporting", final_result)
+        chain_context.add_stage_result(chain.stages[2].name, final_result)
         
+        # Verify mixed chain structure
         assert len(chain_context.stage_outputs) == 3
-        assert not chain_context.is_parallel_stage("data-collection")
-        assert chain_context.is_parallel_stage("parallel-analysis")
-        assert not chain_context.is_parallel_stage("reporting")
+        assert not chain_context.is_parallel_stage(chain.stages[0].name)  # single
+        assert chain_context.is_parallel_stage(chain.stages[1].name)  # parallel
+        assert not chain_context.is_parallel_stage(chain.stages[2].name)  # single
         
+        # Simulate moving to reporting stage to check previous results
+        chain_context.current_stage_name = chain.stages[2].name
+        
+        # get_previous_stage_results() returns ALL completed stages (not stage-aware)
+        # At this point, we have all 3 stages completed
         previous_results = chain_context.get_previous_stage_results()
         assert len(previous_results) == 3
+        assert previous_results[0][0] == chain.stages[0].name  # data-collection
+        assert previous_results[1][0] == chain.stages[1].name  # parallel-analysis
+        assert previous_results[2][0] == chain.stages[2].name  # reporting

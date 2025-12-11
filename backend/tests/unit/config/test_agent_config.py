@@ -692,9 +692,12 @@ class TestGetChainConfigs:
             assert chain_config["stages"][0]["llm_provider"] == "gemini-flash"
             assert chain_config["stages"][1]["agent"] == "KubernetesAgent"
             assert chain_config["stages"][1]["llm_provider"] is None
-            # Verify EP-0030 fields have defaults
             assert chain_config["stages"][0]["agents"] is None
             assert chain_config["stages"][0]["replicas"] == 1
+            assert chain_config["stages"][0]["failure_policy"] == FailurePolicy.ALL
+            assert chain_config["stages"][1]["agents"] is None
+            assert chain_config["stages"][1]["replicas"] == 1
+            assert chain_config["stages"][1]["failure_policy"] == FailurePolicy.ALL
         finally:
             os.unlink(temp_path)
     

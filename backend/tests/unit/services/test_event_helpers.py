@@ -712,6 +712,7 @@ class TestPublishSessionProgressUpdate:
             event = second_call[0][2]
             assert event.session_id == "test-session-123"
             assert event.phase == expected_phase_value
+            assert event.metadata is None
 
     @pytest.mark.asyncio
     async def test_publishes_progress_update_with_metadata(self) -> None:
@@ -731,9 +732,17 @@ class TestPublishSessionProgressUpdate:
                 metadata=test_metadata
             )
 
-            # Verify metadata is included
+            # Should publish to both channels
+            assert mock_publish.call_count == 2
+            
+            # Verify metadata is included in first call
             first_call = mock_publish.call_args_list[0]
             event = first_call[0][2]
+            assert event.metadata == test_metadata
+            
+            # Verify metadata is also included in second call
+            second_call = mock_publish.call_args_list[1]
+            event = second_call[0][2]
             assert event.metadata == test_metadata
 
     @pytest.mark.asyncio
