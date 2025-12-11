@@ -92,6 +92,16 @@ class FailurePolicy(str, Enum):
     ANY = "any"
 
 
+class ProgressPhase(str, Enum):
+    """Progress phases for session processing status updates.
+    
+    These phases provide user-friendly status messages during alert processing.
+    """
+    INVESTIGATING = "investigating"  # Default phase - agents are investigating the issue
+    SYNTHESIZING = "synthesizing"    # Synthesis agent is combining parallel results
+    SUMMARIZING = "summarizing"      # Executive summary is being generated
+
+
 class ChainStatus(Enum):
     """Status values for overall chain execution progress (calculated from stage statuses)."""
     

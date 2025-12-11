@@ -46,6 +46,7 @@ import { PARALLEL_TYPE } from '../utils/parallelConstants';
 interface NestedAccordionTimelineProps {
   chainExecution: ChainExecution;
   autoScroll?: boolean; // Kept for compatibility, but auto-scroll is now centralized
+  progressStatus?: string;
 }
 
 // Helper function to get stage status icon

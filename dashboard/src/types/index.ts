@@ -1,4 +1,5 @@
 import type { SessionStatus, StageStatus, ChainOverallStatus, AlertProcessingStatus } from '../utils/statusConstants';
+import type { ProgressPhaseValue } from '../utils/statusMapping';
 
 // Pause reason type (aligned with backend PauseReason enum)
 export type PauseReason = 'max_iterations_reached'; // extend as backend adds more (e.g., 'manual_pause', 'timeout')
@@ -298,14 +299,17 @@ export interface SessionsResponse {
 
 // WebSocket message types (Phase 2 + Phase 5 + EP-0027 Chat)
 export interface WebSocketMessage {
-  type: 'session_update' | 'session_completed' | 'session_failed' | 'ping' | 'pong' | 'connection_established' | 'subscription_response' | 'dashboard_update' | 'message_batch' | 'session_status_change' | 'batched_session_updates' | 'chain_progress' | 'stage_progress' | 'chat.created' | 'chat.user_message';
-  data?: SessionUpdate | ChainProgressUpdate | StageProgressUpdate | any; // Allow any data type for dashboard_update messages
+  type: 'session_update' | 'session_completed' | 'session_failed' | 'session.progress_update' | 'ping' | 'pong' | 'connection_established' | 'subscription_response' | 'dashboard_update' | 'message_batch' | 'session_status_change' | 'batched_session_updates' | 'chain_progress' | 'stage_progress' | 'chat.created' | 'chat.user_message';
+  data?: SessionUpdate | SessionProgressUpdate | ChainProgressUpdate | StageProgressUpdate | any; // Allow any data type for dashboard_update messages
   timestamp_us?: number; // Unix timestamp (microseconds since epoch)
   channel?: string; // Dashboard updates include channel info
   session_id?: string; // Session ID for buffered session updates
   messages?: WebSocketMessage[]; // For message_batch type
   count?: number; // For message_batch type
   timestamp?: string; // Alternative timestamp format for batches
+  // Direct event fields (for session.progress_update)
+  phase?: string; // Processing phase for progress updates
+  metadata?: Record<string, any>; // Optional metadata for progress updates
 }
 
 export interface SessionUpdate {
@@ -316,6 +320,12 @@ export interface SessionUpdate {
   error_message?: string | null;
   completed_at_us?: number | null; // Unix timestamp (microseconds since epoch)
   data?: any; // Additional update data containing interaction_type, etc.
+}
+
+export interface SessionProgressUpdate {
+  session_id: string;
+  phase: ProgressPhaseValue;
+  metadata?: Record<string, any>;
 }
 
 // Phase 5: Chain progress update from WebSocket

@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 
 from tarsy.services.events.channels import EventChannel
+from tarsy.models.constants import ProgressPhase
 from tarsy.services.events.event_helpers import (
     publish_chat_cancel_request,
     publish_llm_interaction,
@@ -18,6 +19,7 @@ from tarsy.services.events.event_helpers import (
     publish_session_completed,
     publish_session_created,
     publish_session_failed,
+    publish_session_progress_update,
     publish_session_started,
     publish_stage_completed,
     publish_stage_started,
@@ -660,4 +662,90 @@ class TestPublishChatCancelRequest:
              patch("tarsy.services.events.event_helpers.publish_event", side_effect=Exception("DB error")):
             # Should not raise
             await publish_chat_cancel_request("exec-123-456")
+
+
+@pytest.mark.unit
+class TestPublishSessionProgressUpdate:
+    """Test publish_session_progress_update helper."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "phase_input,expected_phase_value",
+        [
+            (ProgressPhase.INVESTIGATING, "investigating"),
+            (ProgressPhase.SYNTHESIZING, "synthesizing"),
+            (ProgressPhase.SUMMARIZING, "summarizing"),
+            ("investigating", "investigating"),
+            ("synthesizing", "synthesizing"),
+            ("summarizing", "summarizing"),
+        ],
+    )
+    async def test_publishes_progress_update_with_enum_or_string(
+        self, phase_input: ProgressPhase | str, expected_phase_value: str
+    ) -> None:
+        """Test that it publishes progress update event with both enum and string inputs."""
+        mock_session = AsyncMock()
+        mock_session_factory = Mock(return_value=mock_session)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock()
+
+        with patch("tarsy.services.events.event_helpers.get_async_session_factory", return_value=mock_session_factory), \
+             patch("tarsy.services.events.event_helpers.publish_event", new_callable=AsyncMock) as mock_publish:
+            await publish_session_progress_update("test-session-123", phase_input, metadata=None)
+
+            # Should publish to both 'sessions' and 'session:{session_id}' channels
+            assert mock_publish.call_count == 2
+            
+            # First call: global sessions channel
+            first_call = mock_publish.call_args_list[0]
+            assert first_call[0][0] is mock_session
+            assert first_call[0][1] == EventChannel.SESSIONS
+            event = first_call[0][2]
+            assert event.session_id == "test-session-123"
+            assert event.phase == expected_phase_value
+            assert event.metadata is None
+            
+            # Second call: session-specific channel
+            second_call = mock_publish.call_args_list[1]
+            assert second_call[0][0] is mock_session
+            assert second_call[0][1] == "session:test-session-123"
+            event = second_call[0][2]
+            assert event.session_id == "test-session-123"
+            assert event.phase == expected_phase_value
+
+    @pytest.mark.asyncio
+    async def test_publishes_progress_update_with_metadata(self) -> None:
+        """Test that it includes optional metadata when provided."""
+        mock_session = AsyncMock()
+        mock_session_factory = Mock(return_value=mock_session)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock()
+
+        test_metadata = {"stage_name": "synthesis", "parallel_count": 3}
+
+        with patch("tarsy.services.events.event_helpers.get_async_session_factory", return_value=mock_session_factory), \
+             patch("tarsy.services.events.event_helpers.publish_event", new_callable=AsyncMock) as mock_publish:
+            await publish_session_progress_update(
+                "test-session-123", 
+                ProgressPhase.SYNTHESIZING,
+                metadata=test_metadata
+            )
+
+            # Verify metadata is included
+            first_call = mock_publish.call_args_list[0]
+            event = first_call[0][2]
+            assert event.metadata == test_metadata
+
+    @pytest.mark.asyncio
+    async def test_handles_publish_error(self) -> None:
+        """Test that it handles publish errors gracefully."""
+        mock_session = AsyncMock()
+        mock_session_factory = Mock(return_value=mock_session)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock()
+
+        with patch("tarsy.services.events.event_helpers.get_async_session_factory", return_value=mock_session_factory), \
+             patch("tarsy.services.events.event_helpers.publish_event", side_effect=Exception("DB error")):
+            # Should not raise
+            await publish_session_progress_update("test-session-123", ProgressPhase.INVESTIGATING)
 

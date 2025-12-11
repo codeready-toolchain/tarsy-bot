@@ -40,6 +40,7 @@ import {
   getAlertProcessingStatusChipColor,
   getAlertProcessingStatusProgressColor,
 } from '../utils/statusConstants';
+import { mapEventToProgressStatus, ProgressStatusMessage } from '../utils/statusMapping';
 
 const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onComplete }) => {
   const [status, setStatus] = useState<ProcessingStatus | null>(null);
@@ -48,6 +49,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
   const [sessionExists, setSessionExists] = useState<boolean>(false);
   const [checkingSession, setCheckingSession] = useState<boolean>(true);
   const [pollError, setPollError] = useState<string | null>(null);
+  const [progressStatus, setProgressStatus] = useState<string>(ProgressStatusMessage.PROCESSING);
 
   // Store onComplete in a ref to avoid effect re-runs when it changes
   const onCompleteRef = useRef(onComplete);
@@ -231,6 +233,12 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
     const handleSessionUpdate = (update: any) => {
       const eventType = update.type || '';
       
+      // Update progress status based on event
+      if (eventType.startsWith('stage.') || eventType === 'session.progress_update') {
+        const newStatus = mapEventToProgressStatus(update);
+        setProgressStatus(newStatus);
+      }
+      
       // Prevent overwriting terminal states with intermediate events (catchup protection)
       // Once completed or errored, ignore all processing/stage/interaction events
       // Use ref to check immediately (React state updates are async)
@@ -256,7 +264,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
           current_step: isCompleted ? 'Processing completed' : 
                        isFailed ? 'Processing failed' : 
                        isCancelled ? 'Processing cancelled' : 
-                       'Processing...',
+                       progressStatus,
           timestamp: new Date().toISOString(),
           error: update.error_message || undefined,
           result: update.final_analysis || undefined
@@ -363,7 +371,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
       <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            Processing...
+            {progressStatus}
           </Typography>
           <LinearProgress />
           {wsError && (

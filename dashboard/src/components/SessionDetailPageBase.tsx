@@ -36,6 +36,7 @@ import type { DetailedSession } from '../types';
 import { useAdvancedAutoScroll } from '../hooks/useAdvancedAutoScroll';
 import { isTerminalSessionEvent } from '../utils/eventTypes';
 import { isActiveSessionStatus, isTerminalSessionStatus, SESSION_STATUS } from '../utils/statusConstants';
+import { mapEventToProgressStatus, ProgressStatusMessage, StageName } from '../utils/statusMapping';
 
 // Lazy load shared components
 const SessionHeader = lazy(() => import('./SessionHeader'));
@@ -89,7 +90,7 @@ const TimelineSkeleton = () => (
 
 interface SessionDetailPageBaseProps {
   viewType: 'conversation' | 'technical';
-  timelineComponent: (session: DetailedSession, autoScroll?: boolean) => ReactNode;
+  timelineComponent: (session: DetailedSession, autoScroll?: boolean, progressStatus?: string) => ReactNode;
   timelineSkeleton?: ReactNode;
   onViewChange?: (newView: 'conversation' | 'technical') => void;
 }
@@ -153,8 +154,32 @@ function SessionDetailPageBase({
   // Trigger to force chat panel expansion (e.g., from "Jump to Chat" button)
   const [shouldExpandChat, setShouldExpandChat] = useState(false);
   
+  // Track current progress status message (Investigating/Synthesizing/Summarizing)
+  const [progressStatus, setProgressStatus] = useState<string>(ProgressStatusMessage.PROCESSING);
+  
   // Track previous session status to detect transitions
   const prevStatusRef = useRef<string | undefined>(undefined);
+  
+  // Initialize progress status from current session state on load
+  useEffect(() => {
+    if (!session || loading) return;
+    
+    // Only set initial status if session is actively processing
+    if (!isActiveSessionStatus(session.status)) return;
+    
+    // Find the currently active stage
+    const activeStage = session.stages?.find((s: any) => s.status === 'active');
+    if (!activeStage) return;
+    
+    // Set initial status based on active stage type
+    if (activeStage.stage_name === StageName.SYNTHESIS) {
+      console.log(`📊 Initial load: ${StageName.SYNTHESIS} stage active, setting ${ProgressStatusMessage.SYNTHESIZING}`);
+      setProgressStatus(ProgressStatusMessage.SYNTHESIZING);
+    } else {
+      console.log(`📊 Initial load: ${activeStage.stage_name} stage active, setting ${ProgressStatusMessage.INVESTIGATING}`);
+      setProgressStatus(ProgressStatusMessage.INVESTIGATING);
+    }
+  }, [session?.session_id, loading]); // Only run when session first loads
   
   // Bottom cancel dialog state
   const [showBottomCancelDialog, setShowBottomCancelDialog] = useState(false);
@@ -376,6 +401,12 @@ function SessionDetailPageBase({
       console.log(`📡 ${viewType} view received update:`, update.type);
       
       const eventType = update.type || '';
+      
+      // Update progress status based on event
+      if (eventType.startsWith('stage.') || eventType === 'session.progress_update') {
+        const newStatus = mapEventToProgressStatus(update);
+        setProgressStatus(newStatus);
+      }
       
       // Handle chat events (EP-0027)
       if (eventType === 'chat.created' || eventType === 'chat.user_message') {
@@ -749,7 +780,7 @@ function SessionDetailPageBase({
             {/* Timeline Content - Conditional based on view type */}
             {session.stages && session.stages.length > 0 ? (
               <Suspense fallback={timelineSkeleton}>
-                {timelineComponent(session, autoScrollEnabled)}
+                {timelineComponent(session, autoScrollEnabled, progressStatus)}
               </Suspense>
             ) : (
               <Alert severity="error" sx={{ mb: 2 }}>

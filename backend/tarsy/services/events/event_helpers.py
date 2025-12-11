@@ -1,10 +1,10 @@
 """Helper functions for publishing events from sync/async contexts."""
 
 import logging
-from typing import Optional
+from typing import Optional, Union
 
 from tarsy.database.init_db import get_async_session_factory
-from tarsy.models.constants import AlertSessionStatus
+from tarsy.models.constants import AlertSessionStatus, ProgressPhase
 from tarsy.models.event_models import (
     ChatCreatedEvent,
     ChatUserMessageEvent,
@@ -18,6 +18,7 @@ from tarsy.models.event_models import (
     SessionCreatedEvent,
     SessionFailedEvent,
     SessionPausedEvent,
+    SessionProgressUpdateEvent,
     SessionResumedEvent,
     SessionStartedEvent,
     StageCompletedEvent,
@@ -154,6 +155,39 @@ async def publish_session_resumed(session_id: str) -> None:
             logger.info(f"[EVENT] Published session.resumed to channels: 'sessions' and 'session:{session_id}'")
     except Exception as e:
         logger.warning(f"Failed to publish session.resumed event: {e}")
+
+
+async def publish_session_progress_update(
+    session_id: str, 
+    phase: Union[ProgressPhase, str], 
+    metadata: Optional[dict] = None
+) -> None:
+    """
+    Publish session.progress_update event to both global and session-specific channels.
+
+    Args:
+        session_id: Session identifier
+        phase: Processing phase (ProgressPhase enum or string value)
+        metadata: Optional phase-specific metadata
+    """
+    try:
+        # Convert enum to string value if needed
+        phase_value = phase.value if isinstance(phase, ProgressPhase) else phase
+        
+        async_session_factory = get_async_session_factory()
+        async with async_session_factory() as session:
+            event = SessionProgressUpdateEvent(
+                session_id=session_id,
+                phase=phase_value,
+                metadata=metadata
+            )
+            # Publish to global 'sessions' channel for dashboard
+            await publish_event(session, EventChannel.SESSIONS, event)
+            # Also publish to session-specific channel for detail views
+            await publish_event(session, f"session:{session_id}", event)
+            logger.info(f"[EVENT] Published session.progress_update (phase={phase_value}) to channels: 'sessions' and 'session:{session_id}'")
+    except Exception as e:
+        logger.warning(f"Failed to publish session.progress_update event: {e}")
 
 
 async def publish_llm_interaction(

@@ -26,6 +26,7 @@ from tarsy.models.constants import (
     AlertSessionStatus,
     ChainStatus,
     ParallelType,
+    ProgressPhase,
     StageStatus,
 )
 from tarsy.models.pause_metadata import PauseMetadata, PauseReason
@@ -386,6 +387,14 @@ class AlertService:
                     chain_result.timestamp_us
                 )
                 
+                # Publish progress update event for executive summary generation
+                from tarsy.services.events.event_helpers import publish_session_progress_update
+                await publish_session_progress_update(
+                    chain_context.session_id,
+                    phase=ProgressPhase.SUMMARIZING,
+                    metadata=None
+                )
+                
                 # Generate executive summary for dashboard display and external notifications
                 # Use chain-level provider for executive summary (or global if not set)
                 final_result_summary = await self.final_analysis_summarizer.generate_executive_summary(
@@ -706,6 +715,14 @@ class AlertService:
                     chain_definition,
                     analysis,
                     result.timestamp_us,
+                )
+                
+                # Publish progress update event for executive summary generation
+                from tarsy.services.events.event_helpers import publish_session_progress_update
+                await publish_session_progress_update(
+                    session_id,
+                    phase=ProgressPhase.SUMMARIZING,
+                    metadata=None
                 )
                 
                 # Generate executive summary for resumed sessions too

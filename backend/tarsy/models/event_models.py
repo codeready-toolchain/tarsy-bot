@@ -73,6 +73,15 @@ class SessionResumedEvent(BaseEvent):
     status: Literal["in_progress"] = "in_progress"  # For instant client update
 
 
+class SessionProgressUpdateEvent(BaseEvent):
+    """Session progress update - indicates current processing phase."""
+
+    type: Literal["session.progress_update"] = "session.progress_update"
+    session_id: str = Field(description="Session identifier")
+    phase: str = Field(description="Processing phase from ProgressPhase enum")
+    metadata: Optional[Dict[str, Any]] = Field(default=None, description="Additional phase-specific metadata")
+
+
 class SessionCancelRequestedEvent(BaseEvent):
     """Session cancellation requested (backend-to-backend communication)."""
 

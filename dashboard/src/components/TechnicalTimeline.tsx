@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Box, Skeleton, Alert, Typography } from '@mui/material';
 import type { DetailedSession } from '../types';
+import { ProgressStatusMessage } from '../utils/statusMapping';
 
 // Lazy load timeline component
 const NestedAccordionTimeline = lazy(() => import('./NestedAccordionTimeline'));
@@ -8,6 +9,7 @@ const NestedAccordionTimeline = lazy(() => import('./NestedAccordionTimeline'));
 interface TechnicalTimelineProps {
   session: DetailedSession;
   autoScroll?: boolean;
+  progressStatus?: string;
 }
 
 // Loading skeleton for technical timeline
@@ -32,7 +34,8 @@ const TechnicalTimelineSkeleton = () => (
  */
 function TechnicalTimeline({ 
   session, 
-  autoScroll = true
+  autoScroll = true,
+  progressStatus = ProgressStatusMessage.PROCESSING
 }: TechnicalTimelineProps) {
   
   if (!session.stages || session.stages.length === 0) {
@@ -71,6 +74,7 @@ function TechnicalTimeline({
       <NestedAccordionTimeline
         chainExecution={chainExecution}
         autoScroll={autoScroll}
+        progressStatus={progressStatus}
       />
     </Suspense>
   );

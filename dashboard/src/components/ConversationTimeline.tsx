@@ -17,6 +17,7 @@ import StreamingContentRenderer, { type StreamingItem } from './StreamingContent
 import ParallelStageReasoningTabs from './ParallelStageReasoningTabs';
 import { websocketService } from '../services/websocketService';
 import { isTerminalSessionStatus, SESSION_STATUS, STAGE_STATUS } from '../utils/statusConstants';
+import { ProgressStatusMessage } from '../utils/statusMapping';
 import { 
   LLM_EVENTS, 
   STREAMING_CONTENT_TYPES, 
@@ -33,7 +34,7 @@ interface ProcessingIndicatorProps {
  * ProcessingIndicator Component
  * Animated pulsing dots with optional message
  */
-function ProcessingIndicator({ message = 'Processing...', centered = false }: ProcessingIndicatorProps) {
+function ProcessingIndicator({ message = ProgressStatusMessage.PROCESSING, centered = false }: ProcessingIndicatorProps) {
   return (
     <Box 
       sx={{ 
@@ -87,6 +88,7 @@ function ProcessingIndicator({ message = 'Processing...', centered = false }: Pr
 interface ConversationTimelineProps {
   session: DetailedSession;
   autoScroll?: boolean;
+  progressStatus?: string;
 }
 
 // Extended streaming item for ConversationTimeline
@@ -250,7 +252,8 @@ const StreamingItemRenderer = memo(({ item }: { item: ConversationStreamingItem 
  */
 function ConversationTimeline({ 
   session, 
-  autoScroll: _autoScroll = true // Auto-scroll handled by centralized system
+  autoScroll: _autoScroll = true, // Auto-scroll handled by centralized system
+  progressStatus = ProgressStatusMessage.PROCESSING
 }: ConversationTimelineProps) {
   const [chatFlow, setChatFlow] = useState<ChatFlowItemData[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -932,14 +935,14 @@ function ConversationTimeline({
               .map(([entryKey, entryValue]) => (
                 <StreamingItemRenderer key={entryKey} item={entryValue} />
               ))}
-            <ProcessingIndicator />
+            <ProcessingIndicator message={progressStatus} />
           </Box>
         ) : chatFlow.length === 0 ? (
           // Empty/Loading state - show appropriate message based on session status
           <Box>
             {session.status === SESSION_STATUS.IN_PROGRESS ? (
               // Session is actively processing - show processing indicator
-              <ProcessingIndicator centered />
+              <ProcessingIndicator message={progressStatus} centered />
             ) : (
               // Session completed/failed but has no chat flow data
               <Box sx={{ textAlign: 'center', py: 4 }}>
@@ -1052,7 +1055,7 @@ function ConversationTimeline({
             )}
 
             {/* Processing indicator at bottom when session/chat is in progress OR when there are streaming items */}
-            {(session.status === SESSION_STATUS.IN_PROGRESS || streamingItems.size > 0 || activeChatStageInProgress) && <ProcessingIndicator />}
+            {(session.status === SESSION_STATUS.IN_PROGRESS || streamingItems.size > 0 || activeChatStageInProgress) && <ProcessingIndicator message={progressStatus} />}
           </>
         )}
       </Box>
