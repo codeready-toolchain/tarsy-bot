@@ -411,8 +411,10 @@ class TestNativeThinkingE2E:
             langchain_streaming_mock = create_langchain_streaming_mock()
 
             # Patch both Gemini SDK and LangChain clients using shared utility
-            with patch("google.genai.Client", create_gemini_mock_client), \
-                 E2ETestUtils.create_llm_patch_context(streaming_mock=langchain_streaming_mock):
+            with E2ETestUtils.create_llm_patch_context(
+                gemini_mock_factory=create_gemini_mock_client,
+                streaming_mock=langchain_streaming_mock
+            ):
                 # Mock MCP client
                 mock_sessions = {
                     "kubernetes-server": mock_kubernetes_session,
