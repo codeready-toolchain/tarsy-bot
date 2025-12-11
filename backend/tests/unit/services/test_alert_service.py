@@ -281,6 +281,9 @@ class TestAlertProcessing:
         
         # Create mock history service for proper testing
         from tarsy.services.history_service import HistoryService
+        from tarsy.models.db_models import StageExecution
+        from types import SimpleNamespace
+        
         mock_history_service = Mock(spec=HistoryService)
         mock_history_service.is_enabled = True
         mock_history_service.create_session.return_value = True
@@ -289,7 +292,25 @@ class TestAlertProcessing:
         mock_history_service.store_mcp_interaction = Mock()
         mock_history_service.record_session_interaction = AsyncMock()
         mock_history_service.get_stage_executions = AsyncMock(return_value=[])
-        mock_history_service.get_stage_execution = AsyncMock(return_value=None)
+        # Mock update_session_current_stage as AsyncMock
+        mock_history_service.update_session_current_stage = AsyncMock()
+        # Mock get_stage_execution to return a proper stage execution object for updates
+        def create_mock_stage_execution(execution_id):
+            return SimpleNamespace(
+                execution_id=execution_id,
+                session_id="test-session",
+                stage_index=0,
+                stage_id="test-stage",
+                stage_name="test-stage",
+                status="active",
+                started_at_us=now_us(),
+                completed_at_us=None,
+                duration_ms=None,
+                error_message=None,
+                stage_output=None,
+                current_iteration=None
+            )
+        mock_history_service.get_stage_execution = AsyncMock(side_effect=create_mock_stage_execution)
         # Mock database verification for stage creation
         mock_history_service._retry_database_operation_async = AsyncMock(return_value=True)
         service.history_service = mock_history_service
@@ -1362,6 +1383,8 @@ class TestFullErrorPropagation:
         service = AlertService(mock_settings)
         
         # Setup service with dependencies
+        from types import SimpleNamespace
+        
         service.agent_factory = Mock()
         service.chain_registry = dependencies['chain_registry']
         service.runbook_service = dependencies['runbook']
@@ -1370,7 +1393,24 @@ class TestFullErrorPropagation:
         service.history_service.is_enabled = True
         service.history_service.create_session.return_value = True
         service.history_service.update_session_status = Mock()
-        service.history_service.get_stage_execution = AsyncMock()
+        service.history_service.update_session_current_stage = AsyncMock()
+        # Mock get_stage_execution to return proper stage execution objects
+        def create_mock_stage_execution(execution_id):
+            return SimpleNamespace(
+                execution_id=execution_id,
+                session_id="test-session",
+                stage_index=0,
+                stage_id="test-stage",
+                stage_name="test-stage",
+                status="active",
+                started_at_us=now_us(),
+                completed_at_us=None,
+                duration_ms=None,
+                error_message=None,
+                stage_output=None,
+                current_iteration=None
+            )
+        service.history_service.get_stage_execution = AsyncMock(side_effect=create_mock_stage_execution)
         service.history_service.get_stage_executions = AsyncMock(return_value=[])
         service.history_service.record_session_interaction = AsyncMock()
         service.history_service.start_session_processing = AsyncMock(return_value=True)

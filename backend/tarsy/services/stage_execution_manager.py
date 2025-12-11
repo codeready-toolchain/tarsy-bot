@@ -155,11 +155,17 @@ class StageExecutionManager:
             session_id: Session ID
             stage_index: Current stage index
             stage_execution_id: Current stage execution ID
-        """
-        try:
-            if not self.history_service or not self.history_service.is_enabled:
-                return
             
+        Raises:
+            RuntimeError: If session current stage cannot be updated
+        """
+        if not self.history_service or not self.history_service.is_enabled:
+            raise RuntimeError(
+                f"Cannot update session current stage for '{session_id}': History service is disabled. "
+                "All alert processing must be done with proper stage tracking."
+            )
+        
+        try:
             await self.history_service.update_session_current_stage(
                 session_id=session_id,
                 current_stage_index=stage_index,
@@ -167,7 +173,11 @@ class StageExecutionManager:
             )
             
         except Exception as e:
-            logger.warning(f"Failed to update session current stage: {str(e)}")
+            logger.error(f"Failed to update session current stage: {str(e)}")
+            raise RuntimeError(
+                f"Cannot update current stage information for session {session_id}. "
+                f"Database persistence is required for stage tracking. Error: {str(e)}"
+            ) from e
     
     async def update_stage_execution_completed(
         self, 
@@ -180,16 +190,24 @@ class StageExecutionManager:
         Args:
             stage_execution_id: Stage execution ID
             stage_result: Stage processing result (AgentExecutionResult or ParallelStageResult)
-        """
-        try:
-            if not self.history_service:
-                return
             
+        Raises:
+            RuntimeError: If stage execution cannot be updated to completed status
+        """
+        if not self.history_service:
+            raise RuntimeError(
+                f"Cannot update stage execution {stage_execution_id} as completed: History service is disabled. "
+                "All alert processing must be done with proper stage tracking."
+            )
+        
+        try:
             # Get the existing stage execution record
             existing_stage = await self.history_service.get_stage_execution(stage_execution_id)
             if not existing_stage:
-                logger.warning(f"Stage execution {stage_execution_id} not found for update")
-                return
+                raise RuntimeError(
+                    f"Stage execution {stage_execution_id} not found in database for completion update. "
+                    "This indicates a critical bug in stage lifecycle management."
+                )
             
             # Update only the completion-related fields
             existing_stage.status = stage_result.status.value
@@ -203,17 +221,18 @@ class StageExecutionManager:
                 existing_stage.duration_ms = int((existing_stage.completed_at_us - existing_stage.started_at_us) / 1000)
             
             # Trigger stage execution hooks (history + dashboard) via context manager
-            try:
-                from tarsy.hooks.hook_context import stage_execution_context
-                async with stage_execution_context(existing_stage.session_id, existing_stage):
-                    # Context automatically triggers hooks when exiting
-                    pass
-                logger.debug(f"Triggered stage hooks for stage completion {existing_stage.stage_index}: {existing_stage.stage_id}")
-            except Exception as e:
-                logger.warning(f"Failed to trigger stage completion hooks: {str(e)}")
+            from tarsy.hooks.hook_context import stage_execution_context
+            async with stage_execution_context(existing_stage.session_id, existing_stage):
+                # Context automatically triggers hooks when exiting
+                pass
+            logger.debug(f"Triggered stage hooks for stage completion {existing_stage.stage_index}: {existing_stage.stage_id}")
             
         except Exception as e:
-            logger.warning(f"Failed to update stage execution as completed: {str(e)}")
+            logger.error(f"Failed to update stage execution as completed: {str(e)}")
+            raise RuntimeError(
+                f"Cannot update stage execution {stage_execution_id} to completed status. "
+                f"Database persistence is required for audit trail. Error: {str(e)}"
+            ) from e
     
     async def update_stage_execution_failed(self, stage_execution_id: str, error_message: str):
         """
@@ -222,16 +241,24 @@ class StageExecutionManager:
         Args:
             stage_execution_id: Stage execution ID
             error_message: Error message
-        """
-        try:
-            if not self.history_service:
-                return
             
+        Raises:
+            RuntimeError: If stage execution cannot be updated to failed status
+        """
+        if not self.history_service:
+            raise RuntimeError(
+                f"Cannot update stage execution {stage_execution_id} as failed: History service is disabled. "
+                "All alert processing must be done with proper stage tracking."
+            )
+        
+        try:
             # Get the existing stage execution record
             existing_stage = await self.history_service.get_stage_execution(stage_execution_id)
             if not existing_stage:
-                logger.warning(f"Stage execution {stage_execution_id} not found for update")
-                return
+                raise RuntimeError(
+                    f"Stage execution {stage_execution_id} not found in database for failure update. "
+                    "This indicates a critical bug in stage lifecycle management."
+                )
             
             # Update only the failure-related fields
             existing_stage.status = StageStatus.FAILED.value
@@ -244,17 +271,18 @@ class StageExecutionManager:
                 existing_stage.duration_ms = int((existing_stage.completed_at_us - existing_stage.started_at_us) / 1000)
             
             # Trigger stage execution hooks (history + dashboard) via context manager
-            try:
-                from tarsy.hooks.hook_context import stage_execution_context
-                async with stage_execution_context(existing_stage.session_id, existing_stage):
-                    # Context automatically triggers hooks when exiting
-                    pass
-                logger.debug(f"Triggered stage hooks for stage failure {existing_stage.stage_index}: {existing_stage.stage_id}")
-            except Exception as e:
-                logger.warning(f"Failed to trigger stage failure hooks: {str(e)}")
+            from tarsy.hooks.hook_context import stage_execution_context
+            async with stage_execution_context(existing_stage.session_id, existing_stage):
+                # Context automatically triggers hooks when exiting
+                pass
+            logger.debug(f"Triggered stage hooks for stage failure {existing_stage.stage_index}: {existing_stage.stage_id}")
             
         except Exception as e:
-            logger.warning(f"Failed to update stage execution as failed: {str(e)}")
+            logger.error(f"Failed to update stage execution as failed: {str(e)}")
+            raise RuntimeError(
+                f"Cannot update stage execution {stage_execution_id} to failed status. "
+                f"Database persistence is required for audit trail. Error: {str(e)}"
+            ) from e
     
     async def update_stage_execution_paused(
         self, 
@@ -269,16 +297,24 @@ class StageExecutionManager:
             stage_execution_id: Stage execution ID
             iteration: Current iteration number when paused
             paused_result: Optional partial result with conversation history (AgentExecutionResult or ParallelStageResult)
-        """
-        try:
-            if not self.history_service:
-                return
             
+        Raises:
+            RuntimeError: If stage execution cannot be updated to paused status
+        """
+        if not self.history_service:
+            raise RuntimeError(
+                f"Cannot update stage execution {stage_execution_id} as paused: History service is disabled. "
+                "All alert processing must be done with proper stage tracking."
+            )
+        
+        try:
             # Get the existing stage execution record
             existing_stage = await self.history_service.get_stage_execution(stage_execution_id)
             if not existing_stage:
-                logger.warning(f"Stage execution {stage_execution_id} not found for update")
-                return
+                raise RuntimeError(
+                    f"Stage execution {stage_execution_id} not found in database for pause update. "
+                    "This indicates a critical bug in stage lifecycle management."
+                )
             
             # Update to paused status with iteration count
             existing_stage.status = StageStatus.PAUSED.value
@@ -293,17 +329,18 @@ class StageExecutionManager:
             existing_stage.error_message = None
             
             # Trigger stage execution hooks (history + dashboard) via context manager
-            try:
-                from tarsy.hooks.hook_context import stage_execution_context
-                async with stage_execution_context(existing_stage.session_id, existing_stage):
-                    # Context automatically triggers hooks when exiting
-                    pass
-                logger.debug(f"Triggered stage hooks for stage pause {existing_stage.stage_index}: {existing_stage.stage_id}")
-            except Exception as e:
-                logger.warning(f"Failed to trigger stage pause hooks: {str(e)}")
+            from tarsy.hooks.hook_context import stage_execution_context
+            async with stage_execution_context(existing_stage.session_id, existing_stage):
+                # Context automatically triggers hooks when exiting
+                pass
+            logger.debug(f"Triggered stage hooks for stage pause {existing_stage.stage_index}: {existing_stage.stage_id}")
             
         except Exception as e:
-            logger.warning(f"Failed to update stage execution as paused: {str(e)}")
+            logger.error(f"Failed to update stage execution as paused: {str(e)}")
+            raise RuntimeError(
+                f"Cannot update stage execution {stage_execution_id} to paused status. "
+                f"Database persistence is required for conversation state preservation. Error: {str(e)}"
+            ) from e
     
     async def update_stage_execution_started(self, stage_execution_id: str):
         """
@@ -315,16 +352,24 @@ class StageExecutionManager:
         
         Args:
             stage_execution_id: Stage execution ID
-        """
-        try:
-            if not self.history_service:
-                return
             
+        Raises:
+            RuntimeError: If stage execution cannot be updated to started status
+        """
+        if not self.history_service:
+            raise RuntimeError(
+                f"Cannot update stage execution {stage_execution_id} as started: History service is disabled. "
+                "All alert processing must be done with proper stage tracking."
+            )
+        
+        try:
             # Get the existing stage execution record
             existing_stage = await self.history_service.get_stage_execution(stage_execution_id)
             if not existing_stage:
-                logger.warning(f"Stage execution {stage_execution_id} not found for update")
-                return
+                raise RuntimeError(
+                    f"Stage execution {stage_execution_id} not found in database for start update. "
+                    "This indicates a critical bug in stage lifecycle management."
+                )
             
             # Update to active status and set start time
             # This handles both PENDING→ACTIVE (new) and PAUSED→ACTIVE (resumed)
@@ -335,16 +380,17 @@ class StageExecutionManager:
             existing_stage.current_iteration = None
             
             # Trigger stage execution hooks (history + dashboard) via context manager
-            try:
-                from tarsy.hooks.hook_context import stage_execution_context
-                async with stage_execution_context(existing_stage.session_id, existing_stage):
-                    # Context automatically triggers hooks when exiting
-                    # History hook will update DB record and dashboard hook will broadcast
-                    pass
-                logger.debug(f"Triggered stage hooks for stage start {existing_stage.stage_index}: {existing_stage.stage_id}")
-            except Exception as e:
-                logger.warning(f"Failed to trigger stage start hooks: {str(e)}")
+            from tarsy.hooks.hook_context import stage_execution_context
+            async with stage_execution_context(existing_stage.session_id, existing_stage):
+                # Context automatically triggers hooks when exiting
+                # History hook will update DB record and dashboard hook will broadcast
+                pass
+            logger.debug(f"Triggered stage hooks for stage start {existing_stage.stage_index}: {existing_stage.stage_id}")
             
         except Exception as e:
-            logger.warning(f"Failed to update stage execution as started: {str(e)}")
+            logger.error(f"Failed to update stage execution as started: {str(e)}")
+            raise RuntimeError(
+                f"Cannot update stage execution {stage_execution_id} to started status. "
+                f"Database persistence is required for stage tracking. Error: {str(e)}"
+            ) from e
 

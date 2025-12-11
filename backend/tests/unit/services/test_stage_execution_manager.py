@@ -186,6 +186,27 @@ class TestUpdateStageExecutionStarted:
             # Verify current_iteration was cleared
             assert stage_exec.current_iteration is None
             assert stage_exec.status == StageStatus.ACTIVE.value
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_started_fails_when_history_disabled(self):
+        """Test that update fails when history service is disabled."""
+        history_service = None
+        
+        manager = StageExecutionManager(history_service=history_service)
+        
+        with pytest.raises(RuntimeError, match="History service is disabled"):
+            await manager.update_stage_execution_started("exec-123")
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_started_fails_when_not_found(self):
+        """Test that update fails when stage execution is not found."""
+        history_service = Mock()
+        history_service.get_stage_execution = AsyncMock(return_value=None)
+        
+        manager = StageExecutionManager(history_service=history_service)
+        
+        with pytest.raises(RuntimeError, match="not found in database"):
+            await manager.update_stage_execution_started("exec-123")
 
 
 @pytest.mark.unit
@@ -230,6 +251,45 @@ class TestUpdateStageExecutionCompleted:
             assert stage_exec.completed_at_us == result.timestamp_us
             assert stage_exec.error_message is None
             assert stage_exec.duration_ms == 1000  # (2000000 - 1000000) / 1000
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_completed_fails_when_history_disabled(self):
+        """Test that update fails when history service is disabled."""
+        history_service = None
+        
+        manager = StageExecutionManager(history_service=history_service)
+        
+        result = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="TestAgent",
+            stage_name="test-stage",
+            timestamp_us=2000000,
+            result_summary="Test completed",
+            error_message=None
+        )
+        
+        with pytest.raises(RuntimeError, match="History service is disabled"):
+            await manager.update_stage_execution_completed("exec-123", result)
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_completed_fails_when_not_found(self):
+        """Test that update fails when stage execution is not found."""
+        history_service = Mock()
+        history_service.get_stage_execution = AsyncMock(return_value=None)
+        
+        manager = StageExecutionManager(history_service=history_service)
+        
+        result = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="TestAgent",
+            stage_name="test-stage",
+            timestamp_us=2000000,
+            result_summary="Test completed",
+            error_message=None
+        )
+        
+        with pytest.raises(RuntimeError, match="not found in database"):
+            await manager.update_stage_execution_completed("exec-123", result)
 
 
 @pytest.mark.unit
@@ -266,6 +326,27 @@ class TestUpdateStageExecutionFailed:
             assert stage_exec.stage_output is None
             assert stage_exec.completed_at_us is not None
             assert stage_exec.duration_ms is not None
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_failed_fails_when_history_disabled(self):
+        """Test that update fails when history service is disabled."""
+        history_service = None
+        
+        manager = StageExecutionManager(history_service=history_service)
+        
+        with pytest.raises(RuntimeError, match="History service is disabled"):
+            await manager.update_stage_execution_failed("exec-123", "Test error")
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_failed_fails_when_not_found(self):
+        """Test that update fails when stage execution is not found."""
+        history_service = Mock()
+        history_service.get_stage_execution = AsyncMock(return_value=None)
+        
+        manager = StageExecutionManager(history_service=history_service)
+        
+        with pytest.raises(RuntimeError, match="not found in database"):
+            await manager.update_stage_execution_failed("exec-123", "Test error")
 
 
 @pytest.mark.unit
@@ -279,6 +360,7 @@ class TestUpdateStageExecutionPaused:
             session_id="session-1",
             stage_index=0,
             stage_id="stage-id",
+            stage_name="test-stage",
             status=StageStatus.ACTIVE.value,
             started_at_us=1000000,
             completed_at_us=None,
@@ -311,6 +393,47 @@ class TestUpdateStageExecutionPaused:
             assert stage_exec.current_iteration == 5
             assert stage_exec.stage_output is not None
             assert stage_exec.completed_at_us is None  # Not completed yet
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_paused_fails_when_history_disabled(self):
+        """Test that update fails when history service is disabled."""
+        history_service = None
+        
+        manager = StageExecutionManager(history_service=history_service)
+        
+        paused_result = AgentExecutionResult(
+            status=StageStatus.PAUSED,
+            agent_name="TestAgent",
+            stage_name="test-stage",
+            timestamp_us=now_us(),
+            result_summary="Paused at iteration 5",
+            paused_conversation_state={"messages": []},
+            error_message=None
+        )
+        
+        with pytest.raises(RuntimeError, match="History service is disabled"):
+            await manager.update_stage_execution_paused("exec-123", 5, paused_result)
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_paused_fails_when_not_found(self):
+        """Test that update fails when stage execution is not found."""
+        history_service = Mock()
+        history_service.get_stage_execution = AsyncMock(return_value=None)
+        
+        manager = StageExecutionManager(history_service=history_service)
+        
+        paused_result = AgentExecutionResult(
+            status=StageStatus.PAUSED,
+            agent_name="TestAgent",
+            stage_name="test-stage",
+            timestamp_us=now_us(),
+            result_summary="Paused at iteration 5",
+            paused_conversation_state={"messages": []},
+            error_message=None
+        )
+        
+        with pytest.raises(RuntimeError, match="not found in database"):
+            await manager.update_stage_execution_paused("exec-123", 5, paused_result)
 
 
 @pytest.mark.unit
@@ -336,12 +459,13 @@ class TestUpdateSessionCurrentStage:
     
     @pytest.mark.asyncio
     async def test_update_session_current_stage_disabled_history(self):
-        """Test that update is skipped when history is disabled."""
+        """Test that update fails when history is disabled."""
         history_service = Mock()
         history_service.is_enabled = False
         
         manager = StageExecutionManager(history_service=history_service)
         
-        # Should not raise an error
-        await manager.update_session_current_stage("session-1", 2, "exec-456")
+        # Should raise RuntimeError when history is disabled
+        with pytest.raises(RuntimeError, match="History service is disabled"):
+            await manager.update_session_current_stage("session-1", 2, "exec-456")
 
