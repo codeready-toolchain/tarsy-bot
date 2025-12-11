@@ -305,10 +305,10 @@ All three replicas converged on consistent findings with increasing detail. Repl
         from tarsy.services.stage_execution_manager import StageExecutionManager
         original_create_stage = StageExecutionManager.create_stage_execution
         
-        async def patched_create_stage(self, session_id, stage, stage_index, parent_stage_execution_id=None, parallel_index=0, parallel_type="single"):
+        async def patched_create_stage(self, session_id, stage, stage_index, parent_stage_execution_id=None, parallel_index=0, parallel_type="single", expected_parallel_count=None):
             """Patched version that captures stage_execution_id → agent_name mapping."""
             # Call original to get the execution_id
-            execution_id = await original_create_stage(self, session_id, stage, stage_index, parent_stage_execution_id, parallel_index, parallel_type)
+            execution_id = await original_create_stage(self, session_id, stage, stage_index, parent_stage_execution_id, parallel_index, parallel_type, expected_parallel_count)
             
             # Capture the mapping for parallel stages (they have agent names with replica suffix)
             if hasattr(stage, 'agent'):

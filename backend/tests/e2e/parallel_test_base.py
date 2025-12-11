@@ -106,6 +106,18 @@ class ParallelTestBase:
             test_client, max_wait_seconds=max_wait_seconds
         )
         
+        # If session failed, get detailed error info before asserting
+        if final_status == "failed":
+            try:
+                detail_response = test_client.get(f"/api/v1/history/sessions/{session_id}")
+                if detail_response.status_code == 200:
+                    detail_data = detail_response.json()
+                    error_message = detail_data.get("error_message", "No error message")
+                    print(f"❌ Session failed with error: {error_message}")
+                    assert False, f"Session failed with status: {final_status}, error: {error_message}"
+            except Exception as e:
+                print(f"❌ Failed to get error details: {e}")
+        
         assert final_status == "completed", f"Session failed with status: {final_status}"
         
         # Get session details
