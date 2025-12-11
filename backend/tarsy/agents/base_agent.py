@@ -132,7 +132,7 @@ class BaseAgent(ABC):
             from .iteration_controllers.native_thinking_controller import (
                 NativeThinkingController,
             )
-            print(f"[DEBUG-CONTROLLER] Creating NativeThinkingController")
+            logger.debug("Creating NativeThinkingController")
             return NativeThinkingController(self.llm_manager, self._prompt_builder)
         elif strategy == IterationStrategy.SYNTHESIS:
             from .iteration_controllers.synthesis_controller import (
