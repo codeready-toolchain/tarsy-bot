@@ -245,6 +245,21 @@ class TestUpdateSessionStatus:
         
         # Should not call update_session_status when disabled
         history_service.update_session_status.assert_not_called()
+    
+    def test_update_session_status_raises_on_exception(self):
+        """Test that exceptions from history service are propagated."""
+        history_service = Mock()
+        history_service.is_enabled = True
+        history_service.update_session_status = Mock(side_effect=RuntimeError("Database connection failed"))
+        
+        manager = SessionManager(history_service=history_service)
+        
+        # Exception should be raised, not swallowed
+        with pytest.raises(RuntimeError, match="Database connection failed"):
+            manager.update_session_status(
+                session_id="session-1",
+                status=AlertSessionStatus.IN_PROGRESS.value
+            )
 
 
 @pytest.mark.unit
@@ -288,4 +303,22 @@ class TestUpdateSessionError:
         manager.update_session_error("session-1", "Test error")
         
         history_service.update_session_status.assert_not_called()
+    
+    def test_update_session_error_swallows_exception(self):
+        """Test that exceptions from history service are logged but not raised.
+        
+        This is intentional behavior since update_session_error is called from
+        exception handlers and we don't want to mask the original error.
+        """
+        history_service = Mock()
+        history_service.is_enabled = True
+        history_service.update_session_status = Mock(side_effect=RuntimeError("Database connection failed"))
+        
+        manager = SessionManager(history_service=history_service)
+        
+        # Exception should be swallowed, not raised
+        manager.update_session_error("session-1", "Original error message")
+        
+        # Verify the call was attempted
+        history_service.update_session_status.assert_called_once()
 

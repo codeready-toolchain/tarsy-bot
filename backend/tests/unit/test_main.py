@@ -705,44 +705,38 @@ class TestBackgroundProcessing:
     @patch('tarsy.main.alert_service')
     async def test_process_alert_background_invalid_alert(self, mock_alert_service):
         """Test background processing handles invalid alert data gracefully."""
-        # Mock process_alert to track if it's called 
+        # Mock process_alert to track if it's called
         mock_alert_service.process_alert = AsyncMock()
+        
+        # Test with valid ChainContext but process_alert fails
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
+            alert_type="test",
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"key": "value"}
+        )
+        valid_alert = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session",
+            current_stage_name="test-stage"
+        )
         
         with patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)), \
              patch('tarsy.main.active_tasks_lock', asyncio.Lock()), \
              patch('tarsy.main.active_tasks', {}), \
              patch('tarsy.services.events.event_helpers.publish_session_failed', new_callable=AsyncMock):
-            # Test with None alert - should fail early during logging  
+            # Test with None alert - should fail early during logging
             await process_alert_background("test-session-123", None)
-            
-            # Test with valid ChainContext but process_alert fails
-            from tarsy.models.alert import ProcessingAlert
-            from tarsy.utils.timestamp import now_us
-            
-            processing_alert = ProcessingAlert(
-                alert_type="test",
-                severity="warning",
-                timestamp=now_us(),
-                environment="production",
-                alert_data={"key": "value"}
-            )
-            valid_alert = ChainContext.from_processing_alert(
-                processing_alert=processing_alert,
-                session_id="test-session",
-                current_stage_name="test-stage"
-            )
             
             # Make process_alert fail to simulate processing errors
             mock_alert_service.process_alert.side_effect = ValueError(
                 "Processing failed"
             )
-            
-            # Mock locks for processing
-            with patch('tarsy.main.active_tasks_lock', asyncio.Lock()), \
-                 patch('tarsy.main.active_tasks', {}), \
-                 patch('tarsy.services.events.event_helpers.publish_session_failed', new_callable=AsyncMock):
-                # No alert key cleanup needed anymore - just run the processing
-                await process_alert_background("test-session-124", valid_alert)
+            await process_alert_background("test-session-124", valid_alert)
         
         # The function should handle errors gracefully and not raise exceptions
         # Even with invalid data, it attempts processing and handles the failure

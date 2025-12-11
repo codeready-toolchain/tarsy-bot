@@ -58,9 +58,13 @@ def upgrade() -> None:
                 ['parent_stage_execution_id'],
                 ['execution_id']
             )
-    except Exception:
+    except Exception as e:
         # Foreign key creation may fail in SQLite; that's OK for dev/test
-        pass
+        # Log for visibility in case this fails unexpectedly in PostgreSQL
+        import logging
+        logging.getLogger('alembic.migration').debug(
+            f"Foreign key creation skipped (expected for SQLite): {e}"
+        )
     
     # Add indexes for efficient queries
     with op.batch_alter_table('stage_executions', schema=None) as batch_op:
@@ -100,9 +104,13 @@ def downgrade() -> None:
     try:
         with op.batch_alter_table('stage_executions', schema=None) as batch_op:
             batch_op.drop_constraint('fk_stage_executions_parent', type_='foreignkey')
-    except Exception:
+    except Exception as e:
         # Constraint may not exist; that's OK
-        pass
+        # Log for visibility in case this fails unexpectedly
+        import logging
+        logging.getLogger('alembic.migration').debug(
+            f"Foreign key constraint drop skipped (may not exist): {e}"
+        )
     
     # Drop columns
     columns = [col['name'] for col in inspector.get_columns('stage_executions')]
