@@ -128,6 +128,7 @@ describe('timelineHelpers', () => {
         timestamp_us: 1705315845000000,
         duration_ms: 1500,
         details: {
+          interaction_type: 'investigation',
           model_name: 'gpt-4',
           messages: [
             { role: 'user', content: 'Hello' },
@@ -196,6 +197,7 @@ describe('timelineHelpers', () => {
         step_description: 'Failed call',
         timestamp_us: 1705315845000000,
         details: {
+          interaction_type: 'investigation',
           model_name: 'gpt-4',
           messages: [],
           success: false,
@@ -214,6 +216,7 @@ describe('timelineHelpers', () => {
         step_description: 'Empty call',
         timestamp_us: 1705315845000000,
         details: {
+          interaction_type: 'investigation',
           model_name: 'gpt-4',
           messages: [],
           success: true,

@@ -25,8 +25,6 @@ from .e2e_utils import E2ETestUtils, assert_conversation_messages
 from .expected_conversations import (
     EXPECTED_ANALYSIS_CONVERSATION,
     EXPECTED_CHAT_INTERACTIONS,
-    EXPECTED_CHAT_MESSAGE_1_CONVERSATION,
-    EXPECTED_CHAT_MESSAGE_2_CONVERSATION,
     EXPECTED_DATA_COLLECTION_CONVERSATION,
     EXPECTED_EXECUTIVE_SUMMARY_CONVERSATION,
     EXPECTED_SESSION_LEVEL_INTERACTIONS,
@@ -960,7 +958,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
         await self._verify_chat_response(
             chat_stage=message_1_stage,
             message_key='message_1',
-            expected_conversation=EXPECTED_CHAT_MESSAGE_1_CONVERSATION
+            expected_conversation=EXPECTED_CHAT_INTERACTIONS['message_1']
         )
         verified_chat_stage_ids.add(message_1_stage.get("stage_id"))
         logger.info("First chat response verified")
@@ -981,7 +979,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
         await self._verify_chat_response(
             chat_stage=message_2_stage,
             message_key='message_2',
-            expected_conversation=EXPECTED_CHAT_MESSAGE_2_CONVERSATION
+            expected_conversation=EXPECTED_CHAT_INTERACTIONS['message_2']
         )
         verified_chat_stage_ids.add(message_2_stage.get("stage_id"))
         logger.info("Second chat response verified")
@@ -1203,7 +1201,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             )
         
         # Get expected interactions for this message
-        expected_chat = EXPECTED_CHAT_INTERACTIONS[message_key]
+        expected_chat = expected_conversation
         llm_interactions = chat_stage.get("llm_interactions", [])
         mcp_interactions = chat_stage.get("mcp_communications", [])
         

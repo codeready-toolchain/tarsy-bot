@@ -114,7 +114,7 @@ class ParallelTestBase:
                     detail_data = detail_response.json()
                     error_message = detail_data.get("error_message", "No error message")
                     print(f"❌ Session failed with error: {error_message}")
-                    assert False, f"Session failed with status: {final_status}, error: {error_message}"
+                    raise AssertionError(f"Session failed with status: {final_status}, error: {error_message}")
             except Exception as e:
                 print(f"❌ Failed to get error details: {e}")
         

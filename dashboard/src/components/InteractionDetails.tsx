@@ -11,6 +11,7 @@ import {
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import type { LLMInteraction, MCPInteraction, SystemEvent, LLMMessage } from '../types';
+import { isLLMInteraction, isMCPInteraction, isSystemEvent } from '../utils/typeGuards';
 import CopyButton from './CopyButton';
 import JsonDisplay from './JsonDisplay';
 import TokenUsageDisplay from './TokenUsageDisplay';
@@ -550,11 +551,32 @@ function InteractionDetails({
   const renderDetails = () => {
     switch (type) {
       case 'llm':
-        return renderLLMDetails(details as LLMInteraction);
+        if (!isLLMInteraction(details)) {
+          return (
+            <Typography variant="body2" color="error">
+              Invalid LLM interaction data.
+            </Typography>
+          );
+        }
+        return renderLLMDetails(details);
       case 'mcp':
-        return renderMCPDetails(details as MCPInteraction);
+        if (!isMCPInteraction(details)) {
+          return (
+            <Typography variant="body2" color="error">
+              Invalid MCP interaction data.
+            </Typography>
+          );
+        }
+        return renderMCPDetails(details);
       case 'system':
-        return renderSystemDetails(details as SystemEvent);
+        if (!isSystemEvent(details)) {
+          return (
+            <Typography variant="body2" color="error">
+              Invalid system event data.
+            </Typography>
+          );
+        }
+        return renderSystemDetails(details);
       default:
         return (
           <Typography variant="body2" color="text.secondary">
@@ -568,8 +590,8 @@ function InteractionDetails({
   const getFormattedInteractionText = () => {
     switch (type) {
       case 'llm': {
-        const llm = details as LLMInteraction;
-        const messages = getMessages(llm);
+        if (!isLLMInteraction(details)) return '';
+        const messages = getMessages(details);
         let conversation = '=== LLM CONVERSATION ===\n\n';
         messages.forEach((message) => {
           const role = message.role.toUpperCase();
@@ -581,36 +603,36 @@ function InteractionDetails({
               : JSON.stringify(message.content);
           conversation += `${role}:\n${content}\n\n`;
         });
-        conversation += `MODEL: ${llm.model_name}`;
-        if (llm.total_tokens) conversation += ` | TOKENS: ${llm.total_tokens}`;
-        if (llm.temperature !== undefined) conversation += ` | TEMPERATURE: ${llm.temperature}`;
+        conversation += `MODEL: ${details.model_name}`;
+        if (details.total_tokens) conversation += ` | TOKENS: ${details.total_tokens}`;
+        if (details.temperature !== undefined) conversation += ` | TEMPERATURE: ${details.temperature}`;
         return conversation;
       }
       case 'mcp': {
-        const mcp = details as MCPInteraction;
-        let mcpFormatted = isToolList(mcp)
+        if (!isMCPInteraction(details)) return '';
+        let mcpFormatted = isToolList(details)
           ? '=== MCP TOOL LIST ===\n\n' 
           : '=== MCP TOOL CALL ===\n\n';
         
-        if (isToolList(mcp)) {
-          mcpFormatted += `SERVER: ${mcp.server_name}\n`;
+        if (isToolList(details)) {
+          mcpFormatted += `SERVER: ${details.server_name}\n`;
           // execution_time_ms removed in EP-0010
-          mcpFormatted += `\nAVAILABLE TOOLS:\n${JSON.stringify(mcp.available_tools, null, 2)}`;
+          mcpFormatted += `\nAVAILABLE TOOLS:\n${JSON.stringify(details.available_tools, null, 2)}`;
         } else {
-          mcpFormatted += `TOOL: ${mcp.tool_name}\n`;
-          mcpFormatted += `SERVER: ${mcp.server_name}\n`;
+          mcpFormatted += `TOOL: ${details.tool_name}\n`;
+          mcpFormatted += `SERVER: ${details.server_name}\n`;
           // execution_time_ms removed in EP-0010
-          mcpFormatted += `\nPARAMETERS:\n${JSON.stringify(mcp.tool_arguments, null, 2)}\n\n`;
-          mcpFormatted += `RESULT:\n${JSON.stringify(mcp.tool_result, null, 2)}`;
+          mcpFormatted += `\nPARAMETERS:\n${JSON.stringify(details.tool_arguments, null, 2)}\n\n`;
+          mcpFormatted += `RESULT:\n${JSON.stringify(details.tool_result, null, 2)}`;
         }
         return mcpFormatted;
       }
       case 'system': {
-        const system = details as SystemEvent;
+        if (!isSystemEvent(details)) return '';
         let systemFormatted = '=== SYSTEM EVENT ===\n\n';
-        systemFormatted += `DESCRIPTION:\n${system.description}`;
-        if (system.metadata && Object.keys(system.metadata).length > 0) {
-          systemFormatted += `\n\nMETADATA:\n${JSON.stringify(system.metadata, null, 2)}`;
+        systemFormatted += `DESCRIPTION:\n${details.description}`;
+        if (details.metadata && Object.keys(details.metadata).length > 0) {
+          systemFormatted += `\n\nMETADATA:\n${JSON.stringify(details.metadata, null, 2)}`;
         }
         return systemFormatted;
       }
@@ -623,8 +645,8 @@ function InteractionDetails({
   const getRawInteractionText = () => {
     switch (type) {
       case 'llm': {
-        const llm = details as LLMInteraction;
-        const messages = getMessages(llm);
+        if (!isLLMInteraction(details)) return '';
+        const messages = getMessages(details);
         const system = messages.find((m: any) => m?.role === 'system');
         const user = messages.find((m: any) => m?.role === 'user');
         const s = system ? (typeof system.content === 'string' ? system.content : 
@@ -646,16 +668,16 @@ function InteractionDetails({
         return `${s}${u ? '\n\n' + u : ''}${respStr ? '\n\n---\n\n' + respStr : ''}`;
       }
       case 'mcp': {
-        const mcp = details as MCPInteraction;
-        if (isToolList(mcp)) {
-          return `Tool List from ${mcp.server_name}\n\n---\n\n${JSON.stringify(mcp.available_tools, null, 2)}`;
+        if (!isMCPInteraction(details)) return '';
+        if (isToolList(details)) {
+          return `Tool List from ${details.server_name}\n\n---\n\n${JSON.stringify(details.available_tools, null, 2)}`;
         } else {
-          return `${mcp.tool_name}(${JSON.stringify(mcp.tool_arguments, null, 2)})\n\n---\n\n${JSON.stringify(mcp.tool_result, null, 2)}`;
+          return `${details.tool_name}(${JSON.stringify(details.tool_arguments, null, 2)})\n\n---\n\n${JSON.stringify(details.tool_result, null, 2)}`;
         }
       }
       case 'system': {
-        const system = details as SystemEvent;
-        return `${system.description}${system.metadata ? '\n\n' + JSON.stringify(system.metadata, null, 2) : ''}`;
+        if (!isSystemEvent(details)) return '';
+        return `${details.description}${details.metadata ? '\n\n' + JSON.stringify(details.metadata, null, 2) : ''}`;
       }
       default:
         return '';

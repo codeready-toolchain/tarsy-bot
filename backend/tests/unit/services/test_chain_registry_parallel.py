@@ -141,7 +141,7 @@ class TestChainRegistryParallelStages:
         assert chain is not None
         assert len(chain.stages[0].agents) == 3
         
-        for i, agent in enumerate(chain.stages[0].agents):
+        for agent in chain.stages[0].agents:
             assert isinstance(agent, ParallelAgentConfig)
             assert agent.name == 'TestAgent'
         

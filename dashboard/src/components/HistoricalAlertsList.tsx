@@ -81,6 +81,10 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
     // Column is still displayed but not sortable
   ];
 
+  // Calculate total column count dynamically:
+  // 1 (Status) + 1 (Parallel Agents icon) + sortableColumns.length + 1 (Tokens) + 1 (Follow-up Chats icon) + 1 (Actions)
+  const totalColumns = 1 + 1 + sortableColumns.length + 1 + 1 + 1;
+
   return (
     <Paper sx={{ p: 3 }}>
       {/* Panel Header */}
@@ -200,7 +204,7 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
               <TableBody>
                 {sessions.length === 0 ? (
                   <TableRow key="empty-state">
-                    <TableCell colSpan={10} align="center">
+                    <TableCell colSpan={totalColumns} align="center">
                       <Box sx={{ py: 6, textAlign: 'center' }}>
                         {/* Phase 4: Different empty states for filtered vs unfiltered */}
                         {filters && hasActiveFilters(filters) ? (

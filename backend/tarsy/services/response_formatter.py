@@ -81,12 +81,15 @@ def format_chain_success_response(
     else:
         timestamp_str = f"{now_us()}"  # Current unix timestamp
     
+    stage_count = len(chain_definition.stages)
+    stage_word = "stage" if stage_count == 1 else "stages"
+    
     response_parts = [
         "# Alert Analysis Report",
         "",
         f"**Alert Type:** {chain_context.processing_alert.alert_type}",
         f"**Processing Chain:** {chain_definition.chain_id}",
-        f"**Stages:** {len(chain_definition.stages)}",
+        f"**Stages:** {stage_count}",
         f"**Timestamp:** {timestamp_str}",
         "",
         "## Analysis",
@@ -94,7 +97,7 @@ def format_chain_success_response(
         analysis,
         "",
         "---",
-        f"*Processed through {len(chain_definition.stages)} stages*"
+        f"*Processed through {stage_count} {stage_word}*"
     ]
     
     return "\n".join(response_parts)

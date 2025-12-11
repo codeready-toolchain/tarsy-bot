@@ -26,8 +26,6 @@ from .expected_parallel_conversations import (
     EXPECTED_PARALLEL_AGENT_1_CONVERSATION,
     EXPECTED_PARALLEL_AGENT_2_CONVERSATION,
     EXPECTED_PARALLEL_CHAT_INTERACTIONS,
-    EXPECTED_PARALLEL_CHAT_MESSAGE_1_CONVERSATION,
-    EXPECTED_PARALLEL_CHAT_MESSAGE_2_CONVERSATION,
     EXPECTED_SYNTHESIS_CONVERSATION,
 )
 from .parallel_test_base import ParallelTestBase
@@ -334,7 +332,7 @@ Action Input: {"resource": "pods", "label_selector": "app=database", "namespace"
         await self._verify_chat_response(
             chat_stage=message_1_stage,
             message_key='message_1',
-            expected_conversation=EXPECTED_PARALLEL_CHAT_MESSAGE_1_CONVERSATION
+            expected_conversation=EXPECTED_PARALLEL_CHAT_INTERACTIONS['message_1']
         )
         verified_chat_stage_ids.add(message_1_stage.get("stage_id"))
         logger.info("First chat response verified")
@@ -355,7 +353,7 @@ Action Input: {"resource": "pods", "label_selector": "app=database", "namespace"
         await self._verify_chat_response(
             chat_stage=message_2_stage,
             message_key='message_2',
-            expected_conversation=EXPECTED_PARALLEL_CHAT_MESSAGE_2_CONVERSATION
+            expected_conversation=EXPECTED_PARALLEL_CHAT_INTERACTIONS['message_2']
         )
         verified_chat_stage_ids.add(message_2_stage.get("stage_id"))
         logger.info("Second chat response verified")
@@ -515,7 +513,7 @@ Action Input: {"resource": "pods", "label_selector": "app=database", "namespace"
             )
         
         # Get expected interactions for this message
-        expected_chat = EXPECTED_PARALLEL_CHAT_INTERACTIONS[message_key]
+        expected_chat = expected_conversation
         llm_interactions = chat_stage.get("llm_interactions", [])
         mcp_interactions = chat_stage.get("mcp_communications", [])
         

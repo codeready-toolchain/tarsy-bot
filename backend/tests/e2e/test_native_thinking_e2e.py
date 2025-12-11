@@ -31,8 +31,6 @@ from .e2e_utils import E2ETestUtils, assert_conversation_messages
 from .expected_native_thinking_conversations import (
     EXPECTED_NATIVE_THINKING_ANALYSIS_CONVERSATION,
     EXPECTED_NATIVE_THINKING_CHAT_INTERACTIONS,
-    EXPECTED_NATIVE_THINKING_CHAT_MESSAGE_1_CONVERSATION,
-    EXPECTED_NATIVE_THINKING_CHAT_MESSAGE_2_CONVERSATION,
     EXPECTED_NATIVE_THINKING_DATA_COLLECTION_CONVERSATION,
     EXPECTED_NATIVE_THINKING_EXECUTIVE_SUMMARY_CONVERSATION,
     EXPECTED_NATIVE_THINKING_SESSION_LEVEL_INTERACTIONS,
@@ -855,7 +853,7 @@ class TestNativeThinkingE2E:
         await self._verify_chat_response(
             chat_stage=message_1_stage,
             message_key='message_1',
-            expected_conversation=EXPECTED_NATIVE_THINKING_CHAT_MESSAGE_1_CONVERSATION
+            expected_conversation=EXPECTED_NATIVE_THINKING_CHAT_INTERACTIONS['message_1']
         )
         verified_chat_stage_ids.add(message_1_stage.get("stage_id"))
 
@@ -872,7 +870,7 @@ class TestNativeThinkingE2E:
         await self._verify_chat_response(
             chat_stage=message_2_stage,
             message_key='message_2',
-            expected_conversation=EXPECTED_NATIVE_THINKING_CHAT_MESSAGE_2_CONVERSATION
+            expected_conversation=EXPECTED_NATIVE_THINKING_CHAT_INTERACTIONS['message_2']
         )
 
         # Verify message history
@@ -943,7 +941,7 @@ class TestNativeThinkingE2E:
         assert chat_stage.get("agent") == "ChatAgent"
         assert chat_stage.get("status") == "completed"
         
-        expected_chat = EXPECTED_NATIVE_THINKING_CHAT_INTERACTIONS[message_key]
+        expected_chat = expected_conversation
         llm_interactions = chat_stage.get("llm_interactions", [])
         mcp_interactions = chat_stage.get("mcp_communications", [])
         

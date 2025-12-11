@@ -47,7 +47,7 @@ agent_chains:
         # Synthesis configuration (test uses ReAct mocks)
         synthesis:
           agent: "SynthesisAgent"
-          iteration_strategy: "native-thinking-synthesis"
+          iteration_strategy: "synthesis-native-thinking"
           llm_provider: "google-default"
     description: "Multi-agent parallel stage with automatic synthesis (final stage)"
   

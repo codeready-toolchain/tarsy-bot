@@ -256,8 +256,7 @@ Pod is failing due to database connectivity issues. The pod attempts to connect 
                 with patch.object(MCPClient, "list_tools", mock_list_tools), \
                      patch.object(MCPClient, "call_tool", mock_call_tool):
                     with E2ETestUtils.setup_runbook_service_patching("# Parallel Pause Test Runbook"):
-                            
-                            # ===== Phase 1: Initial execution with pause =====
+                        # ===== Phase 1: Initial execution with pause =====
                         print("\n⏳ Phase 1: Submit alert (max_iterations=2)")
                         session_id = E2ETestUtils.submit_alert(test_client, alert_data)
                         

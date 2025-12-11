@@ -161,7 +161,7 @@ class TestFormatChainSuccessResponse:
         )
         
         assert "**Stages:** 1" in result
-        assert "*Processed through 1 stages*" in result
+        assert "*Processed through 1 stage*" in result
 
 
 @pytest.mark.unit

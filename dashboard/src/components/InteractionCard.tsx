@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   Box,
+  Button,
   Card,
   CardHeader,
   CardContent,
@@ -8,6 +9,7 @@ import {
   Typography,
   Chip,
 } from '@mui/material';
+import { useTheme, alpha } from '@mui/material/styles';
 import {
   ExpandMore,
   ExpandLess,
@@ -15,12 +17,13 @@ import {
   Build,
   Settings,
 } from '@mui/icons-material';
-import type { TimelineItem, LLMInteraction, MCPInteraction, InteractionDetail } from '../types';
+import type { TimelineItem, InteractionDetail } from '../types';
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
 import {
   getInteractionColor,
   getInteractionBackgroundColor,
 } from '../utils/timelineHelpers';
+import { isLLMInteraction, isMCPInteraction } from '../utils/typeGuards';
 import LLMInteractionPreview from './LLMInteractionPreview';
 import MCPInteractionPreview from './MCPInteractionPreview';
 import InteractionDetails from './InteractionDetails';
@@ -51,8 +54,10 @@ const getInteractionIcon = (type: string) => {
 const getInteractionTypeStyle = (interaction: TimelineItem | InteractionDetail) => {
   if (interaction.type !== 'llm') return null;
   
-  const llmDetails = interaction.details as LLMInteraction;
-  const interactionType = llmDetails?.interaction_type || 'investigation';
+  // Use type guard to safely check if details is an LLMInteraction
+  if (!isLLMInteraction(interaction.details)) return null;
+  
+  const interactionType = interaction.details.interaction_type || 'investigation';
   
   switch (interactionType) {
     case 'summarization':
@@ -97,7 +102,16 @@ const InteractionCard: React.FC<InteractionCardProps> = ({
   isExpanded,
   onToggle,
 }) => {
+  const theme = useTheme();
   const typeStyle = getInteractionTypeStyle(interaction);
+  const detailsId = `interaction-details-${interaction.timestamp_us}`;
+
+  // Compute color key once based on typeStyle or interaction type
+  const colorKey = typeStyle 
+    ? typeStyle.color 
+    : interaction.type === 'mcp' 
+    ? 'secondary' 
+    : 'warning';
 
   return (
     <Card
@@ -107,19 +121,11 @@ const InteractionCard: React.FC<InteractionCardProps> = ({
         borderRadius: 2,
         overflow: 'hidden',
         transition: 'all 0.2s ease-in-out',
-        border: (() => {
-          if (typeStyle) return typeStyle.borderColor;
-          if (interaction.type === 'mcp') return '2px solid #ce93d8';
-          return '2px solid #ffcc02';
-        })(),
+        border: `2px solid ${alpha(theme.palette[colorKey].main, 0.5)}`,
         '&:hover': {
           elevation: 4,
           transform: 'translateY(-1px)',
-          border: (() => {
-            if (typeStyle) return typeStyle.hoverBorderColor;
-            if (interaction.type === 'mcp') return '2px solid #ba68c8';
-            return '2px solid #ffa000';
-          })()
+          border: `2px solid ${theme.palette[colorKey].dark}`,
         }
       }}
     >
@@ -187,17 +193,17 @@ const InteractionCard: React.FC<InteractionCardProps> = ({
           bgcolor: 'background.paper'
         }}>
           {/* Show LLM preview when not expanded */}
-          {interaction.type === 'llm' && !isExpanded && (
+          {interaction.type === 'llm' && !isExpanded && isLLMInteraction(interaction.details) && (
             <LLMInteractionPreview 
-              interaction={interaction.details as LLMInteraction}
+              interaction={interaction.details}
               showFullPreview={true}
             />
           )}
           
           {/* Show MCP preview when not expanded */}
-          {interaction.type === 'mcp' && !isExpanded && (
+          {interaction.type === 'mcp' && !isExpanded && isMCPInteraction(interaction.details) && (
             <MCPInteractionPreview 
-              interaction={interaction.details as MCPInteraction}
+              interaction={interaction.details}
               showFullPreview={true}
             />
           )}
@@ -209,37 +215,24 @@ const InteractionCard: React.FC<InteractionCardProps> = ({
             mt: 2,
             mb: 1
           }}>
-            <Box 
+            <Button
               onClick={onToggle}
+              aria-expanded={isExpanded}
+              aria-controls={detailsId}
+              aria-label={isExpanded ? 'Hide full details' : 'Show full details'}
               sx={{ 
                 display: 'flex', 
                 alignItems: 'center', 
                 gap: 0.5,
-                cursor: 'pointer',
+                textTransform: 'none',
                 py: 0.75,
                 px: 1.5,
                 borderRadius: 1,
-                bgcolor: interaction.type === 'llm' 
-                  ? 'rgba(25, 118, 210, 0.04)' 
-                  : interaction.type === 'mcp'
-                  ? 'rgba(156, 39, 176, 0.04)'
-                  : 'rgba(255, 152, 0, 0.04)',
-                border: interaction.type === 'llm' 
-                  ? '1px solid rgba(25, 118, 210, 0.12)' 
-                  : interaction.type === 'mcp'
-                  ? '1px solid rgba(156, 39, 176, 0.12)'
-                  : '1px solid rgba(255, 152, 0, 0.12)',
+                bgcolor: alpha(theme.palette[colorKey].main, 0.04),
+                border: `1px solid ${alpha(theme.palette[colorKey].main, 0.12)}`,
                 '&:hover': { 
-                  bgcolor: interaction.type === 'llm' 
-                    ? 'rgba(25, 118, 210, 0.08)' 
-                    : interaction.type === 'mcp'
-                    ? 'rgba(156, 39, 176, 0.08)'
-                    : 'rgba(255, 152, 0, 0.08)',
-                  border: interaction.type === 'llm' 
-                    ? '1px solid rgba(25, 118, 210, 0.2)' 
-                    : interaction.type === 'mcp'
-                    ? '1px solid rgba(156, 39, 176, 0.2)'
-                    : '1px solid rgba(255, 152, 0, 0.2)',
+                  bgcolor: alpha(theme.palette[colorKey].main, 0.08),
+                  border: `1px solid ${alpha(theme.palette[colorKey].main, 0.2)}`,
                   '& .expand-text': {
                     textDecoration: 'underline'
                   }
@@ -251,11 +244,7 @@ const InteractionCard: React.FC<InteractionCardProps> = ({
                 className="expand-text"
                 variant="body2" 
                 sx={{ 
-                  color: interaction.type === 'llm' 
-                    ? '#1976d2' 
-                    : interaction.type === 'mcp'
-                    ? '#9c27b0'
-                    : '#f57c00',
+                  color: theme.palette[colorKey].main,
                   fontWeight: 500,
                   fontSize: '0.875rem'
                 }}
@@ -263,25 +252,23 @@ const InteractionCard: React.FC<InteractionCardProps> = ({
                 {isExpanded ? 'Show Less' : 'Show Full Details'}
               </Typography>
               <Box sx={{ 
-                color: interaction.type === 'llm' 
-                  ? '#1976d2' 
-                  : interaction.type === 'mcp'
-                  ? '#9c27b0'
-                  : '#f57c00',
+                color: theme.palette[colorKey].main,
                 display: 'flex',
                 alignItems: 'center'
               }}>
                 {isExpanded ? <ExpandLess /> : <ExpandMore />}
               </Box>
-            </Box>
+            </Button>
           </Box>
           
           {/* Full interaction details when expanded */}
-          <InteractionDetails
-            type={interaction.type as 'llm' | 'mcp' | 'system'}
-            details={interaction.details}
-            expanded={isExpanded}
-          />
+          <Box id={detailsId}>
+            <InteractionDetails
+              type={interaction.type as 'llm' | 'mcp' | 'system'}
+              details={interaction.details}
+              expanded={isExpanded}
+            />
+          </Box>
         </CardContent>
       )}
     </Card>
