@@ -612,6 +612,10 @@ class TestAlertServiceHistoryIntegration:
         settings.llm_default_provider = "openai"
         settings.openai_api_key = "test-key"
         settings.anthropic_api_key = "test-key"
+        # Add timeout settings for alert processing
+        settings.alert_processing_timeout = 600  # Default 10 minute timeout
+        settings.llm_iteration_timeout = 210  # Default 3.5 minute iteration timeout
+        settings.mcp_tool_call_timeout = 70  # Default 70 second tool timeout
         return settings
     
     @pytest.fixture

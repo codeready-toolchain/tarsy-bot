@@ -56,6 +56,10 @@ def mock_settings():
     settings.github_token = "mock-github-token"
     settings.llm_provider = "google-default"  # Updated to match EP-0013
     settings.max_llm_mcp_iterations = 3
+    # Add timeout settings for alert processing
+    settings.alert_processing_timeout = 600  # Default 10 minute timeout
+    settings.llm_iteration_timeout = 210  # Default 3.5 minute iteration timeout
+    settings.mcp_tool_call_timeout = 70  # Default 70 second tool timeout
     settings.log_level = "INFO"
     settings.agent_config_path = None  # No agent config for integration tests
     
