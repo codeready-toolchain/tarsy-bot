@@ -65,7 +65,7 @@ The scoring system introduces a new service layer that operates independently of
 - Judge LLM provides critical scoring even for self-produced analyses
 - Input: Complete session conversation from `/final-analysis` endpoint (~25k tokens)
 - Output: JSON score report (~6-7KB)
-- Context window: Comfortably fits in 1M token window (Pro models) or 32k window (Flash models)
+- Context window: Comfortably fits in 1M token window (Gemini Pro models) or 32k window (Gemini Flash models)
 - Scoring consistency: Reliable results across multiple test sessions
 
 ## Goals
