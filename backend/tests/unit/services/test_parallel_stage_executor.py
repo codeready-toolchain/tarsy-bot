@@ -376,17 +376,13 @@ class TestStatusAggregation:
                 )
             )
         
-        # Apply the same logic as in ParallelStageExecutor
-        completed_count = sum(1 for m in metadatas if m.status == StageStatus.COMPLETED)
-        failed_count = sum(1 for m in metadatas if m.status == StageStatus.FAILED)
-        paused_count = sum(1 for m in metadatas if m.status == StageStatus.PAUSED)
-        
-        if paused_count > 0:
-            actual_status = StageStatus.PAUSED
-        elif policy == FailurePolicy.ALL:
-            actual_status = StageStatus.COMPLETED if failed_count == 0 else StageStatus.FAILED
-        else:  # FailurePolicy.ANY
-            actual_status = StageStatus.COMPLETED if completed_count > 0 else StageStatus.FAILED
+        # Call the actual aggregation method from ParallelStageExecutor
+        executor = ParallelStageExecutor(
+            agent_factory=Mock(),
+            settings=MockFactory.create_mock_settings(),
+            stage_manager=Mock()
+        )
+        actual_status = executor._aggregate_status(metadatas, policy)
         
         assert actual_status == expected_status
 

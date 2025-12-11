@@ -129,6 +129,43 @@ class ParallelStageExecutor:
             parallel_type=ParallelType.REPLICA.value
         )
     
+    def _aggregate_status(
+        self,
+        metadatas: list[AgentExecutionMetadata],
+        failure_policy: FailurePolicy
+    ) -> StageStatus:
+        """
+        Aggregate individual agent statuses into overall stage status.
+        
+        Priority order:
+        1. PAUSED: If any agent paused, whole stage is paused (enables resume)
+        2. FailurePolicy.ALL: All must succeed (any failure = stage failure)
+        3. FailurePolicy.ANY: At least one must succeed (all failures = stage failure)
+        
+        Args:
+            metadatas: List of agent execution metadata
+            failure_policy: Policy for handling failures (ALL or ANY)
+            
+        Returns:
+            Aggregated stage status (COMPLETED, FAILED, or PAUSED)
+        """
+        # Count by status
+        completed_count = sum(1 for m in metadatas if m.status == StageStatus.COMPLETED)
+        failed_count = sum(1 for m in metadatas if m.status == StageStatus.FAILED)
+        paused_count = sum(1 for m in metadatas if m.status == StageStatus.PAUSED)
+        
+        # PAUSED takes priority over everything - if any agent paused, whole stage is paused
+        if paused_count > 0:
+            return StageStatus.PAUSED
+        
+        # Apply failure policy
+        if failure_policy == FailurePolicy.ALL:
+            # ALL policy: all must succeed (any failure = stage failure)
+            return StageStatus.COMPLETED if failed_count == 0 else StageStatus.FAILED
+        else:  # FailurePolicy.ANY
+            # ANY policy: at least one must succeed (all failures = stage failure)
+            return StageStatus.COMPLETED if completed_count > 0 else StageStatus.FAILED
+    
     async def _execute_parallel_stage(
         self,
         stage: "ChainStageConfigModel",
@@ -390,29 +427,21 @@ class ParallelStageExecutor:
             agent_metadatas=metadatas
         )
         
-        # Determine overall stage status based on failure policy
-        # Count by all statuses
+        # Determine overall stage status using aggregation logic
+        overall_status = self._aggregate_status(metadatas, stage.failure_policy)
+        
+        # Log aggregation results
         completed_count = sum(1 for m in metadatas if m.status == StageStatus.COMPLETED)
         failed_count = sum(1 for m in metadatas if m.status == StageStatus.FAILED)
         paused_count = sum(1 for m in metadatas if m.status == StageStatus.PAUSED)
         
-        # PAUSED takes priority over everything - if any agent paused, whole stage is paused
-        if paused_count > 0:
-            # Any agent paused = whole stage is paused (user can resume)
-            overall_status = StageStatus.PAUSED
+        if overall_status == StageStatus.PAUSED:
             logger.info(
                 f"{parallel_type.capitalize()} stage '{stage.name}': "
                 f"{completed_count} completed, {failed_count} failed, {paused_count} paused "
                 f"-> Overall status: PAUSED"
             )
-        elif stage.failure_policy == FailurePolicy.ALL:
-            overall_status = StageStatus.COMPLETED if failed_count == 0 else StageStatus.FAILED
-            logger.info(
-                f"{parallel_type.capitalize()} stage '{stage.name}' completed: {completed_count}/{len(metadatas)} succeeded, "
-                f"policy={stage.failure_policy}, status={overall_status.value}"
-            )
-        else:  # FailurePolicy.ANY
-            overall_status = StageStatus.COMPLETED if completed_count > 0 else StageStatus.FAILED
+        else:
             logger.info(
                 f"{parallel_type.capitalize()} stage '{stage.name}' completed: {completed_count}/{len(metadatas)} succeeded, "
                 f"policy={stage.failure_policy}, status={overall_status.value}"

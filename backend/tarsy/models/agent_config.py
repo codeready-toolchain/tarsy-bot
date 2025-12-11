@@ -257,7 +257,7 @@ class ParallelAgentConfig(BaseModel):
         None,
         description="Optional LLM provider override for this agent"
     )
-    iteration_strategy: Optional[str] = Field(
+    iteration_strategy: Optional[IterationStrategy] = Field(
         None,
         description="Optional iteration strategy override for this agent"
     )
@@ -275,8 +275,8 @@ class SynthesisConfig(BaseModel):
         default="SynthesisAgent",
         description="Agent to use for synthesis (default: SynthesisAgent)"
     )
-    iteration_strategy: str = Field(
-        default="synthesis",
+    iteration_strategy: IterationStrategy = Field(
+        default=IterationStrategy.SYNTHESIS,
         description="Iteration strategy for synthesis (default: synthesis)"
     )
     llm_provider: Optional[str] = Field(
@@ -316,7 +316,7 @@ class ChainStageConfigModel(BaseModel):
         default=FailurePolicy.ALL,
         description="Failure policy: 'all' requires all agents to succeed, 'any' requires at least one"
     )
-    iteration_strategy: Optional[str] = Field(
+    iteration_strategy: Optional[IterationStrategy] = Field(
         None,
         description="Optional iteration strategy override (uses agent's default if not specified)"
     )

@@ -20,7 +20,6 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from mcp.types import Tool
 
-from tarsy.config.builtin_config import BUILTIN_MCP_SERVERS
 from tarsy.integrations.mcp.client import MCPClient
 
 from .e2e_utils import E2ETestUtils
@@ -235,16 +234,6 @@ Pod is failing due to database connectivity issues. The pod attempts to connect 
                 mock_session.list_tools.side_effect = mock_list_tools
                 
                 return mock_session
-            
-            # Setup mocking infrastructure
-            k8s_config = E2ETestUtils.create_simple_kubernetes_mcp_config(
-                command_args=["kubernetes-mock-server-ready"],
-                instructions="Test kubernetes server for parallel pause/resume",
-            )
-            
-            test_mcp_servers = E2ETestUtils.create_test_mcp_servers(
-                BUILTIN_MCP_SERVERS, {"kubernetes-server": k8s_config}
-            )
             
             # Create MCP client patches
             mock_k8s_session = create_mcp_session_mock()

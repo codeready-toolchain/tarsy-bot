@@ -40,8 +40,6 @@ class TestSynthesisAgentConfiguration:
         """Test that SynthesisAgent can be instantiated with required dependencies."""
         from unittest.mock import Mock
         
-        from tarsy.models.agent_config import IterationStrategy
-        
         llm_manager = Mock()
         mcp_client = Mock()
         mcp_registry = Mock()

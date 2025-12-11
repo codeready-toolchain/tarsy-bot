@@ -290,10 +290,13 @@ class TestAlertProcessing:
         mock_history_service.update_session_status = Mock()
         mock_history_service.store_llm_interaction = Mock()
         mock_history_service.store_mcp_interaction = Mock()
+        # All async methods must be AsyncMock for StageExecutionManager compatibility
+        mock_history_service.create_stage_execution = AsyncMock(return_value="exec-1")
+        mock_history_service.update_stage_execution = AsyncMock(return_value=True)
+        mock_history_service.update_session_current_stage = AsyncMock(return_value=True)
         mock_history_service.record_session_interaction = AsyncMock()
         mock_history_service.get_stage_executions = AsyncMock(return_value=[])
-        # Mock update_session_current_stage as AsyncMock
-        mock_history_service.update_session_current_stage = AsyncMock()
+        mock_history_service.start_session_processing = AsyncMock(return_value=True)
         # Mock get_stage_execution to return a proper stage execution object for updates
         def create_mock_stage_execution(execution_id):
             return SimpleNamespace(
@@ -1134,10 +1137,14 @@ class TestEnhancedChainExecution:
         service.history_service.is_enabled = True
         service.history_service.create_session.return_value = True
         service.history_service.update_session_status = Mock()
+        # All async methods must be AsyncMock for StageExecutionManager compatibility
+        service.history_service.create_stage_execution = AsyncMock(return_value="exec-1")
+        service.history_service.update_stage_execution = AsyncMock(return_value=True)
+        service.history_service.update_session_current_stage = AsyncMock(return_value=True)
         service.history_service.get_stage_execution = AsyncMock()
         service.history_service.get_stage_executions = AsyncMock(return_value=[])
-        service.history_service.update_session_current_stage = AsyncMock()
         service.history_service.record_session_interaction = AsyncMock()
+        service.history_service.start_session_processing = AsyncMock(return_value=True)
         # Mock database verification for stage creation
         service.history_service._retry_database_operation_async = AsyncMock(return_value=True)
         
@@ -1393,7 +1400,13 @@ class TestFullErrorPropagation:
         service.history_service.is_enabled = True
         service.history_service.create_session.return_value = True
         service.history_service.update_session_status = Mock()
-        service.history_service.update_session_current_stage = AsyncMock()
+        # All async methods must be AsyncMock for StageExecutionManager compatibility
+        service.history_service.create_stage_execution = AsyncMock(return_value="exec-1")
+        service.history_service.update_stage_execution = AsyncMock(return_value=True)
+        service.history_service.update_session_current_stage = AsyncMock(return_value=True)
+        service.history_service.record_session_interaction = AsyncMock()
+        service.history_service.get_stage_executions = AsyncMock(return_value=[])
+        service.history_service.start_session_processing = AsyncMock(return_value=True)
         # Mock get_stage_execution to return proper stage execution objects
         def create_mock_stage_execution(execution_id):
             return SimpleNamespace(
@@ -1411,9 +1424,6 @@ class TestFullErrorPropagation:
                 current_iteration=None
             )
         service.history_service.get_stage_execution = AsyncMock(side_effect=create_mock_stage_execution)
-        service.history_service.get_stage_executions = AsyncMock(return_value=[])
-        service.history_service.record_session_interaction = AsyncMock()
-        service.history_service.start_session_processing = AsyncMock(return_value=True)
         # Mock database verification for stage creation
         service.history_service._retry_database_operation_async = AsyncMock(return_value=True)
         
