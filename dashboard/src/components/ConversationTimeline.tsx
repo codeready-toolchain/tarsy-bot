@@ -367,17 +367,27 @@ function ConversationTimeline({
   const displayedStreamingItems = useMemo(() => {
     if (streamingItems.size === 0) return [];
     
-    // Build a set of IDs from DB items for O(1) lookup
+    // Build sets of IDs from DB items for O(1) lookup
+    // IMPORTANT: Separate tool_call and summarization mcp_event_ids!
+    // Both use mcp_event_id (the tool call's communication_id), but they're different items.
+    // A summarization streaming item should only be deduplicated by a summarization DB item,
+    // not by the tool_call DB item that triggered it.
     const dbInteractionIds = new Set<string>();
-    const dbMcpEventIds = new Set<string>();
+    const dbToolCallMcpIds = new Set<string>();      // mcp_event_ids from tool_call items
+    const dbSummarizationMcpIds = new Set<string>(); // mcp_event_ids from summarization items
     const dbMessageIds = new Set<string>();
     
     for (const item of chatFlow) {
       if (item.llm_interaction_id) {
         dbInteractionIds.add(item.llm_interaction_id);
       }
+      // Separate tool_call and summarization mcp_event_ids
       if (item.mcp_event_id) {
-        dbMcpEventIds.add(item.mcp_event_id);
+        if (item.type === 'tool_call') {
+          dbToolCallMcpIds.add(item.mcp_event_id);
+        } else if (item.type === 'summarization') {
+          dbSummarizationMcpIds.add(item.mcp_event_id);
+        }
       }
       if (item.messageId) {
         dbMessageIds.add(item.messageId);
@@ -386,7 +396,7 @@ function ConversationTimeline({
     
     return Array.from(streamingItems.entries())
       .filter(([, streamItem]) => {
-        // ID-based deduplication
+        // ID-based deduplication - match by TYPE and ID
         if (
           streamItem.type === STREAMING_CONTENT_TYPES.THOUGHT ||
           streamItem.type === STREAMING_CONTENT_TYPES.FINAL_ANSWER ||
@@ -395,8 +405,14 @@ function ConversationTimeline({
           return !(streamItem.llm_interaction_id && dbInteractionIds.has(streamItem.llm_interaction_id));
         }
         
-        if (streamItem.type === 'tool_call' || streamItem.type === STREAMING_CONTENT_TYPES.SUMMARIZATION) {
-          return !(streamItem.mcp_event_id && dbMcpEventIds.has(streamItem.mcp_event_id));
+        // Tool call streaming items - only deduplicate against tool_call DB items
+        if (streamItem.type === 'tool_call') {
+          return !(streamItem.mcp_event_id && dbToolCallMcpIds.has(streamItem.mcp_event_id));
+        }
+        
+        // Summarization streaming items - only deduplicate against summarization DB items
+        if (streamItem.type === STREAMING_CONTENT_TYPES.SUMMARIZATION) {
+          return !(streamItem.mcp_event_id && dbSummarizationMcpIds.has(streamItem.mcp_event_id));
         }
         
         if (streamItem.type === 'user_message') {
@@ -407,11 +423,16 @@ function ConversationTimeline({
       })
       .map(([key, streamItem]) => {
         // Metadata is already enriched from backend - just add display fields
+        // For parallel stages: executionId = child stage execution ID (stage_execution_id from event)
+        // For parallel stages: parent_stage_execution_id = parent stage execution ID
         return [key, {
           ...streamItem,
           executionId: streamItem.stage_execution_id,
           executionAgent: streamItem.agent_name,
-          isParallelStage: !!(streamItem.parallel_index && streamItem.parallel_index > 0)
+          isParallelStage: !!(streamItem.parallel_index && streamItem.parallel_index > 0),
+          // Keep backend parallel metadata for proper grouping
+          parent_stage_execution_id: streamItem.parent_stage_execution_id,
+          parallel_index: streamItem.parallel_index,
         }] as [string, ConversationStreamingItem & { executionId?: string; executionAgent?: string; isParallelStage: boolean }];
       })
       .sort(([_keyA, itemA], [_keyB, itemB]) => {
@@ -423,103 +444,60 @@ function ConversationTimeline({
       });
   }, [streamingItems, chatFlow]);
 
+  // Group streaming items by their parent stage for inline rendering
+  // This allows streaming items to appear within their respective stage groups
+  const streamingItemsByStage = useMemo(() => {
+    const byStage = new Map<string, typeof displayedStreamingItems>();
+    const noStage: typeof displayedStreamingItems = [];
+    
+    for (const entry of displayedStreamingItems) {
+      const [, item] = entry;
+      // Use parent_stage_execution_id for parallel stages, or stage_execution_id for single stages
+      const stageId = item.parent_stage_execution_id || item.stage_execution_id;
+      
+      if (stageId) {
+        if (!byStage.has(stageId)) {
+          byStage.set(stageId, []);
+        }
+        byStage.get(stageId)!.push(entry);
+      } else {
+        noStage.push(entry);
+      }
+    }
+    
+    return { byStage, noStage };
+  }, [displayedStreamingItems]);
+
   // Parse session data into chat flow
-  // Also merge in enriched streaming items for real-time display
+  // IMPORTANT: chatFlow only contains DB data - streaming items are rendered separately
+  // This avoids the circular dependency that caused the race condition
   useEffect(() => {
     if (session) {
       try {
         const flow = parseSessionChatFlow(session);
         
-        // Merge enriched streaming items into flow
-        // Streaming items that aren't in DB yet should be added to the flow
-        // IMPORTANT: Insert them into the correct stage group, not at the end
-        const enrichedStreamingItems: ChatFlowItemData[] = [];
-        for (const [, streamItem] of displayedStreamingItems) {
-          enrichedStreamingItems.push({
-            type: streamItem.type as any,
-            timestamp_us: Date.now() * 1000, // Use current time for streaming items
-            content: streamItem.content,
-            stageId: undefined, // Will be set by grouping logic
-            executionId: streamItem.executionId,
-            executionAgent: streamItem.executionAgent,
-            isParallelStage: streamItem.isParallelStage,
-            llm_interaction_id: streamItem.llm_interaction_id,
-            mcp_event_id: streamItem.mcp_event_id,
-            toolName: streamItem.toolName,
-            toolArguments: streamItem.toolArguments,
-            serverName: streamItem.serverName,
-          });
-        }
-        
-        // Backend now provides parent_stage_execution_id (EP-0030) - no map building needed!
-        // Group streaming items by their parent stage for correct positioning
-        const streamingByParentStage = new Map<string, ChatFlowItemData[]>();
-        for (const item of enrichedStreamingItems) {
-          if (item.executionId) {
-            // Use parent_id from backend if available (parallel stage), otherwise use execution_id itself (single stage)
-            const parentId = (item as any).parent_stage_execution_id || item.executionId;
-            if (!streamingByParentStage.has(parentId)) {
-              streamingByParentStage.set(parentId, []);
-            }
-            streamingByParentStage.get(parentId)!.push(item);
-          }
-        }
-        
-        // Insert streaming items after their parent stage's content
-        const combinedFlow: ChatFlowItemData[] = [];
-        let currentStageExecutionId: string | undefined;
-        
-        for (let i = 0; i < flow.length; i++) {
-          const item = flow[i];
-          combinedFlow.push(item);
-          
-          // Track current stage execution ID from stage_start items
-          if (item.type === 'stage_start' && item.executionId) {
-            currentStageExecutionId = item.executionId;
-          }
-          
-          // At the end of this stage (next stage_start or end of flow), insert streaming items
-          const isLastItem = i === flow.length - 1;
-          const nextItemIsStageStart = !isLastItem && flow[i + 1].type === 'stage_start';
-          
-          if ((isLastItem || nextItemIsStageStart) && currentStageExecutionId) {
-            const streamingForThisStage = streamingByParentStage.get(currentStageExecutionId);
-            if (streamingForThisStage && streamingForThisStage.length > 0) {
-              combinedFlow.push(...streamingForThisStage);
-              // Remove from map so we don't insert twice
-              streamingByParentStage.delete(currentStageExecutionId);
-            }
-          }
-        }
-        
-        // Add any remaining streaming items that didn't match a stage (shouldn't happen, but fallback)
-        for (const [, items] of streamingByParentStage) {
-          combinedFlow.push(...items);
-        }
-        
-        // Check if this is a meaningful update
+        // Check if this is a meaningful update (compare DB data only)
         setChatFlow(prevFlow => {
           // If no previous data, always update
           if (prevFlow.length === 0) {
             console.log('🔄 Initial chat flow parsing');
-            return combinedFlow;
+            return flow;
           }
           
           // Check if meaningful data has changed
-          if (prevFlow.length !== combinedFlow.length) {
+          if (prevFlow.length !== flow.length) {
             console.log('🔄 Chat flow length changed, updating');
-            return combinedFlow;
+            return flow;
           }
           
           // Check if content has changed (use hash for performance)
-          // Note: Can't just check last item because streaming items are inserted in the middle!
           const prevHash = JSON.stringify(prevFlow.map(item => ({
             type: item.type,
             timestamp: item.timestamp_us,
             llm_id: item.llm_interaction_id,
             mcp_id: item.mcp_event_id
           })));
-          const newHash = JSON.stringify(combinedFlow.map(item => ({
+          const newHash = JSON.stringify(flow.map(item => ({
             type: item.type,
             timestamp: item.timestamp_us,
             llm_id: item.llm_interaction_id,
@@ -528,7 +506,7 @@ function ConversationTimeline({
           
           if (prevHash !== newHash) {
             console.log('🔄 Chat flow content changed, updating');
-            return combinedFlow;
+            return flow;
           }
           
           console.log('🔄 No meaningful chat flow changes, keeping existing data');
@@ -542,7 +520,7 @@ function ConversationTimeline({
         setChatFlow([]);
       }
     }
-  }, [session, displayedStreamingItems]);
+  }, [session]); // Only depend on session - streaming items are rendered separately
 
   // Clear streaming items when switching sessions (prevents stale data from previous session)
   useEffect(() => {
@@ -673,6 +651,10 @@ function ConversationTimeline({
                 stage_execution_id: event.stage_execution_id,
                 mcp_event_id: event.mcp_event_id,
                 llm_interaction_id: event.llm_interaction_id,
+                // Store parallel execution metadata from backend
+                parent_stage_execution_id: event.parent_stage_execution_id,
+                parallel_index: event.parallel_index,
+                agent_name: event.agent_name,
                 waitingForDb: true
               });
             }
@@ -685,6 +667,10 @@ function ConversationTimeline({
               stage_execution_id: event.stage_execution_id,
               mcp_event_id: event.mcp_event_id,
               llm_interaction_id: event.llm_interaction_id,
+              // Store parallel execution metadata from backend
+              parent_stage_execution_id: event.parent_stage_execution_id,
+              parallel_index: event.parallel_index,
+              agent_name: event.agent_name,
               waitingForDb: false
             });
           }
@@ -703,7 +689,7 @@ function ConversationTimeline({
   }, [session.session_id, session.status, activeChatStageInProgress]);
 
   // Clear streaming items when their content appears in DB data
-  // Uses simple ID-based matching
+  // Uses TYPE-AWARE ID-based matching to avoid false deduplication
   // ONLY runs when chatFlow changes (DB update), NOT when streaming chunks arrive
   useEffect(() => {
     setStreamingItems(prev => {
@@ -713,16 +699,24 @@ function ConversationTimeline({
       }
       
       // Build sets of IDs from DB items for O(1) lookup
+      // IMPORTANT: Separate tool_call and summarization mcp_event_ids!
+      // Both share the same mcp_event_id (tool call's communication_id), but they're different items.
       const dbInteractionIds = new Set<string>();
-      const dbMcpEventIds = new Set<string>();
+      const dbToolCallMcpIds = new Set<string>();      // mcp_event_ids from tool_call items
+      const dbSummarizationMcpIds = new Set<string>(); // mcp_event_ids from summarization items
       const dbMessageIds = new Set<string>();
       
       for (const item of chatFlow) {
         if (item.llm_interaction_id) {
           dbInteractionIds.add(item.llm_interaction_id);
         }
+        // Separate tool_call and summarization mcp_event_ids
         if (item.mcp_event_id) {
-          dbMcpEventIds.add(item.mcp_event_id);
+          if (item.type === 'tool_call') {
+            dbToolCallMcpIds.add(item.mcp_event_id);
+          } else if (item.type === 'summarization') {
+            dbSummarizationMcpIds.add(item.mcp_event_id);
+          }
         }
         if (item.messageId) {
           dbMessageIds.add(item.messageId);
@@ -732,7 +726,7 @@ function ConversationTimeline({
       const updated = new Map(prev);
       let itemsCleared = 0;
       
-      // For each streaming item, check if DB has its ID
+      // For each streaming item, check if DB has its ID (matching by TYPE)
       for (const [key, streamingItem] of prev.entries()) {
         let shouldRemove = false;
         
@@ -745,9 +739,14 @@ function ConversationTimeline({
           if (streamingItem.llm_interaction_id && dbInteractionIds.has(streamingItem.llm_interaction_id)) {
             shouldRemove = true;
           }
-        } else if (streamingItem.type === 'tool_call' || streamingItem.type === STREAMING_CONTENT_TYPES.SUMMARIZATION) {
-          // Match by mcp_event_id
-          if (streamingItem.mcp_event_id && dbMcpEventIds.has(streamingItem.mcp_event_id)) {
+        } else if (streamingItem.type === 'tool_call') {
+          // Tool call streaming items - only deduplicate against tool_call DB items
+          if (streamingItem.mcp_event_id && dbToolCallMcpIds.has(streamingItem.mcp_event_id)) {
+            shouldRemove = true;
+          }
+        } else if (streamingItem.type === STREAMING_CONTENT_TYPES.SUMMARIZATION) {
+          // Summarization streaming items - only deduplicate against summarization DB items
+          if (streamingItem.mcp_event_id && dbSummarizationMcpIds.has(streamingItem.mcp_event_id)) {
             shouldRemove = true;
           }
         } else if (streamingItem.type === 'user_message') {
@@ -956,6 +955,11 @@ function ConversationTimeline({
             {groupedChatFlow.map((group, groupIndex) => {
               const isCollapsed = group.stageId ? collapsedStages.get(group.stageId) || false : false;
               
+              // Get streaming items for this stage (if any)
+              const stageStreamingItems = group.stageId 
+                ? streamingItemsByStage.byStage.get(group.stageId) || []
+                : [];
+              
               // Filter group items based on collapse state
               const visibleItems = group.items.filter(item => {
                 // Always show stage_start items
@@ -968,6 +972,9 @@ function ConversationTimeline({
               // Find stage_start item (should be first)
               const stageStartItem = visibleItems.find(item => item.type === 'stage_start');
               const nonStageStartItems = visibleItems.filter(item => item.type !== 'stage_start');
+              
+              // Check if this is the last stage (to show streaming items here)
+              const isLastGroup = groupIndex === groupedChatFlow.length - 1;
               
               return (
                 <Box key={`group-${groupIndex}-${group.stageId || 'unknown'}`}>
@@ -982,7 +989,7 @@ function ConversationTimeline({
                   )}
                   
                   {/* Render stage content if not collapsed */}
-                  {!isCollapsed && nonStageStartItems.length > 0 && (
+                  {!isCollapsed && (
                     group.isParallel ? (
                       // Render parallel stage with tabs
                       // Find the stage object to pass for correct execution order
@@ -994,6 +1001,7 @@ function ConversationTimeline({
                             stage={stage}
                             collapsedStages={collapsedStages}
                             onToggleStage={handleToggleStage}
+                            streamingItems={stageStreamingItems}
                           />
                         ) : (
                           <Box sx={{ p: 2, color: 'error.main' }}>
@@ -1002,27 +1010,46 @@ function ConversationTimeline({
                         );
                       })()
                     ) : (
-                      // Render normal stage items
-                      nonStageStartItems.map((item) => (
-              <ChatFlowItem 
-                key={`${item.type}-${item.timestamp_us}`} 
-                item={item}
-                          isCollapsed={false}
-                          onToggleCollapse={undefined}
-              />
-                      ))
+                      // Render normal stage items + streaming items
+                      <>
+                        {nonStageStartItems.map((item) => (
+                          <ChatFlowItem 
+                            key={`${item.type}-${item.timestamp_us}`} 
+                            item={item}
+                            isCollapsed={false}
+                            onToggleCollapse={undefined}
+                          />
+                        ))}
+                        {/* Show streaming items for this stage (non-parallel only) */}
+                        {stageStreamingItems
+                          .filter(([, item]) => !item.isParallelStage)
+                          .map(([entryKey, entryValue]) => (
+                            <StreamingItemRenderer key={entryKey} item={entryValue} />
+                          ))}
+                      </>
                     )
+                  )}
+                  
+                  {/* For the last stage, also show any orphaned streaming items */}
+                  {isLastGroup && !isCollapsed && streamingItemsByStage.noStage.length > 0 && (
+                    streamingItemsByStage.noStage
+                      .filter(([, item]) => !item.isParallelStage)
+                      .map(([entryKey, entryValue]) => (
+                        <StreamingItemRenderer key={entryKey} item={entryValue} />
+                      ))
                   )}
                 </Box>
               );
             })}
             
-            {/* Show streaming items at the end - but exclude parallel stage items (they're rendered in tabs) */}
-            {displayedStreamingItems
-              .filter(([, item]) => !item.isParallelStage)
-              .map(([entryKey, entryValue]) => (
-                <StreamingItemRenderer key={entryKey} item={entryValue} />
-              ))}
+            {/* Fallback: Show orphaned streaming items if no chat flow groups exist */}
+            {groupedChatFlow.length === 0 && streamingItemsByStage.noStage.length > 0 && (
+              streamingItemsByStage.noStage
+                .filter(([, item]) => !item.isParallelStage)
+                .map(([entryKey, entryValue]) => (
+                  <StreamingItemRenderer key={entryKey} item={entryValue} />
+                ))
+            )}
 
             {/* Processing indicator at bottom when session/chat is in progress OR when there are streaming items */}
             {(session.status === SESSION_STATUS.IN_PROGRESS || streamingItems.size > 0 || activeChatStageInProgress) && <ProcessingIndicator />}

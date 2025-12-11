@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -15,13 +15,23 @@ import {
 import type { ChatFlowItemData } from '../utils/chatFlowParser';
 import type { StageExecution } from '../types';
 import ChatFlowItem from './ChatFlowItem';
+import StreamingContentRenderer, { type StreamingItem } from './StreamingContentRenderer';
 import { getParallelStageLabel } from '../utils/parallelStageHelpers';
+
+// Extended streaming item type that includes parallel execution metadata
+interface ParallelStreamingItem extends StreamingItem {
+  executionId?: string;
+  executionAgent?: string;
+  isParallelStage?: boolean;
+}
 
 interface ParallelStageReasoningTabsProps {
   items: ChatFlowItemData[];
   stage: StageExecution; // Stage object to get correct execution order
   collapsedStages: Map<string, boolean>;
   onToggleStage: (stageId: string) => void;
+  // Streaming items for real-time display (not yet in DB)
+  streamingItems?: [string, ParallelStreamingItem][];
 }
 
 interface TabPanelProps {
@@ -77,10 +87,11 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
   stage,
   collapsedStages,
   onToggleStage,
+  streamingItems = [],
 }) => {
   const [selectedTab, setSelectedTab] = useState(0);
 
-  // Group items by executionId
+  // Group DB items by executionId
   const executionGroups = new Map<string, ChatFlowItemData[]>();
   const executionAgents = new Map<string, string>();
   
@@ -98,6 +109,27 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
       executionGroups.get(item.executionId)!.push(item);
     }
   }
+  
+  // Group streaming items by their child execution ID (stage_execution_id)
+  // For parallel stages, stage_execution_id is the child's execution ID
+  const streamingByExecution = useMemo(() => {
+    const byExecution = new Map<string, [string, ParallelStreamingItem][]>();
+    
+    for (const entry of streamingItems) {
+      const [, item] = entry;
+      // Use stage_execution_id (child execution ID) for grouping
+      const executionId = item.stage_execution_id;
+      
+      if (executionId && item.isParallelStage) {
+        if (!byExecution.has(executionId)) {
+          byExecution.set(executionId, []);
+        }
+        byExecution.get(executionId)!.push(entry);
+      }
+    }
+    
+    return byExecution;
+  }, [streamingItems]);
 
   // Convert to array and sort by the same order as stage.parallel_executions
   // This ensures the tabs match the Debug view order
@@ -245,26 +277,40 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
       </Box>
 
       {/* Tab panels */}
-      {executions.map((execution, index) => (
-        <TabPanel key={execution.executionId} value={selectedTab} index={index}>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-            {execution.items.length === 0 ? (
-              <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
-                No reasoning steps available for this agent
-              </Typography>
-            ) : (
-              execution.items.map((item) => (
+      {executions.map((execution, index) => {
+        // Get streaming items for this specific execution
+        const executionStreamingItems = streamingByExecution.get(execution.executionId) || [];
+        const hasDbItems = execution.items.length > 0;
+        const hasStreamingItems = executionStreamingItems.length > 0;
+        
+        return (
+          <TabPanel key={execution.executionId} value={selectedTab} index={index}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+              {/* Render DB items */}
+              {execution.items.map((item) => (
                 <ChatFlowItem
                   key={`${item.type}-${item.timestamp_us}`}
                   item={item}
                   isCollapsed={item.stageId ? collapsedStages.get(item.stageId) || false : false}
                   onToggleCollapse={item.stageId ? () => onToggleStage(item.stageId!) : undefined}
                 />
-              ))
-            )}
-          </Box>
-        </TabPanel>
-      ))}
+              ))}
+              
+              {/* Render streaming items (not yet in DB) */}
+              {executionStreamingItems.map(([entryKey, entryValue]) => (
+                <StreamingContentRenderer key={entryKey} item={entryValue} />
+              ))}
+              
+              {/* Show placeholder if no items at all */}
+              {!hasDbItems && !hasStreamingItems && (
+                <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
+                  No reasoning steps available for this agent
+                </Typography>
+              )}
+            </Box>
+          </TabPanel>
+        );
+      })}
     </Box>
   );
 };
