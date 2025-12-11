@@ -858,9 +858,9 @@ class TestNativeThinkingPromptBuilding:
         """Test that prompt includes formatted alert section."""
         prompt = builder.build_native_thinking_prompt(stage_context_first_stage)
         
-        # Alert component should format the alert data
-        assert "production" in prompt.lower()
-        assert "critical" in prompt.lower()
+        # Alert component should format the alert data (type and timestamp, not severity/environment)
+        assert "kubernetes" in prompt.lower()
+        assert "Alert Metadata" in prompt or "alert" in prompt.lower()
     
     def test_build_native_thinking_prompt_includes_runbook_section(self, builder, stage_context_first_stage):
         """Test that prompt includes formatted runbook section."""

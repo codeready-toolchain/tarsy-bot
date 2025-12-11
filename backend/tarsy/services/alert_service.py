@@ -545,7 +545,8 @@ class AlertService:
             for stage_exec in stage_executions:
                 if stage_exec.stage_output and stage_exec.status in [StageStatus.COMPLETED.value, StageStatus.PAUSED.value]:
                     # Check if this is a parallel stage (parent execution)
-                    if stage_exec.parallel_type in ParallelType.parallel_values():
+                    # Only parent parallel executions have ParallelStageResult; child executions have AgentExecutionResult
+                    if stage_exec.parallel_type in ParallelType.parallel_values() and not stage_exec.parent_stage_execution_id:
                         # Reconstruct ParallelStageResult from stage_output
                         from tarsy.models.agent_execution_result import ParallelStageResult
                         result = ParallelStageResult.model_validate(stage_exec.stage_output)

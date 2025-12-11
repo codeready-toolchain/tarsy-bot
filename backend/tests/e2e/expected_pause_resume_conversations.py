@@ -157,9 +157,7 @@ Question: Investigate this test-kubernetes alert and provide stage-specific anal
 
 ### Alert Metadata
 **Alert Type:** test-kubernetes
-**Severity:** warning
 **Timestamp:** {TIMESTAMP}
-**Environment:** production
 
 ### Alert Data
 ```json

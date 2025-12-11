@@ -17,7 +17,7 @@ class AlertSectionTemplate:
     Formats alert data with separate metadata and client data sections.
     
     Shows:
-    1. Alert Metadata: Our normalized fields (alert_type, severity, timestamp, etc.)
+    1. Alert Metadata: Our normalized fields (alert_type, timestamp)
     2. Alert Data: Client's pristine data (preserved exactly as received)
     """
     
@@ -40,9 +40,7 @@ class AlertSectionTemplate:
         # Section 1: Alert Metadata
         sections.append("### Alert Metadata")
         sections.append(f"**Alert Type:** {processing_alert.alert_type}")
-        sections.append(f"**Severity:** {processing_alert.severity}")
         sections.append(f"**Timestamp:** {processing_alert.timestamp}")
-        sections.append(f"**Environment:** {processing_alert.environment}")
         
         # Section 2: Alert Data (Client's pristine data)
         sections.append("")

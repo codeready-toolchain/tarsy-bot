@@ -5,32 +5,13 @@ This module provides formatting utilities for alert processing responses,
 including success responses, chain responses, and error responses.
 """
 
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 from tarsy.utils.timestamp import now_us
 
 if TYPE_CHECKING:
     from tarsy.models.agent_config import ChainConfigModel
     from tarsy.models.processing_context import ChainContext
-
-
-# ============================================================================
-# Helper Functions
-# ============================================================================
-
-def _format_alert_severity(alert_data: Dict[str, Any]) -> str:
-    """Format alert severity for API responses."""
-    return alert_data.get('severity', 'warning')
-
-
-def _format_alert_environment(alert_data: Dict[str, Any]) -> str:
-    """Format alert environment for API responses."""
-    return alert_data.get('environment', 'production')
-
-
-# ============================================================================
-# Main Formatting Functions
-# ============================================================================
 
 def format_success_response(
     chain_context: "ChainContext",
@@ -63,8 +44,6 @@ def format_success_response(
         "",
         f"**Alert Type:** {chain_context.processing_alert.alert_type}",
         f"**Processing Agent:** {agent_name}",
-        f"**Environment:** {_format_alert_environment(chain_context.processing_alert.alert_data)}",
-        f"**Severity:** {_format_alert_severity(chain_context.processing_alert.alert_data)}",
         f"**Timestamp:** {timestamp_str}",
         "",
         "## Analysis",
@@ -108,8 +87,6 @@ def format_chain_success_response(
         f"**Alert Type:** {chain_context.processing_alert.alert_type}",
         f"**Processing Chain:** {chain_definition.chain_id}",
         f"**Stages:** {len(chain_definition.stages)}",
-        f"**Environment:** {_format_alert_environment(chain_context.processing_alert.alert_data)}",
-        f"**Severity:** {_format_alert_severity(chain_context.processing_alert.alert_data)}",
         f"**Timestamp:** {timestamp_str}",
         "",
         "## Analysis",
@@ -143,7 +120,6 @@ def format_error_response(
         "# Alert Processing Error",
         "",
         f"**Alert Type:** {chain_context.processing_alert.alert_type}",
-        f"**Environment:** {_format_alert_environment(chain_context.processing_alert.alert_data)}",
         f"**Error:** {error}",
     ]
     

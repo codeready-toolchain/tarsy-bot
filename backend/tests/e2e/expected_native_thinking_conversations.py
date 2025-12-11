@@ -252,9 +252,7 @@ Focus on investigation and providing recommendations for human operators to exec
 
 ### Alert Metadata
 **Alert Type:** test-native-thinking
-**Severity:** warning
 **Timestamp:** {TIMESTAMP}
-**Environment:** production
 
 ### Alert Data
 ```json
@@ -383,9 +381,7 @@ Focus on investigation and providing recommendations for human operators to exec
 
 ### Alert Metadata
 **Alert Type:** test-native-thinking
-**Severity:** warning
 **Timestamp:** {TIMESTAMP}
-**Environment:** production
 
 ### Alert Data
 ```json
@@ -516,9 +512,7 @@ Focus on investigation and providing recommendations for human operators to exec
 
 ### Alert Metadata
 **Alert Type:** test-native-thinking
-**Severity:** warning
 **Timestamp:** {TIMESTAMP}
-**Environment:** production
 
 ### Alert Data
 ```json
@@ -662,7 +656,6 @@ The following is the complete history of the alert investigation. Use this conte
 
 ### Alert Information
 **Alert Type:** test-native-thinking
-**Severity:** warning
 
 ### Investigation Summary
 Based on previous stages, the namespace is stuck due to finalizers.
@@ -738,7 +731,6 @@ The following is the complete history of the alert investigation. Use this conte
 
 ### Alert Information
 **Alert Type:** test-native-thinking
-**Severity:** warning
 
 ### Investigation Summary
 Based on previous stages, the namespace is stuck due to finalizers.
@@ -776,7 +768,7 @@ Does the namespace still exist?"""
 # ==============================================================================
 
 EXPECTED_NATIVE_THINKING_FINAL_ANALYSIS_LLM_ONLY = {
-    'final_analysis': '# Alert Analysis Report\n\n**Alert Type:** test-native-thinking\n**Processing Chain:** native-thinking-kubernetes-chain\n**Stages:** 3\n**Environment:** production\n**Severity:** warning\n**Timestamp:** {TIMESTAMP}\n\n## Analysis\n\nBased on previous stages, the namespace is stuck due to finalizers.\n\n---\n*Processed through 3 stages*',
+    'final_analysis': '# Alert Analysis Report\n\n**Alert Type:** test-native-thinking\n**Processing Chain:** native-thinking-kubernetes-chain\n**Stages:** 3\n**Timestamp:** {TIMESTAMP}\n\n## Analysis\n\nBased on previous stages, the namespace is stuck due to finalizers.\n\n---\n*Processed through 3 stages*',
     'final_analysis_summary': 'The namespace stuck-namespace is in Terminating state due to finalizers blocking deletion.',
     'session_id': '{SESSION_ID}',
     'status': 'completed',
@@ -819,7 +811,7 @@ EXPECTED_NATIVE_THINKING_FINAL_ANALYSIS_LLM_ONLY = {
 }
 
 EXPECTED_NATIVE_THINKING_FINAL_ANALYSIS_WITH_CHAT = {
-    'final_analysis': '# Alert Analysis Report\n\n**Alert Type:** test-native-thinking\n**Processing Chain:** native-thinking-kubernetes-chain\n**Stages:** 3\n**Environment:** production\n**Severity:** warning\n**Timestamp:** {TIMESTAMP}\n\n## Analysis\n\nBased on previous stages, the namespace is stuck due to finalizers.\n\n---\n*Processed through 3 stages*',
+    'final_analysis': '# Alert Analysis Report\n\n**Alert Type:** test-native-thinking\n**Processing Chain:** native-thinking-kubernetes-chain\n**Stages:** 3\n**Timestamp:** {TIMESTAMP}\n\n## Analysis\n\nBased on previous stages, the namespace is stuck due to finalizers.\n\n---\n*Processed through 3 stages*',
     'final_analysis_summary': 'The namespace stuck-namespace is in Terminating state due to finalizers blocking deletion.',
     'session_id': '{SESSION_ID}',
     'status': 'completed',

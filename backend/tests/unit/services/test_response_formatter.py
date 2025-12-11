@@ -56,19 +56,16 @@ class TestFormatSuccessResponse:
         assert "# Alert Analysis Report" in result
         assert "**Alert Type:** kubernetes" in result
         assert "**Processing Agent:** KubernetesAgent" in result
-        assert "**Environment:** production" in result
-        assert "**Severity:** critical" in result
         assert "**Timestamp:** 1700000000000000" in result
         assert "Pod is in CrashLoopBackOff state" in result
         assert "*Processed by KubernetesAgent in 3 iterations*" in result
     
-    def test_format_success_response_with_custom_environment(self):
-        """Test formatting response with custom environment."""
+    def test_format_success_response_with_custom_alert_type(self):
+        """Test formatting response with custom alert type."""
         from tarsy.models.processing_context import ChainContext
         
         processing_alert = create_processing_alert_from_alert_factory()
-        processing_alert.environment = "staging"
-        processing_alert.alert_data["environment"] = "staging"
+        processing_alert.alert_type = "custom-alert"
         
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
@@ -83,7 +80,7 @@ class TestFormatSuccessResponse:
             timestamp_us=None
         )
         
-        assert "**Environment:** staging" in result
+        assert "**Alert Type:** custom-alert" in result
     
     def test_format_success_response_without_timestamp(self):
         """Test formatting response without explicit timestamp (uses current time)."""
@@ -139,8 +136,6 @@ class TestFormatChainSuccessResponse:
         assert "**Alert Type:** kubernetes" in result
         assert "**Processing Chain:** kubernetes-investigation" in result
         assert "**Stages:** 3" in result
-        assert "**Environment:** production" in result
-        assert "**Severity:** critical" in result
         assert "Full chain analysis complete" in result
         assert "*Processed through 3 stages*" in result
     
@@ -191,7 +186,6 @@ class TestFormatErrorResponse:
         # Verify key components
         assert "# Alert Processing Error" in result
         assert "**Alert Type:** kubernetes" in result
-        assert "**Environment:** production" in result
         assert "**Error:** Connection to Kubernetes API failed" in result
         assert "**Failed Agent:** KubernetesAgent" in result
         assert "## Troubleshooting" in result
@@ -240,27 +234,11 @@ class TestFormatErrorResponse:
 class TestResponseFormatting:
     """Test general response formatting behavior."""
     
-    @pytest.mark.parametrize(
-        "severity,environment",
-        [
-            ("critical", "production"),
-            ("high", "staging"),
-            ("medium", "development"),
-            ("low", "test"),
-            ("info", "production"),
-        ],
-    )
-    def test_format_response_with_various_severities_and_environments(
-        self, severity: str, environment: str
-    ):
-        """Test that responses correctly format various severity and environment combinations."""
+    def test_format_response_contains_core_metadata(self):
+        """Test that responses contain core metadata fields (alert type, timestamp)."""
         from tarsy.models.processing_context import ChainContext
         
         processing_alert = create_processing_alert_from_alert_factory()
-        processing_alert.severity = severity
-        processing_alert.environment = environment
-        processing_alert.alert_data["severity"] = severity
-        processing_alert.alert_data["environment"] = environment
         
         chain_context = ChainContext.from_processing_alert(
             processing_alert=processing_alert,
@@ -270,26 +248,29 @@ class TestResponseFormatting:
         result = format_success_response(
             chain_context=chain_context,
             agent_name="TestAgent",
-            analysis="Test",
-            iterations=1
+            analysis="Test analysis",
+            iterations=1,
+            timestamp_us=1700000000000000
         )
         
-        assert f"**Severity:** {severity}" in result
-        assert f"**Environment:** {environment}" in result
+        # Verify core metadata is present
+        assert "**Alert Type:** kubernetes" in result
+        assert "**Timestamp:** 1700000000000000" in result
+        assert "Test analysis" in result
     
-    def test_format_response_with_missing_alert_data_fields(self):
-        """Test that responses handle missing alert data fields gracefully."""
+    def test_format_response_does_not_depend_on_alert_data_structure(self):
+        """Test that responses work regardless of alert_data structure."""
         from tarsy.models.alert import ProcessingAlert
         from tarsy.models.processing_context import ChainContext
         
-        # Create alert with minimal data
+        # Create alert with arbitrary alert_data (no assumed structure)
         alert = ProcessingAlert(
             alert_type="test",
             severity="warning",
             timestamp=1700000000000000,
             environment="production",
             runbook_url=None,
-            alert_data={}  # Empty alert_data
+            alert_data={"foo": "bar", "nested": {"data": "value"}}  # Arbitrary structure
         )
         
         chain_context = ChainContext.from_processing_alert(
@@ -304,7 +285,7 @@ class TestResponseFormatting:
             iterations=1
         )
         
-        # Should use defaults when fields are missing
-        assert "**Severity:** warning" in result
-        assert "**Environment:** production" in result
+        # Should format successfully without expecting specific alert_data fields
+        assert "# Alert Analysis Report" in result
+        assert "**Alert Type:** test" in result
 

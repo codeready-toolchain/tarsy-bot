@@ -28,9 +28,7 @@ Please provide detailed, actionable insights about what's happening and potentia
 
 ### Alert Metadata
 **Alert Type:** test-kubernetes
-**Severity:** warning
 **Timestamp:** {TIMESTAMP}
-**Environment:** production
 
 ### Alert Data
 ```json

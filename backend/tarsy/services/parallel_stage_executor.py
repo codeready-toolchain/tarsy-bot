@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
     from tarsy.models.db_models import StageExecution
     from tarsy.services.agent_factory import AgentFactory
+    from tarsy.services.history_service import HistoryService
     from tarsy.services.stage_execution_manager import StageExecutionManager
 
 logger = get_module_logger(__name__)
@@ -461,7 +462,7 @@ class ParallelStageExecutor:
         session_mcp_client: MCPClient,
         chain_definition: "ChainConfigModel",
         stage_index: int,
-        history_service  # Type: HistoryService, but avoid circular import
+        history_service: "HistoryService"
     ) -> ParallelStageResult:
         """
         Resume a paused parallel stage by re-executing only paused children.

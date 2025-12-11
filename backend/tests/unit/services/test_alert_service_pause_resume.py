@@ -423,7 +423,6 @@ class TestAlertServiceResumePausedSession:
         # Verify returns formatted error response (Markdown format)
         assert "# Alert Processing Error" in result
         assert "**Alert Type:** kubernetes" in result
-        assert "**Environment:** production" in result
         assert "Database connection timeout" in result
         assert "## Troubleshooting" in result
         

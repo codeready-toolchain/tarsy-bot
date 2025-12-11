@@ -72,9 +72,7 @@ Focus on investigation and providing recommendations for human operators to exec
 
 ### Alert Metadata
 **Alert Type:** test-parallel-execution
-**Severity:** warning
 **Timestamp:** {TIMESTAMP}
-**Environment:** production
 
 ### Alert Data
 ```json
@@ -244,9 +242,7 @@ Question: Analyze this test-parallel-execution alert and provide actionable reco
 
 ### Alert Metadata
 **Alert Type:** test-parallel-execution
-**Severity:** warning
 **Timestamp:** {TIMESTAMP}
-**Environment:** production
 
 ### Alert Data
 ```json
@@ -347,9 +343,7 @@ Question: Analyze this test-parallel-execution alert and provide actionable reco
 
 ### Alert Metadata
 **Alert Type:** test-parallel-execution
-**Severity:** warning
 **Timestamp:** {TIMESTAMP}
-**Environment:** production
 
 ### Alert Data
 ```json
@@ -492,9 +486,7 @@ Focus on investigation and providing recommendations for human operators to exec
 
 ### Alert Metadata
 **Alert Type:** test-replica-execution
-**Severity:** warning
 **Timestamp:** {TIMESTAMP}
-**Environment:** production
 
 ### Alert Data
 ```json
@@ -595,9 +587,7 @@ Focus on investigation and providing recommendations for human operators to exec
 
 ### Alert Metadata
 **Alert Type:** test-replica-execution
-**Severity:** warning
 **Timestamp:** {TIMESTAMP}
-**Environment:** production
 
 ### Alert Data
 ```json
@@ -698,9 +688,7 @@ Focus on investigation and providing recommendations for human operators to exec
 
 ### Alert Metadata
 **Alert Type:** test-replica-execution
-**Severity:** warning
 **Timestamp:** {TIMESTAMP}
-**Environment:** production
 
 ### Alert Data
 ```json
@@ -793,9 +781,7 @@ Question: Analyze this test-replica-execution alert and provide actionable recom
 
 ### Alert Metadata
 **Alert Type:** test-replica-execution
-**Severity:** warning
 **Timestamp:** {TIMESTAMP}
-**Environment:** production
 
 ### Alert Data
 ```json
@@ -951,9 +937,7 @@ Focus on investigation and providing recommendations for human operators to exec
 
 ### Alert Metadata
 **Alert Type:** test-parallel-regular-execution
-**Severity:** warning
 **Timestamp:** {TIMESTAMP}
-**Environment:** production
 
 ### Alert Data
 ```json
@@ -1121,9 +1105,7 @@ Question: Analyze this test-parallel-regular-execution alert and provide actiona
 
 ### Alert Metadata
 **Alert Type:** test-parallel-regular-execution
-**Severity:** warning
 **Timestamp:** {TIMESTAMP}
-**Environment:** production
 
 ### Alert Data
 ```json
@@ -1224,9 +1206,7 @@ Question: Analyze this test-parallel-regular-execution alert and provide actiona
 
 ### Alert Metadata
 **Alert Type:** test-parallel-regular-execution
-**Severity:** warning
 **Timestamp:** {TIMESTAMP}
-**Environment:** production
 
 ### Alert Data
 ```json
@@ -1356,9 +1336,7 @@ Please provide detailed, actionable insights about what's happening and potentia
 
 ### Alert Metadata
 **Alert Type:** test-parallel-regular-execution
-**Severity:** warning
 **Timestamp:** {TIMESTAMP}
-**Environment:** production
 
 ### Alert Data
 ```json
@@ -1566,8 +1544,6 @@ Focus on answering follow-up questions about a completed investigation for human
             "content": """# Investigation History
 
 **Alert Type:** test-parallel-execution
-**Environment:** production
-**Severity:** warning
 
 **Alert Data:**
 ```json
@@ -1714,8 +1690,6 @@ Focus on answering follow-up questions about a completed investigation for human
             "content": """# Investigation History
 
 **Alert Type:** test-parallel-execution
-**Environment:** production
-**Severity:** warning
 
 **Alert Data:**
 ```json
