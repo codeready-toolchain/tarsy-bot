@@ -452,7 +452,9 @@ class TestStageExecutionEventHook:
                     chat_id=None,
                     chat_user_message_id=None,
                     chat_user_message_content=None,
-                    chat_user_message_author=None
+                    chat_user_message_author=None,
+                    parallel_type="single",
+                    expected_parallel_count=None
                 )
                 mock_completed.assert_not_called()
     
@@ -508,7 +510,9 @@ class TestStageExecutionEventHook:
                         chat_id="chat-123",
                         chat_user_message_id="msg-456",
                         chat_user_message_content="What's causing the pod crash?",
-                        chat_user_message_author="alice"
+                        chat_user_message_author="alice",
+                        parallel_type="single",
+                        expected_parallel_count=None
                     )
                     mock_completed.assert_not_called()
     

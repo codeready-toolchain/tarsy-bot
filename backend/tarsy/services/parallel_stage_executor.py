@@ -632,10 +632,13 @@ class ParallelStageExecutor:
                 agent.set_current_stage_execution_id(child_execution_id)
                 
                 # Set parallel execution metadata for streaming events
+                from tarsy.models.parallel_metadata import ParallelExecutionMetadata
                 agent.set_parallel_execution_metadata(
-                    parent_stage_execution_id=parent_execution_id,
-                    parallel_index=idx + 1,  # 1-indexed for display
-                    agent_name=agent_name
+                    ParallelExecutionMetadata(
+                        parent_stage_execution_id=parent_execution_id,
+                        parallel_index=idx + 1,  # 1-indexed for display
+                        agent_name=agent_name
+                    )
                 )
                 
                 # Execute agent with timeout protection
