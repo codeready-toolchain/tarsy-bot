@@ -74,7 +74,7 @@ class Settings(BaseSettings):
     
     # Alert Processing Configuration
     max_llm_mcp_iterations: int = Field(
-        default=2,
+        default=30,
         description="Maximum number of LLM->MCP iterative loops for multi-step runbook processing"
     )
     
