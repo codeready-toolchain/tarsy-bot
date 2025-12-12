@@ -1496,7 +1496,11 @@ Answer the following question using the available tools.
 
 Available tools:
 
-No tools available.
+1. **kubernetes-server.kubectl_get**: Get Kubernetes resources
+    **Parameters**: None
+
+2. **kubernetes-server.get_logs**: Get pod logs
+    **Parameters**: None
 
 Question: Analyze this test-parallel-execution alert and provide actionable recommendations.
 
@@ -1666,7 +1670,11 @@ Answer the following question using the available tools.
 
 Available tools:
 
-No tools available.
+1. **kubernetes-server.kubectl_get**: Get Kubernetes resources
+    **Parameters**: None
+
+2. **kubernetes-server.get_logs**: Get pod logs
+    **Parameters**: None
 
 Question: Analyze this test-parallel-execution alert and provide actionable recommendations.
 

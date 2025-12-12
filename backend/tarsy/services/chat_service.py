@@ -583,6 +583,42 @@ class ChatService:
             captured_at_us=now_us()
         )
     
+    def _collect_agent_mcp_servers(self, agent_name: str) -> List[str]:
+        """
+        Collect MCP server names for a given agent.
+        
+        Checks both configured agents (from YAML) and builtin agents.
+        
+        Args:
+            agent_name: Agent identifier (e.g., 'KubernetesAgent', 'ArgoCDAgent')
+            
+        Returns:
+            List of MCP server names (may be empty)
+        """
+        servers = []
+        
+        # Try configured agents first, then builtin agents
+        if self.agent_factory.agent_configs and agent_name in self.agent_factory.agent_configs:
+            agent_config = self.agent_factory.agent_configs[agent_name]
+            servers = agent_config.mcp_servers
+            logger.debug(f"Got MCP servers from configured agent {agent_name}: {servers}")
+        else:
+            # Builtin agent - get MCP servers by calling the classmethod
+            try:
+                # Get the agent class from the factory's registry
+                agent_class = self.agent_factory.static_agent_classes.get(agent_name)
+                if agent_class:
+                    # Call mcp_servers() as a classmethod (no instantiation needed)
+                    if hasattr(agent_class, 'mcp_servers'):
+                        mcp_server_list = agent_class.mcp_servers()
+                        if mcp_server_list:  # Guard against None
+                            servers = mcp_server_list
+                            logger.debug(f"Got MCP servers from builtin agent {agent_name}: {servers}")
+            except Exception as e:
+                logger.warning(f"Failed to get MCP servers from builtin agent '{agent_name}': {e}")
+        
+        return servers
+    
     def _determine_mcp_selection_from_session(
         self,
         session: 'AlertSession'
@@ -603,6 +639,11 @@ class ChatService:
            → Extract default servers from chain_definition.stages
            → Look up each agent's default mcp_servers from configuration
            → Build MCPSelectionConfig from those defaults (no tool filtering)
+        
+        This method correctly handles:
+        - Sequential stages (stage.agent)
+        - Parallel stages (stage.agents)
+        - Synthesis agents (stage.synthesis.agent)
         
         Args:
             session: AlertSession object
@@ -626,29 +667,24 @@ class ChatService:
         server_names = set()
         
         for stage in chain_config.stages:
-            agent_name = stage.agent
-            if not agent_name:
-                continue
+            # Handle sequential stages (single agent)
+            if stage.agent:
+                agent_name = stage.agent
+                servers = self._collect_agent_mcp_servers(agent_name)
+                server_names.update(servers)
             
-            # Look up agent's default MCP servers from configuration
-            # Try configured agents first, then builtin agents
-            if self.agent_factory.agent_configs and agent_name in self.agent_factory.agent_configs:
-                agent_config = self.agent_factory.agent_configs[agent_name]
-                server_names.update(agent_config.mcp_servers)
-            else:
-                # Builtin agent - get MCP servers by calling the classmethod
-                try:
-                    # Get the agent class from the factory's registry
-                    agent_class = self.agent_factory.static_agent_classes.get(agent_name)
-                    if agent_class:
-                        # Call mcp_servers() as a classmethod (no instantiation needed)
-                        if hasattr(agent_class, 'mcp_servers'):
-                            mcp_server_list = agent_class.mcp_servers()
-                            if mcp_server_list:  # Guard against None
-                                server_names.update(mcp_server_list)
-                                logger.debug(f"Got MCP servers from builtin agent {agent_name}: {mcp_server_list}")
-                except Exception as e:
-                    logger.warning(f"Failed to get MCP servers from builtin agent '{agent_name}': {e}")
+            # Handle parallel stages (multiple agents)
+            elif stage.agents:
+                for parallel_agent_config in stage.agents:
+                    agent_name = parallel_agent_config.name
+                    servers = self._collect_agent_mcp_servers(agent_name)
+                    server_names.update(servers)
+            
+            # Handle synthesis agent (if configured)
+            if stage.synthesis and stage.synthesis.agent:
+                agent_name = stage.synthesis.agent
+                servers = self._collect_agent_mcp_servers(agent_name)
+                server_names.update(servers)
         
         if not server_names:
             logger.warning(f"No MCP servers found in chain definition for session {session.session_id}")

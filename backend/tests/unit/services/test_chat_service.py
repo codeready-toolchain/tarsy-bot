@@ -35,7 +35,10 @@ class TestChatService:
     @pytest.fixture
     def mock_agent_factory(self):
         """Mock agent factory for testing."""
-        return Mock()
+        mock = Mock()
+        mock.agent_configs = {}
+        mock.static_agent_classes = {}
+        return mock
     
     @pytest.fixture
     def mock_mcp_client_factory(self):
@@ -47,8 +50,6 @@ class TestChatService:
     @pytest.fixture
     def chat_service(self, mock_history_service, mock_agent_factory, mock_mcp_client_factory):
         """Create ChatService with mocked dependencies."""
-        # Mock agent_configs as dict (not Mock) for iteration
-        mock_agent_factory.agent_configs = {}
         return ChatService(
             history_service=mock_history_service,
             agent_factory=mock_agent_factory,
@@ -254,6 +255,89 @@ class TestChatService:
         assert result is not None
         server_names = {s.name for s in result.servers}
         assert server_names == {"kubectl", "prometheus", "postgres"}
+        # No tool filtering for defaults
+        assert all(s.tools is None for s in result.servers)
+    
+    def test_determine_mcp_selection_from_parallel_agents(
+        self, chat_service, mock_agent_factory, sample_session
+    ):
+        """Test MCP selection correctly collects servers from parallel stages."""
+        sample_session.mcp_selection = None
+        sample_session.chain_definition = {
+            "chain_id": "test-parallel-chain",
+            "alert_types": ["TestAlert"],
+            "stages": [
+                {
+                    "name": "investigation",
+                    "agents": [
+                        {"name": "KubernetesAgent"},
+                        {"name": "LogAgent"}
+                    ],
+                    "failure_policy": "all"
+                }
+            ]
+        }
+        # Update the mock chain_config property
+        from tarsy.models.agent_config import ChainConfigModel
+        sample_session.chain_config = ChainConfigModel(**sample_session.chain_definition)
+        
+        # Mock agent configs
+        mock_agent_factory.agent_configs = {
+            "KubernetesAgent": Mock(mcp_servers=["kubernetes-server"]),
+            "LogAgent": Mock(mcp_servers=["kubernetes-server", "log-server"])
+        }
+        
+        with patch("tarsy.config.builtin_config.get_builtin_agent_config", return_value=None):
+            result = chat_service._determine_mcp_selection_from_session(sample_session)
+        
+        assert result is not None
+        server_names = {s.name for s in result.servers}
+        # Should deduplicate kubernetes-server (appears in both agents)
+        assert server_names == {"kubernetes-server", "log-server"}
+        # No tool filtering for defaults
+        assert all(s.tools is None for s in result.servers)
+    
+    def test_determine_mcp_selection_from_mixed_sequential_and_parallel(
+        self, chat_service, mock_agent_factory, sample_session
+    ):
+        """Test MCP selection handles chains with both sequential and parallel stages."""
+        sample_session.mcp_selection = None
+        sample_session.chain_definition = {
+            "chain_id": "test-mixed-chain",
+            "alert_types": ["TestAlert"],
+            "stages": [
+                {
+                    "name": "parallel-investigation",
+                    "agents": [
+                        {"name": "KubernetesAgent"},
+                        {"name": "LogAgent"}
+                    ],
+                    "failure_policy": "all"
+                },
+                {
+                    "name": "sequential-action",
+                    "agent": "DatabaseAgent"
+                }
+            ]
+        }
+        # Update the mock chain_config property
+        from tarsy.models.agent_config import ChainConfigModel
+        sample_session.chain_config = ChainConfigModel(**sample_session.chain_definition)
+        
+        # Mock agent configs
+        mock_agent_factory.agent_configs = {
+            "KubernetesAgent": Mock(mcp_servers=["kubernetes-server"]),
+            "LogAgent": Mock(mcp_servers=["log-server"]),
+            "DatabaseAgent": Mock(mcp_servers=["postgres"])
+        }
+        
+        with patch("tarsy.config.builtin_config.get_builtin_agent_config", return_value=None):
+            result = chat_service._determine_mcp_selection_from_session(sample_session)
+        
+        assert result is not None
+        server_names = {s.name for s in result.servers}
+        # Should collect from both parallel and sequential stages
+        assert server_names == {"kubernetes-server", "log-server", "postgres"}
         # No tool filtering for defaults
         assert all(s.tools is None for s in result.servers)
     
