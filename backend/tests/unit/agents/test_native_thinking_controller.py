@@ -85,7 +85,7 @@ class TestNativeThinkingController:
         """Create mock prompt builder."""
         builder = Mock()
         builder.get_native_thinking_system_message.return_value = (
-            "You are an SRE agent analyzing incidents."
+            "Test agent instructions.\n\nFocus on investigation and providing recommendations."
         )
         builder.build_native_thinking_prompt.return_value = (
             "Analyze this alert and provide recommendations."

@@ -54,14 +54,6 @@ For Kubernetes operations:
 You are a Kubernetes specialist analyzing pod health and resource issues.
 Focus on pod status, events, and resource constraints.
 
-You are an SRE agent analyzing incidents. Use the available tools to investigate and provide actionable recommendations.
-
-When you have gathered sufficient information, provide your final analysis with:
-1. Root cause analysis
-2. Current system state assessment
-3. Specific remediation steps for human operators
-4. Prevention recommendations
-
 Focus on investigation and providing recommendations for human operators to execute."""
         },
         {
@@ -453,14 +445,6 @@ For Kubernetes operations:
 You are a Kubernetes specialist analyzing pod health and resource issues.
 Focus on pod status, events, and resource constraints.
 
-You are an SRE agent analyzing incidents. Use the available tools to investigate and provide actionable recommendations.
-
-When you have gathered sufficient information, provide your final analysis with:
-1. Root cause analysis
-2. Current system state assessment
-3. Specific remediation steps for human operators
-4. Prevention recommendations
-
 Focus on investigation and providing recommendations for human operators to execute."""
         },
         {
@@ -554,14 +538,6 @@ For Kubernetes operations:
 You are a Kubernetes specialist analyzing pod health and resource issues.
 Focus on pod status, events, and resource constraints.
 
-You are an SRE agent analyzing incidents. Use the available tools to investigate and provide actionable recommendations.
-
-When you have gathered sufficient information, provide your final analysis with:
-1. Root cause analysis
-2. Current system state assessment
-3. Specific remediation steps for human operators
-4. Prevention recommendations
-
 Focus on investigation and providing recommendations for human operators to execute."""
         },
         {
@@ -654,14 +630,6 @@ For Kubernetes operations:
 
 You are a Kubernetes specialist analyzing pod health and resource issues.
 Focus on pod status, events, and resource constraints.
-
-You are an SRE agent analyzing incidents. Use the available tools to investigate and provide actionable recommendations.
-
-When you have gathered sufficient information, provide your final analysis with:
-1. Root cause analysis
-2. Current system state assessment
-3. Specific remediation steps for human operators
-4. Prevention recommendations
 
 Focus on investigation and providing recommendations for human operators to execute."""
         },
@@ -888,14 +856,6 @@ For Kubernetes operations:
 
 You are a Kubernetes specialist analyzing pod health and resource issues.
 Focus on pod status, events, and resource constraints.
-
-You are an SRE agent analyzing incidents. Use the available tools to investigate and provide actionable recommendations.
-
-When you have gathered sufficient information, provide your final analysis with:
-1. Root cause analysis
-2. Current system state assessment
-3. Specific remediation steps for human operators
-4. Prevention recommendations
 
 Focus on investigation and providing recommendations for human operators to execute."""
         },
@@ -1427,14 +1387,6 @@ You have access to the same tools and systems that were used in the original inv
 4. **Specificity**: Always reference actual data and observations, not assumptions
 5. **Brevity**: Be concise but complete - users have already read the full investigation
 
-You are an SRE agent analyzing incidents. Use the available tools to investigate and provide actionable recommendations.
-
-When you have gathered sufficient information, provide your final analysis with:
-1. Root cause analysis
-2. Current system state assessment
-3. Specific remediation steps for human operators
-4. Prevention recommendations
-
 Focus on answering follow-up questions about a completed investigation for human operators to execute."""
         },
         {
@@ -1582,14 +1534,6 @@ You have access to the same tools and systems that were used in the original inv
 3. **Clarity**: If the question is ambiguous or unclear, ask for clarification in your Final Answer
 4. **Specificity**: Always reference actual data and observations, not assumptions
 5. **Brevity**: Be concise but complete - users have already read the full investigation
-
-You are an SRE agent analyzing incidents. Use the available tools to investigate and provide actionable recommendations.
-
-When you have gathered sufficient information, provide your final analysis with:
-1. Root cause analysis
-2. Current system state assessment
-3. Specific remediation steps for human operators
-4. Prevention recommendations
 
 Focus on answering follow-up questions about a completed investigation for human operators to execute."""
         },

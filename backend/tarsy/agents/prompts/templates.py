@@ -235,14 +235,6 @@ CRITICAL INSTRUCTION: You MUST return ONLY plain text. DO NOT include "Final Ans
 # Native Thinking System Message Template
 NATIVE_THINKING_SYSTEM_TEMPLATE = PromptTemplate.from_template("""{composed_instructions}
 
-You are an SRE agent analyzing incidents. Use the available tools to investigate and provide actionable recommendations.
-
-When you have gathered sufficient information, provide your final analysis with:
-1. Root cause analysis
-2. Current system state assessment
-3. Specific remediation steps for human operators
-4. Prevention recommendations
-
 Focus on {task_focus} for human operators to execute.""")
 
 
