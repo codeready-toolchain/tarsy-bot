@@ -79,7 +79,7 @@ class SynthesisNativeThinkingController(NativeThinkingController):
         native_tools_override = self._get_native_tools_override(context)
         
         # Get Gemini native thinking client (from parent class method)
-        client = self._get_native_thinking_client(agent.get_llm_provider())
+        client = self._get_native_client()
         
         # Single LLM call with native thinking for synthesis
         try:
@@ -107,6 +107,10 @@ class SynthesisNativeThinkingController(NativeThinkingController):
                 analysis = response.content
             else:
                 analysis = str(response)
+            
+            # Add assistant response to conversation for complete history
+            assistant_message = LLMMessage(role="assistant", content=analysis)
+            conversation.messages.append(assistant_message)
             
             # Store conversation for investigation_history
             self._last_conversation = conversation
