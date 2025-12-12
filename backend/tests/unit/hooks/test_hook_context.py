@@ -567,7 +567,7 @@ class TestLLMInteractionTruncation:
         assert result.conversation is small_conversation
         
         # Verify no messages were modified
-        for original_msg, result_msg in zip(small_conversation.messages, result.conversation.messages):
+        for original_msg, result_msg in zip(small_conversation.messages, result.conversation.messages, strict=True):
             assert original_msg.content == result_msg.content
     
     def test_large_user_message_gets_truncated(self, large_user_message_conversation):
@@ -662,7 +662,7 @@ class TestLLMInteractionTruncation:
         assert len(result.conversation.messages) == len(large_user_message_conversation.messages)
         
         # Check message roles are preserved
-        for original_msg, truncated_msg in zip(large_user_message_conversation.messages, result.conversation.messages):
+        for original_msg, truncated_msg in zip(large_user_message_conversation.messages, result.conversation.messages, strict=True):
             assert original_msg.role == truncated_msg.role
     
     def test_truncation_metadata_format(self, large_user_message_conversation):

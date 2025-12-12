@@ -13,6 +13,7 @@ Architecture:
 - MOCKED: HTTP requests to LLM APIs, MCP servers, GitHub runbooks
 """
 
+import contextlib
 import logging
 from typing import Any
 from unittest.mock import patch
@@ -169,10 +170,8 @@ class TestParallelReplicaE2E(ParallelTestBase):
                 # Extract replica number from agent name (e.g., "KubernetesAgent-1" → 1)
                 replica_num = 1
                 if '-' in agent_name:
-                    try:
+                    with contextlib.suppress(ValueError):
                         replica_num = int(agent_name.split('-')[-1])
-                    except ValueError:
-                        pass
                 
                 # Build response key
                 response_key = f"replica-{replica_num}-call-{call_num_for_agent}"
@@ -319,32 +318,33 @@ All three replicas converged on consistent findings with increasing detail. Repl
             return execution_id
         
         # Patch LLM clients (both Gemini SDK and LangChain)
-        with self._create_llm_patch_context(gemini_mock_factory, streaming_mock), \
-             patch("tarsy.integrations.llm.gemini_client.llm_interaction_context", patched_llm_context), \
-             patch.object(StageExecutionManager, 'create_stage_execution', patched_create_stage):
+        with (
+            self._create_llm_patch_context(gemini_mock_factory, streaming_mock),
+            patch("tarsy.integrations.llm.gemini_client.llm_interaction_context", patched_llm_context),
+            patch.object(StageExecutionManager, 'create_stage_execution', patched_create_stage),
+            patch('tarsy.integrations.mcp.client.MCPClient.list_tools', mock_list_tools),
+            patch('tarsy.integrations.mcp.client.MCPClient.call_tool', mock_call_tool),
+            E2ETestUtils.setup_runbook_service_patching("# Test Runbook\nThis is a test runbook for replica execution testing."),
+        ):
+            # Create conversation map for verification
+            conversation_map = {
+                "analysis": {
+                    "KubernetesAgent-1": EXPECTED_REPLICA_1_CONVERSATION,
+                    "KubernetesAgent-2": EXPECTED_REPLICA_2_CONVERSATION,
+                    "KubernetesAgent-3": EXPECTED_REPLICA_3_CONVERSATION
+                },
+                "synthesis": EXPECTED_REPLICA_SYNTHESIS_CONVERSATION
+            }
             
-            with patch('tarsy.integrations.mcp.client.MCPClient.list_tools', mock_list_tools):
-                with patch('tarsy.integrations.mcp.client.MCPClient.call_tool', mock_call_tool):
-                    with E2ETestUtils.setup_runbook_service_patching("# Test Runbook\nThis is a test runbook for replica execution testing."):
-                        # Create conversation map for verification
-                        conversation_map = {
-                            "analysis": {
-                                "KubernetesAgent-1": EXPECTED_REPLICA_1_CONVERSATION,
-                                "KubernetesAgent-2": EXPECTED_REPLICA_2_CONVERSATION,
-                                "KubernetesAgent-3": EXPECTED_REPLICA_3_CONVERSATION
-                            },
-                            "synthesis": EXPECTED_REPLICA_SYNTHESIS_CONVERSATION
-                        }
-                        
-                        # Execute standard test flow
-                        detail_data = await self._execute_test_flow(
-                            test_client, alert_data,
-                            expected_chain_id="replica-parallel-chain",
-                            expected_stages_spec=EXPECTED_REPLICA_STAGES,
-                            conversation_map=conversation_map,
-                            max_wait_seconds=20
-                        )
-                        
-                        print("✅ Replica parallel test passed!")
-                        return detail_data
+            # Execute standard test flow
+            detail_data = await self._execute_test_flow(
+                test_client, alert_data,
+                expected_chain_id="replica-parallel-chain",
+                expected_stages_spec=EXPECTED_REPLICA_STAGES,
+                conversation_map=conversation_map,
+                max_wait_seconds=20
+            )
+            
+            print("✅ Replica parallel test passed!")
+            return detail_data
 

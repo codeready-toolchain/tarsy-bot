@@ -156,7 +156,7 @@ class ParallelTestBase:
             f"Stage count mismatch: expected {len(expected_stage_names)}, got {len(stages)}"
         )
         
-        for expected_name, actual_name in zip(expected_stage_names, actual_stage_names):
+        for expected_name, actual_name in zip(expected_stage_names, actual_stage_names, strict=True):
             assert actual_name == expected_name, (
                 f"Stage name mismatch: expected '{expected_name}', got '{actual_name}'"
             )

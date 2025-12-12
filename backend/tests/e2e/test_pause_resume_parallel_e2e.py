@@ -14,6 +14,7 @@ Architecture:
 - DETERMINISTIC: Mock responses provide predictable pause/complete behavior
 """
 
+import asyncio
 import logging
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -258,7 +259,20 @@ Pod is failing due to database connectivity issues. The pod attempts to connect 
                         assert paused_session_id == session_id
                         assert paused_status == "paused", f"Expected 'paused', got '{paused_status}'"
                         
-                        # Get session details
+                        # Wait for parallel execution statuses to settle
+                        parallel_stage = await E2ETestUtils.wait_for_parallel_execution_statuses(
+                            test_client,
+                            session_id,
+                            stage_name="investigation",
+                            expected_statuses={
+                                "KubernetesAgent": "paused",
+                                "LogAgent": "completed"
+                            },
+                            max_wait_seconds=5.0,
+                            poll_interval=0.1
+                        )
+                        
+                        # Get full session details for metadata verification
                         detail_data = await E2ETestUtils.get_session_details_async(test_client, session_id)
                         
                         # Verify pause metadata
@@ -267,16 +281,15 @@ Pod is failing due to database connectivity issues. The pod attempts to connect 
                         assert pause_metadata.get("reason") == "max_iterations_reached"
                         print(f"✅ Session paused: {pause_metadata}")
                         
-                        # Verify parallel stage structure
+                        # Verify parallel stage structure (already verified by wait_for_parallel_execution_statuses)
                         stages = detail_data.get("stages", [])
                         assert len(stages) == 1, f"Expected 1 stage, got {len(stages)}"
                         
-                        parallel_stage = stages[0]
                         assert parallel_stage["stage_name"] == "investigation"
                         assert parallel_stage["status"] == "paused"
                         assert parallel_stage["parallel_type"] == "multi_agent"
                         
-                        # Verify child executions
+                        # Get child executions (already verified by wait_for_parallel_execution_statuses)
                         parallel_executions = parallel_stage.get("parallel_executions")
                         assert parallel_executions is not None
                         assert len(parallel_executions) == 2, f"Expected 2 agents, got {len(parallel_executions)}"
@@ -288,7 +301,7 @@ Pod is failing due to database connectivity issues. The pod attempts to connect 
                         assert k8s_exec is not None, "KubernetesAgent execution not found"
                         assert log_exec is not None, "LogAgent execution not found"
                         
-                        # Verify statuses
+                        # Statuses already verified by wait_for_parallel_execution_statuses
                         assert k8s_exec["status"] == "paused", f"Kubernetes should be paused, got {k8s_exec['status']}"
                         assert log_exec["status"] == "completed", f"Log should be completed, got {log_exec['status']}"
                         
@@ -332,6 +345,19 @@ Pod is failing due to database connectivity issues. The pod attempts to connect 
                         
                         assert final_status == "completed", f"Expected 'completed', got '{final_status}'"
                         
+                        # Wait for parallel execution statuses to settle after resume (handles race condition)
+                        investigation_stage = await E2ETestUtils.wait_for_parallel_execution_statuses(
+                            test_client,
+                            session_id,
+                            stage_name="investigation",
+                            expected_statuses={
+                                "KubernetesAgent": "completed",
+                                "LogAgent": "completed"
+                            },
+                            max_wait_seconds=10.0,
+                            poll_interval=0.1
+                        )
+                        
                         # Get final session details
                         final_detail = await E2ETestUtils.get_session_details_async(test_client, session_id)
                         
@@ -343,7 +369,7 @@ Pod is failing due to database connectivity issues. The pod attempts to connect 
                         # Should have: investigation (parallel, completed) + synthesis (auto-synthesis)
                         assert len(final_stages) == 2, f"Expected 2 stages (investigation + synthesis), got {len(final_stages)}"
                         
-                        investigation_stage = final_stages[0]
+                        # Investigation stage already retrieved by wait_for_parallel_execution_statuses
                         synthesis_stage = final_stages[1]
                         
                         assert investigation_stage["stage_name"] == "investigation"
@@ -351,13 +377,14 @@ Pod is failing due to database connectivity issues. The pod attempts to connect 
                         assert synthesis_stage["stage_name"] == "synthesis"
                         assert synthesis_stage["status"] == "completed"
                         
-                        # Verify investigation stage has both agents' results
+                        # Verify investigation stage has both agents' results (already verified by wait_for_parallel_execution_statuses)
                         inv_parallel_execs = investigation_stage.get("parallel_executions", [])
                         assert len(inv_parallel_execs) == 2
                         
                         final_k8s_exec = next((e for e in inv_parallel_execs if e["agent"] == "KubernetesAgent"), None)
                         final_log_exec = next((e for e in inv_parallel_execs if e["agent"] == "LogAgent"), None)
                         
+                        # Statuses already verified by wait_for_parallel_execution_statuses
                         assert final_k8s_exec["status"] == "completed", "Kubernetes should be completed after resume"
                         assert final_log_exec["status"] == "completed", "Log should still be completed"
                         

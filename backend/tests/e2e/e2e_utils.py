@@ -453,6 +453,128 @@ class E2ETestUtils:
         raise AssertionError(f"Failed to get session details after {max_retries} attempts")
 
     @staticmethod
+    async def wait_for_parallel_execution_statuses(
+        e2e_test_client,
+        session_id: str,
+        stage_name: str,
+        expected_statuses: dict[str, str],
+        max_wait_seconds: float = 10.0,
+        poll_interval: float = 0.1
+    ) -> dict[str, Any]:
+        """
+        Wait for parallel execution statuses to match expected values.
+        
+        This helps avoid race conditions where session status updates before
+        child parallel execution statuses are committed to the database.
+        
+        Args:
+            e2e_test_client: Test client for making API calls
+            session_id: The session ID to check
+            stage_name: Name of the parallel stage to check
+            expected_statuses: Dict mapping agent names to expected statuses (e.g., {"LogAgent": "completed"})
+            max_wait_seconds: Maximum time to wait for statuses to match
+            poll_interval: Time between polling attempts
+            
+        Returns:
+            stage_data: The stage data once statuses match
+            
+        Raises:
+            AssertionError: If statuses don't match within timeout
+        """
+        import asyncio
+        start_time = asyncio.get_event_loop().time()
+        attempt = 0
+        
+        while True:
+            attempt += 1
+            elapsed = asyncio.get_event_loop().time() - start_time
+            
+            # Get current session details
+            detail_data = await E2ETestUtils.get_session_details_async(e2e_test_client, session_id)
+            stages = detail_data.get("stages", [])
+            
+            # Find the target stage
+            target_stage = next((s for s in stages if s["stage_name"] == stage_name), None)
+            if target_stage is None:
+                if elapsed >= max_wait_seconds:
+                    raise AssertionError(f"Stage '{stage_name}' not found after {max_wait_seconds}s")
+                await asyncio.sleep(poll_interval)
+                continue
+            
+            # Check parallel executions
+            parallel_executions = target_stage.get("parallel_executions", [])
+            if not parallel_executions:
+                if elapsed >= max_wait_seconds:
+                    raise AssertionError(f"No parallel executions found for stage '{stage_name}' after {max_wait_seconds}s")
+                await asyncio.sleep(poll_interval)
+                continue
+            
+            # First check if all expected agents are present
+            all_agents_present = True
+            current_statuses = {}
+            for agent_name, expected_status in expected_statuses.items():
+                agent_exec = next((e for e in parallel_executions if e.get("agent") == agent_name), None)
+                if agent_exec is None:
+                    all_agents_present = False
+                    current_statuses[agent_name] = "NOT_FOUND"
+                else:
+                    current_statuses[agent_name] = agent_exec.get("status")
+            
+            # If not all agents present yet, wait and retry (unless timeout)
+            if not all_agents_present:
+                if elapsed >= max_wait_seconds:
+                    raise AssertionError(
+                        f"Not all expected agents found after {max_wait_seconds}s:\n"
+                        f"Expected agents: {list(expected_statuses.keys())}\n"
+                        f"Current statuses: {current_statuses}"
+                    )
+                await asyncio.sleep(poll_interval)
+                continue
+            
+            # Check if all statuses match
+            all_match = True
+            for agent_name, expected_status in expected_statuses.items():
+                actual_status = current_statuses[agent_name]
+                if actual_status != expected_status:
+                    all_match = False
+                    break
+            
+            if all_match:
+                print(f"✅ Parallel execution statuses verified after {elapsed:.2f}s (attempt {attempt})")
+                return target_stage
+            
+            # Log mismatches every 10 attempts to help diagnose issues
+            if attempt % 10 == 0:
+                print(f"🔄 Still waiting for status match (attempt {attempt}, {elapsed:.2f}s): Expected {expected_statuses}, Got {current_statuses}")
+            
+            # Check timeout
+            if elapsed >= max_wait_seconds:
+                # Get fresh data for better error message
+                final_detail = await E2ETestUtils.get_session_details_async(e2e_test_client, session_id)
+                final_stages = final_detail.get("stages", [])
+                final_stage = next((s for s in final_stages if s["stage_name"] == stage_name), None)
+                
+                error_msg = (
+                    f"Parallel execution statuses did not match after {max_wait_seconds}s:\n"
+                    f"Expected: {expected_statuses}\n"
+                    f"Got: {current_statuses}\n"
+                    f"Session status: {final_detail.get('status')}\n"
+                    f"Stage status: {final_stage.get('status') if final_stage else 'NOT_FOUND'}"
+                )
+                
+                # Include LLM interaction counts for debugging
+                if final_stage and final_stage.get("parallel_executions"):
+                    error_msg += "\nParallel execution details:"
+                    for exec in final_stage["parallel_executions"]:
+                        llm_count = len(exec.get("llm_interactions", []))
+                        error_msg += f"\n  - {exec.get('agent')}: status={exec.get('status')}, llm_interactions={llm_count}"
+                
+                raise AssertionError(error_msg)
+            
+            # Wait before next poll
+            await asyncio.sleep(poll_interval)
+
+    @staticmethod
     def get_session_details(e2e_test_client, session_id: str, max_retries: int = 1, retry_delay: float = 0.5) -> Dict[str, Any]:
         """
         Get session details with optional retry logic for robustness (sync version).

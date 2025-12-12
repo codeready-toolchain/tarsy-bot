@@ -236,9 +236,12 @@ class ParallelStageExecutor:
                 parallel_index=idx + 1,  # 1-based indexing for children
                 parallel_type=parallel_type,
             )
-            # Fire-and-forget the status update to avoid SQLite write serialization
-            # This prevents parallel agents from blocking each other on database writes
-            asyncio.create_task(self.stage_manager.update_stage_execution_started(child_execution_id))
+            # IMPORTANT: Await the status update to ensure proper state ordering.
+            # Previously used fire-and-forget which caused race conditions where the
+            # 'started' update could commit AFTER the 'completed' update, leaving
+            # the status stuck at 'active'. The slight serialization delay is
+            # acceptable for correctness. See EP-0XXX for details.
+            await self.stage_manager.update_stage_execution_started(child_execution_id)
             
             try:
                 logger.debug(f"Executing {parallel_type} {idx+1}/{len(execution_configs)}: '{agent_name}'")
@@ -650,7 +653,11 @@ class ParallelStageExecutor:
             child_execution_id = paused_child.execution_id
             
             # Update the existing child stage to ACTIVE (from PAUSED)
-            asyncio.create_task(self.stage_manager.update_stage_execution_started(child_execution_id))
+            # IMPORTANT: Await the status update to ensure proper state ordering.
+            # Previously used fire-and-forget which caused race conditions where the
+            # 'started' update could commit AFTER the 'completed' update, leaving
+            # the status stuck at 'active'. See EP-0XXX for details.
+            await self.stage_manager.update_stage_execution_started(child_execution_id)
             
             try:
                 logger.debug(f"Resuming paused agent {idx+1}/{len(execution_configs)}: '{agent_name}'")
