@@ -506,6 +506,39 @@ agent_chains:
           # agent and llm_provider inherit defaults
     description: "Replicated analysis with Gemini native thinking synthesis"
 
+  # Chat configuration examples
+  # Demonstrates different chat configuration patterns
+  custom-chat-config-chain:
+    alert_types: ["CustomChatExample"]
+    llm_provider: "anthropic-default"  # Chain default
+    chat:
+      enabled: true                         # Optional, defaults to true
+      agent: "ChatAgent"                    # Optional, defaults to ChatAgent
+      iteration_strategy: "native-thinking" # Optional, determined from last stage if not set
+      llm_provider: "google-default"        # Optional, uses chain/system default if not set
+    stages:
+      - name: "investigation"
+        agent: "KubernetesAgent"
+    description: "Chain with custom chat configuration (agent, strategy, provider)"
+
+  chat-disabled-chain:
+    alert_types: ["NoChatExample"]
+    chat:
+      enabled: false  # Explicitly disable chat for this chain
+    stages:
+      - name: "investigation"
+        agent: "database-agent"
+    description: "Chain with chat explicitly disabled"
+
+  default-chat-chain:
+    alert_types: ["DefaultChatExample"]
+    # chat field not specified = enabled with all defaults
+    # (ChatAgent, strategy determined from last stage, chain/system LLM provider)
+    stages:
+      - name: "investigation"
+        agent: "KubernetesAgent"
+    description: "Chain with default chat configuration (enabled, all defaults)"
+
 # =============================================================================
 # CONFIGURATION VALIDATION NOTES
 # =============================================================================

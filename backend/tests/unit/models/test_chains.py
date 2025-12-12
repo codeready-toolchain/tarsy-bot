@@ -230,7 +230,7 @@ class TestChainConfigModel:
                 {'name': 'stage2', 'agent': 'Agent2', 'agents': None, 'replicas': 1, 'failure_policy': FailurePolicy.ALL, 'iteration_strategy': 'react', 'llm_provider': None, 'synthesis': None}
             ],
             'description': 'Test serialization',
-            'chat_enabled': True,
+            'chat': {'enabled': True, 'agent': 'ChatAgent', 'iteration_strategy': None, 'llm_provider': None},
             'llm_provider': None
         }
         
@@ -253,7 +253,7 @@ class TestChainConfigModel:
                 {'name': 'test-stage', 'agent': 'TestAgent', 'agents': None, 'replicas': 1, 'failure_policy': FailurePolicy.ALL, 'iteration_strategy': None, 'llm_provider': None, 'synthesis': None}
             ],
             'description': None,
-            'chat_enabled': True,
+            'chat': {'enabled': True, 'agent': 'ChatAgent', 'iteration_strategy': None, 'llm_provider': None},
             'llm_provider': None
         }
         
@@ -327,7 +327,7 @@ class TestChainConfigModel:
                 {'name': 'stage2', 'agent': 'Agent2', 'agents': None, 'replicas': 1, 'failure_policy': FailurePolicy.ALL, 'iteration_strategy': None, 'llm_provider': None, 'synthesis': None}
             ],
             'description': None,
-            'chat_enabled': True,
+            'chat': {'enabled': True, 'agent': 'ChatAgent', 'iteration_strategy': None, 'llm_provider': None},
             'llm_provider': 'google-default'
         }
         

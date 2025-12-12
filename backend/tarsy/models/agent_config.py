@@ -271,7 +271,7 @@ class SynthesisConfig(BaseModel):
         str_strip_whitespace=True
     )
     
-    agent: str = Field(
+    agent: Optional[str] = Field(
         default="SynthesisAgent",
         description="Agent to use for synthesis (default: SynthesisAgent)"
     )
@@ -282,6 +282,32 @@ class SynthesisConfig(BaseModel):
     llm_provider: Optional[str] = Field(
         None,
         description="Optional LLM provider for synthesis (uses stage/chain/system default if not specified)"
+    )
+
+
+class ChatConfig(BaseModel):
+    """Configuration for chain-level chat behavior."""
+    
+    model_config = ConfigDict(
+        extra='forbid',
+        str_strip_whitespace=True
+    )
+    
+    enabled: bool = Field(
+        default=True,
+        description="Enable/disable chat for this chain"
+    )
+    agent: Optional[str] = Field(
+        default="ChatAgent",
+        description="Agent to use for chat (default: ChatAgent)"
+    )
+    iteration_strategy: Optional[IterationStrategy] = Field(
+        None,
+        description="Iteration strategy for chat (uses determination logic if not specified)"
+    )
+    llm_provider: Optional[str] = Field(
+        None,
+        description="LLM provider for chat (uses chain/system default if not specified)"
     )
 
 
@@ -383,9 +409,9 @@ class ChainConfigModel(BaseModel):
         None,
         description="Optional description of the chain"
     )
-    chat_enabled: bool = Field(
-        default=True,
-        description="Enable follow-up chat for sessions using this chain"
+    chat: Optional[ChatConfig] = Field(
+        default_factory=ChatConfig,
+        description="Chat configuration (missing = enabled with defaults, enabled: false = disabled)"
     )
     llm_provider: Optional[str] = Field(
         None,

@@ -120,10 +120,10 @@ class ChatService:
         
         # Validate chain has chat enabled
         chain_config = session.chain_config
-        if chain_config and not chain_config.chat_enabled:
+        if chain_config and chain_config.chat and not chain_config.chat.enabled:
             raise ValueError(
                 f"Chat is disabled for chain '{chain_config.chain_id}'. "
-                f"Set chat_enabled=true in agents.yaml to enable chat for this chain."
+                f"Set chat.enabled=true in agents.yaml to enable chat for this chain."
             )
         
         # Capture session context from LLM interactions (returns typed dataclass)
@@ -399,9 +399,12 @@ class ChatService:
             logger.info(f"Creating MCP client for chat message {execution_id}")
             chat_mcp_client = await self.mcp_client_factory.create_client()
             
-            # 11. Create ChatAgent with iteration strategy and LLM provider from parent session
+            # 11. Determine chat agent from config
+            chat_agent_name = self._determine_chat_agent_from_session(session)
+            
+            # 12. Create chat agent with iteration strategy and LLM provider from parent session
             chat_agent = self.agent_factory.get_agent(
-                agent_identifier="ChatAgent",
+                agent_identifier=chat_agent_name,
                 mcp_client=chat_mcp_client,
                 iteration_strategy=iteration_strategy,
                 llm_provider=llm_provider
@@ -669,14 +672,20 @@ class ChatService:
         """
         Determine the iteration strategy to use for chat based on the session's chain config.
         
-        Uses the last stage's iteration strategy from the chain configuration,
-        ensuring chat uses the same strategy as the final investigation stage.
+        Uses explicit chat config first, then falls back to the last stage's iteration strategy
+        from the chain configuration.
         
         Strategy resolution:
-        1. Get the last stage from the chain configuration
-        2. If stage has explicit iteration_strategy, use that
-        3. Otherwise, look up the agent's default strategy from configuration
-        4. Fall back to None (ChatAgent will use its default - REACT)
+        1. Explicit chat config iteration_strategy (highest priority)
+        2. Get the last stage from the chain configuration
+        3. If stage has explicit iteration_strategy, use that
+        4. Otherwise, look up the agent's default strategy from configuration
+        5. Translate synthesis strategies to chat-appropriate equivalents
+        6. Fall back to None (ChatAgent will use its default - REACT)
+        
+        Synthesis strategy translation:
+        - "synthesis" → "react" (generic synthesis uses ReAct-style chat)
+        - "synthesis-native-thinking" → "native-thinking" (Gemini synthesis uses Gemini chat)
         
         Args:
             session: AlertSession object with chain_config
@@ -685,44 +694,66 @@ class ChatService:
             Iteration strategy string (e.g., "react", "native-thinking") or None
         """
         chain_config = session.chain_config
-        if not chain_config or not chain_config.stages:
-            logger.debug(f"No chain config or stages for session {session.session_id}, using default strategy")
+        if not chain_config:
+            logger.debug(f"No chain config for session {session.session_id}, using default strategy")
+            return None
+        
+        # Priority 1: Explicit chat config
+        if chain_config.chat and chain_config.chat.iteration_strategy:
+            strategy = chain_config.chat.iteration_strategy.value
+            logger.info(f"Chat using explicit chat config strategy: {strategy}")
+            return strategy
+        
+        # Priority 2: Determine from last stage
+        if not chain_config.stages:
+            logger.debug(f"No stages in chain config for session {session.session_id}, using default strategy")
             return None
         
         # Use the last stage's strategy (most relevant for chat follow-up)
         last_stage = chain_config.stages[-1]
         
+        strategy = None
+        
         # Check if stage has explicit strategy override
         if last_stage.iteration_strategy:
-            logger.info(f"Chat using explicit stage strategy: {last_stage.iteration_strategy}")
-            return last_stage.iteration_strategy
+            strategy = last_stage.iteration_strategy
+            logger.info(f"Chat using explicit stage strategy: {strategy}")
+        else:
+            # Otherwise, look up agent's default strategy
+            agent_name = last_stage.agent
+            if not agent_name:
+                return None
+            
+            # Try configured agents first
+            if self.agent_factory.agent_configs and agent_name in self.agent_factory.agent_configs:
+                agent_config = self.agent_factory.agent_configs[agent_name]
+                if agent_config.iteration_strategy:
+                    strategy = agent_config.iteration_strategy.value
+                    logger.info(f"Chat using configured agent '{agent_name}' default strategy: {strategy}")
+            
+            # Try builtin agents if not found
+            if not strategy:
+                from tarsy.config.builtin_config import get_builtin_agent_config
+                try:
+                    builtin_config = get_builtin_agent_config(agent_name)
+                    strategy = builtin_config.get("iteration_strategy")
+                    if strategy:
+                        logger.info(f"Chat using builtin agent '{agent_name}' default strategy: {strategy}")
+                except ValueError:
+                    pass  # Not a builtin agent
         
-        # Otherwise, look up agent's default strategy
-        agent_name = last_stage.agent
-        if not agent_name:
-            return None
+        # Translate synthesis strategies to chat-appropriate equivalents
+        if strategy == "synthesis":
+            logger.info("Translating synthesis strategy to react for chat")
+            return "react"
+        elif strategy == "synthesis-native-thinking":
+            logger.info("Translating synthesis-native-thinking strategy to native-thinking for chat")
+            return "native-thinking"
         
-        # Try configured agents first
-        if self.agent_factory.agent_configs and agent_name in self.agent_factory.agent_configs:
-            agent_config = self.agent_factory.agent_configs[agent_name]
-            strategy = agent_config.iteration_strategy
-            if strategy:
-                logger.info(f"Chat using configured agent '{agent_name}' default strategy: {strategy.value}")
-                return strategy.value
+        if not strategy:
+            logger.debug(f"No strategy found for agent '{last_stage.agent}', using ChatAgent default")
         
-        # Try builtin agents
-        from tarsy.config.builtin_config import get_builtin_agent_config
-        try:
-            builtin_config = get_builtin_agent_config(agent_name)
-            strategy = builtin_config.get("iteration_strategy")
-            if strategy:
-                logger.info(f"Chat using builtin agent '{agent_name}' default strategy: {strategy}")
-                return strategy
-        except ValueError:
-            pass  # Not a builtin agent
-        
-        logger.debug(f"No strategy found for agent '{agent_name}', using ChatAgent default")
-        return None
+        return strategy
     
     def _determine_llm_provider_from_session(
         self,
@@ -731,8 +762,12 @@ class ChatService:
         """
         Determine the LLM provider to use for chat based on the session's chain config.
         
-        Uses the chain-level provider from the chain configuration. If no chain-level
-        provider is defined, returns None to use the global default.
+        Uses explicit chat config first, then falls back to chain-level provider.
+        
+        Priority:
+        1. Explicit chat config llm_provider (highest priority)
+        2. Chain-level provider
+        3. Global default (None)
         
         Args:
             session: AlertSession object with chain_config
@@ -745,13 +780,41 @@ class ChatService:
             logger.debug(f"No chain config for session {session.session_id}, using default LLM provider")
             return None
         
-        # Use chain-level provider for chat (consistent with executive summary)
+        # Priority 1: Explicit chat config
+        if chain_config.chat and chain_config.chat.llm_provider:
+            logger.info(f"Chat using explicit chat config LLM provider: {chain_config.chat.llm_provider}")
+            return chain_config.chat.llm_provider
+        
+        # Priority 2: Chain-level provider
         if chain_config.llm_provider:
             logger.info(f"Chat using chain-level LLM provider: {chain_config.llm_provider}")
             return chain_config.llm_provider
         
-        logger.debug(f"No chain-level LLM provider for session {session.session_id}, using global default")
+        logger.debug(f"No LLM provider configured for session {session.session_id}, using global default")
         return None
+    
+    def _determine_chat_agent_from_session(
+        self,
+        session: 'AlertSession'
+    ) -> str:
+        """
+        Determine which agent to use for chat based on the session's chain config.
+        
+        Uses explicit chat config agent if provided, otherwise defaults to ChatAgent.
+        
+        Args:
+            session: AlertSession object with chain_config
+            
+        Returns:
+            Agent identifier string (defaults to "ChatAgent")
+        """
+        chain_config = session.chain_config
+        if chain_config and chain_config.chat and chain_config.chat.agent:
+            logger.info(f"Chat using configured agent: {chain_config.chat.agent}")
+            return chain_config.chat.agent
+        
+        # Default to ChatAgent
+        return "ChatAgent"
     
     async def _build_chat_exchanges(
         self,
