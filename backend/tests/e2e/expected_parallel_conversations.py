@@ -331,13 +331,7 @@ Focus on solving the original alert/issue, not on meta-analyzing agent performan
         },
         {
             "role": "user",
-            "content": """Answer the following question using the available tools.
-
-Available tools:
-
-No tools available.
-
-Question: Analyze this test-parallel-execution alert and provide actionable recommendations.
+            "content": """Synthesize the investigation results and provide recommendations.
 
 ## Alert Details
 
@@ -394,15 +388,6 @@ ASSISTANT: Thought: I have analyzed the logs and found the root cause.
 Final Answer: Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity.
 <!-- Analysis Result END -->
 
-
-## Your Task
-Use the available tools to investigate this alert and provide:
-1. Root cause analysis
-2. Current system state assessment  
-3. Specific remediation steps for human operators
-4. Prevention recommendations
-
-Be thorough in your investigation before providing the final answer.
 
 Begin!"""
         },
@@ -769,13 +754,7 @@ Focus on solving the original alert/issue, not on meta-analyzing agent performan
         },
         {
             "role": "user",
-            "content": """Answer the following question using the available tools.
-
-Available tools:
-
-No tools available.
-
-Question: Analyze this test-replica-execution alert and provide actionable recommendations.
+            "content": """Synthesize the investigation results and provide recommendations.
 
 ## Alert Details
 
@@ -840,15 +819,6 @@ USER: Tool Result: kubernetes-server.kubectl_describe:
 ASSISTANT: Image web-app:v2.0.0 not found in container registry. The deployment is referencing a non-existent image version. Recommend verifying the image tag or rolling back to a known-good version.
 <!-- Analysis Result END -->
 
-
-## Your Task
-Use the available tools to investigate this alert and provide:
-1. Root cause analysis
-2. Current system state assessment  
-3. Specific remediation steps for human operators
-4. Prevention recommendations
-
-Be thorough in your investigation before providing the final answer.
 
 Begin!"""
         },
@@ -1194,13 +1164,7 @@ Focus on solving the original alert/issue, not on meta-analyzing agent performan
         },
         {
             "role": "user",
-            "content": """Answer the following question using the available tools.
-
-Available tools:
-
-No tools available.
-
-Question: Analyze this test-parallel-regular-execution alert and provide actionable recommendations.
+            "content": """Synthesize the investigation results and provide recommendations.
 
 ## Alert Details
 
@@ -1257,15 +1221,6 @@ ASSISTANT: Thought: I have analyzed the logs and found the root cause.
 Final Answer: Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity.
 <!-- Analysis Result END -->
 
-
-## Your Task
-Use the available tools to investigate this alert and provide:
-1. Root cause analysis
-2. Current system state assessment  
-3. Specific remediation steps for human operators
-4. Prevention recommendations
-
-Be thorough in your investigation before providing the final answer.
 
 Begin!"""
         },
@@ -1492,17 +1447,7 @@ Focus on answering follow-up questions about a completed investigation for human
 
 ### Initial Investigation Request
 
-Answer the following question using the available tools.
-
-Available tools:
-
-1. **kubernetes-server.kubectl_get**: Get Kubernetes resources
-    **Parameters**: None
-
-2. **kubernetes-server.get_logs**: Get pod logs
-    **Parameters**: None
-
-Question: Analyze this test-parallel-execution alert and provide actionable recommendations.
+Synthesize the investigation results and provide recommendations.
 
 ## Alert Details
 
@@ -1559,15 +1504,6 @@ ASSISTANT: Thought: I have analyzed the logs and found the root cause.
 Final Answer: Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity.
 <!-- Analysis Result END -->
 
-
-## Your Task
-Use the available tools to investigate this alert and provide:
-1. Root cause analysis
-2. Current system state assessment  
-3. Specific remediation steps for human operators
-4. Prevention recommendations
-
-Be thorough in your investigation before providing the final answer.
 
 Begin!
 
@@ -1666,17 +1602,7 @@ Focus on answering follow-up questions about a completed investigation for human
 
 ### Initial Investigation Request
 
-Answer the following question using the available tools.
-
-Available tools:
-
-1. **kubernetes-server.kubectl_get**: Get Kubernetes resources
-    **Parameters**: None
-
-2. **kubernetes-server.get_logs**: Get pod logs
-    **Parameters**: None
-
-Question: Analyze this test-parallel-execution alert and provide actionable recommendations.
+Synthesize the investigation results and provide recommendations.
 
 ## Alert Details
 
@@ -1733,15 +1659,6 @@ ASSISTANT: Thought: I have analyzed the logs and found the root cause.
 Final Answer: Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity.
 <!-- Analysis Result END -->
 
-
-## Your Task
-Use the available tools to investigate this alert and provide:
-1. Root cause analysis
-2. Current system state assessment  
-3. Specific remediation steps for human operators
-4. Prevention recommendations
-
-Be thorough in your investigation before providing the final answer.
 
 Begin!
 
@@ -1811,17 +1728,19 @@ Begin your ReAct reasoning:"""
 }
 
 # Expected interactions structure for chat messages after parallel execution
-# Note: Chat agents reuse tool discovery from the session, so no tool_list calls
+# Note: Chat now has tools from parallel agents (after fix), so includes tool_list discovery
 # Uses Native Thinking format (inherited from synthesis-native-thinking)
 EXPECTED_PARALLEL_CHAT_INTERACTIONS = {
     'message_1': {
         'llm_count': 2,  # Tool call (no assistant msg) + Final answer (Native Thinking)
-        'mcp_count': 1,  # 1 tool_call only (tools already discovered)
+        'mcp_count': 2,  # 1 tool_list discovery + 1 tool_call
         'interactions': [
+            # MCP 1 - Tool list discovery from kubernetes-server
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
             # LLM 1 - Native Thinking tool call - no assistant message added
             # Conversation has 2 messages at this point (system, user)
             {'type': 'llm', 'success': True, 'conversation_index': 2, 'input_tokens': 210, 'output_tokens': 65, 'total_tokens': 275, 'interaction_type': 'investigation'},
-            # MCP 1 - kubectl_get service call
+            # MCP 2 - kubectl_get service call
             {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
             # LLM 2 - Final answer after tool result
             # Conversation now has 4 messages (system, user, user-tool-result, assistant-answer)
@@ -1830,12 +1749,14 @@ EXPECTED_PARALLEL_CHAT_INTERACTIONS = {
     },
     'message_2': {
         'llm_count': 2,  # Tool call (no assistant msg) + Final answer (Native Thinking)
-        'mcp_count': 1,  # 1 tool_call only (tools already discovered)
+        'mcp_count': 2,  # 1 tool_list discovery + 1 tool_call (tool discovery happens per message)
         'interactions': [
+            # MCP 1 - Tool list discovery from kubernetes-server (each message discovers tools)
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
             # LLM 1 - Native Thinking tool call - no assistant message added
             # Conversation has 2 messages (system, user with history including previous chat)
             {'type': 'llm', 'success': True, 'conversation_index': 2, 'input_tokens': 220, 'output_tokens': 70, 'total_tokens': 290, 'interaction_type': 'investigation'},
-            # MCP 1 - kubectl_get pods call
+            # MCP 2 - kubectl_get pods call
             {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
             # LLM 2 - Final answer after tool result
             # Conversation now has 4 messages

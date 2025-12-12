@@ -96,6 +96,16 @@ Question: {question}
 {history_text}Begin!""")
 
 
+# Synthesis Prompt Template (no tools section)
+# Used for synthesis stages which don't use tools - just analyzes and combines results
+# Simple instruction with context (alert + runbook + previous stages)
+SYNTHESIS_PROMPT_TEMPLATE = PromptTemplate.from_template("""Synthesize the investigation results and provide recommendations.
+
+{context}
+
+{history_text}Begin!""")
+
+
 # Analysis Question Template
 ANALYSIS_QUESTION_TEMPLATE = PromptTemplate.from_template("""Analyze this {alert_type} alert and provide actionable recommendations.
 

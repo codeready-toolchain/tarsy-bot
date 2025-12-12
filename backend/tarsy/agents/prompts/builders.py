@@ -28,6 +28,7 @@ from .templates import (
     REACT_SYSTEM_TEMPLATE,
     STAGE_ANALYSIS_QUESTION_TEMPLATE,
     STANDARD_REACT_PROMPT_TEMPLATE,
+    SYNTHESIS_PROMPT_TEMPLATE,
 )
 
 logger = get_module_logger(__name__)
@@ -89,33 +90,32 @@ class PromptBuilder:
         """
         Build synthesis prompt for combining parallel investigation results.
         
-        Similar to ReAct prompt but with no tools available (tool-less synthesis).
+        Simple prompt that just asks for synthesis - all context (alert, runbook,
+        previous results) is in the Previous Stage Data section formatted by StageContext.
         """
         logger.debug("Building synthesis prompt")
-        # Build question components using StageContext properties directly
+        
+        # Build alert and runbook sections
         alert_section = self.alert_component.format(context.chain_context.processing_alert)
         runbook_section = self.runbook_component.format(context.runbook_content)
         
-        # Use StageContext's built-in previous stages formatting
-        # This will include the parallel results
+        # Use StageContext's built-in previous stages formatting (includes parallel results)
         previous_stages_context = context.format_previous_stages_context()
         if previous_stages_context == "No previous stage context available.":
             chain_context = "## Previous Stage Data\nNo previous stage data is available for this alert. This is the first stage of analysis."
         else:
             chain_context = f"## Previous Stage Data\n{previous_stages_context}"
         
-        # Build question
-        question = ANALYSIS_QUESTION_TEMPLATE.format(
-            alert_type=context.chain_context.processing_alert.alert_type,
-            alert_section=alert_section,
-            runbook_section=runbook_section,
-            chain_context=chain_context
-        )
+        # Build full context with alert, runbook, and previous stages
+        full_context = f"""{alert_section}
+
+{runbook_section}
+
+{chain_context}"""
         
-        # Format with no tools available (synthesis doesn't use tools)
-        return STANDARD_REACT_PROMPT_TEMPLATE.format(
-            available_actions="No tools available.",
-            question=question,
+        # Format with simple synthesis instruction and full context
+        return SYNTHESIS_PROMPT_TEMPLATE.format(
+            context=full_context,
             history_text=""
         )
     
