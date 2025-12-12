@@ -87,7 +87,6 @@ class ParallelStageExecutor:
             stage=stage,
             chain_context=chain_context,
             session_mcp_client=session_mcp_client,
-            chain_definition=chain_definition,
             stage_index=stage_index,
             execution_configs=execution_configs,
             parallel_type=ParallelType.MULTI_AGENT.value
@@ -123,7 +122,6 @@ class ParallelStageExecutor:
             stage=stage,
             chain_context=chain_context,
             session_mcp_client=session_mcp_client,
-            chain_definition=chain_definition,
             stage_index=stage_index,
             execution_configs=execution_configs,
             parallel_type=ParallelType.REPLICA.value
@@ -171,7 +169,6 @@ class ParallelStageExecutor:
         stage: "ChainStageConfigModel",
         chain_context: ChainContext,
         session_mcp_client: MCPClient,
-        chain_definition: "ChainConfigModel",
         stage_index: int,
         execution_configs: list,
         parallel_type: str
@@ -183,7 +180,6 @@ class ParallelStageExecutor:
             stage: Stage configuration
             chain_context: Chain context for this session
             session_mcp_client: Session-scoped MCP client
-            chain_definition: Full chain definition
             stage_index: Index of this stage in the chain
             execution_configs: List of dicts with agent_name, llm_provider, iteration_strategy (and optionally base_agent_name)
             parallel_type: "multi_agent" or "replica"
@@ -240,7 +236,7 @@ class ParallelStageExecutor:
             # Previously used fire-and-forget which caused race conditions where the
             # 'started' update could commit AFTER the 'completed' update, leaving
             # the status stuck at 'active'. The slight serialization delay is
-            # acceptable for correctness. See EP-0XXX for details.
+            # acceptable for correctness.
             await self.stage_manager.update_stage_execution_started(child_execution_id)
             
             try:
@@ -656,7 +652,7 @@ class ParallelStageExecutor:
             # IMPORTANT: Await the status update to ensure proper state ordering.
             # Previously used fire-and-forget which caused race conditions where the
             # 'started' update could commit AFTER the 'completed' update, leaving
-            # the status stuck at 'active'. See EP-0XXX for details.
+            # the status stuck at 'active'.
             await self.stage_manager.update_stage_execution_started(child_execution_id)
             
             try:

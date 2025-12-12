@@ -66,10 +66,10 @@ class SynthesisController(IterationController):
         
         messages = [
             LLMMessage(
-                role="system",
+                role=MessageRole.SYSTEM,
                 content="\n".join(system_content_parts)
             ),
-            LLMMessage(role="user", content=prompt)
+            LLMMessage(role=MessageRole.USER, content=prompt)
         ]
         
         # Create conversation

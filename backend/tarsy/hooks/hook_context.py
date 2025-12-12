@@ -459,9 +459,24 @@ class StageExecutionHookContext:
     which has different field names and semantics.
     """
     
-    def __init__(self, stage_execution: StageExecution, hook_manager: HookManager):
+    def __init__(
+        self,
+        stage_execution: StageExecution,
+        hook_manager: HookManager,
+        allow_exceptions: bool = True,
+    ):
+        """
+        Initialize stage execution hook context.
+        
+        Args:
+            stage_execution: Stage execution data
+            hook_manager: Manager for hooks
+            allow_exceptions: If True, let hook exceptions propagate instead of suppressing.
+                            Stage execution hooks are critical operations, so defaults to True.
+        """
         self.stage_execution = stage_execution
         self.hook_manager = hook_manager
+        self.allow_exceptions = allow_exceptions
 
     async def __aenter__(self) -> 'StageExecutionHookContext':
         """Enter async context."""
@@ -474,21 +489,31 @@ class StageExecutionHookContext:
             await self.hook_manager.trigger_stage_hooks(self.stage_execution)
         except Exception as e:
             logger.error(f"Failed to trigger stage execution hooks: {e}")
+            if self.allow_exceptions:
+                raise
         
-        return False  # Don't suppress exceptions
+        return False  # Don't suppress exceptions from the context body
 
 
 @asynccontextmanager
-async def stage_execution_context(session_id: str, stage_execution: StageExecution) -> AsyncContextManager[StageExecutionHookContext]:
+async def stage_execution_context(
+    session_id: str,
+    stage_execution: StageExecution,
+    allow_exceptions: bool = True,
+) -> AsyncContextManager[StageExecutionHookContext]:
     """
     Create a simple context for stage execution events.
     
     Args:
         session_id: Session identifier
         stage_execution: Stage execution data
+        allow_exceptions: If True, let hook exceptions propagate.
+                         Stage execution hooks are critical, so defaults to True.
         
     Yields:
         Simple hook context for stage execution
     """
-    async with StageExecutionHookContext(stage_execution, get_hook_manager()) as ctx:
+    async with StageExecutionHookContext(
+        stage_execution, get_hook_manager(), allow_exceptions=allow_exceptions
+    ) as ctx:
         yield ctx

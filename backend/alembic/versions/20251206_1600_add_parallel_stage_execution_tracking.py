@@ -29,6 +29,7 @@ def upgrade() -> None:
     conn = op.get_bind()
     inspector = inspect(conn)
     columns = [col['name'] for col in inspector.get_columns('stage_executions')]
+    indexes = [idx['name'] for idx in inspector.get_indexes('stage_executions')]
     
     # Add columns if they don't exist
     with op.batch_alter_table('stage_executions', schema=None) as batch_op:
@@ -49,8 +50,13 @@ def upgrade() -> None:
     
     # Add foreign key constraint (separate from batch operation for SQLite compatibility)
     # Note: SQLite doesn't support adding foreign keys to existing tables in batch mode
-    # This will work in PostgreSQL; for SQLite in tests, foreign key is enforced at application level
-    try:
+    # For SQLite in tests, foreign key is enforced at application level
+    if conn.dialect.name == 'sqlite':
+        import logging
+        logging.getLogger('alembic.migration').info(
+            "Skipping foreign key creation for SQLite (not supported for existing tables)"
+        )
+    else:
         with op.batch_alter_table('stage_executions', schema=None) as batch_op:
             batch_op.create_foreign_key(
                 'fk_stage_executions_parent',
@@ -58,29 +64,24 @@ def upgrade() -> None:
                 ['parent_stage_execution_id'],
                 ['execution_id']
             )
-    except Exception as e:
-        # Foreign key creation may fail in SQLite; that's OK for dev/test
-        # Log for visibility in case this fails unexpectedly in PostgreSQL
-        import logging
-        logging.getLogger('alembic.migration').debug(
-            f"Foreign key creation skipped (expected for SQLite): {e}"
-        )
     
-    # Add indexes for efficient queries
+    # Add indexes for efficient queries (if they don't exist)
     with op.batch_alter_table('stage_executions', schema=None) as batch_op:
         # Index on parent_stage_execution_id for parent-child queries
-        batch_op.create_index(
-            'ix_stage_executions_parent_stage_execution_id',
-            ['parent_stage_execution_id'],
-            unique=False
-        )
+        if 'ix_stage_executions_parent_stage_execution_id' not in indexes:
+            batch_op.create_index(
+                'ix_stage_executions_parent_stage_execution_id',
+                ['parent_stage_execution_id'],
+                unique=False
+            )
         
         # Composite index for hierarchical queries
-        batch_op.create_index(
-            'ix_stage_executions_session_parent',
-            ['session_id', 'parent_stage_execution_id'],
-            unique=False
-        )
+        if 'ix_stage_executions_session_parent' not in indexes:
+            batch_op.create_index(
+                'ix_stage_executions_session_parent',
+                ['session_id', 'parent_stage_execution_id'],
+                unique=False
+            )
 
 
 def downgrade() -> None:
@@ -100,17 +101,15 @@ def downgrade() -> None:
         if 'ix_stage_executions_session_parent' in indexes:
             batch_op.drop_index('ix_stage_executions_session_parent')
     
-    # Drop foreign key constraint if it exists
-    try:
+    # Drop foreign key constraint if it exists (only on non-SQLite; SQLite never creates it)
+    if conn.dialect.name == 'sqlite':
+        import logging
+        logging.getLogger('alembic.migration').info(
+            "Skipping foreign key drop for SQLite (was never created)"
+        )
+    else:
         with op.batch_alter_table('stage_executions', schema=None) as batch_op:
             batch_op.drop_constraint('fk_stage_executions_parent', type_='foreignkey')
-    except Exception as e:
-        # Constraint may not exist; that's OK
-        # Log for visibility in case this fails unexpectedly
-        import logging
-        logging.getLogger('alembic.migration').debug(
-            f"Foreign key constraint drop skipped (may not exist): {e}"
-        )
     
     # Drop columns
     columns = [col['name'] for col in inspector.get_columns('stage_executions')]
