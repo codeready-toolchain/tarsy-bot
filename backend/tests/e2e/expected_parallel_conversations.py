@@ -408,7 +408,7 @@ Begin!"""
         },
         {
             "role": "assistant",
-            "content": """Final Answer: **Synthesis of Parallel Investigations**
+            "content": """**Synthesis of Parallel Investigations**
 
 Both investigations provide complementary evidence. The Kubernetes agent identified the symptom (CrashLoopBackOff), while the log agent uncovered the root cause (database connection timeout).
 
@@ -1484,12 +1484,27 @@ Focus on answering follow-up questions about a completed investigation for human
         },
         {
             "role": "user",
-            "content": """## Investigation Context
+            "content": """═══════════════════════════════════════════════════════════════════════════════
+📋 INVESTIGATION CONTEXT
+═══════════════════════════════════════════════════════════════════════════════
 
-The following is the complete history of the alert investigation. Use this context to answer the user's question.
+# Original Investigation
 
-### Alert Information
+### Initial Investigation Request
+
+Answer the following question using the available tools.
+
+Available tools:
+
+No tools available.
+
+Question: Analyze this test-parallel-execution alert and provide actionable recommendations.
+
+## Alert Details
+
+### Alert Metadata
 **Alert Type:** test-parallel-execution
+**Timestamp:** 1765571753423392
 
 ### Alert Data
 ```json
@@ -1499,26 +1514,87 @@ The following is the complete history of the alert investigation. Use this conte
 }
 ```
 
-### Investigation Summary
+## Runbook Content
+```markdown
+<!-- RUNBOOK START -->
+# Test Runbook
+This is a test runbook for parallel execution testing.
+<!-- RUNBOOK END -->
+```
 
-**Stage: investigation (Parallel Execution)**
+## Previous Stage Data
+### Results from parallel stage 'investigation':
 
-**Agent: KubernetesAgent**
-Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace.
+**Parallel Execution Summary**: 2/2 agents succeeded
 
-**Agent: LogAgent**
-Log analysis reveals database connection timeout errors to db.example.com:5432.
+#### Agent 1: KubernetesAgent (google-default, native-thinking)
+**Status**: completed
 
-**Stage: synthesis**
+<!-- Analysis Result START -->
+USER: Tool Result: kubernetes-server.kubectl_get:
+{
+  "result": "{\\"result\\": \\"Pod pod-1 is in CrashLoopBackOff state\\"}"
+}
+
+ASSISTANT: Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause.
+<!-- Analysis Result END -->
+
+#### Agent 2: LogAgent (anthropic-default, react)
+**Status**: completed
+
+<!-- Analysis Result START -->
+ASSISTANT: Thought: I should analyze the application logs to find error patterns.
+Action: kubernetes-server.get_logs
+Action Input: {"namespace": "test-namespace", "pod": "pod-1"}
+
+USER: Observation: kubernetes-server.get_logs: {
+  "result": "{\\"logs\\": \\"Error: Failed to connect to database at db.example.com:5432 - connection timeout\\"}"
+}
+
+ASSISTANT: Thought: I have analyzed the logs and found the root cause.
+Final Answer: Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity.
+<!-- Analysis Result END -->
+
+
+## Your Task
+Use the available tools to investigate this alert and provide:
+1. Root cause analysis
+2. Current system state assessment  
+3. Specific remediation steps for human operators
+4. Prevention recommendations
+
+Be thorough in your investigation before providing the final answer.
+
+Begin!
+
+**Agent Response:**
 
 **Synthesis of Parallel Investigations**
-Root cause: Pod-1 crashing due to database connection timeout. Recommended verifying database service and network connectivity.
 
----
+Both investigations provide complementary evidence. The Kubernetes agent identified the symptom (CrashLoopBackOff), while the log agent uncovered the root cause (database connection timeout).
 
-## User Question
+**Root Cause:** Pod-1 in test-namespace is crashing due to inability to connect to database at db.example.com:5432, resulting in repeated restart attempts (CrashLoopBackOff).
 
-Can you check if the database service is running?"""
+**Recommended Actions:**
+1. Verify database service is running and accessible
+2. Check network policies and firewall rules for connectivity to db.example.com:5432
+3. Validate database credentials in pod configuration
+4. Review database connection timeout settings in application config
+
+**Priority:** High - Application is currently non-functional
+
+═══════════════════════════════════════════════════════════════════════════════
+🎯 CURRENT TASK
+═══════════════════════════════════════════════════════════════════════════════
+
+**Question:** Can you check if the database service is running?
+
+**Your Task:**
+Answer using the ReAct format from your system instructions.
+- Reference investigation history when relevant
+- Use tools to get fresh data if needed
+
+Begin your ReAct reasoning:"""
         },
         # Native Thinking: No assistant message here - tool is called with empty text_content
         # Tool result as user message
@@ -1526,7 +1602,7 @@ Can you check if the database service is running?"""
             "role": "user",
             "content": """Tool Result: kubernetes-server.kubectl_get:
 {
-  "result": "Service database is running with ClusterIP 10.96.0.100"
+  "result": "{\\"result\\": \\"Service database is running with ClusterIP 10.96.0.100\\"}"
 }"""
         },
         # Final answer
@@ -1578,12 +1654,27 @@ Focus on answering follow-up questions about a completed investigation for human
         },
         {
             "role": "user",
-            "content": """## Investigation Context
+            "content": """═══════════════════════════════════════════════════════════════════════════════
+📋 INVESTIGATION CONTEXT
+═══════════════════════════════════════════════════════════════════════════════
 
-The following is the complete history of the alert investigation. Use this context to answer the user's question.
+# Original Investigation
 
-### Alert Information
+### Initial Investigation Request
+
+Answer the following question using the available tools.
+
+Available tools:
+
+No tools available.
+
+Question: Analyze this test-parallel-execution alert and provide actionable recommendations.
+
+## Alert Details
+
+### Alert Metadata
 **Alert Type:** test-parallel-execution
+**Timestamp:** 1765571753423392
 
 ### Alert Data
 ```json
@@ -1593,32 +1684,106 @@ The following is the complete history of the alert investigation. Use this conte
 }
 ```
 
-### Investigation Summary
+## Runbook Content
+```markdown
+<!-- RUNBOOK START -->
+# Test Runbook
+This is a test runbook for parallel execution testing.
+<!-- RUNBOOK END -->
+```
 
-**Stage: investigation (Parallel Execution)**
+## Previous Stage Data
+### Results from parallel stage 'investigation':
 
-**Agent: KubernetesAgent**
-Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace.
+**Parallel Execution Summary**: 2/2 agents succeeded
 
-**Agent: LogAgent**
-Log analysis reveals database connection timeout errors to db.example.com:5432.
+#### Agent 1: KubernetesAgent (google-default, native-thinking)
+**Status**: completed
 
-**Stage: synthesis**
+<!-- Analysis Result START -->
+USER: Tool Result: kubernetes-server.kubectl_get:
+{
+  "result": "{\\"result\\": \\"Pod pod-1 is in CrashLoopBackOff state\\"}"
+}
+
+ASSISTANT: Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace. This indicates the pod is repeatedly crashing and Kubernetes is backing off on restart attempts. Recommend checking pod logs and events for root cause.
+<!-- Analysis Result END -->
+
+#### Agent 2: LogAgent (anthropic-default, react)
+**Status**: completed
+
+<!-- Analysis Result START -->
+ASSISTANT: Thought: I should analyze the application logs to find error patterns.
+Action: kubernetes-server.get_logs
+Action Input: {"namespace": "test-namespace", "pod": "pod-1"}
+
+USER: Observation: kubernetes-server.get_logs: {
+  "result": "{\\"logs\\": \\"Error: Failed to connect to database at db.example.com:5432 - connection timeout\\"}"
+}
+
+ASSISTANT: Thought: I have analyzed the logs and found the root cause.
+Final Answer: Log analysis reveals database connection timeout errors. The pod is failing because it cannot connect to the database at db.example.com:5432. This explains the CrashLoopBackOff. Recommend verifying database availability and network connectivity.
+<!-- Analysis Result END -->
+
+
+## Your Task
+Use the available tools to investigate this alert and provide:
+1. Root cause analysis
+2. Current system state assessment  
+3. Specific remediation steps for human operators
+4. Prevention recommendations
+
+Be thorough in your investigation before providing the final answer.
+
+Begin!
+
+**Agent Response:**
 
 **Synthesis of Parallel Investigations**
-Root cause: Pod-1 crashing due to database connection timeout. Recommended verifying database service and network connectivity.
 
-### Chat History
+Both investigations provide complementary evidence. The Kubernetes agent identified the symptom (CrashLoopBackOff), while the log agent uncovered the root cause (database connection timeout).
 
-**User:** Can you check if the database service is running?
+**Root Cause:** Pod-1 in test-namespace is crashing due to inability to connect to database at db.example.com:5432, resulting in repeated restart attempts (CrashLoopBackOff).
 
-**Assistant:** Yes, the database service is running in test-namespace with ClusterIP 10.96.0.100. The service endpoint exists, so the issue is likely with the actual database pod or external database connectivity rather than the Kubernetes service configuration.
+**Recommended Actions:**
+1. Verify database service is running and accessible
+2. Check network policies and firewall rules for connectivity to db.example.com:5432
+3. Validate database credentials in pod configuration
+4. Review database connection timeout settings in application config
 
----
+**Priority:** High - Application is currently non-functional
 
-## User Question
+═══════════════════════════════════════════════════════════════════════════════
+💬 CHAT HISTORY (1 previous exchange)
+═══════════════════════════════════════════════════════════════════════════════
 
-What about the database pod itself?"""
+## Exchange 1
+
+**USER:**
+Can you check if the database service is running?
+
+**Observation:**
+
+Tool Result: kubernetes-server.kubectl_get:
+{
+  "result": "{\\"result\\": \\"Service database is running with ClusterIP 10.96.0.100\\"}"
+}
+
+**ASSISTANT:**
+Yes, the database service is running in test-namespace with ClusterIP 10.96.0.100. The service endpoint exists, so the issue is likely with the actual database pod or external database connectivity rather than the Kubernetes service configuration.
+
+═══════════════════════════════════════════════════════════════════════════════
+🎯 CURRENT TASK
+═══════════════════════════════════════════════════════════════════════════════
+
+**Question:** What about the database pod itself?
+
+**Your Task:**
+Answer using the ReAct format from your system instructions.
+- Reference investigation history when relevant
+- Use tools to get fresh data if needed
+
+Begin your ReAct reasoning:"""
         },
         # Native Thinking: No assistant message here - tool is called with empty text_content
         # Tool result as user message
@@ -1626,7 +1791,7 @@ What about the database pod itself?"""
             "role": "user",
             "content": """Tool Result: kubernetes-server.kubectl_get:
 {
-  "result": "Pod database-0 is running and ready (1/1) in test-namespace"
+  "result": "{\\"result\\": \\"Pod database-0 is in Running state, ready 1/1\\"}"
 }"""
         },
         # Final answer

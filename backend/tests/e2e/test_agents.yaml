@@ -65,7 +65,7 @@ agent_chains:
       enabled: true
       agent: "ChatAgent"
       iteration_strategy: "react"           # Custom: Force ReAct strategy
-      llm_provider: "anthropic-default"     # Custom: Override to Anthropic
+      llm_provider: "openai-default"        # Custom: Use OpenAI
     stages:
       - name: "data-collection"
         agent: "DataCollectionAgent"

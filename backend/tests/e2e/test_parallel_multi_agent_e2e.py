@@ -91,6 +91,58 @@ class TestParallelMultiAgentE2E(ParallelTestBase):
                 "input_tokens": 180,
                 "output_tokens": 65,
                 "total_tokens": 245
+            },
+            3: {  # Third call - synthesis (native thinking, no tools)
+                "text_content": """**Synthesis of Parallel Investigations**
+
+Both investigations provide complementary evidence. The Kubernetes agent identified the symptom (CrashLoopBackOff), while the log agent uncovered the root cause (database connection timeout).
+
+**Root Cause:** Pod-1 in test-namespace is crashing due to inability to connect to database at db.example.com:5432, resulting in repeated restart attempts (CrashLoopBackOff).
+
+**Recommended Actions:**
+1. Verify database service is running and accessible
+2. Check network policies and firewall rules for connectivity to db.example.com:5432
+3. Validate database credentials in pod configuration
+4. Review database connection timeout settings in application config
+
+**Priority:** High - Application is currently non-functional""",
+                "thinking_content": "I need to synthesize the findings from both agents - KubernetesAgent found the CrashLoopBackOff state, and LogAgent identified database connectivity as the root cause.",
+                "function_calls": None,
+                "input_tokens": 420,
+                "output_tokens": 180,
+                "total_tokens": 600
+            },
+            4: {  # Fourth call - Chat Message 1, tool call (native thinking)
+                "text_content": "",  # Empty for tool calls
+                "thinking_content": "The user wants to verify database service status. I'll check the service in test-namespace.",
+                "function_calls": [{"name": "kubernetes-server__kubectl_get", "args": {"resource": "service", "name": "database", "namespace": "test-namespace"}}],
+                "input_tokens": 210,
+                "output_tokens": 65,
+                "total_tokens": 275
+            },
+            5: {  # Fifth call - Chat Message 1, final answer
+                "text_content": "Yes, the database service is running in test-namespace with ClusterIP 10.96.0.100. The service endpoint exists, so the issue is likely with the actual database pod or external database connectivity rather than the Kubernetes service configuration.",
+                "thinking_content": "The service exists and is properly configured. The problem must be elsewhere.",
+                "function_calls": None,
+                "input_tokens": 190,
+                "output_tokens": 80,
+                "total_tokens": 270
+            },
+            6: {  # Sixth call - Chat Message 2, tool call (native thinking)
+                "text_content": "",  # Empty for tool calls
+                "thinking_content": "The user wants to check the database pod status. Let me get pod information.",
+                "function_calls": [{"name": "kubernetes-server__kubectl_get", "args": {"resource": "pods", "label_selector": "app=database", "namespace": "test-namespace"}}],
+                "input_tokens": 220,
+                "output_tokens": 70,
+                "total_tokens": 290
+            },
+            7: {  # Seventh call - Chat Message 2, final answer
+                "text_content": "The database pod (database-0) is running and ready (1/1) in test-namespace. Since both the service and pod are healthy, the issue is that pod-1 is trying to connect to the external address db.example.com:5432 instead of using the internal Kubernetes service. The application configuration likely needs to be updated to use the service name 'database' or 'database.test-namespace.svc.cluster.local' instead of the external address.",
+                "thinking_content": "Both service and pod are healthy, so the issue is in the application configuration pointing to the wrong database address.",
+                "function_calls": None,
+                "input_tokens": 200,
+                "output_tokens": 90,
+                "total_tokens": 290
             }
         }
         
