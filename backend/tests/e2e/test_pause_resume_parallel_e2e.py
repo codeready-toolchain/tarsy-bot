@@ -81,11 +81,12 @@ class TestPauseResumeParallelE2E(ParallelTestBase):
             print("🔧 Set max_llm_mcp_iterations to 2")
             
             # ============================================================================
-            # NATIVE THINKING MOCK (for KubernetesAgent using Gemini)
+            # NATIVE THINKING MOCK (for KubernetesAgent and SynthesisAgent using Gemini)
             # ============================================================================
             # Gemini SDK responses for native thinking (function calling)
+            # Note: The mock uses a simple counter, so responses are ordered by call sequence
             gemini_response_map = {
-                1: {  # First call - tool call with thinking (pauses)
+                1: {  # KubernetesAgent - First call - tool call with thinking (pauses)
                     "text_content": "",  # Empty for tool calls
                     "thinking_content": "I should check the pod status in test-namespace to understand the issue.",
                     "function_calls": [{"name": "kubernetes-server__kubectl_get", "args": {"resource": "pods", "namespace": "test-namespace"}}],
@@ -93,7 +94,7 @@ class TestPauseResumeParallelE2E(ParallelTestBase):
                     "output_tokens": 60,
                     "total_tokens": 260
                 },
-                2: {  # Second call - still investigating, no final answer (pauses at iteration 2)
+                2: {  # KubernetesAgent - Second call - still investigating, no final answer (pauses at iteration 2)
                     "text_content": "",  # Empty for tool calls
                     "thinking_content": "I see CrashLoopBackOff. Need more investigation but hit iteration limit.",
                     "function_calls": [{"name": "kubernetes-server__kubectl_describe", "args": {"resource": "pod", "name": "pod-1", "namespace": "test-namespace"}}],
@@ -101,13 +102,41 @@ class TestPauseResumeParallelE2E(ParallelTestBase):
                     "output_tokens": 70,
                     "total_tokens": 290
                 },
-                3: {  # Third call (after resume) - final answer
+                3: {  # KubernetesAgent - Third call (after resume) - final answer
                     "text_content": "**Kubernetes Analysis Complete**\n\nInfrastructure findings:\n- Pod pod-1 in CrashLoopBackOff state\n- Namespace: test-namespace\n- Pod has been restarting repeatedly (5+ times)\n- Container exit code indicates connection failure\n\nKubernetes investigation complete.",
                     "thinking_content": "I can now complete my investigation with the additional iterations available.",
                     "function_calls": None,
                     "input_tokens": 240,
                     "output_tokens": 95,
                     "total_tokens": 335
+                },
+                4: {  # SynthesisAgent - Single call for synthesis (no tools, just thinking + final answer)
+                    "text_content": """**Synthesis of Parallel Investigations**
+
+Combined analysis from both agents:
+
+**From Kubernetes Agent:**
+- Pod pod-1 in CrashLoopBackOff
+- Multiple restart attempts (5+)
+- Container exit code indicates connection failure
+
+**From Log Agent:**
+- Database connection timeout to db.example.com:5432
+- Root cause: Unable to connect to database
+
+**Conclusion:**
+Pod is failing due to database connectivity issues. The pod attempts to connect to db.example.com:5432 but times out, causing crashes and CrashLoopBackOff.
+
+**Recommended Actions:**
+1. Verify database service is running
+2. Check network connectivity to db.example.com:5432
+3. Validate database credentials
+4. Review firewall/network policies""",
+                    "thinking_content": "I need to synthesize the findings from both parallel investigations into a coherent analysis.",
+                    "function_calls": None,  # Synthesis doesn't use tools
+                    "input_tokens": 450,
+                    "output_tokens": 200,
+                    "total_tokens": 650
                 }
             }
             
@@ -116,12 +145,11 @@ class TestPauseResumeParallelE2E(ParallelTestBase):
             gemini_mock_factory = create_gemini_client_mock(gemini_response_map)
             
             # ============================================================================
-            # LANGCHAIN MOCK (for LogAgent using ReAct + for SynthesisAgent)
+            # LANGCHAIN MOCK (for LogAgent using ReAct only)
             # ============================================================================
             # Agent-specific interaction counters for LangChain-based agents
             agent_counters = {
                 "LogAgent": 0,
-                "SynthesisAgent": 0,
             }
             
             # Define mock responses per LangChain agent (ReAct format)
@@ -146,32 +174,6 @@ Found critical error in logs:
 Root cause identified from logs.""",
                         "input_tokens": 210, "output_tokens": 85, "total_tokens": 295
                     }
-                ],
-                "SynthesisAgent": [
-                    {  # Interaction 1 - Synthesis final answer  
-                        "response_content": """Final Answer: **Synthesis of Parallel Investigations**
-
-Combined analysis from both agents:
-
-**From Kubernetes Agent:**
-- Pod pod-1 in CrashLoopBackOff
-- Multiple restart attempts (5+)
-- Container exit code indicates connection failure
-
-**From Log Agent:**
-- Database connection timeout to db.example.com:5432
-- Root cause: Unable to connect to database
-
-**Conclusion:**
-Pod is failing due to database connectivity issues. The pod attempts to connect to db.example.com:5432 but times out, causing crashes and CrashLoopBackOff.
-
-**Recommended Actions:**
-1. Verify database service is running
-2. Check network connectivity to db.example.com:5432
-3. Validate database credentials
-4. Review firewall/network policies""",
-                        "input_tokens": 450, "output_tokens": 200, "total_tokens": 650
-                    }
                 ]
             }
             
@@ -179,10 +181,9 @@ Pod is failing due to database connectivity issues. The pod attempts to connect 
             # LANGCHAIN STREAMING MOCK CREATOR
             # ============================================================================
             
-            # Create agent-aware streaming mock for LangChain agents
+            # Create agent-aware streaming mock for LangChain agents (only LogAgent)
             agent_identifiers = {
-                "LogAgent": "log analysis specialist",
-                "SynthesisAgent": "Incident Commander synthesizing"
+                "LogAgent": "log analysis specialist"
             }
             
             streaming_mock = E2ETestUtils.create_agent_aware_streaming_mock(
@@ -375,6 +376,17 @@ Pod is failing due to database connectivity issues. The pod attempts to connect 
                         assert investigation_stage["stage_name"] == "investigation"
                         assert investigation_stage["status"] == "completed"
                         assert synthesis_stage["stage_name"] == "synthesis"
+                        
+                        # Debug synthesis stage if it failed
+                        if synthesis_stage["status"] != "completed":
+                            print(f"❌ Synthesis stage failed!")
+                            print(f"   Status: {synthesis_stage.get('status')}")
+                            print(f"   Error: {synthesis_stage.get('error_message')}")
+                            print(f"   LLM interactions: {len(synthesis_stage.get('llm_interactions', []))}")
+                            if synthesis_stage.get('llm_interactions'):
+                                for i, llm in enumerate(synthesis_stage['llm_interactions']):
+                                    print(f"   LLM #{i+1}: {llm.get('error_message', 'No error')}")
+                        
                         assert synthesis_stage["status"] == "completed"
                         
                         # Verify investigation stage has both agents' results (already verified by wait_for_parallel_execution_statuses)
