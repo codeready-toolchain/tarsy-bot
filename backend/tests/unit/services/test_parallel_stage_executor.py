@@ -122,6 +122,110 @@ class TestParallelStageExecutorUtilities:
 
 
 @pytest.mark.unit
+class TestOptionalFieldGuards:
+    """Test that optional field guards prevent runtime errors."""
+    
+    @pytest.mark.asyncio
+    async def test_execute_parallel_agents_raises_when_agents_is_none(self):
+        """Test that execute_parallel_agents raises ValueError when stage.agents is None."""
+        agent_factory = Mock()
+        stage_manager = Mock()
+        
+        executor = ParallelStageExecutor(
+            agent_factory=agent_factory,
+            settings=MockFactory.create_mock_settings(),
+            stage_manager=stage_manager
+        )
+        
+        # Create stage with None agents (invalid for multi-agent execution)
+        stage = SimpleNamespace(
+            name="test-stage",
+            agents=None,
+            agent="some-agent",
+            failure_policy=FailurePolicy.ANY
+        )
+        
+        from tarsy.models.alert import ProcessingAlert
+        alert = AlertFactory.create_kubernetes_alert()
+        processing_alert = ProcessingAlert(
+            alert_type=alert.alert_type or "kubernetes",
+            severity=alert.data.get("severity", "critical"),
+            timestamp=alert.timestamp,
+            environment=alert.data.get("environment", "production"),
+            runbook_url=alert.runbook,
+            alert_data=alert.data
+        )
+        
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session"
+        )
+        
+        chain_def = SimpleNamespace(llm_provider="default-provider")
+        
+        with pytest.raises(ValueError) as exc_info:
+            await executor.execute_parallel_agents(
+                stage=stage,
+                chain_context=chain_context,
+                session_mcp_client=Mock(),
+                chain_definition=chain_def,
+                stage_index=0
+            )
+        
+        assert "requires 'agents' list" in str(exc_info.value)
+    
+    @pytest.mark.asyncio
+    async def test_execute_replicated_agent_raises_when_agent_is_none(self):
+        """Test that execute_replicated_agent raises ValueError when stage.agent is None."""
+        agent_factory = Mock()
+        stage_manager = Mock()
+        
+        executor = ParallelStageExecutor(
+            agent_factory=agent_factory,
+            settings=MockFactory.create_mock_settings(),
+            stage_manager=stage_manager
+        )
+        
+        # Create stage with None agent (invalid for replicated execution)
+        stage = SimpleNamespace(
+            name="test-stage",
+            agent=None,
+            agents=[SimpleNamespace(name="agent1")],
+            replicas=3,
+            failure_policy=FailurePolicy.ALL
+        )
+        
+        from tarsy.models.alert import ProcessingAlert
+        alert = AlertFactory.create_kubernetes_alert()
+        processing_alert = ProcessingAlert(
+            alert_type=alert.alert_type or "kubernetes",
+            severity=alert.data.get("severity", "critical"),
+            timestamp=alert.timestamp,
+            environment=alert.data.get("environment", "production"),
+            runbook_url=alert.runbook,
+            alert_data=alert.data
+        )
+        
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session"
+        )
+        
+        chain_def = SimpleNamespace(llm_provider="default-provider")
+        
+        with pytest.raises(ValueError) as exc_info:
+            await executor.execute_replicated_agent(
+                stage=stage,
+                chain_context=chain_context,
+                session_mcp_client=Mock(),
+                chain_definition=chain_def,
+                stage_index=0
+            )
+        
+        assert "requires 'agent' field" in str(exc_info.value)
+
+
+@pytest.mark.unit
 class TestExecutionConfigGeneration:
     """Test generation of execution configs for parallel stages."""
     

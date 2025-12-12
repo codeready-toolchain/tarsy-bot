@@ -232,36 +232,38 @@ Action Input: {"resource": "pods", "label_selector": "app=database", "namespace"
         mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
         
         # Patch LLM clients (both Gemini SDK and LangChain)
-        with self._create_llm_patch_context(gemini_mock_factory, streaming_mock):
-            with patch('tarsy.integrations.mcp.client.MCPClient.list_tools', mock_list_tools):
-                with patch('tarsy.integrations.mcp.client.MCPClient.call_tool', mock_call_tool):
-                    with E2ETestUtils.setup_runbook_service_patching("# Test Runbook\nThis is a test runbook for parallel execution testing."):
-                        # Create conversation map for verification
-                        conversation_map = {
-                            "investigation": {
-                                "KubernetesAgent": EXPECTED_PARALLEL_AGENT_1_CONVERSATION,
-                                "LogAgent": EXPECTED_PARALLEL_AGENT_2_CONVERSATION
-                            },
-                            "synthesis": EXPECTED_SYNTHESIS_CONVERSATION
-                        }
-                        
-                        # Execute standard test flow
-                        detail_data = await self._execute_test_flow(
-                            test_client, alert_data,
-                            expected_chain_id="multi-agent-parallel-chain",
-                            expected_stages_spec=EXPECTED_MULTI_AGENT_STAGES,
-                            conversation_map=conversation_map,
-                            max_wait_seconds=20
-                        )
-                        
-                        print("✅ Multi-agent parallel test passed!")
-                        
-                        # Test chat functionality
-                        print("🔍 Step 5: Testing chat functionality...")
-                        await self._test_chat_functionality(test_client, detail_data["session_id"])
-                        print("✅ Chat functionality test passed!")
-                        
-                        return detail_data
+        with (
+            self._create_llm_patch_context(gemini_mock_factory, streaming_mock),
+            patch('tarsy.integrations.mcp.client.MCPClient.list_tools', mock_list_tools),
+            patch('tarsy.integrations.mcp.client.MCPClient.call_tool', mock_call_tool),
+            E2ETestUtils.setup_runbook_service_patching("# Test Runbook\nThis is a test runbook for parallel execution testing."),
+        ):
+            # Create conversation map for verification
+            conversation_map = {
+                "investigation": {
+                    "KubernetesAgent": EXPECTED_PARALLEL_AGENT_1_CONVERSATION,
+                    "LogAgent": EXPECTED_PARALLEL_AGENT_2_CONVERSATION
+                },
+                "synthesis": EXPECTED_SYNTHESIS_CONVERSATION
+            }
+            
+            # Execute standard test flow
+            detail_data = await self._execute_test_flow(
+                test_client, alert_data,
+                expected_chain_id="multi-agent-parallel-chain",
+                expected_stages_spec=EXPECTED_MULTI_AGENT_STAGES,
+                conversation_map=conversation_map,
+                max_wait_seconds=20
+            )
+            
+            print("✅ Multi-agent parallel test passed!")
+            
+            # Test chat functionality
+            print("🔍 Step 5: Testing chat functionality...")
+            await self._test_chat_functionality(test_client, detail_data["session_id"])
+            print("✅ Chat functionality test passed!")
+            
+            return detail_data
 
     async def _test_chat_functionality(self, test_client, session_id: str):
         """Test chat functionality after parallel execution."""
@@ -429,11 +431,9 @@ Action Input: {"resource": "pods", "label_selector": "app=database", "namespace"
                     chat_stage = stage
                     break
             
-            if chat_stage:
-                if chat_stage.get("status") == "completed":
-                    logger.info("%s response completed in %.1fs", message_label, (i+1) * poll_interval)
-                    break
-                # If found but not completed, continue waiting
+            if chat_stage and chat_stage.get("status") == "completed":
+                logger.info("%s response completed in %.1fs", message_label, (i+1) * poll_interval)
+                break
             
             await asyncio.sleep(poll_interval)
         else:

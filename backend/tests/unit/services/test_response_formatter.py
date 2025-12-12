@@ -100,6 +100,26 @@ class TestFormatSuccessResponse:
         
         # Should have a timestamp even though we didn't provide one
         assert "**Timestamp:**" in result
+    
+    def test_format_success_response_with_zero_timestamp(self):
+        """Test formatting response with timestamp=0 (Unix epoch)."""
+        from tarsy.models.processing_context import ChainContext
+        
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=create_processing_alert_from_alert_factory(),
+            session_id="session-1"
+        )
+        
+        result = format_success_response(
+            chain_context=chain_context,
+            agent_name="TestAgent",
+            analysis="Test analysis",
+            iterations=1,
+            timestamp_us=0
+        )
+        
+        # Should preserve the 0 timestamp, not treat it as missing
+        assert "**Timestamp:** 0" in result
 
 
 @pytest.mark.unit
@@ -162,6 +182,30 @@ class TestFormatChainSuccessResponse:
         
         assert "**Stages:** 1" in result
         assert "*Processed through 1 stage*" in result
+    
+    def test_format_chain_success_response_with_zero_timestamp(self):
+        """Test formatting chain response with timestamp=0 (Unix epoch)."""
+        from tarsy.models.processing_context import ChainContext
+        
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=create_processing_alert_from_alert_factory(),
+            session_id="session-1"
+        )
+        
+        chain_definition = SimpleNamespace(
+            chain_id="test-chain",
+            stages=[SimpleNamespace(name="stage1")]
+        )
+        
+        result = format_chain_success_response(
+            chain_context=chain_context,
+            chain_definition=chain_definition,
+            analysis="Test analysis",
+            timestamp_us=0
+        )
+        
+        # Should preserve the 0 timestamp, not treat it as missing
+        assert "**Timestamp:** 0" in result
 
 
 @pytest.mark.unit

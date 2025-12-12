@@ -97,8 +97,8 @@ class TestAlertServiceResumePausedSession:
         assert alert_service.session_manager.update_session_status.call_count >= 1
         first_call = alert_service.session_manager.update_session_status.call_args_list[0]
         # Handle both positional and keyword argument styles
-        first_session_id = first_call.kwargs.get("session_id") if "session_id" in first_call.kwargs else first_call.args[0]
-        first_status = first_call.kwargs.get("status") if "status" in first_call.kwargs else first_call.args[1]
+        first_session_id = first_call.kwargs.get("session_id") or (first_call.args[0] if len(first_call.args) > 0 else None)
+        first_status = first_call.kwargs.get("status") or (first_call.args[1] if len(first_call.args) > 1 else None)
         assert first_session_id == session_id
         assert first_status == AlertSessionStatus.IN_PROGRESS.value
         
@@ -353,7 +353,7 @@ class TestAlertServiceResumePausedSession:
         # Verify no COMPLETED status was set (should stay PAUSED)
         # Handle both positional and keyword argument styles
         status_calls = [
-            call.kwargs["status"] if "status" in call.kwargs else call.args[1]
+            call.kwargs.get("status") or (call.args[1] if len(call.args) > 1 else None)
             for call in alert_service.session_manager.update_session_status.call_args_list
         ]
         assert AlertSessionStatus.COMPLETED.value not in status_calls
@@ -441,7 +441,7 @@ class TestAlertServiceResumePausedSession:
         # Verify session status updated to FAILED
         # Handle both positional and keyword argument styles
         status_calls = [
-            call.kwargs["status"] if "status" in call.kwargs else call.args[1]
+            call.kwargs.get("status") or (call.args[1] if len(call.args) > 1 else None)
             for call in alert_service.session_manager.update_session_status.call_args_list
         ]
         assert AlertSessionStatus.FAILED.value in status_calls

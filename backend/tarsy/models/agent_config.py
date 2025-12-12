@@ -298,6 +298,7 @@ class ChainStageConfigModel(BaseModel):
         description="Human-readable stage name",
         min_length=1
     )
+    # Optional but when provided must be non-empty (min_length=1 applies only to non-None values)
     agent: Optional[str] = Field(
         None,
         description="Agent identifier (class name or 'ConfigurableAgent:agent-name')",

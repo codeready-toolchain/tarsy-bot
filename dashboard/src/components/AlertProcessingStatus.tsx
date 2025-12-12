@@ -365,7 +365,9 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
       unsubscribeSession();
     };
   // progressStatus is intentionally omitted to avoid recreating the subscription on every state change.
-  // We use progressStatusRef.current for the fallback case to avoid stale closures.
+  // Tradeoff: Line 270 reads progressStatusRef.current as a fallback, which is kept in sync with state.
+  // This means rare unhandled events might briefly show stale status in the UI until the next state update,
+  // but this is acceptable to avoid expensive subscription teardown/recreation on every progress change.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 

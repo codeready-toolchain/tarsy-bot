@@ -71,6 +71,9 @@ class ParallelStageExecutor:
         stage_index: int
     ) -> ParallelStageResult:
         """Execute multiple different agents in parallel for independent domain investigation."""
+        if not stage.agents:
+            raise ValueError(f"Stage '{stage.name}' requires 'agents' list for parallel execution")
+        
         logger.info(f"Executing parallel stage '{stage.name}' with {len(stage.agents)} agents")
         
         # Build execution configs for each agent
@@ -101,6 +104,9 @@ class ParallelStageExecutor:
         stage_index: int
     ) -> ParallelStageResult:
         """Run same agent N times with identical configuration for accuracy via redundancy."""
+        if not stage.agent:
+            raise ValueError(f"Stage '{stage.name}' requires 'agent' field for replicated execution")
+        
         logger.info(f"Executing replicated stage '{stage.name}' with {stage.replicas} replicas of agent '{stage.agent}'")
         
         # Resolve stage-level provider and strategy (same for all replicas)
@@ -521,6 +527,10 @@ class ParallelStageExecutor:
         paused_children = [c for c in children if c.status == StageStatus.PAUSED.value]
         failed_children = [c for c in children if c.status == StageStatus.FAILED.value]
         
+        # Sort paused children by their parallel_index to ensure stable order during resume
+        # This preserves original indices when streaming metadata and execution
+        paused_children.sort(key=lambda c: c.parallel_index)
+        
         logger.info(
             f"Parallel stage resume: {len(completed_children)} completed, "
             f"{len(paused_children)} paused, {len(failed_children)} failed"
@@ -670,11 +680,13 @@ class ParallelStageExecutor:
                 agent.set_current_stage_execution_id(child_execution_id)
                 
                 # Set parallel execution metadata for streaming events
+                # Use the original paused child's parallel_index to preserve numbering
+                # when only a subset of agents were paused (e.g., agents 2 and 4 out of 1-4)
                 from tarsy.models.parallel_metadata import ParallelExecutionMetadata
                 agent.set_parallel_execution_metadata(
                     ParallelExecutionMetadata(
                         parent_stage_execution_id=parent_execution_id,
-                        parallel_index=idx + 1,  # 1-indexed for display
+                        parallel_index=paused_child.parallel_index,  # Preserve original index
                         agent_name=agent_name
                     )
                 )

@@ -427,12 +427,14 @@ class TestParallelStageChainExecution:
                 AgentExecutionResult(
                     status=StageStatus.COMPLETED,
                     agent_name="InvestigatorAgent1",
+                    stage_name=chain.stages[0].name,
                     timestamp_us=timestamp,
                     result_summary="Investigation 1 completed"
                 ),
                 AgentExecutionResult(
                     status=StageStatus.COMPLETED,
                     agent_name="InvestigatorAgent2",
+                    stage_name=chain.stages[0].name,
                     timestamp_us=timestamp,
                     result_summary="Investigation 2 completed"
                 )
@@ -479,8 +481,20 @@ class TestParallelStageChainExecution:
         # At this point, we have 1 completed stage ("investigation")
         previous_results = chain_context.get_previous_stage_results()
         assert len(previous_results) == 1
-        assert previous_results[0][0] == chain.stages[0].name  # stage name
-        assert isinstance(previous_results[0][1], ParallelStageResult)
+        
+        # Convert to dict for order-independent assertions
+        results_dict = {stage_name: result for stage_name, result in previous_results}
+        
+        # Verify the investigation stage result
+        assert chain.stages[0].name in results_dict
+        investigation_result = results_dict[chain.stages[0].name]
+        assert isinstance(investigation_result, ParallelStageResult)
+        
+        # Verify per-agent results have stage_name set
+        assert len(investigation_result.results) == 2
+        for agent_result in investigation_result.results:
+            assert isinstance(agent_result, AgentExecutionResult)
+            assert agent_result.stage_name == chain.stages[0].name
     
     @pytest.mark.asyncio
     async def test_chain_with_parallel_stage_as_final(
@@ -526,12 +540,14 @@ class TestParallelStageChainExecution:
                 AgentExecutionResult(
                     status=StageStatus.COMPLETED,
                     agent_name="Agent1",
+                    stage_name=chain.stages[0].name,
                     timestamp_us=timestamp,
                     result_summary="Agent1 analysis"
                 ),
                 AgentExecutionResult(
                     status=StageStatus.COMPLETED,
                     agent_name="Agent2",
+                    stage_name=chain.stages[0].name,
                     timestamp_us=timestamp,
                     result_summary="Agent2 analysis"
                 )
@@ -631,12 +647,14 @@ class TestParallelStageChainExecution:
                 AgentExecutionResult(
                     status=StageStatus.COMPLETED,
                     agent_name="Analyzer1",
+                    stage_name=chain.stages[1].name,
                     timestamp_us=timestamp,
                     result_summary="Analysis 1"
                 ),
                 AgentExecutionResult(
                     status=StageStatus.COMPLETED,
                     agent_name="Analyzer2",
+                    stage_name=chain.stages[1].name,
                     timestamp_us=timestamp,
                     result_summary="Analysis 2"
                 )
@@ -694,6 +712,25 @@ class TestParallelStageChainExecution:
         # At this point, we have all 3 stages completed
         previous_results = chain_context.get_previous_stage_results()
         assert len(previous_results) == 3
-        assert previous_results[0][0] == chain.stages[0].name  # data-collection
-        assert previous_results[1][0] == chain.stages[1].name  # parallel-analysis
-        assert previous_results[2][0] == chain.stages[2].name  # reporting
+        
+        # Convert to dict for order-independent assertions
+        results_dict = {stage_name: result for stage_name, result in previous_results}
+        
+        # Verify all stages are present
+        assert chain.stages[0].name in results_dict  # data-collection
+        assert chain.stages[1].name in results_dict  # parallel-analysis
+        assert chain.stages[2].name in results_dict  # reporting
+        
+        # Verify data-collection is single-agent result
+        assert isinstance(results_dict[chain.stages[0].name], AgentExecutionResult)
+        
+        # Verify parallel-analysis is ParallelStageResult with stage_name on per-agent results
+        parallel_stage_result = results_dict[chain.stages[1].name]
+        assert isinstance(parallel_stage_result, ParallelStageResult)
+        assert len(parallel_stage_result.results) == 2
+        for agent_result in parallel_stage_result.results:
+            assert isinstance(agent_result, AgentExecutionResult)
+            assert agent_result.stage_name == chain.stages[1].name
+        
+        # Verify reporting is single-agent result
+        assert isinstance(results_dict[chain.stages[2].name], AgentExecutionResult)

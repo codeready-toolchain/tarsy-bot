@@ -1569,7 +1569,7 @@ class TestParallelStageHistoryIntegration:
         ]
         
         child_execution_ids = []
-        for idx, (agent_name, status, summary) in enumerate(child_agents):
+        for idx, (agent_name, status, _) in enumerate(child_agents):
             child_stage = StageExecution(
                 session_id="test-parallel-children-session",
                 stage_id=f"parallel_stage_child_{idx}",

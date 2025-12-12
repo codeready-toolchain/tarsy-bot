@@ -284,8 +284,10 @@ class StageContext:
                 sections.append("")
                 
                 # Format each parallel agent's result
-                for idx, agent_result in enumerate(result.results, 1):
-                    agent_meta = result.metadata.agent_metadatas[idx - 1]
+                for idx, (agent_result, agent_meta) in enumerate(
+                    zip(result.results, result.metadata.agent_metadatas, strict=True),
+                    1,
+                ):
                     sections.append(f"#### Agent {idx}: {agent_meta.agent_name} ({agent_meta.llm_provider}, {agent_meta.iteration_strategy})")
                     sections.append(f"**Status**: {agent_meta.status.value}")
                     if agent_meta.error_message:
