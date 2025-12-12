@@ -50,7 +50,7 @@ router = APIRouter(prefix="/api/v1", tags=["chat"])
     
     **Requirements:**
     - Session must exist and be in a terminal state (COMPLETED, FAILED, or CANCELLED)
-    - Chain must have chat_enabled=true configuration
+    - Chain must have chat.enabled=true configuration
     - Only one chat allowed per session (idempotent - returns existing chat if already created)
     
     **Returns:**
@@ -140,7 +140,7 @@ async def create_chat(
     - Session must be in a terminal state (COMPLETED, FAILED, or CANCELLED)
     - Chat already exists for the session (if so, returns existing chat_id)
     
-    **Note:** Full validation (including chain chat_enabled configuration) occurs 
+    **Note:** Full validation (including chain chat.enabled configuration) occurs 
     when creating the chat via POST /sessions/{session_id}/chat.
     """,
 )
@@ -182,7 +182,7 @@ async def check_chat_availability(
 
         # Check if chat is enabled for the chain
         chain_config = session.chain_config
-        if chain_config and not chain_config.chat_enabled:
+        if chain_config and chain_config.chat and not chain_config.chat.enabled:
             return ChatAvailabilityResponse(
                 available=False,
                 reason=f"Chat is disabled for chain '{chain_config.chain_id}'",

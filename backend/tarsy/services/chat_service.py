@@ -81,7 +81,7 @@ class ChatService:
         Steps:
         1. Validate session exists and is in terminal state (completed, failed, or cancelled)
         2. Check if chat already exists
-        3. Validate chain has chat_enabled=true
+        3. Validate chain has chat.enabled=true
         4. Capture session context (using _capture_session_context)
         5. Determine MCP servers (chain config + session custom)
         6. Create Chat record with initial_context

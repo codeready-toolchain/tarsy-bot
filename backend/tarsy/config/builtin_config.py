@@ -75,7 +75,7 @@ BUILTIN_AGENTS: Dict[str, Dict[str, Any]] = {
 #       - iteration_strategy: Optional strategy override (uses agent's default if not specified)
 #       - llm_provider: Optional LLM provider override for this stage
 #   - description: Optional description of the chain
-#   - chat_enabled: Enable follow-up chat (default: True)
+#   - chat: Chat configuration (enabled: bool, agent: str, iteration_strategy, llm_provider)
 #   - llm_provider: Optional LLM provider for all stages (uses global default if not specified)
 #
 BUILTIN_CHAIN_DEFINITIONS: Dict[str, Dict[str, Any]] = {
