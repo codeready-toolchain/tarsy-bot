@@ -743,12 +743,14 @@ class ChatService:
                     pass  # Not a builtin agent
         
         # Translate synthesis strategies to chat-appropriate equivalents
-        if strategy == "synthesis":
+        from tarsy.models.constants import IterationStrategy
+        
+        if strategy == IterationStrategy.SYNTHESIS.value:
             logger.info("Translating synthesis strategy to react for chat")
-            return "react"
-        elif strategy == "synthesis-native-thinking":
+            return IterationStrategy.REACT.value
+        elif strategy == IterationStrategy.SYNTHESIS_NATIVE_THINKING.value:
             logger.info("Translating synthesis-native-thinking strategy to native-thinking for chat")
-            return "native-thinking"
+            return IterationStrategy.NATIVE_THINKING.value
         
         if not strategy:
             logger.debug(f"No strategy found for agent '{last_stage.agent}', using ChatAgent default")
