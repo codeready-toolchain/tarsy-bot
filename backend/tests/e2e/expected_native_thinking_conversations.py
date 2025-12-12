@@ -75,30 +75,30 @@ EXPECTED_NATIVE_THINKING_STAGES = {
         'mcp_count': 5,  # 2 tool discovery + 3 tool calls
         'interactions': [
             # MCP 1 - Tool list discovery for kubernetes-server
-            {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
             # MCP 2 - Tool list discovery for test-data-server
-            {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
             # LLM 1 - Initial native thinking iteration with kubectl_get call (investigation type)
             # Conversation: [system, user] = 2 messages (no assistant msg since text_content is empty)
             # Thinking content IS present even when text_content is empty
-            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 2, 'input_tokens': 245, 'output_tokens': 85, 'total_tokens': 330, 'interaction_type': 'investigation', 'has_thinking_content': True},
+            {'type': 'llm', 'success': True, 'conversation_index': 2, 'input_tokens': 245, 'output_tokens': 85, 'total_tokens': 330, 'interaction_type': 'investigation', 'has_thinking_content': True},
             # MCP 3 - Successful kubectl_get namespace call
-            {'type': 'mcp', 'position': 3, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
             # LLM 2 - Second native thinking iteration with collect_system_info call (investigation type)
             # Conversation: [system, user, tool_result] = 3 messages
-            {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 3, 'input_tokens': 180, 'output_tokens': 65, 'total_tokens': 245, 'interaction_type': 'investigation', 'has_thinking_content': True},
+            {'type': 'llm', 'success': True, 'conversation_index': 3, 'input_tokens': 180, 'output_tokens': 65, 'total_tokens': 245, 'interaction_type': 'investigation', 'has_thinking_content': True},
             # MCP 4 - Successful collect_system_info call (triggers summarization)
-            {'type': 'mcp', 'position': 4, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'collect_system_info', 'server_name': 'test-data-server'},
+            {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'collect_system_info', 'server_name': 'test-data-server'},
             # LLM 3 - Summarization of large system info result (via LangChain) - NO thinking content (LangChain, not native)
-            {'type': 'llm', 'position': 3, 'success': True, 'conversation': 'SUMMARIZATION', 'input_tokens': 100, 'output_tokens': 50, 'total_tokens': 150, 'interaction_type': 'summarization', 'has_thinking_content': False},
+            {'type': 'llm', 'success': True, 'conversation': 'SUMMARIZATION', 'input_tokens': 100, 'output_tokens': 50, 'total_tokens': 150, 'interaction_type': 'summarization', 'has_thinking_content': False},
             # LLM 4 - Third native thinking iteration with kubectl_get events call (investigation type)
             # Conversation: [system, user, tool_result, tool_result] = 4 messages
-            {'type': 'llm', 'position': 4, 'success': True, 'conversation_index': 4, 'input_tokens': 200, 'output_tokens': 60, 'total_tokens': 260, 'interaction_type': 'investigation', 'has_thinking_content': True},
+            {'type': 'llm', 'success': True, 'conversation_index': 4, 'input_tokens': 200, 'output_tokens': 60, 'total_tokens': 260, 'interaction_type': 'investigation', 'has_thinking_content': True},
             # MCP 5 - Successful kubectl_get events call
-            {'type': 'mcp', 'position': 5, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
             # LLM 5 - Final completion with analysis (final_analysis type)
             # Conversation: [system, user, tool_result, tool_result, tool_result, assistant] = 6 messages
-            {'type': 'llm', 'position': 5, 'success': True, 'conversation_index': 6, 'input_tokens': 315, 'output_tokens': 125, 'total_tokens': 440, 'interaction_type': 'final_analysis', 'has_thinking_content': True}
+            {'type': 'llm', 'success': True, 'conversation_index': 6, 'input_tokens': 315, 'output_tokens': 125, 'total_tokens': 440, 'interaction_type': 'final_analysis', 'has_thinking_content': True}
         ]
     },
     'verification': {
@@ -106,15 +106,15 @@ EXPECTED_NATIVE_THINKING_STAGES = {
         'mcp_count': 2,
         'interactions': [
             # MCP 1 - Tool list discovery
-            {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
             # LLM 1 - Initial native thinking iteration (investigation type)
             # Conversation: [system, user] = 2 messages (no assistant msg since text_content is empty)
-            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 2, 'input_tokens': 190, 'output_tokens': 70, 'total_tokens': 260, 'interaction_type': 'investigation', 'has_thinking_content': True},
+            {'type': 'llm', 'success': True, 'conversation_index': 2, 'input_tokens': 190, 'output_tokens': 70, 'total_tokens': 260, 'interaction_type': 'investigation', 'has_thinking_content': True},
             # MCP 2 - Successful kubectl_get attempt
-            {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
             # LLM 2 - Final answer
             # Conversation: [system, user, tool_result, assistant] = 4 messages
-            {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 4, 'input_tokens': 280, 'output_tokens': 110, 'total_tokens': 390, 'interaction_type': 'final_analysis', 'has_thinking_content': True}
+            {'type': 'llm', 'success': True, 'conversation_index': 4, 'input_tokens': 280, 'output_tokens': 110, 'total_tokens': 390, 'interaction_type': 'final_analysis', 'has_thinking_content': True}
         ]
     },
     'analysis': {
@@ -122,10 +122,10 @@ EXPECTED_NATIVE_THINKING_STAGES = {
         'mcp_count': 1,  # Tool list discovery still happens even if no tools used
         'interactions': [
             # MCP 1 - Tool list discovery (even though analysis doesn't use tools)
-            {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
             # LLM 1 - Final analysis (no tools)
             # Conversation: [system, user, assistant] = 3 messages (direct final answer)
-            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 420, 'output_tokens': 180, 'total_tokens': 600, 'interaction_type': 'final_analysis', 'has_thinking_content': True}
+            {'type': 'llm', 'success': True, 'conversation_index': 3, 'input_tokens': 420, 'output_tokens': 180, 'total_tokens': 600, 'interaction_type': 'final_analysis', 'has_thinking_content': True}
         ]
     }
 }
@@ -136,7 +136,7 @@ EXPECTED_NATIVE_THINKING_SESSION_LEVEL_INTERACTIONS = {
     'mcp_count': 0,
     'interactions': [
         # LLM 1 - Executive summary generation
-        {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 100, 'output_tokens': 50, 'total_tokens': 150, 'interaction_type': 'final_analysis_summary'}
+        {'type': 'llm', 'success': True, 'conversation_index': 3, 'input_tokens': 100, 'output_tokens': 50, 'total_tokens': 150, 'interaction_type': 'final_analysis_summary'}
     ]
 }
 
@@ -584,26 +584,26 @@ EXPECTED_NATIVE_THINKING_CHAT_INTERACTIONS = {
         'llm_count': 2,
         'mcp_count': 3,
         'interactions': [
-            {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
-            {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
             # LLM 1 - Tool call (investigation): [system, user] = 2 messages (no assistant msg)
-            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 2, 'input_tokens': 150, 'output_tokens': 60, 'total_tokens': 210},
-            {'type': 'mcp', 'position': 3, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+            {'type': 'llm', 'success': True, 'conversation_index': 2, 'input_tokens': 150, 'output_tokens': 60, 'total_tokens': 210, 'interaction_type': 'investigation'},
+            {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
             # LLM 2 - Final answer: [system, user, tool_result, assistant] = 4 messages
-            {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 4, 'input_tokens': 180, 'output_tokens': 90, 'total_tokens': 270}
+            {'type': 'llm', 'success': True, 'conversation_index': 4, 'input_tokens': 180, 'output_tokens': 90, 'total_tokens': 270, 'interaction_type': 'final_analysis'}
         ]
     },
     'message_2': {
         'llm_count': 2,
         'mcp_count': 3,
         'interactions': [
-            {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
-            {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
             # LLM 1 - Tool call (investigation): [system, user] = 2 messages (no assistant msg)
-            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 2, 'input_tokens': 200, 'output_tokens': 70, 'total_tokens': 270},
-            {'type': 'mcp', 'position': 3, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+            {'type': 'llm', 'success': True, 'conversation_index': 2, 'input_tokens': 200, 'output_tokens': 70, 'total_tokens': 270, 'interaction_type': 'investigation'},
+            {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
             # LLM 2 - Final answer: [system, user, tool_result, assistant] = 4 messages
-            {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 4, 'input_tokens': 220, 'output_tokens': 95, 'total_tokens': 315}
+            {'type': 'llm', 'success': True, 'conversation_index': 4, 'input_tokens': 220, 'output_tokens': 95, 'total_tokens': 315, 'interaction_type': 'final_analysis'}
         ]
     }
 }
