@@ -1530,11 +1530,12 @@ Both investigations provide complementary evidence. The Kubernetes agent identif
 **Question:** Can you check if the database service is running?
 
 **Your Task:**
-Answer using the ReAct format from your system instructions.
+Answer the user's question based on the investigation context above.
 - Reference investigation history when relevant
 - Use tools to get fresh data if needed
+- Provide clear, actionable responses
 
-Begin your ReAct reasoning:"""
+Begin your response:"""
         },
         # Native Thinking: No assistant message here - tool is called with empty text_content
         # Tool result as user message
@@ -1704,11 +1705,12 @@ Yes, the database service is running in test-namespace with ClusterIP 10.96.0.10
 **Question:** What about the database pod itself?
 
 **Your Task:**
-Answer using the ReAct format from your system instructions.
+Answer the user's question based on the investigation context above.
 - Reference investigation history when relevant
 - Use tools to get fresh data if needed
+- Provide clear, actionable responses
 
-Begin your ReAct reasoning:"""
+Begin your response:"""
         },
         # Native Thinking: No assistant message here - tool is called with empty text_content
         # Tool result as user message

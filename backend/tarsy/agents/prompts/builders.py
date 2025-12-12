@@ -491,11 +491,12 @@ You have access to the same tools and systems that were used in the original inv
 **Question:** {user_question}
 
 **Your Task:**
-Answer using the ReAct format from your system instructions.
+Answer the user's question based on the investigation context above.
 - Reference investigation history when relevant
 - Use tools to get fresh data if needed
+- Provide clear, actionable responses
 
-Begin your ReAct reasoning:
+Begin your response:
 """
         return result
     

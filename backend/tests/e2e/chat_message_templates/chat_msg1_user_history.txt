@@ -93,8 +93,9 @@ Based on previous stages, the namespace is stuck due to finalizers.
 **Question:** Can you check the pods in the stuck-namespace?
 
 **Your Task:**
-Answer using the ReAct format from your system instructions.
+Answer the user's question based on the investigation context above.
 - Reference investigation history when relevant
 - Use tools to get fresh data if needed
+- Provide clear, actionable responses
 
-Begin your ReAct reasoning:
+Begin your response:
