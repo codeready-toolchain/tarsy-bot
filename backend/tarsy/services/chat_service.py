@@ -913,9 +913,16 @@ class ChatService:
                     "This indicates a critical bug in stage lifecycle management."
                 )
             
-            # Update to active status and set start time
+            # Capture previous status before mutating for proper start time handling
+            previous_status = existing_stage.status
+            
+            # Update to active status
             existing_stage.status = StageStatus.ACTIVE.value
-            existing_stage.started_at_us = now_us()
+            
+            # Set started_at_us ONLY for new starts (PENDING→ACTIVE or no start time yet)
+            # For potential future PAUSED→ACTIVE (resumed), preserve original start time for accurate duration tracking
+            if previous_status == StageStatus.PENDING.value or existing_stage.started_at_us is None:
+                existing_stage.started_at_us = now_us()
             
             # Trigger stage execution hooks (updates DB + broadcasts to dashboard)
             async with stage_execution_context(existing_stage):

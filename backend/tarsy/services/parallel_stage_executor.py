@@ -197,8 +197,8 @@ class ParallelStageExecutor:
         
         # Create a synthetic stage object for parent stage creation
         # Parent stages need an agent value for the database schema (NOT NULL constraint)
-        from types import SimpleNamespace
-        parent_stage = SimpleNamespace(
+        from tarsy.models.agent_config import ChainStageConfigModel
+        parent_stage = ChainStageConfigModel(
             name=stage.name,
             agent=f"parallel-{parallel_type}"  # Synthetic agent name for parent record
         )
@@ -222,9 +222,9 @@ class ParallelStageExecutor:
             agent_name = config["agent_name"]
             base_agent = config.get("base_agent_name", agent_name)  # For replicas
             
-            # Create a mock stage object for child stage creation
-            from types import SimpleNamespace
-            child_stage = SimpleNamespace(
+            # Create a child stage config for child stage creation
+            from tarsy.models.agent_config import ChainStageConfigModel
+            child_stage = ChainStageConfigModel(
                 name=f"{stage.name} - {agent_name}",
                 agent=agent_name
             )

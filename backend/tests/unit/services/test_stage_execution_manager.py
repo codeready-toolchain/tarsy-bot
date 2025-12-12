@@ -186,6 +186,65 @@ class TestUpdateStageExecutionStarted:
             # Verify current_iteration was cleared
             assert stage_exec.current_iteration is None
             assert stage_exec.status == StageStatus.ACTIVE.value
+            # started_at_us should be set since it was None
+            assert stage_exec.started_at_us is not None
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_started_preserves_start_time_on_resume(self):
+        """Test that resuming a paused stage preserves original started_at_us."""
+        original_start_time = 1000000
+        stage_exec = SimpleNamespace(
+            session_id="session-1",
+            stage_index=0,
+            stage_id="stage-id",
+            status=StageStatus.PAUSED.value,
+            started_at_us=original_start_time,
+            current_iteration=5
+        )
+        
+        history_service = Mock()
+        history_service.get_stage_execution = AsyncMock(return_value=stage_exec)
+        
+        manager = StageExecutionManager(history_service=history_service)
+        
+        with patch('tarsy.hooks.hook_context.stage_execution_context') as mock_context:
+            mock_context.return_value.__aenter__ = AsyncMock()
+            mock_context.return_value.__aexit__ = AsyncMock()
+            
+            await manager.update_stage_execution_started("exec-123")
+            
+            # Verify started_at_us was preserved (not overwritten)
+            assert stage_exec.started_at_us == original_start_time
+            assert stage_exec.status == StageStatus.ACTIVE.value
+            assert stage_exec.current_iteration is None
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_started_sets_start_time_for_pending(self):
+        """Test that starting a pending stage sets started_at_us."""
+        stage_exec = SimpleNamespace(
+            session_id="session-1",
+            stage_index=0,
+            stage_id="stage-id",
+            status=StageStatus.PENDING.value,
+            started_at_us=None,
+            current_iteration=None
+        )
+        
+        history_service = Mock()
+        history_service.get_stage_execution = AsyncMock(return_value=stage_exec)
+        
+        manager = StageExecutionManager(history_service=history_service)
+        
+        with patch('tarsy.hooks.hook_context.stage_execution_context') as mock_context:
+            mock_context.return_value.__aenter__ = AsyncMock()
+            mock_context.return_value.__aexit__ = AsyncMock()
+            
+            await manager.update_stage_execution_started("exec-123")
+            
+            # Verify started_at_us was set for new stage
+            assert stage_exec.started_at_us is not None
+            assert stage_exec.status == StageStatus.ACTIVE.value
+            assert stage_exec.current_iteration is None
     
     @pytest.mark.asyncio
     async def test_update_stage_execution_started_fails_when_history_disabled(self):

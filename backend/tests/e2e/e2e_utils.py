@@ -27,6 +27,12 @@ def assert_conversation_messages(
         n: Number of messages to compare (a count)
     """
     expected_messages = expected_conversation.get("messages", [])
+    
+    # Ensure we have enough expected messages to compare
+    assert (
+        len(expected_messages) >= n
+    ), f"Expected messages count insufficient: need at least {n} messages, got {len(expected_messages)}"
+    
     assert (
         len(actual_messages) == n
     ), f"Actual messages count mismatch: expected {n}, got {len(actual_messages)}"

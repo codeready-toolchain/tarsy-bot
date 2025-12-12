@@ -18,6 +18,9 @@ from tarsy.utils.timestamp import now_us
 if TYPE_CHECKING:
     from tarsy.models.agent_config import ChainStageConfigModel
     from tarsy.services.history_service import HistoryService
+else:
+    # Import for runtime use
+    from tarsy.models.agent_config import ChainStageConfigModel
 
 logger = get_module_logger(__name__)
 
@@ -45,7 +48,7 @@ class StageExecutionManager:
     async def create_stage_execution(
         self,
         session_id: str,
-        stage: Union["ChainStageConfigModel", Dict[str, Any]],
+        stage: ChainStageConfigModel,
         stage_index: int,
         parent_stage_execution_id: Optional[str] = None,
         parallel_index: int = 0,
@@ -57,7 +60,7 @@ class StageExecutionManager:
         
         Args:
             session_id: Session ID
-            stage: Stage definition
+            stage: Stage configuration model
             stage_index: Stage index in chain
             parent_stage_execution_id: Parent stage execution ID for parallel child stages
             parallel_index: Position in parallel group (0 for single/parent, 1-N for children)
@@ -372,10 +375,17 @@ class StageExecutionManager:
                     "This indicates a critical bug in stage lifecycle management."
                 )
             
-            # Update to active status and set start time
-            # This handles both PENDING→ACTIVE (new) and PAUSED→ACTIVE (resumed)
+            # Capture previous status before mutating for proper start time handling
+            previous_status = existing_stage.status
+            
+            # Update to active status
             existing_stage.status = StageStatus.ACTIVE.value
-            existing_stage.started_at_us = now_us()
+            
+            # Set started_at_us ONLY for new starts (PENDING→ACTIVE or no start time yet)
+            # For PAUSED→ACTIVE (resumed), preserve original start time for accurate duration tracking
+            if previous_status == StageStatus.PENDING.value or existing_stage.started_at_us is None:
+                existing_stage.started_at_us = now_us()
+            
             # Clear current_iteration for both new and resumed executions
             # Agent will set this during execution
             existing_stage.current_iteration = None

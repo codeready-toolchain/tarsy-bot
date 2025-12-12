@@ -32,7 +32,7 @@ interface ProcessingIndicatorProps {
 
 /**
  * ProcessingIndicator Component
- * Animated pulsing dots with optional message
+ * Animated bouncing dots with shimmer text effect
  */
 function ProcessingIndicator({ message = ProgressStatusMessage.PROCESSING, centered = false }: ProcessingIndicatorProps) {
   return (
@@ -49,12 +49,14 @@ function ProcessingIndicator({ message = ProgressStatusMessage.PROCESSING, cente
         sx={{
           display: 'flex',
           gap: 0.5,
+          alignItems: 'center',
+          height: 20,
           '& > div': {
-            width: 8,
-            height: 8,
+            width: 6,
+            height: 6,
             borderRadius: '50%',
-            bgcolor: '#1976d2',
-            animation: 'pulse 1.4s ease-in-out infinite',
+            bgcolor: 'rgba(0, 0, 0, 0.6)',
+            animation: 'bounce-wave 1.4s ease-in-out infinite',
           },
           '& > div:nth-of-type(2)': {
             animationDelay: '0.2s',
@@ -62,14 +64,12 @@ function ProcessingIndicator({ message = ProgressStatusMessage.PROCESSING, cente
           '& > div:nth-of-type(3)': {
             animationDelay: '0.4s',
           },
-          '@keyframes pulse': {
-            '0%, 80%, 100%': {
-              opacity: 0.3,
-              transform: 'scale(0.8)',
+          '@keyframes bounce-wave': {
+            '0%, 60%, 100%': {
+              transform: 'translateY(0)',
             },
-            '40%': {
-              opacity: 1,
-              transform: 'scale(1.2)',
+            '30%': {
+              transform: 'translateY(-8px)',
             },
           },
         }}
@@ -78,7 +78,24 @@ function ProcessingIndicator({ message = ProgressStatusMessage.PROCESSING, cente
         <Box />
         <Box />
       </Box>
-      <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.9rem', fontStyle: 'italic' }}>
+      <Typography 
+        variant="body1"
+        sx={{ 
+          fontSize: '1.1rem', 
+          fontWeight: 500, 
+          fontStyle: 'italic',
+          background: 'linear-gradient(90deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.7) 40%, rgba(0,0,0,0.9) 50%, rgba(0,0,0,0.7) 60%, rgba(0,0,0,0.5) 100%)',
+          backgroundSize: '200% 100%',
+          backgroundClip: 'text',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          animation: 'shimmer-subtle 3s linear infinite',
+          '@keyframes shimmer-subtle': {
+            '0%': { backgroundPosition: '200% center' },
+            '100%': { backgroundPosition: '-200% center' },
+          },
+        }}
+      >
         {message}
       </Typography>
     </Box>
