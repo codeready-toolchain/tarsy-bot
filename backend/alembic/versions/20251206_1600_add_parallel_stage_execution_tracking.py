@@ -39,12 +39,12 @@ def upgrade() -> None:
         
         if 'parallel_index' not in columns:
             batch_op.add_column(
-                sa.Column('parallel_index', sa.Integer(), nullable=False, server_default='0')
+                sa.Column('parallel_index', sa.Integer(), nullable=False, server_default=sa.text('0'))
             )
         
         if 'parallel_type' not in columns:
             batch_op.add_column(
-                sa.Column('parallel_type', sa.String(), nullable=False, server_default='single')
+                sa.Column('parallel_type', sa.String(), nullable=False, server_default=sa.text("'single'"))
             )
     
     # Add foreign key constraint (separate from batch operation for SQLite compatibility)

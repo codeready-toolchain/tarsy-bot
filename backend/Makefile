@@ -94,6 +94,18 @@ test-e2e: check-test-deps clean-test-db ## Run end-to-end tests only (one by one
 	@$(MAKE) clean-test-db
 	@echo "$(YELLOW)Running tenth E2E test (parallel pause/resume)...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_pause_resume_parallel_e2e.py -v --tb=short -m e2e || exit 1
+	@$(MAKE) clean-test-db
+	@echo "$(YELLOW)Running eleventh E2E test (parallel LLM failure)...$(NC)"
+	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_parallel_llm_failure_e2e.py -v --tb=short -m e2e || exit 1
+	@$(MAKE) clean-test-db
+	@echo "$(YELLOW)Running twelfth E2E test (single-agent LangChain failure)...$(NC)"
+	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_single_agent_llm_failure_e2e.py::TestSingleAgentLangChainFailureE2E -v --tb=short -m e2e || exit 1
+	@$(MAKE) clean-test-db
+	@echo "$(YELLOW)Running thirteenth E2E test (single-agent Gemini failure)...$(NC)"
+	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_single_agent_llm_failure_e2e.py::TestSingleAgentGeminiNativeThinkingFailureE2E -v --tb=short -m e2e || exit 1
+	@$(MAKE) clean-test-db
+	@echo "$(YELLOW)Running fourteenth E2E test (single-agent intermittent failure)...$(NC)"
+	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_single_agent_llm_failure_e2e.py::TestSingleAgentIntermittentFailureE2E -v --tb=short -m e2e || exit 1
 	@echo "$(GREEN)All E2E tests completed successfully!$(NC)"
 
 .PHONY: test-coverage

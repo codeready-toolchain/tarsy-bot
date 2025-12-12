@@ -50,6 +50,11 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
   const [checkingSession, setCheckingSession] = useState<boolean>(true);
   const [pollError, setPollError] = useState<string | null>(null);
   const [progressStatus, setProgressStatus] = useState<string>(ProgressStatusMessage.PROCESSING);
+  
+  // Keep a ref in sync with progressStatus to avoid stale closures in event handlers
+  // (the WebSocket subscription effect intentionally omits progressStatus from deps)
+  const progressStatusRef = useRef<string>(ProgressStatusMessage.PROCESSING);
+  progressStatusRef.current = progressStatus;
 
   // Store onComplete in a ref to avoid effect re-runs when it changes
   const onCompleteRef = useRef(onComplete);
@@ -262,7 +267,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
           isFailed ? 'Processing failed' :
           isCancelled ? 'Processing cancelled' :
           isProgressUpdate ? mapEventToProgressStatus(update) :
-          progressStatus;
+          progressStatusRef.current;
 
         if (isProgressUpdate) {
           setProgressStatus(dynamicStep);
@@ -360,7 +365,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
       unsubscribeSession();
     };
   // progressStatus is intentionally omitted to avoid recreating the subscription on every state change.
-  // We compute fresh values inline in the handler using mapEventToProgressStatus(update) to avoid stale closures.
+  // We use progressStatusRef.current for the fallback case to avoid stale closures.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 

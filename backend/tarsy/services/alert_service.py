@@ -863,8 +863,10 @@ class AlertService:
                     # Update session current stage
                     await self.stage_manager.update_session_current_stage(chain_context.session_id, i, stage_execution_id)
                 else:
-                    # For parallel stages, we'll update session current stage after parallel execution completes
-                    stage_execution_id = None  # Will be set by parallel execution method
+                    # For parallel stages, the parallel executor creates and manages the parent execution record.
+                    # The parent_stage_execution_id is returned in stage_result.metadata on success.
+                    # On exception, parallel executor handles its own cleanup; we skip stage-level updates.
+                    stage_execution_id = None
                 
                 try:
                     # is_parallel already checked above
@@ -885,11 +887,18 @@ class AlertService:
                             )
                         
                         # Get parent stage execution ID from result metadata
-                        parent_execution_id = stage_result.metadata.parent_stage_execution_id if stage_result.metadata else None
+                        parent_execution_id = (
+                            stage_result.metadata.parent_stage_execution_id
+                            if stage_result.metadata
+                            else None
+                        )
+                        if not parent_execution_id:
+                            raise RuntimeError(
+                                f"Parallel stage '{stage.name}' returned no parent_stage_execution_id in metadata"
+                            )
                         
                         # Update session current stage with parent execution ID
-                        if parent_execution_id:
-                            await self.stage_manager.update_session_current_stage(chain_context.session_id, i, parent_execution_id)
+                        await self.stage_manager.update_session_current_stage(chain_context.session_id, i, parent_execution_id)
                         
                         # Record stage transition as interaction (non-blocking)
                         if self.history_service and hasattr(self.history_service, "record_session_interaction"):
@@ -1062,7 +1071,10 @@ class AlertService:
                         )
                         
                         # Update stage execution as paused with current iteration and conversation state
-                        await self.stage_manager.update_stage_execution_paused(stage_execution_id, e.iteration, paused_result)
+                        # Note: SessionPaused is caught by ParallelStageExecutor for parallel stages,
+                        # so stage_execution_id should always be set here. Guard for safety.
+                        if stage_execution_id:
+                            await self.stage_manager.update_stage_execution_paused(stage_execution_id, e.iteration, paused_result)
                         
                         # Update session status to PAUSED with metadata
                         from tarsy.models.constants import AlertSessionStatus
@@ -1090,8 +1102,10 @@ class AlertService:
                     error_msg = f"Stage '{stage.name}' failed with agent '{stage.agent}': {str(e)}"
                     logger.error(error_msg, exc_info=True)
                     
-                    # Update stage execution as failed
-                    await self.stage_manager.update_stage_execution_failed(stage_execution_id, error_msg)
+                    # Update stage execution as failed (only for non-parallel stages with execution_id)
+                    # Parallel stages manage their own execution records via ParallelStageExecutor
+                    if stage_execution_id:
+                        await self.stage_manager.update_stage_execution_failed(stage_execution_id, error_msg)
                     
                     # Add structured error as stage output for next stages
                     error_result = AgentExecutionResult(
@@ -1102,7 +1116,8 @@ class AlertService:
                         result_summary=f"Stage '{stage.name}' failed: {str(e)}",
                         error_message=str(e),
                     )
-                    chain_context.add_stage_result(stage_execution_id, error_result)
+                    if stage_execution_id:
+                        chain_context.add_stage_result(stage_execution_id, error_result)
                     
                     failed_stages += 1
                     

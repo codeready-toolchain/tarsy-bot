@@ -96,8 +96,11 @@ class TestAlertServiceResumePausedSession:
         # Verify session status updated to IN_PROGRESS
         assert alert_service.session_manager.update_session_status.call_count >= 1
         first_call = alert_service.session_manager.update_session_status.call_args_list[0]
-        assert first_call[0][0] == session_id
-        assert first_call[0][1] == AlertSessionStatus.IN_PROGRESS.value
+        # Handle both positional and keyword argument styles
+        first_session_id = first_call.kwargs.get("session_id") if "session_id" in first_call.kwargs else first_call.args[0]
+        first_status = first_call.kwargs.get("status") if "status" in first_call.kwargs else first_call.args[1]
+        assert first_session_id == session_id
+        assert first_status == AlertSessionStatus.IN_PROGRESS.value
         
         # Verify resume and completion events published
         mock_resume_event.assert_called_once_with(session_id)
@@ -106,13 +109,18 @@ class TestAlertServiceResumePausedSession:
         # Verify session was eventually marked COMPLETED with summary
         completed_call = None
         for call_args in alert_service.session_manager.update_session_status.call_args_list:
-            if call_args[0][1] == AlertSessionStatus.COMPLETED.value:
+            # Handle both positional and keyword argument styles
+            if "status" in call_args.kwargs:
+                status = call_args.kwargs["status"]
+            else:
+                status = call_args.args[1] if len(call_args.args) > 1 else None
+            if status == AlertSessionStatus.COMPLETED.value:
                 completed_call = call_args
                 break
         
         assert completed_call is not None, "Session was not marked as COMPLETED"
         # Verify final_analysis_summary was passed
-        assert completed_call[1].get('final_analysis_summary') == "Executive summary of resumed analysis", \
+        assert completed_call.kwargs.get('final_analysis_summary') == "Executive summary of resumed analysis", \
             "Executive summary not generated for resumed session"
         
         # Verify chain execution called
@@ -343,7 +351,11 @@ class TestAlertServiceResumePausedSession:
         assert "**Processing Chain:** test-chain" in result
         
         # Verify no COMPLETED status was set (should stay PAUSED)
-        status_calls = [call[0][1] for call in alert_service.session_manager.update_session_status.call_args_list]
+        # Handle both positional and keyword argument styles
+        status_calls = [
+            call.kwargs["status"] if "status" in call.kwargs else call.args[1]
+            for call in alert_service.session_manager.update_session_status.call_args_list
+        ]
         assert AlertSessionStatus.COMPLETED.value not in status_calls
     
     @pytest.mark.asyncio
@@ -427,7 +439,11 @@ class TestAlertServiceResumePausedSession:
         assert "## Troubleshooting" in result
         
         # Verify session status updated to FAILED
-        status_calls = [call[0][1] for call in alert_service.session_manager.update_session_status.call_args_list]
+        # Handle both positional and keyword argument styles
+        status_calls = [
+            call.kwargs["status"] if "status" in call.kwargs else call.args[1]
+            for call in alert_service.session_manager.update_session_status.call_args_list
+        ]
         assert AlertSessionStatus.FAILED.value in status_calls
         
         # Verify failed event was published

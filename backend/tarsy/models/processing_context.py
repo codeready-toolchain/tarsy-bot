@@ -153,8 +153,8 @@ class ChainContext(BaseModel):
         return [
             (result.stage_name, result)
             for result in self.stage_outputs.values()
-            if (isinstance(result, AgentExecutionResult) and result.status is StageStatus.COMPLETED)
-            or (isinstance(result, ParallelStageResult) and result.status is StageStatus.COMPLETED)
+            if (isinstance(result, AgentExecutionResult) and result.status == StageStatus.COMPLETED)
+            or (isinstance(result, ParallelStageResult) and result.status == StageStatus.COMPLETED)
         ]
     
     def get_previous_stage_results(self) -> List[tuple[str, Union[AgentExecutionResult, ParallelStageResult]]]:
