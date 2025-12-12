@@ -1532,4 +1532,89 @@ class TestChatServiceWithChatConfig:
         # Should use default agent (no chat config override)
         agent = chat_service._determine_chat_agent_from_session(sample_session)
         assert agent == "ChatAgent"
+    
+    def test_chat_inherits_synthesis_strategy_from_last_stage(
+        self, chat_service, sample_session
+    ):
+        """Test chat inherits and translates synthesis strategy from last stage's synthesis config."""
+        # Multi-agent stage with synthesis configuration
+        sample_session.chain_definition = {
+            "chain_id": "test-chain",
+            "alert_types": ["TestAlert"],
+            "stages": [
+                {
+                    "name": "Multi-Agent Stage",
+                    "agents": [
+                        {"name": "Agent1", "iteration_strategy": "react"},
+                        {"name": "Agent2", "iteration_strategy": "native-thinking"}
+                    ],
+                    "synthesis": {
+                        "agent": "SynthesisAgent",
+                        "iteration_strategy": "synthesis-native-thinking",
+                        "llm_provider": "gemini-3-pro"
+                    }
+                }
+            ]
+        }
+        
+        result = chat_service._determine_iteration_strategy_from_session(sample_session)
+        
+        # Should translate synthesis-native-thinking to native-thinking for chat
+        assert result == "native-thinking"
+    
+    def test_chat_inherits_generic_synthesis_strategy(
+        self, chat_service, sample_session
+    ):
+        """Test chat inherits and translates generic synthesis strategy to react."""
+        sample_session.chain_definition = {
+            "chain_id": "test-chain",
+            "alert_types": ["TestAlert"],
+            "stages": [
+                {
+                    "name": "Multi-Agent Stage",
+                    "agents": [
+                        {"name": "Agent1"},
+                        {"name": "Agent2"}
+                    ],
+                    "synthesis": {
+                        "agent": "SynthesisAgent",
+                        "iteration_strategy": "synthesis"
+                    }
+                }
+            ]
+        }
+        
+        result = chat_service._determine_iteration_strategy_from_session(sample_session)
+        
+        # Should translate synthesis to react for chat
+        assert result == "react"
+    
+    def test_chat_inherits_synthesis_llm_provider(
+        self, chat_service, sample_session
+    ):
+        """Test chat inherits LLM provider from synthesis config."""
+        sample_session.chain_definition = {
+            "chain_id": "test-chain",
+            "alert_types": ["TestAlert"],
+            "llm_provider": "anthropic-default",  # Chain-level provider
+            "stages": [
+                {
+                    "name": "Multi-Agent Stage",
+                    "agents": [
+                        {"name": "Agent1"},
+                        {"name": "Agent2"}
+                    ],
+                    "synthesis": {
+                        "agent": "SynthesisAgent",
+                        "iteration_strategy": "synthesis-native-thinking",
+                        "llm_provider": "gemini-3-pro"  # Synthesis-specific provider
+                    }
+                }
+            ]
+        }
+        
+        result = chat_service._determine_llm_provider_from_session(sample_session)
+        
+        # Should use synthesis provider, not chain-level
+        assert result == "gemini-3-pro"
 

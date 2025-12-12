@@ -719,28 +719,33 @@ class ChatService:
             strategy = getattr(last_stage.iteration_strategy, "value", last_stage.iteration_strategy)
             logger.info(f"Chat using explicit stage strategy: {strategy}")
         else:
-            # Otherwise, look up agent's default strategy
+            # Otherwise, look up agent's default strategy or synthesis strategy
             agent_name = last_stage.agent
-            if not agent_name:
+            
+            # Check for synthesis configuration if no single agent
+            if not agent_name and last_stage.synthesis:
+                strategy = last_stage.synthesis.iteration_strategy.value
+                logger.info(f"Chat using synthesis strategy: {strategy}")
+            elif not agent_name:
                 return None
-            
-            # Try configured agents first
-            if self.agent_factory.agent_configs and agent_name in self.agent_factory.agent_configs:
-                agent_config = self.agent_factory.agent_configs[agent_name]
-                if agent_config.iteration_strategy:
-                    strategy = agent_config.iteration_strategy.value
-                    logger.info(f"Chat using configured agent '{agent_name}' default strategy: {strategy}")
-            
-            # Try builtin agents if not found
-            if not strategy:
-                from tarsy.config.builtin_config import get_builtin_agent_config
-                try:
-                    builtin_config = get_builtin_agent_config(agent_name)
-                    strategy = builtin_config.get("iteration_strategy")
-                    if strategy:
-                        logger.info(f"Chat using builtin agent '{agent_name}' default strategy: {strategy}")
-                except ValueError:
-                    pass  # Not a builtin agent
+            else:
+                # Try configured agents first
+                if self.agent_factory.agent_configs and agent_name in self.agent_factory.agent_configs:
+                    agent_config = self.agent_factory.agent_configs[agent_name]
+                    if agent_config.iteration_strategy:
+                        strategy = agent_config.iteration_strategy.value
+                        logger.info(f"Chat using configured agent '{agent_name}' default strategy: {strategy}")
+                
+                # Try builtin agents if not found
+                if not strategy:
+                    from tarsy.config.builtin_config import get_builtin_agent_config
+                    try:
+                        builtin_config = get_builtin_agent_config(agent_name)
+                        strategy = builtin_config.get("iteration_strategy")
+                        if strategy:
+                            logger.info(f"Chat using builtin agent '{agent_name}' default strategy: {strategy}")
+                    except ValueError:
+                        pass  # Not a builtin agent
         
         # Translate synthesis strategies to chat-appropriate equivalents
         from tarsy.models.constants import IterationStrategy
@@ -764,12 +769,14 @@ class ChatService:
         """
         Determine the LLM provider to use for chat based on the session's chain config.
         
-        Uses explicit chat config first, then falls back to chain-level provider.
+        Uses explicit chat config first, then falls back to synthesis provider (if last stage
+        has synthesis), then chain-level provider.
         
         Priority:
         1. Explicit chat config llm_provider (highest priority)
-        2. Chain-level provider
-        3. Global default (None)
+        2. Last stage synthesis llm_provider (if synthesis exists)
+        3. Chain-level provider
+        4. Global default (None)
         
         Args:
             session: AlertSession object with chain_config
@@ -787,7 +794,14 @@ class ChatService:
             logger.info(f"Chat using explicit chat config LLM provider: {chain_config.chat.llm_provider}")
             return chain_config.chat.llm_provider
         
-        # Priority 2: Chain-level provider
+        # Priority 2: Last stage synthesis provider (if applicable)
+        if chain_config.stages:
+            last_stage = chain_config.stages[-1]
+            if last_stage.synthesis and last_stage.synthesis.llm_provider:
+                logger.info(f"Chat using synthesis LLM provider: {last_stage.synthesis.llm_provider}")
+                return last_stage.synthesis.llm_provider
+        
+        # Priority 3: Chain-level provider
         if chain_config.llm_provider:
             logger.info(f"Chat using chain-level LLM provider: {chain_config.llm_provider}")
             return chain_config.llm_provider
