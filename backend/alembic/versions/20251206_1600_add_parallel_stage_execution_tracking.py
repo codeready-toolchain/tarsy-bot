@@ -57,13 +57,18 @@ def upgrade() -> None:
             "Skipping foreign key creation for SQLite (not supported for existing tables)"
         )
     else:
-        with op.batch_alter_table('stage_executions', schema=None) as batch_op:
-            batch_op.create_foreign_key(
-                'fk_stage_executions_parent',
-                'stage_executions',
-                ['parent_stage_execution_id'],
-                ['execution_id']
-            )
+        # Check if foreign key constraint already exists before creating it
+        foreign_keys = inspector.get_foreign_keys('stage_executions')
+        fk_names = [fk['name'] for fk in foreign_keys]
+        
+        if 'fk_stage_executions_parent' not in fk_names:
+            with op.batch_alter_table('stage_executions', schema=None) as batch_op:
+                batch_op.create_foreign_key(
+                    'fk_stage_executions_parent',
+                    'stage_executions',
+                    ['parent_stage_execution_id'],
+                    ['execution_id']
+                )
     
     # Add indexes for efficient queries (if they don't exist)
     with op.batch_alter_table('stage_executions', schema=None) as batch_op:
@@ -108,8 +113,13 @@ def downgrade() -> None:
             "Skipping foreign key drop for SQLite (was never created)"
         )
     else:
-        with op.batch_alter_table('stage_executions', schema=None) as batch_op:
-            batch_op.drop_constraint('fk_stage_executions_parent', type_='foreignkey')
+        # Check if foreign key constraint exists before dropping it
+        foreign_keys = inspector.get_foreign_keys('stage_executions')
+        fk_names = [fk['name'] for fk in foreign_keys]
+        
+        if 'fk_stage_executions_parent' in fk_names:
+            with op.batch_alter_table('stage_executions', schema=None) as batch_op:
+                batch_op.drop_constraint('fk_stage_executions_parent', type_='foreignkey')
     
     # Drop columns
     columns = [col['name'] for col in inspector.get_columns('stage_executions')]

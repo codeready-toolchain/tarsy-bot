@@ -411,7 +411,13 @@ class ReactController(IterationController):
                     # 4. Extract and parse assistant response
                     assistant_message = conversation_result.get_latest_assistant_message()
                     if not assistant_message:
-                        raise Exception("No assistant response received from LLM")
+                        stage_execution_id = context.agent.get_current_stage_execution_id()
+                        error_msg = (
+                            f"No assistant response received from LLM - "
+                            f"session_id={context.session_id}, stage_execution_id={stage_execution_id}"
+                        )
+                        self.logger.error(error_msg)
+                        raise RuntimeError("No assistant response received from LLM")
                     
                     response = assistant_message.content
                     self.logger.debug(f"LLM Response (first 500 chars): {response[:500]}")
@@ -512,7 +518,12 @@ class ReactController(IterationController):
                 conversation.append_observation(f"Observation: {error_observation}")
                     
             except Exception as e:
-                self.logger.error(f"ReAct iteration {iteration + 1} failed: {str(e)}")
+                stage_execution_id = context.agent.get_current_stage_execution_id() if context.agent else None
+                self.logger.error(
+                    f"ReAct iteration {iteration + 1} failed: {str(e)} - "
+                    f"session_id={context.session_id}, stage_execution_id={stage_execution_id}",
+                    exc_info=True
+                )
                 # Mark this interaction as failed
                 last_interaction_failed = True
                 

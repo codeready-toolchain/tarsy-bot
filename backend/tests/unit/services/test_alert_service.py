@@ -1601,3 +1601,109 @@ class TestFullErrorPropagation:
         # Should NOT contain "with X stage failures:" since it's a single failure
         assert "stage failures:" not in result
 
+
+@pytest.mark.unit
+class TestAlertServicePausedWithNoneFinalAnalysis:
+    """Test AlertService handles None final_analysis for PAUSED status correctly."""
+    
+    @pytest.mark.asyncio
+    async def test_process_alert_paused_with_none_final_analysis(self):
+        """Test that process_alert handles None final_analysis gracefully for PAUSED status."""
+        from tarsy.models.api_models import ChainExecutionResult
+        from tarsy.models.constants import ChainStatus
+        from tarsy.models.alert import ProcessingAlert
+        
+        # Create mock settings
+        mock_settings = MockFactory.create_mock_settings(
+            agent_config_path=None,
+            history_enabled=True
+        )
+        
+        # Create alert service with mocked dependencies
+        with patch('tarsy.services.alert_service.RunbookService'), \
+             patch('tarsy.services.alert_service.get_history_service') as mock_history, \
+             patch('tarsy.services.alert_service.ChainRegistry') as mock_chain_registry, \
+             patch('tarsy.services.alert_service.MCPServerRegistry'), \
+             patch('tarsy.services.alert_service.MCPClient'), \
+             patch('tarsy.services.mcp_client_factory.MCPClientFactory') as mock_mcp_factory, \
+             patch('tarsy.services.alert_service.LLMManager'):
+            
+            service = AlertService(mock_settings)
+            
+            # Mock chain registry to return a simple chain
+            mock_chain = ChainConfigModel(
+                chain_id='test-chain',
+                alert_types=['test-alert'],
+                stages=[
+                    ChainStageConfigModel(name='stage1', agent='TestAgent')
+                ],
+                description='Test chain'
+            )
+            mock_chain_registry.return_value.get_chain_for_alert_type.return_value = mock_chain
+            
+            # Mock history service
+            mock_history_instance = Mock()
+            mock_history_instance.start_session_processing = AsyncMock()
+            mock_history_instance.record_session_interaction = AsyncMock()
+            mock_history.return_value = mock_history_instance
+            service.history_service = mock_history_instance
+            
+            # Mock session manager
+            service.session_manager.create_chain_history_session = Mock(return_value=True)
+            service.session_manager.update_session_status = Mock()
+            
+            # Mock agent factory (required for process_alert)
+            service.agent_factory = Mock()
+            
+            # Mock MCP client factory
+            mock_mcp_client = AsyncMock()
+            mock_mcp_client.close = AsyncMock()
+            mock_mcp_factory.return_value.create_client = AsyncMock(return_value=mock_mcp_client)
+            
+            # Mock _execute_chain_stages to return PAUSED with None final_analysis (the bug case)
+            service._execute_chain_stages = AsyncMock(
+                return_value=ChainExecutionResult(
+                    status=ChainStatus.PAUSED,
+                    timestamp_us=now_us(),
+                    final_analysis=None  # This was causing the crash
+                )
+            )
+            
+            # Create processing alert
+            processing_alert = ProcessingAlert(
+                alert_type="test-alert",
+                severity="warning",
+                timestamp=now_us(),
+                environment="production",
+                alert_data={"test": "data"}
+            )
+            chain_context = ChainContext.from_processing_alert(
+                processing_alert=processing_alert,
+                session_id=str(uuid.uuid4())
+            )
+            
+            # Mock event publishing
+            with patch('tarsy.services.events.event_helpers.publish_session_created', new=AsyncMock()), \
+                 patch('tarsy.services.events.event_helpers.publish_session_started', new=AsyncMock()), \
+                 patch('tarsy.hooks.hook_context.stage_execution_context'):
+                
+                # Process alert - should not crash
+                result = await service.process_alert(chain_context)
+            
+            # Verify result contains default pause message (not None)
+            assert "# Alert Analysis Report" in result
+            assert "Session paused - waiting for user to resume" in result
+            assert "**Processing Chain:** test-chain" in result
+            assert "**Alert Type:** test-alert" in result
+            
+            # Verify session status was NOT updated to COMPLETED (should stay PAUSED)
+            status_calls = [
+                call for call in service.session_manager.update_session_status.call_args_list
+            ]
+            # Check that no call set status to COMPLETED
+            for call in status_calls:
+                if len(call.args) > 1:
+                    assert call.args[1] != 'completed'
+                if 'status' in call.kwargs:
+                    assert call.kwargs['status'] != 'completed'
+

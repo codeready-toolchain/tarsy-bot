@@ -252,6 +252,14 @@ class TestSingleAgentGeminiNativeThinkingFailureE2E:
         # ============================================================================
         # MCP MOCK
         # ============================================================================
+        k8s_config = E2ETestUtils.create_simple_kubernetes_mcp_config(
+            command_args=["test"],
+            instructions="Test server for Gemini LLM failure testing"
+        )
+        test_mcp_servers = E2ETestUtils.create_test_mcp_servers(BUILTIN_MCP_SERVERS, {
+            "kubernetes-server": k8s_config
+        })
+
         mock_k8s_session = AsyncMock()
 
         async def mock_k8s_call_tool(tool_name, parameters):
@@ -276,59 +284,68 @@ class TestSingleAgentGeminiNativeThinkingFailureE2E:
         mock_k8s_session.call_tool.side_effect = mock_k8s_call_tool
         mock_k8s_session.list_tools.side_effect = mock_k8s_list_tools
 
-        mock_sessions = {"kubernetes-server": mock_k8s_session}
-        mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
+        with patch("tarsy.config.builtin_config.BUILTIN_MCP_SERVERS", test_mcp_servers), \
+             patch("tarsy.services.mcp_server_registry.MCPServerRegistry._DEFAULT_SERVERS", test_mcp_servers), \
+             E2ETestUtils.setup_runbook_service_patching(content="# Test Runbook"):
 
-        # Patch LLM clients
-        with E2ETestUtils.create_llm_patch_context(
-            gemini_mock_factory=gemini_mock_factory,
-            streaming_mock=failing_langchain_mock
-        ):
-            with patch('tarsy.integrations.mcp.client.MCPClient.list_tools', mock_list_tools):
-                with patch('tarsy.integrations.mcp.client.MCPClient.call_tool', mock_call_tool):
-                    with E2ETestUtils.setup_runbook_service_patching("# Test Runbook"):
-                        # Submit alert
-                        print("⏳ Step 1: Submitting alert...")
-                        E2ETestUtils.submit_alert(test_client, alert_data)
+            with E2ETestUtils.create_llm_patch_context(
+                gemini_mock_factory=gemini_mock_factory,
+                streaming_mock=failing_langchain_mock
+            ):
+                mock_sessions = {"kubernetes-server": mock_k8s_session}
+                mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
 
-                        # Wait for completion - expect FAILED status
-                        print("⏳ Step 2: Waiting for processing (expect failure)...")
-                        session_id, final_status = await E2ETestUtils.wait_for_session_completion(
-                            test_client, max_wait_seconds=60, debug_logging=True
+                async def mock_initialize(self):
+                    """Mock initialization that bypasses real server startup."""
+                    self.sessions = mock_sessions.copy()
+                    self._initialized = True
+
+                with patch.object(MCPClient, "initialize", mock_initialize), \
+                     patch.object(MCPClient, "list_tools", mock_list_tools), \
+                     patch.object(MCPClient, "call_tool", mock_call_tool):
+
+                    # Submit alert
+                    print("⏳ Step 1: Submitting alert...")
+                    E2ETestUtils.submit_alert(test_client, alert_data)
+
+                    # Wait for completion - expect FAILED status
+                    print("⏳ Step 2: Waiting for processing (expect failure)...")
+                    session_id, final_status = await E2ETestUtils.wait_for_session_completion(
+                        test_client, max_wait_seconds=60, debug_logging=True
+                    )
+
+                    # Verify session failed
+                    print("🔍 Step 3: Verifying failure state...")
+                    assert session_id is not None, "Session ID missing"
+                    assert final_status == "failed", f"Expected 'failed' status, got '{final_status}'"
+                    print(f"✅ Session correctly marked as FAILED: {session_id}")
+
+                    # Get session details
+                    detail_data = await E2ETestUtils.get_session_details_async(
+                        test_client, session_id, max_retries=5
+                    )
+
+                    # Verify error is captured
+                    error_message = detail_data.get("error_message", "")
+                    print(f"📝 Error message: {error_message[:200]}...")
+                    assert error_message, "Expected error message to be captured"
+
+                    # Verify stages show failure
+                    stages = detail_data.get("stages", [])
+                    print(f"📊 Found {len(stages)} stage(s)")
+
+                    # All stages should be failed
+                    for stage in stages:
+                        assert stage["status"] == "failed", (
+                            f"Expected stage '{stage['stage_name']}' to be 'failed', got '{stage['status']}'"
                         )
+                        print(f"   ✅ Stage '{stage['stage_name']}' correctly failed")
 
-                        # Verify session failed
-                        print("🔍 Step 3: Verifying failure state...")
-                        assert session_id is not None, "Session ID missing"
-                        assert final_status == "failed", f"Expected 'failed' status, got '{final_status}'"
-                        print(f"✅ Session correctly marked as FAILED: {session_id}")
+                    print(f"✅ Gemini/Native-Thinking LLM failure test passed!")
+                    print(f"   📊 Summary: Session=FAILED, {len(stages)} stage(s) failed")
+                    print(f"   📝 Gemini calls: {interaction_count['gemini']}, LangChain calls: {interaction_count['langchain']}")
 
-                        # Get session details
-                        detail_data = await E2ETestUtils.get_session_details_async(
-                            test_client, session_id, max_retries=5
-                        )
-
-                        # Verify error is captured
-                        error_message = detail_data.get("error_message", "")
-                        print(f"📝 Error message: {error_message[:200]}...")
-                        assert error_message, "Expected error message to be captured"
-
-                        # Verify stages show failure
-                        stages = detail_data.get("stages", [])
-                        print(f"📊 Found {len(stages)} stage(s)")
-
-                        # All stages should be failed
-                        for stage in stages:
-                            assert stage["status"] == "failed", (
-                                f"Expected stage '{stage['stage_name']}' to be 'failed', got '{stage['status']}'"
-                            )
-                            print(f"   ✅ Stage '{stage['stage_name']}' correctly failed")
-
-                        print(f"✅ Gemini/Native-Thinking LLM failure test passed!")
-                        print(f"   📊 Summary: Session=FAILED, {len(stages)} stage(s) failed")
-                        print(f"   📝 Gemini calls: {interaction_count['gemini']}, LangChain calls: {interaction_count['langchain']}")
-
-                        return detail_data
+                    return detail_data
 
 
 @pytest.mark.asyncio

@@ -119,8 +119,11 @@ class TestAlertServiceResumePausedSession:
                 break
         
         assert completed_call is not None, "Session was not marked as COMPLETED"
-        # Verify final_analysis_summary was passed
-        assert completed_call.kwargs.get('final_analysis_summary') == "Executive summary of resumed analysis", \
+        # Verify final_analysis_summary was passed (handle both positional and keyword arguments)
+        final_analysis_summary = completed_call.kwargs.get('final_analysis_summary') or (
+            completed_call.args[4] if len(completed_call.args) > 4 else None
+        )
+        assert final_analysis_summary == "Executive summary of resumed analysis", \
             "Executive summary not generated for resumed session"
         
         # Verify chain execution called
@@ -352,6 +355,74 @@ class TestAlertServiceResumePausedSession:
         
         # Verify no COMPLETED status was set (should stay PAUSED)
         # Handle both positional and keyword argument styles
+        status_calls = [
+            call.kwargs.get("status") or (call.args[1] if len(call.args) > 1 else None)
+            for call in alert_service.session_manager.update_session_status.call_args_list
+        ]
+        assert AlertSessionStatus.COMPLETED.value not in status_calls
+    
+    @pytest.mark.asyncio
+    async def test_resume_handles_none_final_analysis(self) -> None:
+        """Test that resume handles None final_analysis gracefully when session pauses again."""
+        session_id = "test-session"
+        
+        mock_session = MagicMock(spec=AlertSession)
+        mock_session.status = AlertSessionStatus.PAUSED.value
+        mock_session.alert_type = "kubernetes"
+        mock_session.alert_data = {}
+        mock_session.started_at_us = 1000000
+        mock_session.runbook_url = None
+        mock_session.mcp_selection = None
+        mock_session.author = None
+        mock_session.chain_config = MagicMock()
+        mock_session.chain_config.chain_id = "test-chain"
+        
+        mock_paused_stage = MagicMock(spec=StageExecution)
+        mock_paused_stage.status = StageStatus.PAUSED.value
+        mock_paused_stage.stage_name = "analysis"
+        mock_paused_stage.current_iteration = 30
+        mock_paused_stage.stage_output = None
+        
+        mock_history_service = MagicMock()
+        mock_history_service.get_session.return_value = mock_session
+        mock_history_service.get_stage_executions = AsyncMock(return_value=[mock_paused_stage])
+        
+        mock_settings = MagicMock()
+        mock_settings.agent_config_path = None
+        
+        with patch('tarsy.services.alert_service.RunbookService'):
+            alert_service = AlertService(settings=mock_settings)
+        
+        alert_service.history_service = mock_history_service
+        alert_service.session_manager.update_session_status = MagicMock()
+        
+        # Mock final_analysis_summarizer (not used for PAUSED status)
+        mock_summarizer = AsyncMock()
+        alert_service.final_analysis_summarizer = mock_summarizer
+        
+        # Chain execution returns PAUSED with None final_analysis (the bug case)
+        alert_service._execute_chain_stages = AsyncMock(
+            return_value=ChainExecutionResult(
+                status=ChainStatus.PAUSED,
+                timestamp_us=1234567890,
+                final_analysis=None  # This was causing the bug
+            )
+        )
+        
+        with patch.object(alert_service, 'mcp_client_factory') as mock_mcp_factory:
+            mock_mcp_factory.create_client = AsyncMock()
+            
+            with patch('tarsy.services.events.event_helpers.publish_session_resumed', new=AsyncMock()), \
+                 patch('tarsy.hooks.hook_context.stage_execution_context'):
+                
+                result = await alert_service.resume_paused_session(session_id)
+        
+        # Verify returns formatted response with default pause message
+        assert "# Alert Analysis Report" in result
+        assert "Session paused again - waiting for user to resume" in result
+        assert "**Processing Chain:** test-chain" in result
+        
+        # Verify no COMPLETED status was set (should stay PAUSED)
         status_calls = [
             call.kwargs.get("status") or (call.args[1] if len(call.args) > 1 else None)
             for call in alert_service.session_manager.update_session_status.call_args_list

@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from .agent_execution_result import AgentExecutionResult, ParallelStageResult
 from .alert import ProcessingAlert
-from .constants import StageStatus
+from .constants import IterationStrategy, StageStatus
 from .mcp_selection_models import MCPSelectionConfig
 
 if TYPE_CHECKING:
@@ -261,7 +261,6 @@ class StageContext:
     
     def _is_synthesis_strategy(self) -> bool:
         """Check if current agent uses synthesis strategy."""
-        from tarsy.models.constants import IterationStrategy
         strategy = self.agent.iteration_strategy
         return strategy in [IterationStrategy.SYNTHESIS, IterationStrategy.SYNTHESIS_NATIVE_THINKING]
     

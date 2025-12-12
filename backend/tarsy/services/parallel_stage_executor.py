@@ -7,7 +7,7 @@ and automatic synthesis of parallel results.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from tarsy.agents.exceptions import SessionPaused
 from tarsy.config.settings import Settings
@@ -176,7 +176,7 @@ class ParallelStageExecutor:
         chain_context: ChainContext,
         session_mcp_client: MCPClient,
         stage_index: int,
-        execution_configs: list,
+        execution_configs: list[dict[str, Any]],
         parallel_type: str
     ) -> ParallelStageResult:
         """
@@ -216,7 +216,7 @@ class ParallelStageExecutor:
         await self.stage_manager.update_stage_execution_started(parent_stage_execution_id)
         
         # Prepare parallel executions
-        async def execute_single(config: dict, idx: int):
+        async def execute_single(config: dict[str, Any], idx: int):
             """Execute a single agent/replica and return (result, metadata) tuple."""
             agent_started_at_us = now_us()
             agent_name = config["agent_name"]
@@ -648,7 +648,7 @@ class ParallelStageExecutor:
         parent_execution_id = paused_parent_stage.execution_id
         
         # Execute paused agents concurrently
-        async def execute_single_child(config: dict, idx: int):
+        async def execute_single_child(config: dict[str, Any], idx: int):
             """Execute a single resumed agent/replica and return (result, metadata) tuple."""
             agent_started_at_us = now_us()
             agent_name = config["agent_name"]

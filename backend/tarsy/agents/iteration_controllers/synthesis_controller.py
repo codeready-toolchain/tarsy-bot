@@ -37,8 +37,8 @@ class SynthesisController(IterationController):
             prompt_builder: Prompt builder for creating synthesis prompts
         """
         super().__init__()
-        self.llm_manager = llm_manager
-        self.prompt_builder = prompt_builder
+        self.llm_manager: 'LLMManager' = llm_manager
+        self.prompt_builder: 'PromptBuilder' = prompt_builder
     
     def needs_mcp_tools(self) -> bool:
         """Synthesis doesn't need MCP tools."""
@@ -98,12 +98,25 @@ class SynthesisController(IterationController):
             # Extract assistant response
             assistant_message = conversation_result.get_latest_assistant_message()
             if not assistant_message:
-                raise Exception("No assistant response received from LLM")
-            
-            response = assistant_message
+                # Import here to avoid circular dependency
+                from tarsy.agents.exceptions import MaxIterationsFailureError
+                
+                error_msg = "Synthesis stage failed: no response generated from LLM"
+                logger.error(
+                    f"{error_msg} - session_id={context.session_id}, stage_execution_id={stage_execution_id}"
+                )
+                raise MaxIterationsFailureError(
+                    error_msg,
+                    max_iterations=1,
+                    context={
+                        "session_id": context.session_id,
+                        "stage_execution_id": stage_execution_id,
+                        "stage_type": "synthesis"
+                    }
+                )
             
             # Extract content from assistant message
-            analysis = response.content if hasattr(response, 'content') else str(response)
+            analysis = assistant_message.content
             
             # Store conversation for investigation_history
             self._last_conversation = conversation_result
@@ -111,8 +124,14 @@ class SynthesisController(IterationController):
             logger.info("Synthesis analysis completed successfully")
             return analysis if analysis else "No synthesis result generated"
             
+        except MaxIterationsFailureError:
+            # Re-raise our own exceptions
+            raise
         except Exception as e:
-            logger.error(f"Synthesis failed: {e}", exc_info=True)
+            logger.error(
+                f"Synthesis failed: {e} - session_id={context.session_id}, stage_execution_id={stage_execution_id}",
+                exc_info=True
+            )
             raise
     
     def build_synthesis_conversation(self, conversation: LLMConversation) -> str:
@@ -122,15 +141,8 @@ class SynthesisController(IterationController):
         Synthesis controllers don't produce investigation history themselves,
         they consume it from parallel agents.
         """
-        # Simple implementation: return last assistant message
-        if not hasattr(conversation, 'messages') or not conversation.messages:
-            return ""
-        
-        for msg in reversed(conversation.messages):
-            if msg.role == MessageRole.ASSISTANT:
-                return msg.content
-        
-        return ""
+        assistant_message = conversation.get_latest_assistant_message()
+        return assistant_message.content if assistant_message else ""
     
     def create_result_summary(
         self,

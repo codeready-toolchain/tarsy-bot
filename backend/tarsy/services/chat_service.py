@@ -325,7 +325,7 @@ class ChatService:
             )
             
             # Trigger stage execution hooks (creates DB record, publishes events)
-            async with stage_execution_context(chat.session_id, stage_execution):
+            async with stage_execution_context(stage_execution):
                 pass
             
             logger.info(f"Created chat message execution {execution_id} for chat {chat_id}")
@@ -897,7 +897,7 @@ class ChatService:
             existing_stage.started_at_us = now_us()
             
             # Trigger stage execution hooks (updates DB + broadcasts to dashboard)
-            async with stage_execution_context(existing_stage.session_id, existing_stage):
+            async with stage_execution_context(existing_stage):
                 pass
             
             logger.debug(f"Chat execution {stage_execution_id} marked as started")
@@ -942,7 +942,7 @@ class ChatService:
                 )
             
             # Trigger stage execution hooks (updates DB + broadcasts to dashboard)
-            async with stage_execution_context(existing_stage.session_id, existing_stage):
+            async with stage_execution_context(existing_stage):
                 pass
             
             logger.debug(f"Chat execution {stage_execution_id} marked as completed")
@@ -983,7 +983,7 @@ class ChatService:
                 )
             
             # Trigger stage execution hooks (updates DB + broadcasts to dashboard)
-            async with stage_execution_context(existing_stage.session_id, existing_stage):
+            async with stage_execution_context(existing_stage):
                 pass
             
             logger.debug(f"Chat execution {stage_execution_id} marked as failed")

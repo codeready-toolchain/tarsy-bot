@@ -92,7 +92,7 @@ class StageExecutionManager:
         # Trigger stage execution hooks (history + dashboard) via context manager
         try:
             from tarsy.hooks.hook_context import stage_execution_context
-            async with stage_execution_context(session_id, stage_execution):
+            async with stage_execution_context(stage_execution):
                 # Context automatically triggers hooks when exiting
                 # History hook will create DB record and set execution_id on the model
                 pass
@@ -222,7 +222,7 @@ class StageExecutionManager:
             
             # Trigger stage execution hooks (history + dashboard) via context manager
             from tarsy.hooks.hook_context import stage_execution_context
-            async with stage_execution_context(existing_stage.session_id, existing_stage):
+            async with stage_execution_context(existing_stage):
                 # Context automatically triggers hooks when exiting
                 pass
             logger.debug(f"Triggered stage hooks for stage completion {existing_stage.stage_index}: {existing_stage.stage_id}")
@@ -272,7 +272,7 @@ class StageExecutionManager:
             
             # Trigger stage execution hooks (history + dashboard) via context manager
             from tarsy.hooks.hook_context import stage_execution_context
-            async with stage_execution_context(existing_stage.session_id, existing_stage):
+            async with stage_execution_context(existing_stage):
                 # Context automatically triggers hooks when exiting
                 pass
             logger.debug(f"Triggered stage hooks for stage failure {existing_stage.stage_index}: {existing_stage.stage_id}")
@@ -330,7 +330,7 @@ class StageExecutionManager:
             
             # Trigger stage execution hooks (history + dashboard) via context manager
             from tarsy.hooks.hook_context import stage_execution_context
-            async with stage_execution_context(existing_stage.session_id, existing_stage):
+            async with stage_execution_context(existing_stage):
                 # Context automatically triggers hooks when exiting
                 pass
             logger.debug(f"Triggered stage hooks for stage pause {existing_stage.stage_index}: {existing_stage.stage_id}")
@@ -381,7 +381,7 @@ class StageExecutionManager:
             
             # Trigger stage execution hooks (history + dashboard) via context manager
             from tarsy.hooks.hook_context import stage_execution_context
-            async with stage_execution_context(existing_stage.session_id, existing_stage):
+            async with stage_execution_context(existing_stage):
                 # Context automatically triggers hooks when exiting
                 # History hook will update DB record and dashboard hook will broadcast
                 pass

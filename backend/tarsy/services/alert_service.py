@@ -423,10 +423,11 @@ class AlertService:
                 logger.info(f"Session {chain_context.session_id} paused successfully")
                 
                 # Return a response indicating pause (not an error)
+                pause_message = chain_result.final_analysis or "Session paused - waiting for user to resume"
                 return format_chain_success_response(
                     chain_context,
                     chain_definition,
-                    chain_result.final_analysis,
+                    pause_message,
                     chain_result.timestamp_us
                 )
             else:

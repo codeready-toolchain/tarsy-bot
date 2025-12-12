@@ -53,7 +53,7 @@ class TestCreateStageExecution:
             async def mock_aexit(self, exc_type, exc_val, exc_tb):
                 return None
             
-            def mock_context_fn(session_id, stage_execution):
+            def mock_context_fn(stage_execution):
                 stage_execution.execution_id = "exec-123"
                 mock_cm = Mock()
                 mock_cm.__aenter__ = mock_aenter
@@ -89,7 +89,7 @@ class TestCreateStageExecution:
             async def mock_aexit(self, exc_type, exc_val, exc_tb):
                 return None
             
-            def mock_context_fn(session_id, stage_execution):
+            def mock_context_fn(stage_execution):
                 stage_execution.execution_id = "child-exec-1"
                 # Verify parallel parameters were set correctly
                 assert stage_execution.parent_stage_execution_id == "parent-exec-1"

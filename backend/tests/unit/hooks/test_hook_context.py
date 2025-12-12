@@ -505,10 +505,12 @@ class TestStageExecutionHookContext:
     def stage_execution(self):
         """Create a test stage execution."""
         return StageExecution(
-            id="test-stage-id",
+            execution_id="test-stage-id",
             session_id="test-session",
-            stage_order=1,
-            agent_name="test_agent",
+            stage_id="test-stage",
+            stage_index=1,
+            stage_name="Test Stage",
+            agent="test_agent",
             status="pending"
         )
     
@@ -591,24 +593,26 @@ class TestStageExecutionContextFactory:
     def stage_execution(self):
         """Create a test stage execution."""
         return StageExecution(
-            id="test-stage-id",
+            execution_id="test-stage-id",
             session_id="test-session",
-            stage_order=1,
-            agent_name="test_agent",
+            stage_id="test-stage",
+            stage_index=1,
+            stage_name="Test Stage",
+            agent="test_agent",
             status="pending"
         )
     
     @pytest.mark.asyncio
     async def test_defaults_to_allow_exceptions_true(self, stage_execution):
         """Test that factory defaults to allow_exceptions=True."""
-        async with stage_execution_context("test-session", stage_execution) as ctx:
+        async with stage_execution_context(stage_execution) as ctx:
             assert ctx.allow_exceptions is True
     
     @pytest.mark.asyncio
     async def test_passes_allow_exceptions_false(self, stage_execution):
         """Test that factory passes allow_exceptions=False correctly."""
         async with stage_execution_context(
-            "test-session", stage_execution, allow_exceptions=False
+            stage_execution, allow_exceptions=False
         ) as ctx:
             assert ctx.allow_exceptions is False
 

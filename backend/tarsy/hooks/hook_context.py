@@ -497,7 +497,6 @@ class StageExecutionHookContext:
 
 @asynccontextmanager
 async def stage_execution_context(
-    session_id: str,
     stage_execution: StageExecution,
     allow_exceptions: bool = True,
 ) -> AsyncContextManager[StageExecutionHookContext]:
@@ -505,7 +504,6 @@ async def stage_execution_context(
     Create a simple context for stage execution events.
     
     Args:
-        session_id: Session identifier
         stage_execution: Stage execution data
         allow_exceptions: If True, let hook exceptions propagate.
                          Stage execution hooks are critical, so defaults to True.
