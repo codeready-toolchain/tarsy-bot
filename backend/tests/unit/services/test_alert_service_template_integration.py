@@ -185,17 +185,17 @@ agent_chains:
     alert_types: ["security", "intrusion"]
     stages:
       - name: "analysis"
-        agent: "ConfigurableAgent:security-analyzer"
+        agent: "security-analyzer"
         iteration_strategy: "react"
   
   kubernetes-analysis-chain:
     alert_types: ["kubernetes"]
     stages:
       - name: "data-collection"
-        agent: "ConfigurableAgent:data-collector"
+        agent: "data-collector"
         iteration_strategy: "react-stage"
       - name: "analysis"
-        agent: "ConfigurableAgent:analyzer"
+        agent: "analyzer"
         iteration_strategy: "react-final-analysis"
 
 mcp_servers:
@@ -266,7 +266,7 @@ mcp_servers:
                 assert security_chain.alert_types == ["security", "intrusion"]
                 assert len(security_chain.stages) == 1
                 assert security_chain.stages[0].name == "analysis"
-                assert security_chain.stages[0].agent == "ConfigurableAgent:security-analyzer"
+                assert security_chain.stages[0].agent == "security-analyzer"
                 assert security_chain.stages[0].iteration_strategy == "react"
                 
                 # Verify kubernetes chain configuration
@@ -274,10 +274,10 @@ mcp_servers:
                 assert k8s_chain.alert_types == ["kubernetes"]
                 assert len(k8s_chain.stages) == 2
                 assert k8s_chain.stages[0].name == "data-collection"
-                assert k8s_chain.stages[0].agent == "ConfigurableAgent:data-collector"
+                assert k8s_chain.stages[0].agent == "data-collector"
                 assert k8s_chain.stages[0].iteration_strategy == "react-stage"
                 assert k8s_chain.stages[1].name == "analysis"
-                assert k8s_chain.stages[1].agent == "ConfigurableAgent:analyzer"
+                assert k8s_chain.stages[1].agent == "analyzer"
                 assert k8s_chain.stages[1].iteration_strategy == "react-final-analysis"
                 
         finally:

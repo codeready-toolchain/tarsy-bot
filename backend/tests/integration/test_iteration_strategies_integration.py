@@ -311,7 +311,7 @@ agent_chains:
       - intrusion
     stages:
       - name: "security-analysis"
-        agent: "ConfigurableAgent:react-stage-security-agent"
+        agent: "react-stage-security-agent"
     description: "Security alert processing chain"
   
   performance-chain:
@@ -320,7 +320,7 @@ agent_chains:
       - resource-usage
     stages:
       - name: "performance-analysis"
-        agent: "ConfigurableAgent:react-performance-agent"
+        agent: "react-performance-agent"
     description: "Performance alert processing chain"
 
 mcp_servers:
@@ -401,14 +401,14 @@ agent_chains:
     alert_types: ["test-alerts"]
     stages:
       - name: "analysis"
-        agent: "ConfigurableAgent:test-react-stage-agent"
+        agent: "test-react-stage-agent"
     description: "Test alerts processing chain"
   
   test-performance-chain:
     alert_types: ["test-performance"]
     stages:
       - name: "analysis"
-        agent: "ConfigurableAgent:test-react-agent"
+        agent: "test-react-agent"
     description: "Test performance processing chain"
 
 mcp_servers:
@@ -453,8 +453,8 @@ mcp_servers:
             )
             
             # Create agents with different strategies
-            react_stage_agent = factory.create_agent("ConfigurableAgent:test-react-stage-agent", mcp_client=mock_mcp_client)
-            react_agent = factory.create_agent("ConfigurableAgent:test-react-agent", mcp_client=mock_mcp_client)
+            react_stage_agent = factory.create_agent("test-react-stage-agent", mcp_client=mock_mcp_client)
+            react_agent = factory.create_agent("test-react-agent", mcp_client=mock_mcp_client)
             
             # Verify correct strategies assigned
             assert react_stage_agent.iteration_strategy == IterationStrategy.REACT_STAGE

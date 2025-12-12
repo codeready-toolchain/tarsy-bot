@@ -42,12 +42,12 @@ class TestChainStageConfigModel:
         """Test stage creation with configurable agent syntax."""
         stage = ChainStageConfigModel(
             name="custom-analysis",
-            agent="ConfigurableAgent:my-custom-agent",
+            agent="my-custom-agent",
             iteration_strategy="react"
         )
         
         assert stage.name == "custom-analysis"
-        assert stage.agent == "ConfigurableAgent:my-custom-agent"
+        assert stage.agent == "my-custom-agent"
         assert stage.iteration_strategy == "react"
     
     @pytest.mark.parametrize("stage_data,expected_dict", [
@@ -60,8 +60,8 @@ class TestChainStageConfigModel:
             {'name': 'test-stage', 'agent': 'TestAgent', 'agents': None, 'replicas': 1, 'failure_policy': FailurePolicy.ALL, 'iteration_strategy': None, 'llm_provider': None, 'synthesis': None}
         ),
         (
-            {"name": "custom-stage", "agent": "ConfigurableAgent:custom", "iteration_strategy": "react"},
-            {'name': 'custom-stage', 'agent': 'ConfigurableAgent:custom', 'agents': None, 'replicas': 1, 'failure_policy': FailurePolicy.ALL, 'iteration_strategy': 'react', 'llm_provider': None, 'synthesis': None}
+            {"name": "custom-stage", "agent": "custom", "iteration_strategy": "react"},
+            {'name': 'custom-stage', 'agent': 'custom', 'agents': None, 'replicas': 1, 'failure_policy': FailurePolicy.ALL, 'iteration_strategy': 'react', 'llm_provider': None, 'synthesis': None}
         )
     ])
     def test_to_dict_serialization(self, stage_data, expected_dict):
@@ -384,10 +384,10 @@ class TestChainModelValidation:
         test_agents = [
             "SimpleAgent",
             "KubernetesAgent",
-            "ConfigurableAgent:my-agent",
-            "ConfigurableAgent:hyphen-agent",
-            "ConfigurableAgent:underscore_agent",
-            "ConfigurableAgent:with.dots.agent"
+            "my-agent",
+            "hyphen-agent",
+            "underscore_agent",
+            "with.dots.agent"
         ]
         
         for agent in test_agents:
@@ -410,7 +410,7 @@ class TestChainModelComplexScenarios:
             ),
             ChainStageConfigModel(
                 name="log-analysis",
-                agent="ConfigurableAgent:log-analyzer",
+                agent="log-analyzer",
                 iteration_strategy="react"
             ),
             ChainStageConfigModel(
@@ -420,7 +420,7 @@ class TestChainModelComplexScenarios:
             ),
             ChainStageConfigModel(
                 name="remediation-planning",
-                agent="ConfigurableAgent:remediation-planner"
+                agent="remediation-planner"
             )
         ]
         
@@ -440,7 +440,7 @@ class TestChainModelComplexScenarios:
         serialized = chain.model_dump()
         assert len(serialized['stages']) == 4
         assert serialized['stages'][0]['iteration_strategy'] == 'react'
-        assert serialized['stages'][1]['agent'] == 'ConfigurableAgent:log-analyzer'
+        assert serialized['stages'][1]['agent'] == 'log-analyzer'
         assert serialized['stages'][3]['iteration_strategy'] is None
         # All stages should have llm_provider field (None by default)
         for stage_dict in serialized['stages']:
@@ -470,8 +470,8 @@ class TestChainModelComplexScenarios:
         """Test chain mixing built-in and configurable agents."""
         stages = [
             ChainStageConfigModel(name="builtin-stage", agent="KubernetesAgent"),
-            ChainStageConfigModel(name="configurable-stage1", agent="ConfigurableAgent:custom1"),
-            ChainStageConfigModel(name="configurable-stage2", agent="ConfigurableAgent:custom2"),
+            ChainStageConfigModel(name="configurable-stage1", agent="custom1"),
+            ChainStageConfigModel(name="configurable-stage2", agent="custom2"),
             ChainStageConfigModel(name="another-builtin", agent="SomeOtherBuiltinAgent")
         ]
         
@@ -481,16 +481,13 @@ class TestChainModelComplexScenarios:
             stages=stages
         )
         
-        # Verify mixed agent types
-        builtin_agents = [s for s in chain.stages if not s.agent.startswith("ConfigurableAgent:")]
-        configurable_agents = [s for s in chain.stages if s.agent.startswith("ConfigurableAgent:")]
-        
-        assert len(builtin_agents) == 2
-        assert len(configurable_agents) == 2
+        # Verify agent identifiers (all direct names now, no prefix distinction)
+        # Without validation context, we can't distinguish builtin vs configured
+        # This test just verifies the chain structure is preserved
         
         # Verify serialization preserves agent identifiers
         serialized = chain.model_dump()
         agent_ids = [stage['agent'] for stage in serialized['stages']]
         assert "KubernetesAgent" in agent_ids
-        assert "ConfigurableAgent:custom1" in agent_ids
-        assert "ConfigurableAgent:custom2" in agent_ids
+        assert "custom1" in agent_ids
+        assert "custom2" in agent_ids

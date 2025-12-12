@@ -1258,6 +1258,65 @@ class TestChatServiceStageExecution:
         
         # Should use the last stage's strategy (native-thinking, not react)
         assert result == "native-thinking"
+    
+    def test_determine_iteration_strategy_normalizes_enum_to_string(
+        self, chat_service, sample_session
+    ):
+        """Test that iteration strategy normalizes IterationStrategy enum to string."""
+        from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+        from tarsy.models.constants import IterationStrategy
+        
+        # Create a real ChainConfigModel with enum iteration_strategy
+        chain_config = ChainConfigModel(
+            chain_id="test-chain",
+            alert_types=["TestAlert"],
+            stages=[
+                ChainStageConfigModel(
+                    name="Stage 1",
+                    agent="TestAgent",
+                    iteration_strategy=IterationStrategy.NATIVE_THINKING  # Pass as enum
+                )
+            ]
+        )
+        
+        # Serialize to dict (simulating what would be stored in DB)
+        sample_session.chain_definition = chain_config.model_dump(mode='json')
+        
+        # When we access chain_config property, it deserializes back to ChainConfigModel
+        # and iteration_strategy becomes an IterationStrategy enum again
+        result = chat_service._determine_iteration_strategy_from_session(sample_session)
+        
+        # Result should be a string, not an enum
+        assert isinstance(result, str)
+        assert result == "native-thinking"
+    
+    def test_determine_iteration_strategy_enum_synthesis_translation(
+        self, chat_service, sample_session
+    ):
+        """Test that enum synthesis strategies are correctly translated."""
+        from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+        from tarsy.models.constants import IterationStrategy
+        
+        # Create ChainConfigModel with SYNTHESIS enum
+        chain_config = ChainConfigModel(
+            chain_id="test-chain",
+            alert_types=["TestAlert"],
+            stages=[
+                ChainStageConfigModel(
+                    name="Synthesis",
+                    agent="SynthesisAgent",
+                    iteration_strategy=IterationStrategy.SYNTHESIS  # Enum, not string
+                )
+            ]
+        )
+        
+        sample_session.chain_definition = chain_config.model_dump(mode='json')
+        
+        result = chat_service._determine_iteration_strategy_from_session(sample_session)
+        
+        # Should translate enum SYNTHESIS to string "react"
+        assert isinstance(result, str)
+        assert result == "react"
 
 
 @pytest.mark.unit

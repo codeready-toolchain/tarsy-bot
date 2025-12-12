@@ -715,7 +715,8 @@ class ChatService:
         
         # Check if stage has explicit strategy override
         if last_stage.iteration_strategy:
-            strategy = last_stage.iteration_strategy
+            # Normalize to string (supports both IterationStrategy enum and raw string)
+            strategy = getattr(last_stage.iteration_strategy, "value", last_stage.iteration_strategy)
             logger.info(f"Chat using explicit stage strategy: {strategy}")
         else:
             # Otherwise, look up agent's default strategy

@@ -95,7 +95,7 @@ class TestAgentExecutionMetadata:
             ("KubernetesAgent-1", "anthropic", "react-stage"),
             ("KubernetesAgent-2", "gemini", "native-thinking"),
             ("VMAgent", "xai", "react"),
-            ("ConfigurableAgent:custom", "openai", "react-stage"),
+            ("custom", "openai", "react-stage"),
         ],
     )
     def test_agent_execution_metadata_various_configs(

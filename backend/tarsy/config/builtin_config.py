@@ -71,7 +71,7 @@ BUILTIN_AGENTS: Dict[str, Dict[str, Any]] = {
 #   - alert_types: List of alert types this chain handles
 #   - stages: List of stage definitions, each with:
 #       - name: Human-readable stage name
-#       - agent: Agent identifier (class name or 'ConfigurableAgent:agent-name')
+#       - agent: Agent identifier (builtin name like 'KubernetesAgent' or configured name like 'ArgoCDAgent')
 #       - iteration_strategy: Optional strategy override (uses agent's default if not specified)
 #       - llm_provider: Optional LLM provider override for this stage
 #   - description: Optional description of the chain

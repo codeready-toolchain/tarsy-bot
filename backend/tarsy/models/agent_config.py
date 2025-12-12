@@ -250,7 +250,7 @@ class ParallelAgentConfig(BaseModel):
     
     name: str = Field(
         ...,
-        description="Agent identifier (class name or 'ConfigurableAgent:agent-name')",
+        description="Agent identifier (builtin name like 'KubernetesAgent' or configured name like 'ArgoCDAgent')",
         min_length=1
     )
     llm_provider: Optional[str] = Field(
@@ -327,7 +327,7 @@ class ChainStageConfigModel(BaseModel):
     # Optional but when provided must be non-empty (min_length=1 applies only to non-None values)
     agent: Optional[str] = Field(
         None,
-        description="Agent identifier (class name or 'ConfigurableAgent:agent-name')",
+        description="Agent identifier (builtin name like 'KubernetesAgent' or configured name like 'ArgoCDAgent')",
         min_length=1
     )
     agents: Optional[List[ParallelAgentConfig]] = Field(
@@ -451,24 +451,71 @@ class CombinedConfigModel(BaseModel):
         for chain_id, chain_config in self.agent_chains.items():
             for stage in chain_config.stages:
                 # Handle single agent case
-                if stage.agent and stage.agent.startswith("ConfigurableAgent:"):
-                    agent_name = stage.agent[len("ConfigurableAgent:"):]
-                    if agent_name not in self.agents:
-                        raise ValueError(
-                            f"Chain '{chain_id}' stage '{stage.name}' references missing configurable agent '{agent_name}'"
-                        )
+                if stage.agent:
+                    self._validate_agent_identifier(
+                        stage.agent, 
+                        f"Chain '{chain_id}' stage '{stage.name}'"
+                    )
                 
                 # Handle parallel agents case
                 if stage.agents:
                     for parallel_agent in stage.agents:
-                        if parallel_agent.name.startswith("ConfigurableAgent:"):
-                            agent_name = parallel_agent.name[len("ConfigurableAgent:"):]
-                            if agent_name not in self.agents:
-                                raise ValueError(
-                                    f"Chain '{chain_id}' stage '{stage.name}' references missing configurable agent '{agent_name}'"
-                                )
+                        self._validate_agent_identifier(
+                            parallel_agent.name,
+                            f"Chain '{chain_id}' stage '{stage.name}' parallel agent"
+                        )
+                
+                # Validate synthesis agent if present
+                if stage.synthesis and stage.synthesis.agent:
+                    self._validate_agent_identifier(
+                        stage.synthesis.agent,
+                        f"Chain '{chain_id}' stage '{stage.name}' synthesis"
+                    )
         return self
+    
+    def _validate_agent_identifier(self, agent_identifier: str, context: str) -> None:
+        """
+        Validate that an agent identifier is valid (builtin or configured).
+        
+        Matches agent resolution order in agent_factory.py:
+        1. Configured agents (direct name) - highest priority
+        2. Built-in agents
+        
+        Args:
+            agent_identifier: Agent identifier to validate
+            context: Context string for error messages (e.g., "Chain 'x' stage 'y'")
+            
+        Raises:
+            ValueError: If agent identifier is invalid
+        """
+        from tarsy.config.builtin_config import BUILTIN_AGENTS
+        
+        # Priority 1: Check configured agents (direct name match)
+        if agent_identifier in self.agents:
+            return  # Valid configured agent
+        
+        # Priority 2: Check builtin agents
+        if agent_identifier in BUILTIN_AGENTS:
+            return  # Valid builtin agent
+        
+        # Not found in any lookup
+        available_agents = list(BUILTIN_AGENTS.keys()) + list(self.agents.keys())
+        raise ValueError(
+            f"{context} references unknown agent '{agent_identifier}'. "
+            f"Available agents: {', '.join(sorted(available_agents))}"
+        )
 
+    @model_validator(mode='after')
+    def validate_chat_agent_references(self) -> 'CombinedConfigModel':
+        """Validate that chat agent references in chain configs are valid."""
+        for chain_id, chain_config in self.agent_chains.items():
+            if chain_config.chat and chain_config.chat.agent:
+                self._validate_agent_identifier(
+                    chain_config.chat.agent,
+                    f"Chain '{chain_id}' chat config"
+                )
+        return self
+    
     @model_validator(mode='after')
     def validate_server_ids(self) -> 'CombinedConfigModel':
         """Validate that MCP server IDs in configs match their dictionary keys."""

@@ -37,12 +37,12 @@ class TestParallelAgentConfig:
     def test_parallel_agent_config_with_configurable_agent(self) -> None:
         """Test parallel agent config with ConfigurableAgent reference."""
         config = ParallelAgentConfig(
-            name="ConfigurableAgent:custom-agent",
+            name="custom-agent",
             llm_provider="anthropic",
             iteration_strategy="native-thinking"
         )
         
-        assert config.name == "ConfigurableAgent:custom-agent"
+        assert config.name == "custom-agent"
         assert config.llm_provider == "anthropic"
         assert config.iteration_strategy == "native-thinking"
 
