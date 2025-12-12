@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
     from tarsy.agents.prompts.builders import ChatExchange
+    from tarsy.models.history_models import AlertSession
 
 from tarsy.config.settings import get_settings
 from tarsy.hooks.hook_context import stage_execution_context
@@ -582,7 +583,7 @@ class ChatService:
     
     def _determine_mcp_selection_from_session(
         self,
-        session
+        session: 'AlertSession'
     ) -> Optional[MCPSelectionConfig]:
         """
         Capture the MCP configuration that was actually used during the session.
@@ -663,7 +664,7 @@ class ChatService:
     
     def _determine_iteration_strategy_from_session(
         self,
-        session
+        session: 'AlertSession'
     ) -> Optional[str]:
         """
         Determine the iteration strategy to use for chat based on the session's chain config.
@@ -725,7 +726,7 @@ class ChatService:
     
     def _determine_llm_provider_from_session(
         self,
-        session
+        session: 'AlertSession'
     ) -> Optional[str]:
         """
         Determine the LLM provider to use for chat based on the session's chain config.

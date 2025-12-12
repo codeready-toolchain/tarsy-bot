@@ -614,7 +614,7 @@ class ParallelStageExecutor:
                 
                 config = {
                     "agent_name": child.agent,
-                    "llm_provider": agent_config.llm_provider,
+                    "llm_provider": agent_config.llm_provider or stage_config.llm_provider or chain_definition.llm_provider,
                     "iteration_strategy": agent_config.iteration_strategy,
                 }
             else:  # REPLICA
@@ -624,7 +624,7 @@ class ParallelStageExecutor:
                 config = {
                     "agent_name": child.agent,  # Keep replica name
                     "base_agent_name": base_agent,
-                    "llm_provider": stage_config.llm_provider,
+                    "llm_provider": stage_config.llm_provider or chain_definition.llm_provider,
                     "iteration_strategy": stage_config.iteration_strategy,
                 }
             

@@ -38,8 +38,10 @@ class TestCreateStageExecution:
         """Test creating a stage execution record successfully."""
         history_service = Mock()
         history_service.is_enabled = True
-        history_service.get_repository = Mock(return_value=Mock(__enter__=Mock(return_value=Mock(session=Mock()))))
-        history_service._retry_database_operation_async = AsyncMock(return_value=True)
+        # Mock get_stage_execution to return a stage execution object for verification
+        history_service.get_stage_execution = AsyncMock(
+            return_value=Mock(execution_id="exec-123")
+        )
         
         manager = StageExecutionManager(history_service=history_service)
         
@@ -75,8 +77,10 @@ class TestCreateStageExecution:
         """Test creating a child stage execution with parallel parameters."""
         history_service = Mock()
         history_service.is_enabled = True
-        history_service.get_repository = Mock(return_value=Mock(__enter__=Mock(return_value=Mock(session=Mock()))))
-        history_service._retry_database_operation_async = AsyncMock(return_value=True)
+        # Mock get_stage_execution to return a stage execution object for verification
+        history_service.get_stage_execution = AsyncMock(
+            return_value=Mock(execution_id="child-exec-1")
+        )
         
         manager = StageExecutionManager(history_service=history_service)
         

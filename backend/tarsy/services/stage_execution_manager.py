@@ -8,7 +8,7 @@ This module handles all stage execution lifecycle operations including:
 - Verifying stage execution persistence
 """
 
-from typing import Any, Dict, Optional, TYPE_CHECKING, Union
+from typing import Optional, TYPE_CHECKING, Union
 
 from tarsy.models.agent_execution_result import AgentExecutionResult, ParallelStageResult
 from tarsy.models.constants import ParallelType, StageStatus
@@ -120,21 +120,10 @@ class StageExecutionManager:
         # We need to explicitly verify the record exists in the database
         if self.history_service:
             try:
-                # Query the database to confirm the record exists
-                from tarsy.models.db_models import StageExecution as DBStageExecution
-                def _verify_stage_operation():
-                    with self.history_service.get_repository() as repo:
-                        if repo:
-                            return repo.session.get(DBStageExecution, stage_execution.execution_id) is not None
-                        return False
+                # Use the history service's proper method to verify the record exists
+                verified_stage = await self.history_service.get_stage_execution(stage_execution.execution_id)
                 
-                exists = await self.history_service._retry_database_operation_async(
-                    "verify_stage_execution",
-                    _verify_stage_operation,
-                    treat_none_as_success=False
-                )
-                
-                if not exists:
+                if not verified_stage:
                     raise RuntimeError(
                         f"Stage execution {stage_execution.execution_id} for '{stage.name}' was not found in database after creation. "
                         "The history hook may have failed silently. Check history service logs for errors."
