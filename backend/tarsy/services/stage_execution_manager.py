@@ -8,7 +8,7 @@ This module handles all stage execution lifecycle operations including:
 - Verifying stage execution persistence
 """
 
-from typing import Optional, TYPE_CHECKING, Union
+from typing import Any, Dict, Optional, TYPE_CHECKING, Union
 
 from tarsy.models.agent_execution_result import AgentExecutionResult, ParallelStageResult
 from tarsy.models.constants import ParallelType, StageStatus
@@ -16,6 +16,7 @@ from tarsy.utils.logger import get_module_logger
 from tarsy.utils.timestamp import now_us
 
 if TYPE_CHECKING:
+    from tarsy.models.agent_config import ChainStageConfigModel
     from tarsy.services.history_service import HistoryService
 
 logger = get_module_logger(__name__)
@@ -44,11 +45,11 @@ class StageExecutionManager:
     async def create_stage_execution(
         self,
         session_id: str,
-        stage,
+        stage: Union["ChainStageConfigModel", Dict[str, Any]],
         stage_index: int,
         parent_stage_execution_id: Optional[str] = None,
         parallel_index: int = 0,
-        parallel_type: str = ParallelType.SINGLE.value,
+        parallel_type: Union[ParallelType, str] = ParallelType.SINGLE.value,
         expected_parallel_count: Optional[int] = None,
     ) -> str:
         """
@@ -147,7 +148,7 @@ class StageExecutionManager:
         
         return stage_execution.execution_id
     
-    async def update_session_current_stage(self, session_id: str, stage_index: int, stage_execution_id: str):
+    async def update_session_current_stage(self, session_id: str, stage_index: int, stage_execution_id: str) -> None:
         """
         Update the current stage information for a session.
         
@@ -183,7 +184,7 @@ class StageExecutionManager:
         self, 
         stage_execution_id: str, 
         stage_result: Union[AgentExecutionResult, ParallelStageResult]
-    ):
+    ) -> None:
         """
         Update stage execution as completed.
         
@@ -234,7 +235,7 @@ class StageExecutionManager:
                 f"Database persistence is required for audit trail. Error: {str(e)}"
             ) from e
     
-    async def update_stage_execution_failed(self, stage_execution_id: str, error_message: str):
+    async def update_stage_execution_failed(self, stage_execution_id: str, error_message: str) -> None:
         """
         Update stage execution as failed.
         
@@ -289,7 +290,7 @@ class StageExecutionManager:
         stage_execution_id: str, 
         iteration: int, 
         paused_result: Optional[Union[AgentExecutionResult, ParallelStageResult]] = None
-    ):
+    ) -> None:
         """
         Update stage execution as paused.
         
@@ -342,7 +343,7 @@ class StageExecutionManager:
                 f"Database persistence is required for conversation state preservation. Error: {str(e)}"
             ) from e
     
-    async def update_stage_execution_started(self, stage_execution_id: str):
+    async def update_stage_execution_started(self, stage_execution_id: str) -> None:
         """
         Update stage execution as started.
         

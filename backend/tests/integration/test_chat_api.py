@@ -207,7 +207,10 @@ class TestChatAPIIntegration:
         assert returned_stage_id == stage_execution_id
         
         # Send message for processing
-        with patch("tarsy.services.chat_service.stage_execution_context"):
+        # Mock the stage execution updates since hooks aren't fully initialized in this test
+        with patch.object(chat_service, '_update_stage_execution_started', AsyncMock()), \
+             patch.object(chat_service, '_update_stage_execution_completed', AsyncMock()), \
+             patch("tarsy.services.chat_service.stage_execution_context"):
             returned_id = await chat_service.process_chat_message(
                 chat_id=chat.chat_id,
                 user_question="What caused the issue?",

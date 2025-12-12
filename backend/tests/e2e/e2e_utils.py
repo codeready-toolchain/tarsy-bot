@@ -727,6 +727,52 @@ class E2ETestUtils:
         return create_streaming_mock()
 
     @staticmethod
+    async def run_with_timeout(coro, timeout_seconds: float = 120.0, test_name: str = "Test"):
+        """
+        Run a coroutine with timeout and proper cleanup.
+        
+        This utility wraps async test execution with a timeout mechanism,
+        ensuring proper task cancellation if the timeout is exceeded.
+        
+        Args:
+            coro: Coroutine to execute
+            timeout_seconds: Maximum time to wait in seconds (default: 120.0)
+            test_name: Name of the test for error messages (default: "Test")
+            
+        Returns:
+            The result of the coroutine execution
+            
+        Raises:
+            AssertionError: If the coroutine exceeds the timeout
+            Exception: Any exception raised by the coroutine
+            
+        Example:
+            async def run_test():
+                # Test logic here
+                return result
+            
+            result = await E2ETestUtils.run_with_timeout(
+                run_test(),
+                timeout_seconds=120.0,
+                test_name="LangChain failure test"
+            )
+        """
+        try:
+            task = asyncio.create_task(coro)
+            _, pending = await asyncio.wait({task}, timeout=timeout_seconds)
+            
+            if pending:
+                for t in pending:
+                    t.cancel()
+                print(f"❌ TIMEOUT: {test_name} exceeded {timeout_seconds} seconds!")
+                raise AssertionError(f"{test_name} exceeded timeout of {timeout_seconds} seconds")
+            else:
+                return task.result()
+        except Exception as e:
+            print(f"❌ {test_name} failed with exception: {e}")
+            raise
+
+    @staticmethod
     @contextmanager
     def create_llm_patch_context(gemini_mock_factory=None, streaming_mock=None):
         """

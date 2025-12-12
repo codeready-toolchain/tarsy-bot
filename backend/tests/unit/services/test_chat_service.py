@@ -945,4 +945,145 @@ class TestChatServiceStageExecution:
         assert mock_stage.status == StageStatus.FAILED.value
         assert mock_stage.error_message == "Test error"
         assert mock_stage.completed_at_us > 0
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_started_fails_when_history_service_is_none(self):
+        """Test that update fails when history service is None."""
+        service = ChatService(
+            history_service=None,
+            agent_factory=Mock(),
+            mcp_client_factory=AsyncMock()
+        )
+        
+        with pytest.raises(RuntimeError, match="History service is disabled"):
+            await service._update_stage_execution_started("exec-123")
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_started_fails_when_not_found(
+        self, chat_service, mock_history_service
+    ):
+        """Test that update fails when stage execution is not found."""
+        mock_history_service.get_stage_execution = AsyncMock(return_value=None)
+        
+        with pytest.raises(RuntimeError, match="not found in database"):
+            await chat_service._update_stage_execution_started("exec-123")
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_started_propagates_hook_failures(
+        self, chat_service, mock_history_service
+    ):
+        """Test that hook failures are propagated, not silently swallowed."""
+        mock_stage = Mock()
+        mock_stage.session_id = "session-123"
+        mock_stage.status = StageStatus.PENDING.value
+        mock_history_service.get_stage_execution = AsyncMock(return_value=mock_stage)
+        
+        # Simulate hook failure
+        with patch("tarsy.services.chat_service.stage_execution_context") as stage_ctx:
+            stage_ctx.return_value.__aenter__ = AsyncMock(side_effect=Exception("Hook failure"))
+            
+            with pytest.raises(RuntimeError, match="Database persistence is required"):
+                await chat_service._update_stage_execution_started("exec-123")
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_completed_fails_when_history_service_is_none(self):
+        """Test that update fails when history service is None."""
+        service = ChatService(
+            history_service=None,
+            agent_factory=Mock(),
+            mcp_client_factory=AsyncMock()
+        )
+        
+        result = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="ChatAgent",
+            result_summary="Analysis complete",
+            final_analysis="Analysis complete",
+            timestamp_us=now_us()
+        )
+        
+        with pytest.raises(RuntimeError, match="History service is disabled"):
+            await service._update_stage_execution_completed("exec-123", result)
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_completed_fails_when_not_found(
+        self, chat_service, mock_history_service
+    ):
+        """Test that update fails when stage execution is not found."""
+        mock_history_service.get_stage_execution = AsyncMock(return_value=None)
+        
+        result = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="ChatAgent",
+            result_summary="Analysis complete",
+            final_analysis="Analysis complete",
+            timestamp_us=now_us()
+        )
+        
+        with pytest.raises(RuntimeError, match="not found in database"):
+            await chat_service._update_stage_execution_completed("exec-123", result)
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_completed_propagates_hook_failures(
+        self, chat_service, mock_history_service
+    ):
+        """Test that hook failures are propagated, not silently swallowed."""
+        mock_stage = Mock()
+        mock_stage.session_id = "session-123"
+        mock_stage.started_at_us = now_us()
+        mock_history_service.get_stage_execution = AsyncMock(return_value=mock_stage)
+        
+        result = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="ChatAgent",
+            result_summary="Analysis complete",
+            final_analysis="Analysis complete",
+            timestamp_us=now_us()
+        )
+        
+        # Simulate hook failure
+        with patch("tarsy.services.chat_service.stage_execution_context") as stage_ctx:
+            stage_ctx.return_value.__aenter__ = AsyncMock(side_effect=Exception("Hook failure"))
+            
+            with pytest.raises(RuntimeError, match="Database persistence is required"):
+                await chat_service._update_stage_execution_completed("exec-123", result)
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_failed_fails_when_history_service_is_none(self):
+        """Test that update fails when history service is None."""
+        service = ChatService(
+            history_service=None,
+            agent_factory=Mock(),
+            mcp_client_factory=AsyncMock()
+        )
+        
+        with pytest.raises(RuntimeError, match="History service is disabled"):
+            await service._update_stage_execution_failed("exec-123", "Test error")
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_failed_fails_when_not_found(
+        self, chat_service, mock_history_service
+    ):
+        """Test that update fails when stage execution is not found."""
+        mock_history_service.get_stage_execution = AsyncMock(return_value=None)
+        
+        with pytest.raises(RuntimeError, match="not found in database"):
+            await chat_service._update_stage_execution_failed("exec-123", "Test error")
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_failed_propagates_hook_failures(
+        self, chat_service, mock_history_service
+    ):
+        """Test that hook failures are propagated, not silently swallowed."""
+        mock_stage = Mock()
+        mock_stage.session_id = "session-123"
+        mock_stage.started_at_us = now_us()
+        mock_history_service.get_stage_execution = AsyncMock(return_value=mock_stage)
+        
+        # Simulate hook failure
+        with patch("tarsy.services.chat_service.stage_execution_context") as stage_ctx:
+            stage_ctx.return_value.__aenter__ = AsyncMock(side_effect=Exception("Hook failure"))
+            
+            with pytest.raises(RuntimeError, match="Database persistence is required"):
+                await chat_service._update_stage_execution_failed("exec-123", "Test error")
 

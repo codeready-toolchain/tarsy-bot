@@ -383,8 +383,16 @@ class ChatService:
             
             # 9. Determine iteration strategy and LLM provider from parent session's chain config
             session = await asyncio.to_thread(self.history_service.get_session, chat.session_id)
-            iteration_strategy = self._determine_iteration_strategy_from_session(session) if session else None
-            llm_provider = self._determine_llm_provider_from_session(session) if session else None
+            if not session:
+                logger.warning(
+                    f"Session {chat.session_id} not found when processing chat message. "
+                    f"Using default iteration strategy and LLM provider for chat {chat_id}."
+                )
+                iteration_strategy = None
+                llm_provider = None
+            else:
+                iteration_strategy = self._determine_iteration_strategy_from_session(session)
+                llm_provider = self._determine_llm_provider_from_session(session)
             
             # 10. Create session-scoped MCP client for this chat execution
             logger.info(f"Creating MCP client for chat message {execution_id}")
@@ -559,6 +567,11 @@ class ChatService:
         
         # Get session for metadata (wrap synchronous call in to_thread to avoid blocking)
         session = await asyncio.to_thread(self.history_service.get_session, session_id)
+        if not session:
+            raise ValueError(
+                f"Session {session_id} not found when capturing context. "
+                "Cannot create chat without valid session metadata."
+            )
         
         # Return typed dataclass
         return SessionContextData(
@@ -877,20 +890,28 @@ class ChatService:
         """
         Update stage execution as started.
         
-        Similar to AlertService._update_stage_execution_started()
+        Similar to StageExecutionManager.update_stage_execution_started()
         
         Args:
             stage_execution_id: Stage execution identifier
-        """
-        try:
-            if not self.history_service:
-                return
             
+        Raises:
+            RuntimeError: If stage execution cannot be updated to started status
+        """
+        if not self.history_service:
+            raise RuntimeError(
+                f"Cannot update stage execution {stage_execution_id} as started: History service is disabled. "
+                "All chat processing must be done with proper stage tracking."
+            )
+        
+        try:
             # Get existing stage execution record
             existing_stage = await self.history_service.get_stage_execution(stage_execution_id)
             if not existing_stage:
-                logger.warning(f"Stage execution {stage_execution_id} not found for update")
-                return
+                raise RuntimeError(
+                    f"Stage execution {stage_execution_id} not found in database for start update. "
+                    "This indicates a critical bug in stage lifecycle management."
+                )
             
             # Update to active status and set start time
             existing_stage.status = StageStatus.ACTIVE.value
@@ -903,7 +924,11 @@ class ChatService:
             logger.debug(f"Chat execution {stage_execution_id} marked as started")
             
         except Exception as e:
-            logger.warning(f"Failed to update stage execution as started: {str(e)}")
+            logger.error(f"Failed to update stage execution as started: {str(e)}")
+            raise RuntimeError(
+                f"Cannot update stage execution {stage_execution_id} to started status. "
+                f"Database persistence is required for stage tracking. Error: {str(e)}"
+            ) from e
     
     async def _update_stage_execution_completed(
         self, 
@@ -913,21 +938,29 @@ class ChatService:
         """
         Update stage execution as completed.
         
-        Similar to AlertService._update_stage_execution_completed()
+        Similar to StageExecutionManager.update_stage_execution_completed()
         
         Args:
             stage_execution_id: Stage execution identifier
             result: Agent execution result
-        """
-        try:
-            if not self.history_service:
-                return
             
+        Raises:
+            RuntimeError: If stage execution cannot be updated to completed status
+        """
+        if not self.history_service:
+            raise RuntimeError(
+                f"Cannot update stage execution {stage_execution_id} as completed: History service is disabled. "
+                "All chat processing must be done with proper stage tracking."
+            )
+        
+        try:
             # Get existing stage execution record
             existing_stage = await self.history_service.get_stage_execution(stage_execution_id)
             if not existing_stage:
-                logger.warning(f"Stage execution {stage_execution_id} not found for update")
-                return
+                raise RuntimeError(
+                    f"Stage execution {stage_execution_id} not found in database for completion update. "
+                    "This indicates a critical bug in stage lifecycle management."
+                )
             
             # Update completion fields
             existing_stage.status = result.status.value
@@ -948,27 +981,39 @@ class ChatService:
             logger.debug(f"Chat execution {stage_execution_id} marked as completed")
             
         except Exception as e:
-            logger.warning(f"Failed to update stage execution as completed: {str(e)}")
+            logger.error(f"Failed to update stage execution as completed: {str(e)}")
+            raise RuntimeError(
+                f"Cannot update stage execution {stage_execution_id} to completed status. "
+                f"Database persistence is required for audit trail. Error: {str(e)}"
+            ) from e
     
     async def _update_stage_execution_failed(self, stage_execution_id: str, error_message: str):
         """
         Update stage execution as failed.
         
-        Similar to AlertService._update_stage_execution_failed()
+        Similar to StageExecutionManager.update_stage_execution_failed()
         
         Args:
             stage_execution_id: Stage execution identifier
             error_message: Error description
-        """
-        try:
-            if not self.history_service:
-                return
             
+        Raises:
+            RuntimeError: If stage execution cannot be updated to failed status
+        """
+        if not self.history_service:
+            raise RuntimeError(
+                f"Cannot update stage execution {stage_execution_id} as failed: History service is disabled. "
+                "All chat processing must be done with proper stage tracking."
+            )
+        
+        try:
             # Get existing stage execution record
             existing_stage = await self.history_service.get_stage_execution(stage_execution_id)
             if not existing_stage:
-                logger.warning(f"Stage execution {stage_execution_id} not found for update")
-                return
+                raise RuntimeError(
+                    f"Stage execution {stage_execution_id} not found in database for failure update. "
+                    "This indicates a critical bug in stage lifecycle management."
+                )
             
             # Update failure fields
             existing_stage.status = StageStatus.FAILED.value
@@ -989,7 +1034,11 @@ class ChatService:
             logger.debug(f"Chat execution {stage_execution_id} marked as failed")
             
         except Exception as e:
-            logger.warning(f"Failed to update stage execution as failed: {str(e)}")
+            logger.error(f"Failed to update stage execution as failed: {str(e)}")
+            raise RuntimeError(
+                f"Cannot update stage execution {stage_execution_id} to failed status. "
+                f"Database persistence is required for audit trail. Error: {str(e)}"
+            ) from e
 
 
 # ===== Service Factory for Dependency Injection =====

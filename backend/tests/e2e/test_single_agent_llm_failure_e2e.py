@@ -64,20 +64,11 @@ class TestSingleAgentLangChainFailureE2E:
             print("✅ LangChain/ReAct LLM failure test completed!")
             return result
 
-        try:
-            task = asyncio.create_task(run_test())
-            _, pending = await asyncio.wait({task}, timeout=120.0)
-
-            if pending:
-                for t in pending:
-                    t.cancel()
-                print("❌ TIMEOUT: Test exceeded 120 seconds!")
-                raise AssertionError("Test exceeded timeout of 120 seconds")
-            else:
-                return task.result()
-        except Exception as e:
-            print(f"❌ Test failed with exception: {e}")
-            raise
+        return await E2ETestUtils.run_with_timeout(
+            run_test(),
+            timeout_seconds=120.0,
+            test_name="LangChain/ReAct LLM failure test"
+        )
 
     async def _execute_langchain_failure_test(self, test_client, alert_data):
         """Execute LangChain/ReAct failure test."""
@@ -204,20 +195,11 @@ class TestSingleAgentGeminiNativeThinkingFailureE2E:
             print("✅ Gemini/Native-Thinking LLM failure test completed!")
             return result
 
-        try:
-            task = asyncio.create_task(run_test())
-            _, pending = await asyncio.wait({task}, timeout=120.0)
-
-            if pending:
-                for t in pending:
-                    t.cancel()
-                print("❌ TIMEOUT: Test exceeded 120 seconds!")
-                raise AssertionError("Test exceeded timeout of 120 seconds")
-            else:
-                return task.result()
-        except Exception as e:
-            print(f"❌ Test failed with exception: {e}")
-            raise
+        return await E2ETestUtils.run_with_timeout(
+            run_test(),
+            timeout_seconds=120.0,
+            test_name="Gemini/Native-Thinking LLM failure test"
+        )
 
     async def _execute_gemini_failure_test(self, test_client, alert_data):
         """Execute Gemini/Native-Thinking failure test."""
@@ -384,20 +366,11 @@ class TestSingleAgentIntermittentFailureE2E:
             print("✅ LangChain/ReAct intermittent failure test completed!")
             return result
 
-        try:
-            task = asyncio.create_task(run_test())
-            _, pending = await asyncio.wait({task}, timeout=120.0)
-
-            if pending:
-                for t in pending:
-                    t.cancel()
-                print("❌ TIMEOUT: Test exceeded 120 seconds!")
-                raise AssertionError("Test exceeded timeout of 120 seconds")
-            else:
-                return task.result()
-        except Exception as e:
-            print(f"❌ Test failed with exception: {e}")
-            raise
+        return await E2ETestUtils.run_with_timeout(
+            run_test(),
+            timeout_seconds=120.0,
+            test_name="LangChain/ReAct intermittent failure test"
+        )
 
     async def _execute_retry_test(self, test_client, alert_data):
         """Execute intermittent failure test."""

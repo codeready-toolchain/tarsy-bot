@@ -385,12 +385,8 @@ class ReactController(IterationController):
             # Wrap ENTIRE iteration (LLM + tool execution) with timeout
             # This timeout is configurable and should allow MCP.s full retry cycle to complete
             try:
-                # Snapshot loop variable before creating coroutine to avoid capturing changing reference
-                # This silences Ruff B023 and makes behavior explicit
-                convo_snapshot = conversation
-                
                 async def run_iteration():
-                    nonlocal last_interaction_failed, consecutive_timeout_failures
+                    nonlocal last_interaction_failed, consecutive_timeout_failures, conversation
                     
                     # 3. Call LLM with current conversation
                     # Extract native tools override from context (if specified)
@@ -400,7 +396,7 @@ class ReactController(IterationController):
                     parallel_metadata = context.agent.get_parallel_execution_metadata()
                     
                     conversation_result = await self.llm_manager.generate_response(
-                        conversation=convo_snapshot,
+                        conversation=conversation,
                         session_id=context.session_id,
                         stage_execution_id=context.agent.get_current_stage_execution_id(),
                         provider=self._llm_provider_name,
