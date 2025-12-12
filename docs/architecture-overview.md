@@ -72,8 +72,8 @@ graph LR
 - **Context Preservation**: Chat agent maintains full investigation context and tool access
 - **Multi-user Collaboration**: Multiple engineers can participate in the same conversation
 - **Unified Timeline**: Chat messages appear inline with investigation stages in the reasoning view
-- **Real-time Streaming**: Follow-up questions trigger the same ReAct reasoning visible during initial investigation
-- **Per-chain Configuration**: Chat capability can be enabled/disabled per agent chain
+- **Real-time Streaming**: Follow-up questions trigger investigation reasoning (ReAct or NativeThinking, auto-determined or explicitly configured)
+- **Per-chain Configuration**: Chat capability fully configurable per chain (agent, iteration strategy, LLM provider, enabled/disabled)
 
 ## How It Works
 
@@ -150,7 +150,7 @@ When a stage reaches its maximum iteration limit, the system automatically pause
 
 ### Follow-up Chat
 
-After a session completes (or fails/is cancelled), engineers can start a chat conversation to ask follow-up questions. The chat agent uses the same ReAct processing shown above, with full investigation context and access to the same MCP tools used during the original session. Responses stream in real-time and appear inline in the conversation timeline.
+After a session completes (or fails/is cancelled), engineers can start a chat conversation to ask follow-up questions. The chat agent (configurable per chain) uses investigation reasoning (ReAct or NativeThinking, auto-determined or explicitly configured) with full investigation context and access to the same MCP tools used during the original session. Responses stream in real-time and appear inline in the conversation timeline.
 
 ## Authentication & Access Control
 
@@ -254,7 +254,8 @@ The AI combines all four to make intelligent decisions about investigation appro
       # - Each stage can have specialized MCP servers (focused expertise)
       # - Each stage can use different LLM providers (cost/performance optimization)
       # - Chain-level provider serves as default for stages without explicit override
-      # - Follow-up chat and executive summary use chain-level provider
+      # - Follow-up chat uses chain-level provider by default (can be overridden in chat config)
+      # - Executive summary uses chain-level provider
 
     # Parallel execution example
     multi-perspective-investigation-chain:
