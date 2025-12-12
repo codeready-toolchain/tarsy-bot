@@ -193,9 +193,9 @@ class ChainContext(BaseModel):
         # Dict preserves insertion order (Python 3.7+), so last item is most recent
         return list(self.stage_outputs.values())[-1]
     
-    def add_stage_result(self, stage_name: str, result: Union[AgentExecutionResult, ParallelStageResult]):
-        """Add result from a completed stage (single or parallel)."""
-        self.stage_outputs[stage_name] = result
+    def add_stage_result(self, execution_id: str, result: Union[AgentExecutionResult, ParallelStageResult]):
+        """Add result from a completed stage (single or parallel), keyed by execution_id."""
+        self.stage_outputs[execution_id] = result
     
     def set_chain_context(self, chain_id: str, stage_name: Optional[str] = None):
         """Set chain context information."""
