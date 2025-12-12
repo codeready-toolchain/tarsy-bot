@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
     from tarsy.agents.prompts.builders import ChatExchange
-    from tarsy.models.history_models import AlertSession
+    from tarsy.models.db_models import AlertSession
 
 from tarsy.config.settings import get_settings
 from tarsy.hooks.hook_context import stage_execution_context

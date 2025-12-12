@@ -273,8 +273,10 @@ class ParallelStageExecutor:
                 # Use alert_processing_timeout as maximum time for any single agent
                 # This prevents individual agents from consuming entire session budget
                 try:
+                    # Create isolated context copy to prevent concurrent mutation across parallel agents
+                    agent_context = chain_context.model_copy(deep=True)
                     result = await asyncio.wait_for(
-                        agent.process_alert(chain_context),
+                        agent.process_alert(agent_context),
                         timeout=self.settings.alert_processing_timeout
                     )
                 except asyncio.TimeoutError:
@@ -694,8 +696,10 @@ class ParallelStageExecutor:
                 # Execute agent with timeout protection
                 # Use alert_processing_timeout as maximum time for any single agent
                 try:
+                    # Create isolated context copy to prevent concurrent mutation across parallel agents
+                    agent_context = chain_context.model_copy(deep=True)
                     result = await asyncio.wait_for(
-                        agent.process_alert(chain_context),
+                        agent.process_alert(agent_context),
                         timeout=self.settings.alert_processing_timeout
                     )
                 except asyncio.TimeoutError:
