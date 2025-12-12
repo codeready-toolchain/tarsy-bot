@@ -735,6 +735,141 @@ class TestGetChainConfigs:
             assert "Failed to load chain configurations" in caplog.text
         finally:
             os.unlink(temp_path)
+    
+    def test_get_chain_configs_with_synthesis(self):
+        """Test chain configuration includes synthesis config for parallel stages."""
+        valid_config = {
+            "agents": {},
+            "mcp_servers": {},
+            "agent_chains": {
+                "synthesis-chain": {
+                    "alert_types": ["test-synthesis"],
+                    "stages": [
+                        {
+                            "name": "investigation",
+                            "agent": None,
+                            "agents": [
+                                {"name": "KubernetesAgent", "iteration_strategy": "react"},
+                                {"name": "KubernetesAgent", "iteration_strategy": "native-thinking"}
+                            ],
+                            "synthesis": {
+                                "agent": "SynthesisAgent",
+                                "iteration_strategy": "synthesis-native-thinking",
+                                "llm_provider": "google-default"
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            yaml.dump(valid_config, f)
+            temp_path = f.name
+        
+        try:
+            loader = ConfigurationLoader(temp_path)
+            chain_configs = loader.get_chain_configs()
+            
+            assert "synthesis-chain" in chain_configs
+            chain_config = chain_configs["synthesis-chain"]
+            
+            # Verify synthesis configuration is included in the dictionary
+            stage = chain_config["stages"][0]
+            assert "synthesis" in stage, "Synthesis field should be present"
+            assert stage["synthesis"] is not None
+            assert stage["synthesis"]["agent"] == "SynthesisAgent"
+            assert stage["synthesis"]["iteration_strategy"].value == "synthesis-native-thinking"
+            assert stage["synthesis"]["llm_provider"] == "google-default"
+        finally:
+            os.unlink(temp_path)
+    
+    def test_get_chain_configs_with_chat(self):
+        """Test chain configuration includes chat config."""
+        valid_config = {
+            "agents": {},
+            "mcp_servers": {},
+            "agent_chains": {
+                "chat-chain": {
+                    "alert_types": ["test-chat"],
+                    "stages": [
+                        {
+                            "name": "analysis",
+                            "agent": "KubernetesAgent"
+                        }
+                    ],
+                    "chat": {
+                        "enabled": True,
+                        "agent": "ChatAgent",
+                        "iteration_strategy": "native-thinking",
+                        "llm_provider": "anthropic-default"
+                    }
+                }
+            }
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            yaml.dump(valid_config, f)
+            temp_path = f.name
+        
+        try:
+            loader = ConfigurationLoader(temp_path)
+            chain_configs = loader.get_chain_configs()
+            
+            assert "chat-chain" in chain_configs
+            chain_config = chain_configs["chat-chain"]
+            
+            # Verify chat configuration is included in the dictionary
+            assert "chat" in chain_config, "Chat field should be present"
+            assert chain_config["chat"] is not None
+            assert chain_config["chat"]["enabled"] is True
+            assert chain_config["chat"]["agent"] == "ChatAgent"
+            assert chain_config["chat"]["iteration_strategy"].value == "native-thinking"
+            assert chain_config["chat"]["llm_provider"] == "anthropic-default"
+        finally:
+            os.unlink(temp_path)
+    
+    def test_get_chain_configs_synthesis_none_when_not_specified(self):
+        """Test that synthesis field is None when not specified in YAML."""
+        valid_config = {
+            "agents": {},
+            "mcp_servers": {},
+            "agent_chains": {
+                "simple-chain": {
+                    "alert_types": ["test-simple"],
+                    "stages": [
+                        {
+                            "name": "analysis",
+                            "agent": "KubernetesAgent"
+                        }
+                    ]
+                }
+            }
+        }
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            yaml.dump(valid_config, f)
+            temp_path = f.name
+        
+        try:
+            loader = ConfigurationLoader(temp_path)
+            chain_configs = loader.get_chain_configs()
+            
+            assert "simple-chain" in chain_configs
+            chain_config = chain_configs["simple-chain"]
+            
+            # Verify synthesis is None when not specified
+            stage = chain_config["stages"][0]
+            assert "synthesis" in stage
+            assert stage["synthesis"] is None
+            
+            # Chat has a default_factory, so it will have default values (enabled=True, rest None)
+            assert "chat" in chain_config
+            assert chain_config["chat"] is not None
+            assert chain_config["chat"]["enabled"] is True
+            assert chain_config["chat"]["agent"] == "ChatAgent"  # Default
+        finally:
+            os.unlink(temp_path)
 
 
 @pytest.mark.unit

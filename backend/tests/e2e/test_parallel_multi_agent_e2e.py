@@ -20,12 +20,14 @@ from unittest.mock import AsyncMock, Mock, patch
 import pytest
 from mcp.types import Tool
 
-from .e2e_utils import E2ETestUtils
+from .e2e_utils import E2ETestUtils, assert_conversation_messages
 from .expected_parallel_conversations import (
     EXPECTED_MULTI_AGENT_STAGES,
     EXPECTED_PARALLEL_AGENT_1_CONVERSATION,
     EXPECTED_PARALLEL_AGENT_2_CONVERSATION,
     EXPECTED_PARALLEL_CHAT_INTERACTIONS,
+    EXPECTED_PARALLEL_CHAT_MESSAGE_1_CONVERSATION,
+    EXPECTED_PARALLEL_CHAT_MESSAGE_2_CONVERSATION,
     EXPECTED_SYNTHESIS_CONVERSATION,
 )
 from .parallel_test_base import ParallelTestBase
@@ -334,7 +336,8 @@ Action Input: {"resource": "pods", "label_selector": "app=database", "namespace"
         await self._verify_chat_response(
             chat_stage=message_1_stage,
             message_key='message_1',
-            expected_conversation=EXPECTED_PARALLEL_CHAT_INTERACTIONS['message_1']
+            expected_conversation=EXPECTED_PARALLEL_CHAT_MESSAGE_1_CONVERSATION,
+            expected_spec=EXPECTED_PARALLEL_CHAT_INTERACTIONS['message_1']
         )
         verified_chat_stage_ids.add(message_1_stage.get("stage_id"))
         logger.info("First chat response verified")
@@ -355,7 +358,8 @@ Action Input: {"resource": "pods", "label_selector": "app=database", "namespace"
         await self._verify_chat_response(
             chat_stage=message_2_stage,
             message_key='message_2',
-            expected_conversation=EXPECTED_PARALLEL_CHAT_INTERACTIONS['message_2']
+            expected_conversation=EXPECTED_PARALLEL_CHAT_MESSAGE_2_CONVERSATION,
+            expected_spec=EXPECTED_PARALLEL_CHAT_INTERACTIONS['message_2']
         )
         verified_chat_stage_ids.add(message_2_stage.get("stage_id"))
         logger.info("Second chat response verified")
@@ -461,7 +465,8 @@ Action Input: {"resource": "pods", "label_selector": "app=database", "namespace"
         self,
         chat_stage,
         message_key: str,
-        expected_conversation: dict
+        expected_conversation: dict,
+        expected_spec: dict
     ):
         """
         Verify the structure of a chat response using the same pattern as stage verification.
@@ -469,7 +474,8 @@ Action Input: {"resource": "pods", "label_selector": "app=database", "namespace"
         Args:
             chat_stage: The chat stage execution data from the API
             message_key: Key to look up expected interactions (e.g., 'message_1', 'message_2')
-            expected_conversation: Expected conversation structure for this message
+            expected_conversation: Expected conversation structure for this message (with 'messages' key)
+            expected_spec: Expected interaction specification (with 'llm_count', 'mcp_count', 'interactions')
         """
         
         # Verify basic stage structure
@@ -513,29 +519,28 @@ Action Input: {"resource": "pods", "label_selector": "app=database", "namespace"
             )
         
         # Get expected interactions for this message
-        expected_chat = expected_conversation
         llm_interactions = chat_stage.get("llm_interactions", [])
         mcp_interactions = chat_stage.get("mcp_communications", [])
         
         # Verify interaction counts
-        assert len(llm_interactions) == expected_chat["llm_count"], (
-            f"Chat {message_key}: Expected {expected_chat['llm_count']} LLM interactions, "
+        assert len(llm_interactions) == expected_spec["llm_count"], (
+            f"Chat {message_key}: Expected {expected_spec['llm_count']} LLM interactions, "
             f"got {len(llm_interactions)}"
         )
-        assert len(mcp_interactions) == expected_chat["mcp_count"], (
-            f"Chat {message_key}: Expected {expected_chat['mcp_count']} MCP interactions, "
+        assert len(mcp_interactions) == expected_spec["mcp_count"], (
+            f"Chat {message_key}: Expected {expected_spec['mcp_count']} MCP interactions, "
             f"got {len(mcp_interactions)}"
         )
         
         # Verify complete interaction flow in chronological order
         chronological_interactions = chat_stage.get("chronological_interactions", [])
-        assert len(chronological_interactions) == len(expected_chat["interactions"]), (
+        assert len(chronological_interactions) == len(expected_spec["interactions"]), (
             f"Chat {message_key} chronological interaction count mismatch: "
-            f"expected {len(expected_chat['interactions'])}, got {len(chronological_interactions)}"
+            f"expected {len(expected_spec['interactions'])}, got {len(chronological_interactions)}"
         )
         
         # Verify each interaction
-        for i, expected_interaction in enumerate(expected_chat["interactions"]):
+        for i, expected_interaction in enumerate(expected_spec["interactions"]):
             actual_interaction = chronological_interactions[i]
             interaction_type = expected_interaction["type"]
             
@@ -551,16 +556,28 @@ Action Input: {"resource": "pods", "label_selector": "app=database", "namespace"
             )
             
             if interaction_type == "llm":
-                # Skip conversation content validation for chat (investigation history makes it complex)
-                # Just verify structure
-                actual_conversation = details.get("conversation")
-                assert actual_conversation is not None, (
-                    f"Chat {message_key} LLM interaction {i+1} missing conversation"
-                )
-                actual_messages = actual_conversation.get("messages", [])
-                assert len(actual_messages) > 0, (
-                    f"Chat {message_key} LLM interaction {i+1} has no messages"
-                )
+                # Verify the actual conversation matches the expected conversation
+                actual_conversation = details["conversation"]
+                actual_messages = actual_conversation["messages"]
+                
+                if "conversation_index" in expected_interaction:
+                    # Use conversation_index to slice from the expected conversation
+                    expected_conversation_index = expected_interaction["conversation_index"]
+                    assert_conversation_messages(
+                        expected_conversation, actual_messages, expected_conversation_index
+                    )
+                elif "conversation" in expected_interaction:
+                    # Use the provided conversation directly
+                    expected_conversation_for_interaction = expected_interaction["conversation"]
+                    expected_message_count = len(expected_conversation_for_interaction["messages"])
+                    assert_conversation_messages(
+                        expected_conversation_for_interaction, actual_messages, expected_message_count
+                    )
+                else:
+                    raise AssertionError(
+                        f"Chat {message_key} interaction {i+1} missing both "
+                        "'conversation_index' and 'conversation' fields"
+                    )
                 
                 # Verify token usage
                 if "input_tokens" in expected_interaction:

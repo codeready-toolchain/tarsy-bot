@@ -180,12 +180,23 @@ class ConfigurationLoader:
                             "replicas": stage.replicas,
                             "failure_policy": stage.failure_policy,
                             "iteration_strategy": stage.iteration_strategy,
-                            "llm_provider": stage.llm_provider
+                            "llm_provider": stage.llm_provider,
+                            "synthesis": {
+                                "agent": stage.synthesis.agent,
+                                "iteration_strategy": stage.synthesis.iteration_strategy,
+                                "llm_provider": stage.synthesis.llm_provider
+                            } if stage.synthesis else None
                         }
                         for stage in chain_config.stages
                     ],
                     "description": chain_config.description,
-                    "llm_provider": chain_config.llm_provider
+                    "llm_provider": chain_config.llm_provider,
+                    "chat": {
+                        "enabled": chain_config.chat.enabled,
+                        "agent": chain_config.chat.agent,
+                        "iteration_strategy": chain_config.chat.iteration_strategy,
+                        "llm_provider": chain_config.chat.llm_provider
+                    } if chain_config.chat else None
                 }
             
             return chain_configs

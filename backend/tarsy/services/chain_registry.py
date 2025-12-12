@@ -13,7 +13,7 @@ from tarsy.config.builtin_config import (
     DEFAULT_ALERT_TYPE,
     get_builtin_chain_definitions,
 )
-from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel, ParallelAgentConfig
+from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel, ParallelAgentConfig, SynthesisConfig, ChatConfig
 from tarsy.models.constants import FailurePolicy
 from tarsy.utils.logger import get_module_logger
 
@@ -116,12 +116,23 @@ class ChainRegistry:
                                 replicas=stage.get("replicas", 1),
                                 failure_policy=FailurePolicy(stage.get("failure_policy", "all")),
                                 iteration_strategy=stage.get("iteration_strategy"),
-                                llm_provider=stage.get("llm_provider")
+                                llm_provider=stage.get("llm_provider"),
+                                synthesis=SynthesisConfig(
+                                    agent=stage["synthesis"].get("agent", "SynthesisAgent"),
+                                    iteration_strategy=stage["synthesis"]["iteration_strategy"],
+                                    llm_provider=stage["synthesis"].get("llm_provider")
+                                ) if stage.get("synthesis") else None
                             )
                             for stage in chain_data["stages"]
                         ],
                         description=chain_data.get("description"),
-                        llm_provider=chain_data.get("llm_provider")
+                        llm_provider=chain_data.get("llm_provider"),
+                        chat=ChatConfig(
+                            enabled=chain_data["chat"].get("enabled", True),
+                            agent=chain_data["chat"].get("agent"),
+                            iteration_strategy=chain_data["chat"].get("iteration_strategy"),
+                            llm_provider=chain_data["chat"].get("llm_provider")
+                        ) if chain_data.get("chat") else None
                     )
                     yaml_chains[chain_id] = chain_def
                     logger.debug(f"Loaded YAML chain: {chain_id}")

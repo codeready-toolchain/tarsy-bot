@@ -1443,6 +1443,8 @@ kubectl rollout undo deployment/app -n test-namespace
 # CHAT AFTER PARALLEL EXECUTION
 # ============================================================================
 
+# Chat Message 1 conversation (Native Thinking format - CORRECT expected behavior)
+# Synthesis uses synthesis-native-thinking, so chat MUST inherit Native Thinking
 EXPECTED_PARALLEL_CHAT_MESSAGE_1_CONVERSATION = {
     "messages": [
         {
@@ -1470,82 +1472,26 @@ You have access to the same tools and systems that were used in the original inv
 4. **Specificity**: Always reference actual data and observations, not assumptions
 5. **Brevity**: Be concise but complete - users have already read the full investigation
 
-You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
+You are an SRE agent analyzing incidents. Use the available tools to investigate and provide actionable recommendations.
 
-REQUIRED FORMAT:
-
-Question: [the incident question]
-Thought: [your step-by-step reasoning]
-Action: [tool name from available tools]
-Action Input: [parameters as key: value pairs]
-
-⚠️ STOP immediately after Action Input. The system provides Observations.
-
-Continue the cycle. Conclude when you have sufficient information:
-
-Thought: [final reasoning]
-Final Answer: [complete structured response]
-
-CRITICAL RULES:
-1. Always use colons after headers: "Thought:", "Action:", "Action Input:"
-2. Start each section on a NEW LINE (never continue on same line as previous text)
-3. Stop after Action Input—never generate fake Observations
-4. Parameters: one per line for multiple values, or inline for single value
-5. Conclude when you have actionable insights (perfect information not required)
-
-PARAMETER FORMATS:
-
-Multiple parameters:
-Action Input: apiVersion: v1
-kind: Namespace
-name: superman-dev
-
-Single parameter:
-Action Input: namespace: default
-
-EXAMPLE CYCLE:
-
-Question: Why is namespace 'superman-dev' stuck in terminating state?
-
-Thought: I need to check the namespace status first to identify any blocking resources or finalizers.
-
-Action: kubernetes-server.resources_get
-Action Input: apiVersion: v1
-kind: Namespace
-name: superman-dev
-
-[System provides: Observation: {"status": {"phase": "Terminating", "finalizers": ["kubernetes"]}}]
-
-Thought: A finalizer is blocking deletion. I should check for any remaining resources in the namespace.
-
-Action: kubernetes-server.resources_list
-Action Input: apiVersion: v1
-kind: Pod
-namespace: superman-dev
-
-[System provides: Observation: No pods found]
-
-Thought: No pods remain, but the finalizer persists. This is an orphaned finalizer that needs manual removal.
-
-Final Answer: 
-**Root Cause:** Orphaned 'kubernetes' finalizer blocking namespace deletion after all resources were cleaned up.
-
-**Resolution Steps:**
-1. Remove the finalizer: `kubectl patch namespace superman-dev -p '{"spec":{"finalizers":null}}' --type=merge`
-2. Verify deletion: `kubectl get namespace superman-dev`
-3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
-
-**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically.
+When you have gathered sufficient information, provide your final analysis with:
+1. Root cause analysis
+2. Current system state assessment
+3. Specific remediation steps for human operators
+4. Prevention recommendations
 
 Focus on answering follow-up questions about a completed investigation for human operators to execute."""
         },
         {
             "role": "user",
-            "content": """# Investigation History
+            "content": """## Investigation Context
 
+The following is the complete history of the alert investigation. Use this context to answer the user's question.
+
+### Alert Information
 **Alert Type:** test-parallel-execution
 
-**Alert Data:**
+### Alert Data
 ```json
 {
   "description": "Test parallel execution scenario",
@@ -1553,7 +1499,9 @@ Focus on answering follow-up questions about a completed investigation for human
 }
 ```
 
-## Stage: investigation (Parallel Execution)
+### Investigation Summary
+
+**Stage: investigation (Parallel Execution)**
 
 **Agent: KubernetesAgent**
 Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace.
@@ -1561,34 +1509,36 @@ Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace.
 **Agent: LogAgent**
 Log analysis reveals database connection timeout errors to db.example.com:5432.
 
-## Stage: synthesis
+**Stage: synthesis**
 
 **Synthesis of Parallel Investigations**
 Root cause: Pod-1 crashing due to database connection timeout. Recommended verifying database service and network connectivity.
 
-# User Question
+---
+
+## User Question
 
 Can you check if the database service is running?"""
         },
-        {
-            "role": "assistant",
-            "content": """Thought: The user wants to verify database service status. I'll check the service in test-namespace.
-Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "service", "name": "database", "namespace": "test-namespace"}"""
-        },
+        # Native Thinking: No assistant message here - tool is called with empty text_content
+        # Tool result as user message
         {
             "role": "user",
-            "content": """Observation: kubernetes-server.kubectl_get: {
+            "content": """Tool Result: kubernetes-server.kubectl_get:
+{
   "result": "Service database is running with ClusterIP 10.96.0.100"
 }"""
         },
+        # Final answer
         {
             "role": "assistant",
-            "content": """Final Answer: Yes, the database service is running in test-namespace with ClusterIP 10.96.0.100. The service endpoint exists, so the issue is likely with the actual database pod or external database connectivity rather than the Kubernetes service configuration."""
+            "content": "Yes, the database service is running in test-namespace with ClusterIP 10.96.0.100. The service endpoint exists, so the issue is likely with the actual database pod or external database connectivity rather than the Kubernetes service configuration."
         }
     ]
 }
 
+# Chat Message 2 conversation (Native Thinking format - CORRECT expected behavior)
+# Synthesis uses synthesis-native-thinking, so chat MUST inherit Native Thinking
 EXPECTED_PARALLEL_CHAT_MESSAGE_2_CONVERSATION = {
     "messages": [
         {
@@ -1616,82 +1566,26 @@ You have access to the same tools and systems that were used in the original inv
 4. **Specificity**: Always reference actual data and observations, not assumptions
 5. **Brevity**: Be concise but complete - users have already read the full investigation
 
-You are an SRE agent using the ReAct framework to analyze Kubernetes incidents. Reason step by step, act with tools, observe results, and repeat until you identify root cause and resolution steps.
+You are an SRE agent analyzing incidents. Use the available tools to investigate and provide actionable recommendations.
 
-REQUIRED FORMAT:
-
-Question: [the incident question]
-Thought: [your step-by-step reasoning]
-Action: [tool name from available tools]
-Action Input: [parameters as key: value pairs]
-
-⚠️ STOP immediately after Action Input. The system provides Observations.
-
-Continue the cycle. Conclude when you have sufficient information:
-
-Thought: [final reasoning]
-Final Answer: [complete structured response]
-
-CRITICAL RULES:
-1. Always use colons after headers: "Thought:", "Action:", "Action Input:"
-2. Start each section on a NEW LINE (never continue on same line as previous text)
-3. Stop after Action Input—never generate fake Observations
-4. Parameters: one per line for multiple values, or inline for single value
-5. Conclude when you have actionable insights (perfect information not required)
-
-PARAMETER FORMATS:
-
-Multiple parameters:
-Action Input: apiVersion: v1
-kind: Namespace
-name: superman-dev
-
-Single parameter:
-Action Input: namespace: default
-
-EXAMPLE CYCLE:
-
-Question: Why is namespace 'superman-dev' stuck in terminating state?
-
-Thought: I need to check the namespace status first to identify any blocking resources or finalizers.
-
-Action: kubernetes-server.resources_get
-Action Input: apiVersion: v1
-kind: Namespace
-name: superman-dev
-
-[System provides: Observation: {"status": {"phase": "Terminating", "finalizers": ["kubernetes"]}}]
-
-Thought: A finalizer is blocking deletion. I should check for any remaining resources in the namespace.
-
-Action: kubernetes-server.resources_list
-Action Input: apiVersion: v1
-kind: Pod
-namespace: superman-dev
-
-[System provides: Observation: No pods found]
-
-Thought: No pods remain, but the finalizer persists. This is an orphaned finalizer that needs manual removal.
-
-Final Answer: 
-**Root Cause:** Orphaned 'kubernetes' finalizer blocking namespace deletion after all resources were cleaned up.
-
-**Resolution Steps:**
-1. Remove the finalizer: `kubectl patch namespace superman-dev -p '{"spec":{"finalizers":null}}' --type=merge`
-2. Verify deletion: `kubectl get namespace superman-dev`
-3. If still stuck, check for remaining resources: `kubectl api-resources --verbs=list --namespaced -o name | xargs -n 1 kubectl get -n superman-dev`
-
-**Preventive Measures:** Ensure cleanup scripts remove finalizers when deleting namespaces programmatically.
+When you have gathered sufficient information, provide your final analysis with:
+1. Root cause analysis
+2. Current system state assessment
+3. Specific remediation steps for human operators
+4. Prevention recommendations
 
 Focus on answering follow-up questions about a completed investigation for human operators to execute."""
         },
         {
             "role": "user",
-            "content": """# Investigation History
+            "content": """## Investigation Context
 
+The following is the complete history of the alert investigation. Use this context to answer the user's question.
+
+### Alert Information
 **Alert Type:** test-parallel-execution
 
-**Alert Data:**
+### Alert Data
 ```json
 {
   "description": "Test parallel execution scenario",
@@ -1699,7 +1593,9 @@ Focus on answering follow-up questions about a completed investigation for human
 }
 ```
 
-## Stage: investigation (Parallel Execution)
+### Investigation Summary
+
+**Stage: investigation (Parallel Execution)**
 
 **Agent: KubernetesAgent**
 Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace.
@@ -1707,65 +1603,70 @@ Investigation complete. Found pod-1 in CrashLoopBackOff state in test-namespace.
 **Agent: LogAgent**
 Log analysis reveals database connection timeout errors to db.example.com:5432.
 
-## Stage: synthesis
+**Stage: synthesis**
 
 **Synthesis of Parallel Investigations**
 Root cause: Pod-1 crashing due to database connection timeout. Recommended verifying database service and network connectivity.
 
-## Chat History
+### Chat History
 
 **User:** Can you check if the database service is running?
 
 **Assistant:** Yes, the database service is running in test-namespace with ClusterIP 10.96.0.100. The service endpoint exists, so the issue is likely with the actual database pod or external database connectivity rather than the Kubernetes service configuration.
 
-# User Question
+---
+
+## User Question
 
 What about the database pod itself?"""
         },
-        {
-            "role": "assistant",
-            "content": """Thought: The user wants to check the database pod status. Let me get pod information.
-Action: kubernetes-server.kubectl_get
-Action Input: {"resource": "pods", "label_selector": "app=database", "namespace": "test-namespace"}"""
-        },
+        # Native Thinking: No assistant message here - tool is called with empty text_content
+        # Tool result as user message
         {
             "role": "user",
-            "content": """Observation: kubernetes-server.kubectl_get: {
-  "result": "Pod database-0 is in Running state, ready 1/1"
+            "content": """Tool Result: kubernetes-server.kubectl_get:
+{
+  "result": "Pod database-0 is running and ready (1/1) in test-namespace"
 }"""
         },
+        # Final answer
         {
             "role": "assistant",
-            "content": """Final Answer: The database pod (database-0) is running and ready (1/1) in test-namespace. Since both the service and pod are healthy, the issue is that pod-1 is trying to connect to the external address db.example.com:5432 instead of using the internal Kubernetes service. The application configuration likely needs to be updated to use the service name 'database' or 'database.test-namespace.svc.cluster.local' instead of the external address."""
+            "content": "The database pod (database-0) is running and ready (1/1) in test-namespace. Since both the service and pod are healthy, the issue is that pod-1 is trying to connect to the external address db.example.com:5432 instead of using the internal Kubernetes service. The application configuration likely needs to be updated to use the service name 'database' or 'database.test-namespace.svc.cluster.local' instead of the external address."
         }
     ]
 }
 
 # Expected interactions structure for chat messages after parallel execution
 # Note: Chat agents reuse tool discovery from the session, so no tool_list calls
+# Uses Native Thinking format (inherited from synthesis-native-thinking)
 EXPECTED_PARALLEL_CHAT_INTERACTIONS = {
     'message_1': {
-        'llm_count': 2,  # Initial ReAct + Final answer
+        'llm_count': 2,  # Tool call (no assistant msg) + Final answer (Native Thinking)
         'mcp_count': 1,  # 1 tool_call only (tools already discovered)
         'interactions': [
-            # LLM 1 - Initial ReAct iteration (kubectl_get for service)
-            {'type': 'llm', 'success': True, 'conversation_index': 3, 'input_tokens': 210, 'output_tokens': 65, 'total_tokens': 275, 'interaction_type': 'investigation'},
+            # LLM 1 - Native Thinking tool call - no assistant message added
+            # Conversation has 2 messages at this point (system, user)
+            {'type': 'llm', 'success': True, 'conversation_index': 2, 'input_tokens': 210, 'output_tokens': 65, 'total_tokens': 275, 'interaction_type': 'investigation'},
             # MCP 1 - kubectl_get service call
             {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
-            # LLM 2 - Final answer
-            {'type': 'llm', 'success': True, 'conversation_index': 5, 'input_tokens': 190, 'output_tokens': 80, 'total_tokens': 270, 'interaction_type': 'final_analysis'}
+            # LLM 2 - Final answer after tool result
+            # Conversation now has 4 messages (system, user, user-tool-result, assistant-answer)
+            {'type': 'llm', 'success': True, 'conversation_index': 4, 'input_tokens': 190, 'output_tokens': 80, 'total_tokens': 270, 'interaction_type': 'final_analysis'}
         ]
     },
     'message_2': {
-        'llm_count': 2,  # Initial ReAct + Final answer
+        'llm_count': 2,  # Tool call (no assistant msg) + Final answer (Native Thinking)
         'mcp_count': 1,  # 1 tool_call only (tools already discovered)
         'interactions': [
-            # LLM 1 - Initial ReAct iteration (kubectl_get for pods)
-            {'type': 'llm', 'success': True, 'conversation_index': 3, 'input_tokens': 220, 'output_tokens': 70, 'total_tokens': 290, 'interaction_type': 'investigation'},
+            # LLM 1 - Native Thinking tool call - no assistant message added
+            # Conversation has 2 messages (system, user with history including previous chat)
+            {'type': 'llm', 'success': True, 'conversation_index': 2, 'input_tokens': 220, 'output_tokens': 70, 'total_tokens': 290, 'interaction_type': 'investigation'},
             # MCP 1 - kubectl_get pods call
             {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
-            # LLM 2 - Final answer
-            {'type': 'llm', 'success': True, 'conversation_index': 5, 'input_tokens': 200, 'output_tokens': 90, 'total_tokens': 290, 'interaction_type': 'final_analysis'}
+            # LLM 2 - Final answer after tool result
+            # Conversation now has 4 messages
+            {'type': 'llm', 'success': True, 'conversation_index': 4, 'input_tokens': 200, 'output_tokens': 90, 'total_tokens': 290, 'interaction_type': 'final_analysis'}
         ]
     }
 }

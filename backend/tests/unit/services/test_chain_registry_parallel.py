@@ -195,4 +195,140 @@ class TestChainRegistryParallelStages:
         assert chain is not None
         assert chain.stages[0].failure_policy == FailurePolicy.ALL
         assert chain.stages[1].failure_policy == FailurePolicy.ANY
+    
+    def test_loading_yaml_chain_with_synthesis_config(self) -> None:
+        """Test loading YAML chain with synthesis configuration for parallel stages."""
+        yaml_chains = {
+            'synthesis-chain': {
+                'chain_id': 'synthesis-chain',
+                'alert_types': ['synthesis-test'],
+                'stages': [
+                    {
+                        'name': 'investigation',
+                        'agent': None,
+                        'agents': [
+                            {'name': 'Agent1', 'iteration_strategy': 'react'},
+                            {'name': 'Agent2', 'iteration_strategy': 'native-thinking'}
+                        ],
+                        'synthesis': {
+                            'agent': 'SynthesisAgent',
+                            'iteration_strategy': 'synthesis-native-thinking',
+                            'llm_provider': 'google-default'
+                        }
+                    }
+                ]
+            }
+        }
+        
+        mock_config_loader = Mock(spec=ConfigurationLoader)
+        mock_config_loader.get_chain_configs.return_value = yaml_chains
+        mock_config = Mock()
+        mock_config.default_alert_type = 'synthesis-test'
+        mock_config_loader.load_and_validate.return_value = mock_config
+        
+        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
+            mock_builtin.return_value = {}
+            registry = ChainRegistry(mock_config_loader)
+        
+        chain = registry.get_chain_for_alert_type('synthesis-test')
+        assert chain is not None
+        assert chain.chain_id == 'synthesis-chain'
+        assert len(chain.stages) == 1
+        
+        # Verify synthesis configuration is loaded
+        stage = chain.stages[0]
+        assert stage.synthesis is not None, "Synthesis config should be loaded"
+        assert stage.synthesis.agent == 'SynthesisAgent'
+        assert stage.synthesis.iteration_strategy.value == 'synthesis-native-thinking'
+        assert stage.synthesis.llm_provider == 'google-default'
+    
+    def test_loading_yaml_chain_with_chat_config(self) -> None:
+        """Test loading YAML chain with chat configuration."""
+        yaml_chains = {
+            'chat-chain': {
+                'chain_id': 'chat-chain',
+                'alert_types': ['chat-test'],
+                'stages': [
+                    {
+                        'name': 'analysis',
+                        'agent': 'TestAgent'
+                    }
+                ],
+                'chat': {
+                    'enabled': True,
+                    'agent': 'CustomChatAgent',
+                    'iteration_strategy': 'native-thinking',
+                    'llm_provider': 'anthropic-default'
+                }
+            }
+        }
+        
+        mock_config_loader = Mock(spec=ConfigurationLoader)
+        mock_config_loader.get_chain_configs.return_value = yaml_chains
+        mock_config = Mock()
+        mock_config.default_alert_type = 'chat-test'
+        mock_config_loader.load_and_validate.return_value = mock_config
+        
+        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
+            mock_builtin.return_value = {}
+            registry = ChainRegistry(mock_config_loader)
+        
+        chain = registry.get_chain_for_alert_type('chat-test')
+        assert chain is not None
+        assert chain.chain_id == 'chat-chain'
+        
+        # Verify chat configuration is loaded
+        assert chain.chat is not None, "Chat config should be loaded"
+        assert chain.chat.enabled is True
+        assert chain.chat.agent == 'CustomChatAgent'
+        assert chain.chat.iteration_strategy.value == 'native-thinking'
+        assert chain.chat.llm_provider == 'anthropic-default'
+    
+    def test_loading_yaml_chain_with_synthesis_and_chat(self) -> None:
+        """Test loading YAML chain with both synthesis and chat configuration."""
+        yaml_chains = {
+            'full-chain': {
+                'chain_id': 'full-chain',
+                'alert_types': ['full-test'],
+                'stages': [
+                    {
+                        'name': 'investigation',
+                        'agent': None,
+                        'agents': [
+                            {'name': 'Agent1'},
+                            {'name': 'Agent2'}
+                        ],
+                        'synthesis': {
+                            'agent': 'SynthesisAgent',
+                            'iteration_strategy': 'synthesis',
+                            'llm_provider': 'openai'
+                        }
+                    }
+                ],
+                'chat': {
+                    'enabled': True,
+                    'iteration_strategy': 'react'
+                }
+            }
+        }
+        
+        mock_config_loader = Mock(spec=ConfigurationLoader)
+        mock_config_loader.get_chain_configs.return_value = yaml_chains
+        mock_config = Mock()
+        mock_config.default_alert_type = 'full-test'
+        mock_config_loader.load_and_validate.return_value = mock_config
+        
+        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
+            mock_builtin.return_value = {}
+            registry = ChainRegistry(mock_config_loader)
+        
+        chain = registry.get_chain_for_alert_type('full-test')
+        assert chain is not None
+        
+        # Verify both synthesis and chat are loaded
+        assert chain.stages[0].synthesis is not None
+        assert chain.stages[0].synthesis.iteration_strategy.value == 'synthesis'
+        assert chain.chat is not None
+        assert chain.chat.enabled is True
+        assert chain.chat.iteration_strategy.value == 'react'
 
