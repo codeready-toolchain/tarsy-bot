@@ -31,6 +31,8 @@ from .e2e_utils import E2ETestUtils, assert_conversation_messages
 from .expected_native_thinking_conversations import (
     EXPECTED_NATIVE_THINKING_ANALYSIS_CONVERSATION,
     EXPECTED_NATIVE_THINKING_CHAT_INTERACTIONS,
+    EXPECTED_NATIVE_THINKING_CHAT_MESSAGE_1_CONVERSATION,
+    EXPECTED_NATIVE_THINKING_CHAT_MESSAGE_2_CONVERSATION,
     EXPECTED_NATIVE_THINKING_DATA_COLLECTION_CONVERSATION,
     EXPECTED_NATIVE_THINKING_EXECUTIVE_SUMMARY_CONVERSATION,
     EXPECTED_NATIVE_THINKING_SESSION_LEVEL_INTERACTIONS,
@@ -855,7 +857,8 @@ class TestNativeThinkingE2E:
         await self._verify_chat_response(
             chat_stage=message_1_stage,
             message_key='message_1',
-            expected_conversation=EXPECTED_NATIVE_THINKING_CHAT_INTERACTIONS['message_1']
+            expected_conversation=EXPECTED_NATIVE_THINKING_CHAT_MESSAGE_1_CONVERSATION,
+            expected_spec=EXPECTED_NATIVE_THINKING_CHAT_INTERACTIONS['message_1']
         )
         verified_chat_stage_ids.add(message_1_stage.get("stage_id"))
 
@@ -872,7 +875,8 @@ class TestNativeThinkingE2E:
         await self._verify_chat_response(
             chat_stage=message_2_stage,
             message_key='message_2',
-            expected_conversation=EXPECTED_NATIVE_THINKING_CHAT_INTERACTIONS['message_2']
+            expected_conversation=EXPECTED_NATIVE_THINKING_CHAT_MESSAGE_2_CONVERSATION,
+            expected_spec=EXPECTED_NATIVE_THINKING_CHAT_INTERACTIONS['message_2']
         )
 
         # Verify message history
@@ -936,22 +940,88 @@ class TestNativeThinkingE2E:
         self,
         chat_stage,
         message_key: str,
-        expected_conversation: dict
+        expected_conversation: dict,
+        expected_spec: dict
     ):
-        """Verify chat response structure."""
-        assert chat_stage is not None
-        assert chat_stage.get("agent") == "ChatAgent"
-        assert chat_stage.get("status") == "completed"
+        """
+        Verify the structure of a chat response using the same pattern as stage verification.
         
-        expected_chat = expected_conversation
+        Args:
+            chat_stage: The chat stage execution data from the API
+            message_key: Key to look up expected interactions (e.g., 'message_1', 'message_2')
+            expected_conversation: Expected conversation structure for this message (with 'messages' key)
+            expected_spec: Expected interaction specification (with 'llm_count', 'mcp_count', 'interactions')
+        """
+        # Verify basic stage structure
+        assert chat_stage is not None, "Chat stage not found"
+        assert chat_stage.get("agent") == "ChatAgent", (
+            f"Expected ChatAgent, got {chat_stage.get('agent')}"
+        )
+        assert chat_stage.get("status") == "completed", (
+            f"Chat stage not completed: {chat_stage.get('status')}"
+        )
+        
+        # Verify chat-specific fields
+        assert chat_stage.get("chat_id") is not None, "Chat ID missing from stage"
+        assert chat_stage.get("chat_user_message_id") is not None, (
+            "Chat user message ID missing from stage"
+        )
+        
+        # Verify embedded user message data (added in user message display feature)
+        chat_user_message = chat_stage.get("chat_user_message")
+        assert chat_user_message is not None, (
+            "Chat user message data missing from stage - should be embedded"
+        )
+        assert chat_user_message.get("message_id") is not None, "User message ID missing"
+        assert chat_user_message.get("content") is not None, "User message content missing"
+        assert chat_user_message.get("author") == "test-user@example.com", (
+            f"User message author mismatch: expected 'test-user@example.com', "
+            f"got '{chat_user_message.get('author')}'"
+        )
+        assert chat_user_message.get("created_at_us") > 0, "User message timestamp invalid"
+        
+        # Verify the content matches what we expect for each message
+        expected_content_map = {
+            'message_1': "Can you check the pods in the stuck-namespace?",
+            'message_2': "Does the namespace still exist?"
+        }
+        expected_content = expected_content_map.get(message_key)
+        if expected_content:
+            assert chat_user_message.get("content") == expected_content, (
+                f"User message content mismatch for {message_key}: "
+                f"expected '{expected_content}', got '{chat_user_message.get('content')}'"
+            )
+        
+        # Get expected interactions for this message
         llm_interactions = chat_stage.get("llm_interactions", [])
         mcp_interactions = chat_stage.get("mcp_communications", [])
         
-        assert len(llm_interactions) == expected_chat["llm_count"]
-        assert len(mcp_interactions) == expected_chat["mcp_count"]
+        # Verify interaction counts
+        assert len(llm_interactions) == expected_spec["llm_count"], (
+            f"Chat {message_key}: Expected {expected_spec['llm_count']} LLM interactions, "
+            f"got {len(llm_interactions)}"
+        )
+        assert len(mcp_interactions) == expected_spec["mcp_count"], (
+            f"Chat {message_key}: Expected {expected_spec['mcp_count']} MCP interactions, "
+            f"got {len(mcp_interactions)}"
+        )
         
+        # Verify complete interaction flow in chronological order
         chronological_interactions = chat_stage.get("chronological_interactions", [])
-        assert len(chronological_interactions) == len(expected_chat["interactions"])
+        assert len(chronological_interactions) == len(expected_spec["interactions"]), (
+            f"Chat {message_key} chronological interaction count mismatch: "
+            f"expected {len(expected_spec['interactions'])}, got {len(chronological_interactions)}"
+        )
+        
+        # Use the shared verification method from _verify_interactions
+        # This will verify conversation content, token counts, interaction types, etc.
+        self._verify_interactions(
+            interactions=chronological_interactions,
+            expected_spec=expected_spec,
+            context_label=f"Chat {message_key}",
+            expected_conversation=expected_conversation,
+            stage_name='chat'  # For thinking content verification
+        )
 
         print(f"    ✅ Chat {message_key} validated")
 

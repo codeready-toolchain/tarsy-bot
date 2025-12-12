@@ -65,6 +65,7 @@ def assert_conversation_messages(
             print(f"\n❌ Content mismatch in message {i}:")
             print(f"  Expected length: {len(expected_content)}")
             print(f"  Actual length: {len(actual_content)}")
+            
             # Find where they differ
             for idx, (e_char, a_char) in enumerate(zip(expected_content, actual_content)):
                 if e_char != a_char:
