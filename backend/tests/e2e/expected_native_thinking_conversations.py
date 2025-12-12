@@ -306,7 +306,7 @@ Use tools as needed to gather information. When you have sufficient data, provid
             "role": "user",
             "content": """Tool Result: test-data-server.collect_system_info:
 {
-  "result": "Summarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK."
+  "result": "[NOTE: The tool output was too long and has been summarized below.]\\n\\nSummarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK."
 }"""
         },
         # NOTE: No assistant message here - model called kubectl_get events with empty text_content

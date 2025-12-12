@@ -557,7 +557,7 @@ Action Input: {"detailed": false}"""
         {
             "role": "user",
             "content": """Observation: test-data-server.collect_system_info: {
-  "result": "Summarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK."
+  "result": "[NOTE: The tool output was too long and has been summarized below.]\\n\\nSummarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK."
 }"""
         },
         {

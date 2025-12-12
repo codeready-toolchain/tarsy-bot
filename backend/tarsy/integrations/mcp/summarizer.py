@@ -109,9 +109,16 @@ class MCPResultSummarizer:
             
             summary_text = assistant_message.content.strip()
             
+            # Wrap summary with clear indication that this is a summarized result
+            # This helps the LLM understand it's not seeing the full output and shouldn't repeat the call
+            wrapped_summary = (
+                f"[NOTE: The tool output was too long and has been summarized below.]\n\n"
+                f"{summary_text}"
+            )
+            
             # Return summarized result in same structure as original
             # Create a completely new dictionary to avoid unhashable type errors
-            summarized_result = {"result": summary_text}
+            summarized_result = {"result": wrapped_summary}
             # Add any other keys from original result if they exist and are safe to copy
             for key, value in result.items():
                 if key != "result":

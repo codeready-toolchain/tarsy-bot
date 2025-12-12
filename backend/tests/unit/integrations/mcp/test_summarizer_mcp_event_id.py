@@ -145,7 +145,9 @@ class TestMCPResultSummarizerMCPEventID:
         )
         
         # Verify the result is structured correctly
-        assert result["result"] == "Complete summary"
+        # Check that result contains the summary wrapper and the actual summary
+        assert "[NOTE: The tool output was too long and has been summarized below." in result["result"]
+        assert "Complete summary" in result["result"]
         assert result["metadata"] == "extra data"
         
         # Verify all parameters were passed correctly
