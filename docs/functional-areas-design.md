@@ -213,8 +213,9 @@ agents:
     mcp_servers: ["security-scanner", "kubernetes-server"]  # Mix of custom + built-in
     iteration_strategy: "react"
     custom_instructions: "Focus on security implications and threat analysis..."
-    
-chains:
+
+# Chain definitions
+agent_chains:
   security-incident-chain:
     alert_types: ["SecurityBreach", "SuspiciousActivity"]
     llm_provider: "google-default"  # Optional: chain-level default provider
@@ -373,7 +374,7 @@ sequenceDiagram
 **Multi-stage Chain Example**:
 ```yaml
 # In agents.yaml
-chains:
+agent_chains:
   incident-investigation-chain:
     alert_types: ["CriticalIncident"]
     llm_provider: "google-default"  # Optional: chain-level default
@@ -425,7 +426,7 @@ stages:
     replicas: 3  # Run same agent 3 times with same config
     llm_provider: "openai"
     synthesis:  # Optional custom synthesis
-      iteration_strategy: "native-thinking-synthesis"
+      iteration_strategy: "synthesis-native-thinking"
       llm_provider: "google-default"
 ```
 
@@ -1690,7 +1691,7 @@ graph TB
 **Per-Chain Configuration**:
 ```yaml
 # In config/agents.yaml
-chains:
+agent_chains:
   kubernetes-agent-chain:
     # Option 1: Default chat (enabled with defaults)
     # Omit chat field = enabled with ChatAgent, auto-determined strategy, chain LLM provider

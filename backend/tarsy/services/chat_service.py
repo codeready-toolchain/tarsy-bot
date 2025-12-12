@@ -310,7 +310,22 @@ class ChatService:
             # 3. Build context (initial context OR cumulative from last execution)
             message_context = await self._build_message_context(chat, user_question)
             
-            # 4. Create stage execution for this response
+            # 4. Determine iteration strategy, LLM provider, and chat agent from parent session's chain config
+            session = await asyncio.to_thread(self.history_service.get_session, chat.session_id)
+            if not session:
+                logger.warning(
+                    f"Session {chat.session_id} not found when processing chat message. "
+                    f"Using default iteration strategy, LLM provider, and ChatAgent for chat {chat_id}."
+                )
+                iteration_strategy = None
+                llm_provider = None
+                chat_agent_name = "ChatAgent"
+            else:
+                iteration_strategy = self._determine_iteration_strategy_from_session(session)
+                llm_provider = self._determine_llm_provider_from_session(session)
+                chat_agent_name = self._determine_chat_agent_from_session(session)
+            
+            # 5. Create stage execution for this response
             # Uses stage execution context manager (like AlertService)
             # Use the provided execution_id for consistent tracking
             stage_execution = StageExecution(
@@ -319,7 +334,7 @@ class ChatService:
                 stage_id=f"chat-response-{message_id}",
                 stage_index=0,  # Chat messages don't have meaningful stage index
                 stage_name="Chat Response",
-                agent="ChatAgent",
+                agent=chat_agent_name,
                 status=StageStatus.PENDING.value,
                 chat_id=chat_id,
                 chat_user_message_id=message_id
@@ -331,7 +346,7 @@ class ChatService:
             
             logger.info(f"Created chat message execution {execution_id} for chat {chat_id}")
             
-            # 5. Track pod ownership for graceful shutdown (mirrors AlertService)
+            # 6. Track pod ownership for graceful shutdown (mirrors AlertService)
             from tarsy.main import get_pod_id
             pod_id = get_pod_id()
             
@@ -346,7 +361,7 @@ class ChatService:
             
             logger.debug(f"Chat message {execution_id} being processed by pod {pod_id}")
             
-            # 6. Record interaction timestamps for orphan detection
+            # 7. Record interaction timestamps for orphan detection
             # Both session (parent) and chat need their timestamps updated
             if self.history_service:
                 # Update parent session timestamp
@@ -372,37 +387,21 @@ class ChatService:
             )
             logger.debug(f"Started interaction recording task for chat {chat_id}")
             
-            # 7. Update stage execution to started
+            # 8. Update stage execution to started
             await self._update_stage_execution_started(execution_id)
             
-            # 8. Get MCP selection from chat
+            # 9. Get MCP selection from chat
             mcp_selection = (
                 MCPSelectionConfig(**chat.mcp_selection) 
                 if chat.mcp_selection 
                 else None
             )
             
-            # 9. Determine iteration strategy and LLM provider from parent session's chain config
-            session = await asyncio.to_thread(self.history_service.get_session, chat.session_id)
-            if not session:
-                logger.warning(
-                    f"Session {chat.session_id} not found when processing chat message. "
-                    f"Using default iteration strategy and LLM provider for chat {chat_id}."
-                )
-                iteration_strategy = None
-                llm_provider = None
-            else:
-                iteration_strategy = self._determine_iteration_strategy_from_session(session)
-                llm_provider = self._determine_llm_provider_from_session(session)
-            
             # 10. Create session-scoped MCP client for this chat execution
             logger.info(f"Creating MCP client for chat message {execution_id}")
             chat_mcp_client = await self.mcp_client_factory.create_client()
             
-            # 11. Determine chat agent from config
-            chat_agent_name = self._determine_chat_agent_from_session(session)
-            
-            # 12. Create chat agent with iteration strategy and LLM provider from parent session
+            # 11. Create chat agent with iteration strategy and LLM provider from parent session
             chat_agent = self.agent_factory.get_agent(
                 agent_identifier=chat_agent_name,
                 mcp_client=chat_mcp_client,

@@ -185,6 +185,11 @@ class ConfigurableAgent(BaseAgent):
         This overrides the abstract method from BaseAgent to return
         the MCP servers specified in the agent's configuration.
         
+        NOTE: ConfigurableAgent implements this as an instance method (not classmethod)
+        because MCP servers are instance-specific configuration. This is safe because
+        ConfigurableAgent is never registered in static_agent_classes, so the classmethod
+        paths in chat_service and system_controller will never call it.
+        
         Returns:
             List of MCP server IDs from configuration
             

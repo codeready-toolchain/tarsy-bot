@@ -49,7 +49,8 @@ class SynthesisAgent(BaseAgent):
             iteration_strategy=iteration_strategy
         )
 
-    def mcp_servers(self) -> List[str]:
+    @classmethod
+    def mcp_servers(cls) -> List[str]:
         """
         Define MCP servers for this agent.
         
