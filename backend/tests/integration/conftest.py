@@ -902,7 +902,16 @@ async def alert_service(ensure_integration_test_isolation, mock_settings, mock_r
     mock_history_service.complete_session = Mock()
     mock_history_service.record_error = Mock()
     mock_history_service.create_stage_execution.return_value = "test-stage-execution-id"
-    mock_history_service.get_stage_execution.return_value = Mock(execution_id="test-stage-execution-id")
+    
+    # Create proper mock stage execution with timestamp fields to avoid arithmetic errors
+    def create_mock_stage_execution():
+        mock_stage = Mock()
+        mock_stage.execution_id = "test-stage-execution-id"
+        mock_stage.started_at_us = now_us()
+        mock_stage.completed_at_us = None
+        return mock_stage
+    
+    mock_history_service.get_stage_execution = AsyncMock(side_effect=lambda _: create_mock_stage_execution())
     mock_history_service.update_stage_execution = Mock()
     mock_history_service.record_session_interaction = AsyncMock()
     
@@ -992,7 +1001,16 @@ def alert_service_with_mocks(
     mock_history_service.record_error = Mock()
     # Mock stage execution methods for EP-0030 validation
     mock_history_service.create_stage_execution.return_value = "test-stage-execution-id"
-    mock_history_service.get_stage_execution.return_value = Mock(execution_id="test-stage-execution-id")
+    
+    # Create proper mock stage execution with timestamp fields to avoid arithmetic errors
+    def create_mock_stage_execution_2():
+        mock_stage = Mock()
+        mock_stage.execution_id = "test-stage-execution-id"
+        mock_stage.started_at_us = now_us()
+        mock_stage.completed_at_us = None
+        return mock_stage
+    
+    mock_history_service.get_stage_execution = AsyncMock(side_effect=lambda _: create_mock_stage_execution_2())
     mock_history_service.update_stage_execution = Mock()
     
     # Mock get_repository to support stage execution verification - must be a context manager
