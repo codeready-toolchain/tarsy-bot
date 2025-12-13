@@ -938,11 +938,11 @@ class TestNativeThinkingE2E:
 
     async def _verify_chat_response(
         self,
-        chat_stage,
+        chat_stage: dict,
         message_key: str,
         expected_conversation: dict,
         expected_spec: dict
-    ):
+    ) -> None:
         """
         Verify the structure of a chat response using the same pattern as stage verification.
         
@@ -978,19 +978,20 @@ class TestNativeThinkingE2E:
             f"User message author mismatch: expected 'test-user@example.com', "
             f"got '{chat_user_message.get('author')}'"
         )
-        assert chat_user_message.get("created_at_us") > 0, "User message timestamp invalid"
+        created_at_us = chat_user_message.get("created_at_us")
+        assert isinstance(created_at_us, int) and created_at_us > 0, "User message timestamp invalid"
         
         # Verify the content matches what we expect for each message
         expected_content_map = {
             'message_1': "Can you check the pods in the stuck-namespace?",
             'message_2': "Does the namespace still exist?"
         }
-        expected_content = expected_content_map.get(message_key)
-        if expected_content:
-            assert chat_user_message.get("content") == expected_content, (
-                f"User message content mismatch for {message_key}: "
-                f"expected '{expected_content}', got '{chat_user_message.get('content')}'"
-            )
+        assert message_key in expected_content_map, f"Unknown message_key: {message_key}"
+        expected_content = expected_content_map[message_key]
+        assert chat_user_message.get("content") == expected_content, (
+            f"User message content mismatch for {message_key}: "
+            f"expected '{expected_content}', got '{chat_user_message.get('content')}'"
+        )
         
         # Get expected interactions for this message
         llm_interactions = chat_stage.get("llm_interactions", [])
@@ -1015,13 +1016,30 @@ class TestNativeThinkingE2E:
         
         # Use the shared verification method from _verify_interactions
         # This will verify conversation content, token counts, interaction types, etc.
+        # Note: stage_name=None because chat thinking_content uses different keying (verified separately below)
         self._verify_interactions(
             interactions=chronological_interactions,
             expected_spec=expected_spec,
             context_label=f"Chat {message_key}",
             expected_conversation=expected_conversation,
-            stage_name='chat'  # For thinking content verification
+            stage_name=None  # chat thinking_content verified below (different keying)
         )
+        
+        # Verify thinking content for chat (EXPECTED_THINKING_CONTENT['chat'] keys are like: message_1_1, message_1_2)
+        expected_chat_thinking = EXPECTED_THINKING_CONTENT.get("chat", {})
+        llm_pos = 0
+        for interaction in chronological_interactions:
+            if interaction.get("type") != "llm":
+                continue
+            llm_pos += 1
+            expected_key = f"{message_key}_{llm_pos}"
+            if expected_key in expected_chat_thinking:
+                actual_thinking = interaction.get("details", {}).get("thinking_content")
+                assert actual_thinking == expected_chat_thinking[expected_key], (
+                    f"Chat {message_key} LLM {llm_pos}: thinking_content mismatch.\n"
+                    f"Expected: '{expected_chat_thinking[expected_key]}'\n"
+                    f"Actual:   '{actual_thinking}'"
+                )
 
         print(f"    ✅ Chat {message_key} validated")
 
