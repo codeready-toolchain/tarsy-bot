@@ -379,7 +379,7 @@ Root cause identified from logs.""",
                         
                         # Debug synthesis stage if it failed
                         if synthesis_stage["status"] != "completed":
-                            print(f"❌ Synthesis stage failed!")
+                            print("❌ Synthesis stage failed!")
                             print(f"   Status: {synthesis_stage.get('status')}")
                             print(f"   Error: {synthesis_stage.get('error_message')}")
                             print(f"   LLM interactions: {len(synthesis_stage.get('llm_interactions', []))}")

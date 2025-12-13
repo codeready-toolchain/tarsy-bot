@@ -284,6 +284,50 @@ class TestChainRegistryParallelStages:
         assert chain.chat.iteration_strategy.value == 'native-thinking'
         assert chain.chat.llm_provider == 'anthropic-default'
     
+    def test_loading_yaml_chain_with_synthesis_missing_iteration_strategy(self) -> None:
+        """Test loading YAML chain with synthesis config that omits iteration_strategy."""
+        yaml_chains = {
+            'synthesis-default-chain': {
+                'chain_id': 'synthesis-default-chain',
+                'alert_types': ['synthesis-default-test'],
+                'stages': [
+                    {
+                        'name': 'investigation',
+                        'agent': None,
+                        'agents': [
+                            {'name': 'Agent1'},
+                            {'name': 'Agent2'}
+                        ],
+                        'synthesis': {
+                            'agent': 'SynthesisAgent',
+                            'llm_provider': 'openai'
+                            # Note: iteration_strategy is intentionally omitted
+                        }
+                    }
+                ]
+            }
+        }
+        
+        mock_config_loader = Mock(spec=ConfigurationLoader)
+        mock_config_loader.get_chain_configs.return_value = yaml_chains
+        mock_config = Mock()
+        mock_config.default_alert_type = 'synthesis-default-test'
+        mock_config_loader.load_and_validate.return_value = mock_config
+        
+        with patch('tarsy.services.chain_registry.get_builtin_chain_definitions') as mock_builtin:
+            mock_builtin.return_value = {}
+            registry = ChainRegistry(mock_config_loader)
+        
+        chain = registry.get_chain_for_alert_type('synthesis-default-test')
+        assert chain is not None
+        
+        # Verify synthesis configuration uses default iteration_strategy
+        stage = chain.stages[0]
+        assert stage.synthesis is not None, "Synthesis config should be loaded"
+        assert stage.synthesis.agent == 'SynthesisAgent'
+        assert stage.synthesis.iteration_strategy.value == 'synthesis', "Should default to 'synthesis'"
+        assert stage.synthesis.llm_provider == 'openai'
+    
     def test_loading_yaml_chain_with_synthesis_and_chat(self) -> None:
         """Test loading YAML chain with both synthesis and chat configuration."""
         yaml_chains = {

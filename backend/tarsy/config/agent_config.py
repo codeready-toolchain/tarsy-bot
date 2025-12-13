@@ -427,6 +427,10 @@ class ConfigurationLoader:
         - Single agent references in 'agent' field exist (for replica parallelism)
         - Parallel configurations are valid
         
+        Note: Synthesis and chat agent validation is already handled by Pydantic model
+        validators in CombinedConfigModel (validate_configurable_agent_references and
+        validate_chat_agent_references).
+        
         Args:
             config: The parsed configuration to validate
             
