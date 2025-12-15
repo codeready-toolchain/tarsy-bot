@@ -6,611 +6,41 @@
 
 ---
 
-## Problem Statement
-
-### Current State
-
-TARSy successfully processes security alerts and produces investigation analyses, but we lack systematic quality assessment of these analyses. Key challenges:
-
-- **No Quality Metrics**: Cannot quantitatively assess investigation quality or track improvements over time
-- **Manual Review Overhead**: Operators must manually review analyses to identify gaps or methodology issues
-- **No Feedback Loop**: Difficult to identify patterns in investigation weaknesses to improve agent behavior
-- **Limited Visibility**: No way to compare investigation approaches or identify best practices
-
-### Why This Matters
-
-Quality scoring enables:
-1. **Continuous Improvement**: Identify investigation patterns that need refinement
-2. **Agent Development**: Understand which MCP tools are underutilized or missing
-3. **Operational Confidence**: Quantify analysis reliability for different alert types
-4. **Training Data**: Identify high-quality sessions for future model fine-tuning
-
-### Solution Approach
-
-Implement an LLM-based "judge" that critically evaluates completed alert analysis sessions using a rigorous scoring framework. The judge examines investigation methodology, tool usage, evidence gathering, and conclusion quality—providing both quantitative scores and actionable improvement suggestions.
-
 ## Overview
 
-This EP describes Phase 1 of the alert session scoring system: implementing a core API for scoring individual TARSy alert analysis sessions using an LLM-based "judge" that critically evaluates analysis quality.
+Add systematic quality assessment for TARSy alert analysis sessions through an LLM-based judge that critically evaluates investigation methodology and provides actionable feedback.
 
-**Scope:** On-demand scoring API for individual sessions. UI integration, scheduled scoring, and insights aggregation are covered in separate future EPs.
+**Core Capabilities:**
 
-## Design Overview
+1. **LLM-Based Scoring**: Judge LLM evaluates completed sessions using rigorous scoring framework
+2. **Critical Evaluation**: Methodology-focused assessment with strict standards (4 dimensions: logical flow, consistency, tool relevance, synthesis quality)
+3. **Actionable Feedback**:
+   * Identify missing MCP tools that should have been used
+   * Suggest alternative investigation approaches with detailed steps
+   * Provide improvement recommendations
+4. **Criteria Evolution**: Content-addressed configuration (SHA256 hash) tracks scoring criteria changes over time
+5. **Quality Metrics**: Quantitative scores (0-100) enable tracking improvements and identifying patterns
+6. **Non-Intrusive**: Post-session scoring with zero impact on alert processing
+7. **Manual Control**: Operator-triggered scoring only (Phase 1 scope)
 
-### Architecture Summary
+**Primary Use Cases:**
 
-The scoring system introduces a new service layer that operates independently of alert processing. It retrieves completed session data from the existing History Service, sends it to a configurable judge LLM for evaluation, and stores structured scores in a purpose-built database schema.
+* Agent development feedback and improvement tracking
+* MCP server prioritization based on gap analysis
+* Training data curation for high-quality sessions
+* Investigation methodology pattern discovery
 
-### Key Design Principles
+**Scope:** On-demand scoring API for individual sessions via REST endpoints and basic UI integration. Scheduled batch scoring, analytics aggregation and reporting are left for the future.
 
-- **Non-Intrusive**: Operates post-session; zero impact on alert processing performance
-- **Criteria Evolution**: Content-addressed configuration enables tracking scoring criteria changes over time
-- **Flexible Scoring**: JSONB score breakdowns adapt to evolving evaluation dimensions without schema migrations
-- **Actionable Feedback**: Normalized storage of missing tools and alternative approaches enables analytics
-- **Manual Control**: Phase 1 is operator-triggered only; automation deferred to future phases
-
-### Design Goals
-
-- Enable systematic quality assessment of TARSy investigation sessions
-- Provide actionable feedback for improving investigation methodology
-- Establish foundation for agent improvement and MCP server development priorities
-- Support historical analysis and criteria evolution tracking
-- Maintain scoring consistency while allowing criteria iteration
-
-## Experimental Background
-
-**Note**: Initial prototype exists at https://github.com/metlos/TARSy-response-score (Go implementation). This EP proposes native integration into TARSy backend.
-
-**Prototype Findings**:
-- Judge LLM provides critical scoring even for self-produced analyses
-- Input: Complete session conversation from `/final-analysis` endpoint (~25k tokens)
-- Output: JSON score report (~6-7KB)
-- Context window: Comfortably fits in 1M token window (Gemini Pro models) or 32k window (Gemini Flash models)
-- Scoring consistency: Reliable results across multiple test sessions
-
-## Goals
-
-- Provide API endpoints for scoring individual alert analysis sessions
-- Store scores persistently in database
-- Enable manual quality assessment of TARSy analyses
-- Establish foundation for future UI integration and automation
-
-## Non-Goals (Future Phases)
-
-- UI integration for displaying scores
-- Automated/scheduled batch scoring
-- Insights aggregation and pattern analysis
-- Real-time scoring during alert processing
+**POC Reference:** Initial prototype at <https://github.com/metlos/tarsy-response-score> proved judge LLM provides critical scoring even for self-produced analyses.
 
 ---
 
-## Use Cases
-
-### Primary Use Cases
-
-1. **Manual Quality Review**
-   ```
-   Operator: Reviews completed security investigation
-   Action: POST /api/v1/scoring/sessions/{session_id}/score
-   Result: Receives detailed score breakdown with specific methodology critiques
-   Value: Understands investigation quality and identifies improvement areas
-   ```
-
-2. **Agent Development Feedback**
-   ```
-   Developer: Evaluating new agent behavior after code changes
-   Action: Scores 10 recent sessions with updated agent
-   Result: Discovers agent now scores 65→72 average, but consistently missing file-read tools
-   Value: Quantifies improvement and identifies specific gaps to address
-   ```
-
-3. **MCP Server Prioritization**
-   ```
-   Team: Planning which MCP server to develop next
-   Action: Queries score_missing_tools table for frequency analysis
-   Result: "list-processes" tool mentioned in 35% of scores as missing capability
-   Value: Data-driven decision on which tools provide most value
-   ```
-
-4. **Criteria Evolution Tracking**
-   ```
-   Operator: Updates scoring criteria to emphasize evidence gathering
-   Action: Re-scores historical sessions with new criteria (different criteria_hash)
-   Result: Compares old vs. new scores to understand criteria impact
-   Value: Validates that criteria changes measure intended quality dimensions
-   ```
-
-5. **Investigation Methodology Improvement**
-   ```
-   Operator: Reviews alternative approaches from low-scoring sessions
-   Action: GET /api/v1/scoring/sessions/{session_id}/score
-   Result: Judge suggests "File-First Forensic Approach" for malware investigations
-   Value: Learns investigation patterns that could improve future analyses
-   ```
-
-### Secondary Use Cases
-
-6. **Training Data Curation**
-   ```
-   ML Engineer: Building fine-tuning dataset for future agent models
-   Action: Queries sessions with total_score >= 85 and is_current_criteria = true
-   Result: Identifies 47 high-quality sessions with optimal investigation patterns
-   Value: Curates training examples that demonstrate best practices
-   ```
-
-7. **Scoring Consistency Validation**
-   ```
-   Operator: Testing judge LLM reliability
-   Action: Scores same session 3 times with force_rescore=true
-   Result: Receives scores of 67, 65, 69 (±2 point variance)
-   Value: Validates scoring consistency for operational use
-   ```
-
----
-
-## System Architecture
-
-### Components
-
-**New Components:**
-- **Scoring Service** (`backend/tarsy/services/scoring_service.py`): Core service for session scoring
-- **Scoring Models** (`backend/tarsy/models/scoring_models.py`): Pydantic models for scores and judge responses
-- **Scoring API Controller** (`backend/tarsy/controllers/scoring_controller.py`): REST endpoints for scoring operations
-- **Scoring Repository** (`backend/tarsy/repositories/scoring_repository.py`): Database operations for scores
-
-**Modified Components:**
-- **Main Application** (`backend/tarsy/main.py`): Register scoring API routes
-
-**Existing Dependencies:**
-- **LLM Client** (`backend/tarsy/integrations/llm_client.py`): Reused for judge LLM calls
-- **History Service** (`backend/tarsy/services/history_service.py`): Retrieve complete session data
-
-### Data Flow
-
-1. API receives scoring request for session_id
-2. Check if score already exists:
-   - If exists: Return existing score (with related missing_tools and alternative_approaches)
-   - If not: Continue to step 3
-3. Retrieve complete session data from History Service (via `/final-analysis` endpoint logic)
-4. Construct judge prompt:
-   - Load `judge_prompt` template from config
-   - Replace `{{SESSION_CONVERSATION}}` with full conversation (includes tool usage)
-   - Replace `{{ALERT_DATA}}` with original alert
-   - Replace `{{OUTPUT_SCHEMA}}` with JSON schema specification (from `JudgeOutputSchema`)
-5. Send to judge LLM (configurable provider/model)
-6. Parse JSON response into structured score model
-7. Store score in database:
-   - Insert `session_scores` record with score_id, total_score, score_breakdown, etc.
-   - Insert `score_missing_tools` records (one per missing tool)
-   - Insert `score_alternative_approaches` records (one per alternative)
-   - Insert `score_alternative_approach_steps` records (one per step in each alternative)
-8. Convert database models to API models (Repository layer)
-9. Return score to caller
-
-## Data Design
-
-### Database Schema
-
-**New Table: `scoring_criteria_definitions`**
-
-Stores immutable criteria definitions, content-addressed by hash:
-
-```sql
-CREATE TABLE scoring_criteria_definitions (
-    criteria_hash VARCHAR(64) PRIMARY KEY,
-    criteria_content JSONB NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX idx_scoring_criteria_created ON scoring_criteria_definitions(created_at);
-```
-
-**New Table: `session_scores`**
-
-Stores session scores with flexible breakdown structure:
-
-```sql
-CREATE TABLE session_scores (
-    score_id UUID PRIMARY KEY,
-    session_id UUID NOT NULL UNIQUE,
-    criteria_hash VARCHAR(64) NOT NULL,
-
-    -- Only total_score is guaranteed to exist
-    total_score INTEGER NOT NULL CHECK (total_score >= 0 AND total_score <= 100),
-
-    -- Score dimensions stored flexibly in JSONB (allows criteria evolution)
-    score_breakdown JSONB NOT NULL,
-    score_reasoning TEXT NOT NULL,
-
-    scored_at TIMESTAMP NOT NULL DEFAULT NOW(),
-
-    FOREIGN KEY (session_id) REFERENCES alert_sessions(session_id) ON DELETE CASCADE,
-    FOREIGN KEY (criteria_hash) REFERENCES scoring_criteria_definitions(criteria_hash)
-);
-
-CREATE INDEX idx_session_scores_session_id ON session_scores(session_id);
-CREATE INDEX idx_session_scores_criteria_hash ON session_scores(criteria_hash);
-CREATE INDEX idx_session_scores_total_score ON session_scores(total_score);
-CREATE INDEX idx_session_scores_scored_at ON session_scores(scored_at);
-```
-
-**New Table: `score_missing_tools`**
-
-Stores tools that should have been used but weren't (normalized for analytics):
-
-```sql
-CREATE TABLE score_missing_tools (
-    id UUID PRIMARY KEY,
-    score_id UUID NOT NULL,
-    tool_name VARCHAR(255) NOT NULL,
-    rationale TEXT NOT NULL,
-
-    FOREIGN KEY (score_id) REFERENCES session_scores(score_id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_score_missing_tools_score_id ON score_missing_tools(score_id);
-CREATE INDEX idx_score_missing_tools_tool_name ON score_missing_tools(tool_name);  -- For aggregation queries
-```
-
-**New Table: `score_alternative_approaches`**
-
-Stores alternative investigation approaches suggested by the judge:
-
-```sql
-CREATE TABLE score_alternative_approaches (
-    id UUID PRIMARY KEY,
-    score_id UUID NOT NULL,
-    name VARCHAR(255) NOT NULL,
-    description TEXT NOT NULL,
-
-    FOREIGN KEY (score_id) REFERENCES session_scores(score_id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_score_alt_approaches_score_id ON score_alternative_approaches(score_id);
-CREATE INDEX idx_score_alt_approaches_name ON score_alternative_approaches(name);  -- For pattern analysis
-```
-
-**New Table: `score_alternative_approach_steps`**
-
-Stores ordered steps for alternative approaches:
-
-```sql
-CREATE TABLE score_alternative_approach_steps (
-    id UUID PRIMARY KEY,
-    approach_id UUID NOT NULL,
-    step_order INTEGER NOT NULL,
-    step_description TEXT NOT NULL,
-
-    FOREIGN KEY (approach_id) REFERENCES score_alternative_approaches(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_score_alt_steps_approach_id ON score_alternative_approach_steps(approach_id);
-```
-
-**Design Rationale:**
-
-- **Flexible scoring dimensions**: `score_breakdown` JSONB allows criteria to evolve without schema migrations
-- **Normalized feedback**: Missing tools and alternative approaches stored relationally for efficient aggregation
-- **Future analytics**: Easy queries for "most frequently missing tools" and pattern analysis across sessions
-- **Content-addressed criteria**: SHA256 hash uniquely identifies each criteria version
-- **Historical preservation**: Full criteria definition stored for each hash
-- **Automatic obsolescence**: Compare `criteria_hash` to current config hash to identify outdated scores
-- **No manual versioning**: Hash eliminates human error in version management
-
-### Data Models
-
-The system uses a two-layer model architecture:
-- **Database Models (SQLModel)**: Map directly to database tables with foreign key relationships
-- **API Models (Pydantic)**: Clean response models for REST endpoints with nested objects
-- **Conversion**: Repository layer converts database models to API models when reading data
-
-```python
-# backend/tarsy/models/scoring_models.py
-from sqlmodel import SQLModel, Field, Relationship, Column
-from sqlalchemy.dialects.postgresql import JSONB
-from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
-from uuid import UUID, uuid4
-from datetime import datetime
-
-# ==================== Database Models (SQLModel) ====================
-
-class ScoringCriteriaDefinitionDB(SQLModel, table=True):
-    """Immutable criteria definition stored in database."""
-    __tablename__ = "scoring_criteria_definitions"
-
-    criteria_hash: str = Field(primary_key=True, max_length=64)
-    criteria_content: Dict[str, Any] = Field(sa_column=Column(JSONB))
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
-class SessionScoreDB(SQLModel, table=True):
-    """Database model for session scores."""
-    __tablename__ = "session_scores"
-
-    score_id: UUID = Field(default_factory=uuid4, primary_key=True)
-    session_id: UUID = Field(unique=True)
-    criteria_hash: str = Field(foreign_key="scoring_criteria_definitions.criteria_hash")
-
-    total_score: int
-    score_breakdown: Dict[str, Any] = Field(sa_column=Column(JSONB))
-    score_reasoning: str
-
-    scored_at: datetime = Field(default_factory=datetime.utcnow)
-
-    # Relationships (for eager loading)
-    missing_tools: List["MissingToolDB"] = Relationship(back_populates="score", cascade_delete=True)
-    alternative_approaches: List["AlternativeApproachDB"] = Relationship(back_populates="score", cascade_delete=True)
-
-class MissingToolDB(SQLModel, table=True):
-    """Database model for missing tools."""
-    __tablename__ = "score_missing_tools"
-
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-    score_id: UUID = Field(foreign_key="session_scores.score_id")
-    tool_name: str = Field(max_length=255)
-    rationale: str
-
-    # Relationship
-    score: Optional[SessionScoreDB] = Relationship(back_populates="missing_tools")
-
-class AlternativeApproachDB(SQLModel, table=True):
-    """Database model for alternative approaches."""
-    __tablename__ = "score_alternative_approaches"
-
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-    score_id: UUID = Field(foreign_key="session_scores.score_id")
-    name: str = Field(max_length=255)
-    description: str
-
-    # Relationships
-    score: Optional[SessionScoreDB] = Relationship(back_populates="alternative_approaches")
-    steps: List["AlternativeApproachStepDB"] = Relationship(back_populates="approach", cascade_delete=True)
-
-class AlternativeApproachStepDB(SQLModel, table=True):
-    """Database model for approach steps."""
-    __tablename__ = "score_alternative_approach_steps"
-
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-    approach_id: UUID = Field(foreign_key="score_alternative_approaches.id")
-    step_order: int
-    step_description: str
-
-    # Relationship
-    approach: Optional[AlternativeApproachDB] = Relationship(back_populates="steps")
-
-# ==================== API Models (Pydantic) ====================
-
-class MissingTool(BaseModel):
-    """API model for missing tools."""
-    tool_name: str
-    rationale: str
-
-class AlternativeApproach(BaseModel):
-    """API model for alternative approaches."""
-    name: str
-    description: str
-    steps: List[str]
-
-class ScoringCriteriaDefinition(BaseModel):
-    """API model for criteria definition."""
-    criteria_hash: str
-    criteria_content: Dict[str, Any]
-    created_at: datetime
-
-class SessionScore(BaseModel):
-    """API response model for session scores."""
-    score_id: UUID
-    session_id: UUID
-    criteria_hash: str
-
-    total_score: int  # 0-100
-    score_breakdown: Dict[str, Any]
-    score_reasoning: str
-    missing_tools: List[MissingTool]
-    alternative_approaches: List[AlternativeApproach]
-
-    scored_at: datetime
-    is_current_criteria: Optional[bool] = None  # Computed, not stored
-
-# ==================== Judge LLM Output Schema ====================
-
-class JudgeOutputSchema(BaseModel):
-    """
-    Strict schema for judge LLM output - defined in code for parsing reliability.
-    This schema is injected into the judge prompt at the {{OUTPUT_SCHEMA}} placeholder.
-    """
-    total_score: int  # 0-100, REQUIRED
-    score_breakdown: Dict[str, Any]  # Flexible dimension scores
-    score_reasoning: str
-    missing_tools: List[Dict[str, str]]  # [{"tool_name": str, "rationale": str}, ...]
-    alternative_approaches: List[Dict[str, Any]]  # [{"name": str, "description": str, "steps": List[str]}, ...]
-
-# ==================== Configuration Model ====================
-
-class ScoringConfig(BaseModel):
-    """Scoring configuration loaded from YAML."""
-    enabled: bool = True
-    llm_provider: Optional[str] = None
-    llm_model: Optional[str] = None
-    judge_prompt: str  # Contains {{OUTPUT_SCHEMA}} placeholder
-```
-
-## API Design
-
-### Endpoints
-
-#### 1. Score Session
-
-**Endpoint:** `POST /api/v1/scoring/sessions/{session_id}/score`
-
-**Purpose:** Trigger scoring for a specific session
-
-**Request Body:**
-```json
-{
-  "force_rescore": false  // optional, re-score even if score exists
-}
-```
-
-**Response (200 OK):**
-```json
-{
-  "score_id": "uuid",
-  "session_id": "uuid",
-  "criteria_hash": "a3f5b2c1d4e7f9a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9c1d3e5f7a9",
-  "total_score": 77,
-  "score_breakdown": {
-    "logical_flow": 18,
-    "consistency": 23,
-    "tool_relevance": 16,
-    "synthesis_quality": 20
-  },
-  "score_reasoning": "The investigation's overall direction was sound...",
-  "missing_tools": [
-    {"tool_name": "list-processes-in-pod", "rationale": "..."}
-  ],
-  "alternative_approaches": [
-    {"name": "Systematic File Discovery", "description": "...", "steps": [...]}
-  ],
-  "scored_at": "2025-12-05T10:00:00Z",
-  "is_current_criteria": true
-}
-```
-
-**Note:** The `score_breakdown` structure is flexible and depends on the criteria definition used. The example above shows a typical breakdown, but the structure may vary as scoring criteria evolve.
-
-**Error Responses:**
-- `404 Not Found`: Session not found
-- `400 Bad Request`: Invalid session state (not completed)
-- `500 Internal Server Error`: LLM API failure or database error
-
-#### 2. Get Session Score
-
-**Endpoint:** `GET /api/v1/scoring/sessions/{session_id}/score`
-
-**Purpose:** Retrieve existing score for a session
-
-**Response (200 OK):** Same as Score Session endpoint
-
-**Error Responses:**
-- `404 Not Found`: Session not found or not yet scored
-
-## Scoring Criteria
-
-**Note:** Scoring criteria are defined in the freeform `judge_prompt` field of `config/scoring_config.yaml`. The criteria structure is flexible and can evolve without code changes.
-
-**Example Initial Criteria (from prototype):**
-
-1. **Logical Flow** (0-25 points)
-   - Systematic investigation approach
-   - Appropriate tool ordering
-   - Minimal trial-and-error
-   - Precision in operations
-
-2. **Consistency** (0-25 points)
-   - Conclusion aligns with evidence
-   - No contradictions in reasoning
-   - Appropriate confidence levels
-   - Corroboration of findings
-
-3. **Tool Relevance** (0-25 points)
-   - Optimal tool selection
-   - Discovery before assumptions
-   - Runtime verification where applicable
-   - Comprehensive evidence gathering
-
-4. **Synthesis Quality** (0-25 points)
-   - Clear conclusion
-   - Acknowledgment of limitations
-   - Actionable recommendations
-   - Nuanced analysis
-
-**Total Score:** 100 points (sum of all criteria)
-
-**Important:** The only requirement is that the LLM must output `total_score` (0-100). Individual score breakdowns can vary as the criteria evolve.
-
-## Judge Prompt Structure
-
-The judge prompt template is stored in `config/scoring_config.yaml` as a complete, freeform text block with placeholder variables. This design allows maximum flexibility in prompt structure while maintaining consistent output format.
-
-### Placeholder System
-
-The implementation supports the following placeholders in the `judge_prompt`:
-
-**Data Placeholders** (injected with session-specific data):
-- `{{SESSION_CONVERSATION}}`: Complete conversation from `/final-analysis` endpoint (includes all MCP tool usage)
-- `{{ALERT_DATA}}`: Original alert data for reference
-
-**Output Schema Placeholder** (injected with code-defined JSON schema):
-- `{{OUTPUT_SCHEMA}}`: JSON output specification (defined in `JudgeOutputSchema` class)
-
-**Note:** The session conversation already contains the complete list of available MCP tools and their usage throughout the investigation, so no separate tool list placeholder is needed.
-
-### Prompt Structure Flexibility
-
-The placeholder approach enables optimal prompt engineering:
-1. **Preamble**: Define evaluation criteria and context upfront
-2. **Session Data**: Inject large conversation data via `{{SESSION_CONVERSATION}}`
-3. **Post-Session Instructions**: Refocus the LLM after consuming session data
-4. **Output Format**: Inject schema specification via `{{OUTPUT_SCHEMA}}`
-
-**Example Prompt Flow:**
-```
-[Criteria and instructions]
-  ↓
-{{SESSION_CONVERSATION}} [Large data block]
-  ↓
-[Refocusing instructions: "Now that you've reviewed the session..."]
-  ↓
-{{OUTPUT_SCHEMA}} [JSON schema auto-injected by code]
-```
-
-### Output Format (Code-Defined)
-
-The `{{OUTPUT_SCHEMA}}` placeholder is automatically replaced with a JSON specification based on `JudgeOutputSchema`:
-
-```json
-{
-  "total_score": 0-100,
-  "score_breakdown": {
-    "dimension_name": 0-25,
-    ...
-  },
-  "score_reasoning": "Detailed explanation...",
-  "missing_tools": [
-    {"tool_name": "tool-name", "rationale": "Why it should have been used..."}
-  ],
-  "alternative_approaches": [
-    {
-      "name": "Approach Name",
-      "description": "Description...",
-      "steps": ["Step 1", "Step 2", ...]
-    }
-  ]
-}
-```
-
-**Design Rationale:**
-- **Separation of Concerns**: Configuration defines *what* to evaluate, code defines *how* to report it
-- **Parsing Reliability**: Output format is guaranteed to match code expectations
-- **Prompt Control**: Config authors control narrative flow and refocusing without worrying about schema
-- **Consistent Hashing**: Prompt changes are tracked via `criteria_hash`, schema changes require code updates
-
-### Content Hashing
-
-The entire YAML configuration (including the complete prompt template) is hashed to create a unique `criteria_hash`. This hash tracks all changes to evaluation criteria, ensuring full auditability.
-
-## Configuration
+## Configuration Syntax
 
 **Configuration File:** `config/scoring_config.yaml`
 
-The scoring system uses a YAML configuration file following TARSy's established configuration patterns (similar to `agents.yaml` and `llm_providers.yaml`). This file contains the judge prompt template and scoring parameters. The entire configuration is content-addressed using a hash to track criteria evolution.
-
-**Example Configuration:**
-
 ```yaml
-# config/scoring_config.yaml
-
 # Scoring service settings (supports template variable substitution)
 scoring:
   enabled: ${SCORING_ENABLED:-true}
@@ -618,8 +48,576 @@ scoring:
   llm_model: ${SCORING_LLM_MODEL:-}  # Empty = use provider default
 
 # Judge prompt template with placeholders
-# The entire configuration (including prompt) is hashed to track criteria evolution
+# The entire configuration (including this prompt) is hashed to track criteria evolution.
 judge_prompt: |
+  A prompt explaining how to perform the score. This prompt includes placeholders
+  to be replaced with the actual data from the session. See below for more details.
+
+  The prompt used with good success in the POC is included in the "attachment"
+  section at the end of this EP.
+```
+
+**Environment Variables** (optional overrides):
+
+```bash
+# Enable/disable scoring (default: true)
+SCORING_ENABLED=true
+
+# LLM provider for scoring (default: falls back to DEFAULT_LLM_PROVIDER)
+SCORING_LLM_PROVIDER=google-default
+
+# Model for scoring (default: provider-specific default)
+SCORING_LLM_MODEL=gemini-2.0-flash-exp
+```
+
+**Placeholder System:**
+
+The judge prompt supports three placeholders that are replaced at runtime:
+
+* `{{SESSION_CONVERSATION}}` - Complete conversation from History Service (includes all MCP tool usage)
+* `{{ALERT_DATA}}` - Original alert data for reference
+* `{{OUTPUT_SCHEMA}}` - JSON schema specification (automatically injected from `JudgeOutputSchema` class)
+
+**Design Rationale:**
+
+* **Separation of Concerns**: Configuration defines how to *evaluate* (criteria), code defines how to *report* it (output schema)
+* **Parsing Reliability**: Output format guaranteed to match code expectations
+* **Criteria Evolution**: Full prompt is hashed (SHA256) to track changes; output schema changes require code updates
+
+---
+
+## API Usage
+
+**Note:** Phase 6 provides dashboard UI for these endpoints with visual score display and manual triggering.
+
+### Score Session
+
+**Endpoint:** `POST /api/v1/scoring/sessions/{session_id}/score`
+
+**Purpose:** Trigger scoring for a specific session (operator-initiated or UI-triggered)
+
+**Request Body:**
+
+```json
+{
+  "force_rescore": false  // optional: re-score even if score exists
+}
+```
+
+**Response (200 OK):**
+
+```json
+{
+  "score_id": "550e8400-e29b-41d4-a716-446655440000",
+  "session_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "criteria_hash": "a3f5b2c1d4e7f9a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9c1d3e5f7a9",
+  "total_score": 67,
+  "score_breakdown": {
+    "logical_flow": 15,
+    "consistency": 18,
+    "tool_relevance": 14,
+    "synthesis_quality": 20
+  },
+  "score_reasoning": "The investigation demonstrates adequate methodology with notable gaps...",
+  "missing_tools": [
+    {
+      "tool_name": "list-processes-in-pod",
+      "rationale": "Would have confirmed whether the suspicious binary was actively running..."
+    }
+  ],
+  "alternative_approaches": [
+    {
+      "name": "File-First Forensic Approach",
+      "description": "Systematically enumerate all suspicious files before attempting execution verification",
+      "steps": [
+        "Use list-files to discover all files in suspicious directory",
+        "Read content of each file to identify actual malware vs false positives",
+        "Correlate file timestamps with alert time window"
+      ]
+    }
+  ],
+  "scored_triggered_by": "alice@example.com",
+  "scored_at": "2025-12-05T10:30:00Z",
+  "is_current_criteria": true
+}
+```
+
+**Note:** The `score_breakdown` structure is flexible and depends on scoring criteria. Structure may evolve as criteria change.
+
+**Error Responses:**
+
+* `400 Bad Request` - Session not completed or invalid state
+* `500 Internal Server Error` - LLM API failure or database error
+
+### Get Session Score
+
+**Endpoint:** `GET /api/v1/scoring/sessions/{session_id}/score`
+
+**Purpose:** Retrieve existing score for a session
+
+**Response:** Same as Score Session endpoint
+
+**Error Responses:**
+
+* `404 Not Found` - Session not found or not yet scored
+* `500 Internal Server Error` - LLM API failure or database error
+
+---
+
+## Scoring Output Schema
+
+The judge LLM must return JSON matching this structure (defined in code as `JudgeOutputSchema`):
+
+```python
+class MissingTool(BaseModel):
+    """Missing tool that should have been used in the investigation."""
+    tool_name: str = Field(..., description="Name of the missing MCP tool")
+    rationale: str = Field(..., description="Explanation of why this tool was needed")
+
+class AlternativeApproach(BaseModel):
+    """Alternative investigation approach that could have been more efficient/rigorous."""
+    name: str = Field(..., description="Brief descriptive title of the approach")
+    description: str = Field(..., description="1-2 sentences explaining the strategy")
+    steps: List[str] = Field(..., description="Ordered list of specific actions")
+
+class JudgeOutputSchema(BaseModel):
+    """
+    Output schema for judge LLM - defined in code for parsing reliability.
+    Injected into judge prompt at {{OUTPUT_SCHEMA}} placeholder.
+    """
+    total_score: int = Field(..., ge=0, le=100, description="Overall score 0-100")
+    score_breakdown: Dict[str, Any] = Field(..., description="Flexible dimension scores (e.g., {'logical_flow': 18, ...})")
+    score_reasoning: str = Field(..., description="Detailed explanation (200+ words recommended)")
+    missing_tools: List[MissingTool] = Field(default_factory=list, description="Tools that should have been used")
+    alternative_approaches: List[AlternativeApproach] = Field(default_factory=list, description="Alternative investigation approaches")
+```
+
+**Note:** Only `total_score` is required. The `score_breakdown` dimensions can evolve as criteria change (stored as JSONB for flexibility). The nested models (`MissingTool`, `AlternativeApproach`) ensure type safety and clean database mapping.
+
+---
+
+## Use Cases
+
+**Primary Use Cases:**
+
+* **Manual Quality Review**: Operators score completed investigations to understand quality and identify improvement areas
+* **Agent Development Feedback**: Developers quantify agent improvements after code changes and identify specific gaps (e.g., "missing file-read tools")
+* **MCP Server Prioritization**: Team analyzes `score_missing_tools` frequency to make data-driven decisions on which tools to develop next
+* **Criteria Evolution Tracking**: Operators re-score historical sessions with new criteria (different `criteria_hash`) to validate criteria changes
+* **Investigation Methodology Improvement**: Operators review alternative approaches from scores to learn investigation patterns
+* **Training Data Curation**: ML engineers identify high-quality sessions (total_score >= 85) for fine-tuning datasets
+
+---
+
+## Implementation Tasks
+
+### Task 1: Database Schema
+
+**Tables to Create:**
+
+1. **`scoring_criteria_definitions`**
+   * Primary key: `criteria_hash` (VARCHAR 64, SHA256 of full config)
+   * `criteria_content` (JSONB) - Complete scoring configuration
+   * `created_at` (TIMESTAMP)
+   * Index on `created_at`
+
+2. **`session_scores`**
+   * Primary key: `score_id` (UUID)
+   * Unique constraint: `session_id`
+   * Foreign keys: `session_id` → alert_sessions, `criteria_hash` → scoring_criteria_definitions
+   * `total_score` (INTEGER, 0-100)
+   * `score_breakdown` (JSONB) - Flexible dimension scores
+   * `score_reasoning` (TEXT)
+   * `scored_triggered_by` (VARCHAR 255) - User who triggered scoring (from X-Forwarded-User header)
+   * `scored_at` (TIMESTAMP)
+   * Indexes on: `session_id`, `criteria_hash`, `total_score`, `scored_at`
+
+3. **`score_missing_tools`**
+   * Primary key: `id` (UUID)
+   * Foreign key: `score_id` → session_scores
+   * `tool_name` (VARCHAR 255)
+   * `rationale` (TEXT)
+   * Indexes on: `score_id`, `tool_name`
+
+4. **`score_alternative_approaches`**
+   * Primary key: `id` (UUID)
+   * Foreign key: `score_id` → session_scores
+   * `name` (VARCHAR 255)
+   * `description` (TEXT)
+   * Indexes on: `score_id`, `name`
+
+5. **`score_alternative_approach_steps`**
+   * Primary key: `id` (UUID)
+   * Foreign key: `approach_id` → score_alternative_approaches
+   * `step_order` (INTEGER)
+   * `step_description` (TEXT)
+   * Index on: `approach_id`
+
+**Alembic Migration:**
+
+* Create forward migration with all tables and indexes
+* Create rollback migration (drop tables in reverse dependency order)
+
+### Task 2: Data Models
+
+**Database Models (SQLModel):**
+
+* `ScoringCriteriaDefinitionDB` - Criteria storage
+* `SessionScoreDB` - Main score record with relationships
+* `MissingToolDB` - Missing tool entries
+* `AlternativeApproachDB` - Alternative approach entries
+* `AlternativeApproachStepDB` - Approach step entries
+
+**API Models (Pydantic):**
+
+* `SessionScore` - API response with nested objects
+* `MissingTool` - Missing tool representation
+* `AlternativeApproach` - Alternative approach with steps list
+* `ScoringCriteriaDefinition` - Criteria definition response
+* `JudgeOutputSchema` - For parsing LLM JSON responses
+
+**Repository Layer:**
+
+* Convert database models (with relationships) to API models (with nested objects)
+* Handle eager loading for efficiency
+* Map `is_current_criteria` by comparing hash to current config
+
+### Task 3: Scoring Service
+
+**Core Logic (`backend/tarsy/services/scoring_service.py`):**
+
+1. **Configuration Loading**:
+   * Load `config/scoring_config.yaml` with template variable substitution
+   * Compute SHA256 hash of full configuration (deterministic criteria versioning)
+   * Store criteria definition in database if not exists
+
+2. **Session Data Retrieval**:
+   * Call History Service to get complete session conversation
+   * Equivalent to `/final-analysis` endpoint data (~25k tokens)
+
+3. **Judge Prompt Construction**:
+   * Replace `{{SESSION_CONVERSATION}}` with full conversation
+   * Replace `{{ALERT_DATA}}` with original alert
+   * Replace `{{OUTPUT_SCHEMA}}` with JSON schema from `JudgeOutputSchema`
+
+4. **LLM Integration**:
+   * Send prompt to judge LLM (configurable provider/model)
+   * Retry with exponential backoff (max 3 retries: 1s, 2s, 4s)
+   * Circuit breaker: open after 5 consecutive failures
+
+5. **Response Parsing**:
+   * Parse JSON response into `JudgeOutputSchema`
+   * Validate total_score, score_breakdown, missing_tools, alternative_approaches
+
+6. **Database Storage**:
+   * Insert `session_scores` record
+   * Insert `score_missing_tools` records (bulk)
+   * Insert `score_alternative_approaches` and `score_alternative_approach_steps` (bulk)
+   * Return populated `SessionScore` API model
+
+7. **Error Handling**:
+   * Invalid JSON: Log raw response, return 500 with details
+   * Database failures: Retry once, then return 500
+   * Missing session: Return 404
+
+### Task 4: API Controller
+
+**Controller (`backend/tarsy/controllers/scoring_controller.py`):**
+
+* `POST /api/v1/scoring/sessions/{session_id}/score`
+  * Check if score exists (unless `force_rescore=true`)
+  * Execute scoring via background task (FastAPI BackgroundTasks)
+  * Return score immediately if exists, or start scoring and poll/wait
+
+* `GET /api/v1/scoring/sessions/{session_id}/score`
+  * Retrieve score from repository
+  * Compute `is_current_criteria` by comparing hash
+  * Return 404 if not scored
+
+**User Attribution:**
+
+* Extract user from `X-Forwarded-User` header (oauth2-proxy)
+* Store in `scored_triggered_by` field of session_scores table for audit trail
+
+### Task 5: Configuration Loading
+
+**Config Service Updates:**
+
+* Load `scoring_config.yaml` similar to `agents.yaml` and `llm_providers.yaml`
+* Template variable substitution (e.g., `${SCORING_LLM_PROVIDER:-${DEFAULT_LLM_PROVIDER}}`)
+* SHA256 hashing logic: Hash full resolved YAML content for deterministic `criteria_hash`
+* Store criteria definition on first use (idempotent)
+
+### Task 6: Testing
+
+**Unit Tests:**
+
+* Model validation (JudgeOutputSchema, SessionScore)
+* Configuration hashing (deterministic results)
+* Prompt placeholder substitution
+* JSON response parsing (valid and invalid cases)
+* Repository conversion (DB models → API models)
+
+**Integration Tests:**
+
+* Full scoring flow: session retrieval → LLM call → database storage
+* Mock LLM responses for consistency
+* Re-scoring with `force_rescore=true`
+* Error handling: missing session, invalid JSON, database failures
+
+**Test Coverage Target:** 80% minimum for new components, 100% for critical paths (scoring logic, database operations)
+
+---
+
+## Key Design Decisions
+
+1. **Content-Addressed Criteria**: SHA256 hash of full configuration eliminates manual version management and provides automatic obsolescence detection
+2. **JSONB Flexibility vs Normalized Feedback**: Score dimensions in flexible JSONB (criteria evolve), but missing tools and alternatives in normalized tables (enables analytics)
+3. **Output Schema in Code, Criteria in Config**: Separation of concerns - config defines *what* to evaluate, code defines *how* to report it; ensures parsing reliability
+4. **Placeholder System**: Enables optimal prompt engineering (preamble → session data → refocusing instructions → schema)
+5. **Two-Layer Model Architecture**: Database models (SQLModel with relationships) → Repository conversion → API models (Pydantic with nested objects)
+6. **Non-Intrusive Operation**: Post-session scoring, zero impact on alert processing performance
+7. **Background Task Execution**: Scoring runs asynchronously to avoid blocking API responses
+8. **Manual Control**: Phase 1 is operator-triggered only; automation deferred to future phases for cost control
+
+---
+
+## Files to Modify
+
+### Backend Models
+
+* **`backend/tarsy/models/scoring_models.py`** (new) - All database and API models
+
+### Backend Services & Repositories
+
+* **`backend/tarsy/services/scoring_service.py`** (new) - Core scoring logic
+* **`backend/tarsy/repositories/scoring_repository.py`** (new) - Database operations
+
+### Backend Controllers
+
+* **`backend/tarsy/controllers/scoring_controller.py`** (new) - REST API endpoints
+
+### Configuration
+
+* **`config/scoring_config.yaml`** (new) - Scoring configuration with judge prompt
+
+### Database
+
+* **`backend/alembic/versions/XXXX_add_scoring_tables.py`** (new) - Database migration
+
+### Main Application
+
+* **`backend/tarsy/main.py`** - Register scoring routes
+
+### Backend Tests
+
+* **`backend/tests/unit/test_scoring_service.py`** (new) - Unit tests
+* **`backend/tests/integration/test_scoring_api.py`** (new) - Integration tests
+
+### Dashboard Components (Phase 6)
+
+* **`dashboard/src/components/scoring/ScoreDetailView.tsx`** (new) - Main score view
+* **`dashboard/src/components/scoring/ScoreBreakdownCard.tsx`** (new) - Score breakdown display
+* **`dashboard/src/components/scoring/MissingToolsCard.tsx`** (new) - Missing tools list
+* **`dashboard/src/components/scoring/AlternativeApproachesCard.tsx`** (new) - Alternative approaches
+* **`dashboard/src/components/scoring/ScoreBadge.tsx`** (new) - Reusable color-coded badge
+* **`dashboard/src/components/HistoricalAlertsList.tsx`** - Add Score column
+* **`dashboard/src/components/SessionDetailPageBase.tsx`** - Add Score toggle
+* **`dashboard/src/types/`** - Add score-related TypeScript interfaces
+* **`dashboard/src/api/`** - Add scoring API client functions
+
+---
+
+## Implementation Phases
+
+### Phase 1: Database Schema & Models
+
+**Goal:** Establish data structures and persistence layer
+
+* [ ] Create Alembic migration for all scoring tables (criteria_definitions, session_scores, missing_tools, alternative_approaches, approach_steps)
+* [ ] Implement database models (SQLModel): ScoringCriteriaDefinitionDB, SessionScoreDB, MissingToolDB, AlternativeApproachDB, AlternativeApproachStepDB
+* [ ] Implement API models (Pydantic): SessionScore, MissingTool, AlternativeApproach, ScoringCriteriaDefinition, JudgeOutputSchema
+* [ ] Create repository layer with DB → API model conversion logic
+* [ ] Test database schema and model conversions
+
+**Dependencies:** None (foundational work)
+
+**Deliverables:**
+
+* Database migration script
+* Complete data model definitions
+* Repository with conversion logic
+* Unit tests for models
+
+---
+
+### Phase 2: Configuration & Hashing
+
+**Goal:** Implement configuration loading and criteria versioning
+
+* [ ] Implement config loading from `scoring_config.yaml`
+* [ ] Add template variable substitution (follows existing pattern from `agents.yaml`)
+* [ ] Implement SHA256 hashing logic for full configuration content
+* [ ] Add criteria definition storage (idempotent insert)
+* [ ] Test configuration loading and hash determinism
+
+**Dependencies:** Phase 1 (needs ScoringCriteriaDefinitionDB model)
+
+**Deliverables:**
+
+* Configuration loading service
+* Hashing implementation with tests
+* Criteria storage logic
+
+---
+
+### Phase 3: Scoring Service & LLM Integration
+
+**Goal:** Implement core scoring logic and judge LLM integration
+
+* [ ] Implement session data retrieval from History Service
+* [ ] Build judge prompt construction with placeholder substitution
+* [ ] Integrate LLM client for judge calls
+* [ ] Implement JSON response parsing (JudgeOutputSchema)
+* [ ] Add retry logic with exponential backoff (1s, 2s, 4s)
+* [ ] Implement circuit breaker pattern (open after 5 failures)
+* [ ] Implement database storage logic (scores, missing tools, alternatives)
+* [ ] Test end-to-end scoring flow with mocked LLM responses
+
+**Dependencies:** Phases 1-2 (needs models and configuration)
+
+**Deliverables:**
+
+* Complete scoring service
+* LLM integration with resilience patterns
+* Integration tests with mocked LLM
+
+---
+
+### Phase 4: API Endpoints
+
+**Goal:** Expose scoring functionality via REST API
+
+* [ ] Implement scoring controller (`backend/tarsy/controllers/scoring_controller.py`)
+* [ ] Add POST /score endpoint with background task execution
+* [ ] Add GET /score endpoint for retrieval
+* [ ] Implement error handling and validation
+* [ ] Add user attribution from oauth2-proxy headers
+* [ ] Register routes in main.py
+* [ ] Test API endpoints (success and error cases)
+
+**Dependencies:** Phase 3 (needs scoring service)
+
+**Deliverables:**
+
+* REST API endpoints
+* Error handling and validation
+* API integration tests
+
+---
+
+### Phase 5: Testing & Documentation
+
+**Goal:** Comprehensive testing and documentation
+
+* [ ] Complete unit test coverage for all components (target: 80% overall, 100% critical paths)
+* [ ] Complete integration tests for full scoring flow
+* [ ] Add API documentation (OpenAPI/Swagger via FastAPI)
+* [ ] Update CLAUDE.md with scoring system overview (if needed)
+* [ ] Create example scoring_config.yaml in repo
+* [ ] Document scoring criteria evolution workflow
+
+**Dependencies:** Phases 1-4 (all implementation complete)
+
+**Deliverables:**
+
+* Comprehensive test suite
+* API documentation
+* User-facing documentation
+* Configuration examples
+
+---
+
+### Phase 6: UI Integration
+
+**Goal:** Provide basic scoring visualization in TARSy dashboard
+
+* [ ] Create reusable ScoreBadge component with 5-tier color coding
+* [ ] Add Score column to HistoricalAlertsList with click navigation
+* [ ] Implement ScoreDetailView with score breakdown, reasoning, missing tools, and alternatives
+* [ ] Add Score toggle option to SessionDetailPageBase
+* [ ] Implement "Score Session" button with API integration
+* [ ] Add TypeScript interfaces for score data models
+* [ ] Update dashboard API client with scoring endpoints
+* [ ] Test UI with various score ranges and edge cases (unscored sessions, errors)
+
+**Dependencies:** Phases 1-5 (requires backend API endpoints)
+
+**Deliverables:**
+
+* Score visualization in session list
+* Comprehensive score detail view
+* Manual scoring trigger UI
+* TypeScript types and API integration
+
+**UI Features:**
+
+1. **Session List Enhancement:**
+   * New "Score" column with color-coded badges
+   * Color scheme (matches judge prompt scoring philosophy):
+     * 0-44: Red (failed investigation)
+     * 45-59: Orange (weak investigation)
+     * 60-74: Yellow (adequate investigation)
+     * 75-89: Light Green (good investigation)
+     * 90-100: Dark Green (near-perfect investigation)
+   * "Not Scored" badge for sessions without scores
+   * Clickable scores navigate to score detail view
+
+2. **Score Detail Page:**
+   * New "Score" toggle option (alongside Conversation/Technical)
+   * Displays:
+     * Alert detail (reuses OriginalAlertCard)
+     * Final analysis (reuses FinalAnalysisCard)
+     * Score breakdown card (new component)
+     * Score reasoning card (new component)
+     * Missing tools list (new component)
+     * Alternative approaches with steps (new component)
+
+3. **Manual Scoring Trigger:**
+   * "Score Session" button in session detail page
+   * Calls `POST /api/v1/scoring/sessions/{session_id}/score`
+   * Loading state during scoring
+   * Auto-refresh after completion
+
+**New Dashboard Components:**
+
+* `dashboard/src/components/scoring/ScoreDetailView.tsx` - Main score view
+* `dashboard/src/components/scoring/ScoreBreakdownCard.tsx` - Score breakdown display
+* `dashboard/src/components/scoring/MissingToolsCard.tsx` - Missing tools list
+* `dashboard/src/components/scoring/AlternativeApproachesCard.tsx` - Alternative approaches
+* `dashboard/src/components/scoring/ScoreBadge.tsx` - Reusable color-coded badge
+
+**Modified Dashboard Components:**
+
+* `dashboard/src/components/HistoricalAlertsList.tsx` - Add Score column
+* `dashboard/src/components/SessionDetailPageBase.tsx` - Add Score toggle
+* `dashboard/src/types/` - Add score-related TypeScript interfaces
+* `dashboard/src/api/` - Add scoring API client functions
+
+---
+
+## Next Steps
+
+1. Review and approve Phase 1 design
+2. Begin Phase 1 implementation (database schema and models)
+3. Iterate through phases with testing at each stage
+4. Deploy to staging for user acceptance testing
+5. Implement Phase 6 UI integration after backend API is validated
+6. Production deployment after validation
+
+## Attachment: The Judge Prompt from the POC
+
+```yaml
   You are a computer security expert specializing in DevOps and Kubernetes security operations.
 
   Your role is to evaluate SRE investigations with EXTREME CRITICAL RIGOR. You are a methodology-focused perfectionist who:
@@ -893,316 +891,3 @@ judge_prompt: |
 
   {{OUTPUT_SCHEMA}}
 ```
-
-**Environment Variables** (optional overrides only):
-
-```bash
-# Enable/disable scoring feature (default: true)
-SCORING_ENABLED=true
-
-# LLM provider for scoring (default: falls back to DEFAULT_LLM_PROVIDER)
-SCORING_LLM_PROVIDER=google-default
-
-# Model for scoring (default: provider-specific default)
-SCORING_LLM_MODEL=gemini-2.0-flash-exp
-```
-
-**Content Hash Approach:**
-
-The scoring system computes a SHA256 hash of the entire `scoring_config.yaml` file (after template variable resolution). This hash:
-- Uniquely identifies each version of scoring criteria
-- Enables automatic obsolescence detection
-- Eliminates manual version management
-- Preserves historical criteria definitions in database
-
-## Security
-
-### Authentication & Authorization
-
-**Authentication**: Handled at infrastructure level by oauth2-proxy (reverse proxy)
-- Users authenticated via OAuth (GitHub, Google, etc.) or JWT tokens
-- Application trusts `X-Forwarded-User` and `X-Forwarded-Email` headers from oauth2-proxy
-- No application-level authentication middleware required
-
-**Authorization**: Not implemented at application level
-- All authenticated users have full access to all endpoints
-- No role-based access control (RBAC) currently exists
-- Authorization is a future enhancement (referenced in EP-0004 as "may be added in future phases")
-
-**User Attribution**:
-- User identification extracted from oauth2-proxy headers via `extract_author_from_request()` helper
-- Used for audit trails and tracking who triggered scoring operations
-- Follows same pattern as alert submission (see `alert_controller.py`)
-
-### Security Controls
-
-- Input validation on all API endpoints (session_id format, request body schema)
-- Rate limiting on scoring endpoints to prevent LLM API abuse (implemented at oauth2-proxy/infrastructure level)
-- Judge LLM prompts sanitized to prevent prompt injection
-- Score data treated with same sensitivity as session data (no additional PII)
-- HTTPS/WSS enforced for all communication (infrastructure level)
-
-## Performance & Scalability
-
-### Performance Requirements
-
-- Individual session scoring: < 30 seconds per session (LLM-dependent)
-- Score retrieval: < 100ms (database query)
-- Support for concurrent scoring requests (up to 10 simultaneous)
-
-### Design Considerations
-
-- Asynchronous scoring using background tasks (FastAPI background tasks)
-- Database indexes for efficient score queries
-
-## Error Handling
-
-### Error Handling Strategy
-
-- **LLM API failures**: Retry with exponential backoff (max 3 retries, 1s/2s/4s delays)
-- **Invalid JSON responses**: Log raw response, return 500 error with details
-- **Missing session data**: Return 404 error
-- **Database write failures**: Retry once, then return 500 error
-
-### Resilience Patterns
-
-- Circuit breaker for LLM API calls (open after 5 consecutive failures)
-- Graceful degradation: Scoring failures don't affect other system operations
-- Comprehensive error logging for debugging
-
-## Testing Strategy
-
-### Unit Tests
-
-- Scoring service score parsing and validation
-- LLM prompt construction for scoring
-- API endpoint request/response handling
-- Database repository CRUD operations
-- Error handling for invalid JSON responses
-
-### Integration Tests
-
-- Complete scoring flow from API request to database storage
-- LLM integration (mocked responses for consistency)
-- History Service integration for session retrieval
-- Re-scoring existing session with force_rescore flag
-
-### Test Coverage Target
-
-- Minimum 80% code coverage for new components
-- 100% coverage for critical paths (scoring logic, database operations)
-
-## Migration & Deployment
-
-### Database Migration
-
-**Alembic migration script:**
-
-1. Create `scoring_criteria_definitions` table with:
-   - Primary key: `criteria_hash`
-   - Fields: `criteria_content` (JSONB), `created_at`
-   - Index on `created_at`
-
-2. Create `session_scores` table with:
-   - Primary key: `score_id` (UUID)
-   - Unique constraint on `session_id`
-   - Fields: `criteria_hash`, `total_score`, `score_breakdown` (JSONB), `score_reasoning`, `scored_at`
-   - Foreign keys to `alert_sessions` and `scoring_criteria_definitions`
-   - Indexes on `session_id`, `criteria_hash`, `total_score`, `scored_at`
-
-3. Create `score_missing_tools` table with:
-   - Primary key: `id` (UUID)
-   - Fields: `score_id`, `tool_name`, `rationale`
-   - Foreign key to `session_scores`
-   - Indexes on `score_id` and `tool_name`
-
-4. Create `score_alternative_approaches` table with:
-   - Primary key: `id` (UUID)
-   - Fields: `score_id`, `name`, `description`
-   - Foreign key to `session_scores`
-   - Indexes on `score_id` and `name`
-
-5. Create `score_alternative_approach_steps` table with:
-   - Primary key: `id` (UUID)
-   - Fields: `approach_id`, `step_order`, `step_description`
-   - Foreign key to `score_alternative_approaches`
-   - Index on `approach_id`
-
-**Rollback:**
-1. Drop `score_alternative_approach_steps` table
-2. Drop `score_alternative_approaches` table
-3. Drop `score_missing_tools` table
-4. Drop `session_scores` table
-5. Drop `scoring_criteria_definitions` table
-
-### Deployment Steps
-
-1. Deploy database schema migration (Alembic)
-2. Deploy backend code with scoring service and API endpoints
-3. Update environment variables (SCORING_ENABLED, provider, model)
-4. Test with sample sessions via API
-5. Verify score storage and retrieval
-6. Monitor for errors and LLM API usage
-
-### Backward Compatibility
-
-- No breaking changes to existing APIs
-- Existing session data unmodified
-- Feature flag (SCORING_ENABLED) allows disabling if issues arise
-- Scoring is fully optional and doesn't affect alert processing
-
-## Future Analytics Capabilities
-
-The normalized database schema enables analytics queries for future phases. While Phase 1 focuses on the core scoring API, the schema is designed to support insights aggregation and pattern analysis.
-
-### Phase 1 Analytics (Available Immediately)
-
-**Score Trends Over Time:**
-```sql
--- Track scoring trends across sessions
-SELECT
-    DATE(scored_at) as score_date,
-    AVG(total_score) as avg_score,
-    MIN(total_score) as min_score,
-    MAX(total_score) as max_score,
-    COUNT(*) as sessions_scored
-FROM session_scores
-WHERE criteria_hash = '<current_criteria_hash>'
-GROUP BY DATE(scored_at)
-ORDER BY score_date DESC;
-```
-
-**Score Distribution Analysis:**
-```sql
--- Analyze score distributions and breakdown patterns
-SELECT
-    CASE
-        WHEN total_score < 50 THEN 'Low (0-49)'
-        WHEN total_score < 75 THEN 'Medium (50-74)'
-        ELSE 'High (75-100)'
-    END as score_range,
-    COUNT(*) as session_count,
-    AVG((score_breakdown->>'logical_flow')::int) as avg_logical_flow,
-    AVG((score_breakdown->>'consistency')::int) as avg_consistency,
-    AVG((score_breakdown->>'tool_relevance')::int) as avg_tool_relevance,
-    AVG((score_breakdown->>'synthesis_quality')::int) as avg_synthesis_quality
-FROM session_scores
-WHERE criteria_hash = '<current_criteria_hash>'
-GROUP BY score_range
-ORDER BY score_range;
-```
-
-### Future Phase Analytics (Deferred)
-
-**Semantic Pattern Analysis:**
-- Missing tool category clustering (LLM names vary for similar tools)
-- Alternative approach pattern discovery (LLM descriptions vary for similar strategies)
-- Discovery of most frequently missing tool types
-- Common investigation gaps by score range
-- **Note:** Deferred to future EP due to need for LLM-based semantic clustering
-
-These analytics will inform:
-- **Agent Improvements**: Common investigation gaps and scoring patterns
-- **Runbook Quality**: Patterns in alternative approaches that should be documented (future phase)
-- **Training Data**: High-quality sessions for fine-tuning future models
-- **MCP Server Development**: Which tool categories to prioritize (future clustering phase)
-
-## Monitoring & Observability
-
-### Logging
-
-- Structured logging for all scoring operations (session_id, score, duration)
-- LLM request/response logging (truncated to 1000 chars for large responses)
-- Error logging for failed scoring attempts with full context
-
-### Metrics
-
-- Total sessions scored (counter)
-- Average scoring duration (histogram)
-- Scoring success/failure rate (gauge)
-- Distribution of scores (histogram)
-- API endpoint usage (counter per endpoint)
-- LLM API call duration and cost (if available)
-
-## Documentation Requirements
-
-### Code Documentation
-
-- Comprehensive docstrings for ScoringService class and all methods
-- Judge prompt template with inline comments
-- Scoring criteria version history in CHANGELOG
-- API endpoint documentation with request/response examples
-
-### API Documentation
-
-- OpenAPI/Swagger documentation for scoring endpoints (auto-generated via FastAPI)
-- Integration guide for future UI developers
-- Examples of score JSON structure
-
-### Architecture Documentation
-
-- Updated system architecture diagram including scoring service
-- Data flow diagram for scoring process
-- Database schema diagram with session_scores table
-
-## Open Questions & Decisions
-
-### Resolved
-
-1. **Scoring Criteria Evolution**: How to handle criteria changes over time?
-   - **Decision**: Use content-addressed hashing (SHA256 of `scoring_config.yaml`) to automatically track criteria versions
-   - **Rationale**: Eliminates manual version management, provides automatic obsolescence detection, preserves full historical criteria definitions
-
-2. **Criteria Structure**: Should criteria be structured (individual fields) or freeform (text prompt)?
-   - **Decision**: Freeform judge prompt with flexible `score_breakdown` JSONB field
-   - **Rationale**: Maximum flexibility to iterate on scoring criteria without schema migrations; experimental phase needs adaptability
-
-3. **Score Caching**: Should we cache scores or always allow re-scoring?
-   - **Decision**: Store scores permanently with `criteria_hash`, allow re-scoring via `force_rescore` flag
-   - **Rationale**: Enables historical tracking and comparison across criteria versions
-
-4. **Cost Controls**: How to prevent runaway LLM costs?
-   - **Decision**: Rate limiting on API endpoints, operator-only access (no public endpoint), manual scoring trigger
-   - **Rationale**: Phase 1 is manual-trigger only; automation comes in later phases with better cost controls
-
-5. **Database Schema**: Hardcoded score fields vs flexible JSONB?
-   - **Decision**: JSONB `score_breakdown` with only `total_score` guaranteed; normalize `missing_tools` and `alternative_approaches`
-   - **Rationale**: Criteria dimensions will evolve during experimentation (flexible JSONB), but feedback data (missing tools, alternatives) should be queryable for analytics (normalized tables)
-
-6. **Output Format Location**: Should output format be in config or code?
-   - **Decision**: Output format defined in code (`JudgeOutputSchema`), injected via `{{OUTPUT_SCHEMA}}` placeholder
-   - **Rationale**: Separation of concerns - config defines evaluation criteria, code defines parsing contract; ensures parsing reliability while allowing prompt flexibility for refocusing after large session data
-
-### Future Considerations (for later phases)
-
-- Bulk scoring capabilities (Phase 3: Scheduled scoring)
-- Score display in UI (Phase 2: UI integration)
-- Insights aggregation and pattern analysis (Phase 4)
-- Materialized views for analytics if structured querying is needed
-
-## Success Criteria
-
-- [ ] Scoring API endpoints deployed and functional
-- [ ] Database schema created and migrated
-- [ ] Successful scoring of test sessions with realistic data
-- [ ] API documentation complete and published
-- [ ] Test coverage >= 80%
-- [ ] Zero production errors in first week after deployment
-- [ ] Scoring latency < 30 seconds (95th percentile)
-
----
-
-## Implementation Status
-
-**Status:** Pending
-**Created:** 2025-12-05
-**Next Steps:**
-1. Review and approve Phase 1 design
-2. Create Alembic migration for all scoring tables (criteria_definitions, session_scores, missing_tools, alternative_approaches, approach_steps)
-3. Implement scoring service and models (database and API layers)
-4. Implement API endpoints and controller
-5. Implement placeholder injection system for judge prompt
-6. Write unit and integration tests
-7. Deploy to staging environment
-8. Conduct user acceptance testing
-9. Deploy to production
