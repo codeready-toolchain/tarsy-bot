@@ -11,8 +11,22 @@ import pytest
 from mcp.types import Tool
 
 from tarsy.agents.prompts.builders import PromptBuilder
-from tarsy.models.processing_context import ToolWithServer
+from tarsy.models.agent_execution_result import (
+    AgentExecutionMetadata,
+    AgentExecutionResult,
+    ParallelStageMetadata,
+    ParallelStageResult,
+)
+from tarsy.models.alert import ProcessingAlert
+from tarsy.models.constants import FailurePolicy, StageStatus
+from tarsy.models.processing_context import (
+    AvailableTools,
+    ChainContext,
+    StageContext,
+    ToolWithServer,
+)
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
+from tarsy.utils.timestamp import now_us
 
 
 @pytest.mark.unit
@@ -27,9 +41,6 @@ class TestPromptBuilding:
     @pytest.fixture
     def mock_stage_context(self):
         """Create mock StageContext with proper ToolWithServer objects for testing."""
-        from tarsy.models.alert import ProcessingAlert
-        from tarsy.utils.timestamp import now_us
-        
         context = Mock()
         
         # Create proper ProcessingAlert for chain_context
@@ -385,9 +396,6 @@ class TestPromptIntegration:
     @pytest.fixture
     def full_mock_context(self):
         """Create comprehensive mock StageContext."""
-        from tarsy.models.alert import ProcessingAlert
-        from tarsy.utils.timestamp import now_us
-        
         context = Mock()
         
         # Create proper ProcessingAlert for chain_context
@@ -721,3 +729,264 @@ Restarted pod with increased memory limits."""
         assert analysis2 in result2
         assert analysis1 not in result2
         assert analysis2 not in result1
+
+
+@pytest.mark.unit
+class TestNativeThinkingPromptBuilding:
+    """Test native thinking prompt building functionality."""
+    
+    @pytest.fixture
+    def builder(self):
+        """Create PromptBuilder instance."""
+        return PromptBuilder()
+    
+    @pytest.fixture
+    def stage_context_first_stage(self):
+        """Create StageContext for first stage (no previous results)."""
+        processing_alert = ProcessingAlert(
+            alert_type="kubernetes",
+            severity="critical",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={
+                'title': 'Pod OOMKilled',
+                'description': 'Pod restarted due to memory limit'
+            }
+        )
+        
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="session-123",
+            current_stage_name="analysis"
+        )
+        chain_context.set_runbook_content("# Runbook\nCheck pod logs and memory usage")
+        
+        # Create mock agent
+        mock_agent = Mock()
+        mock_agent.__class__.__name__ = "AnalysisAgent"
+        mock_agent.mcp_servers.return_value = []
+        
+        return StageContext(
+            chain_context=chain_context,
+            available_tools=AvailableTools(tools=[]),
+            agent=mock_agent
+        )
+    
+    @pytest.fixture
+    def stage_context_with_previous_stages(self):
+        """Create StageContext with previous stage results."""
+        processing_alert = ProcessingAlert(
+            alert_type="kubernetes",
+            severity="critical",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={'title': 'Alert', 'description': 'Test alert'}
+        )
+        
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="session-456",
+            current_stage_name="command"
+        )
+        chain_context.set_runbook_content("# Runbook\nRestart the pod")
+        
+        # Add previous stage result
+        previous_result = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="AnalysisAgent",
+            timestamp_us=now_us(),
+            result_summary="Analysis completed",
+            complete_conversation_history="Pod is in CrashLoopBackOff state"
+        )
+        chain_context.add_stage_result("analysis", previous_result)
+        
+        # Create mock agent
+        mock_agent = Mock()
+        mock_agent.__class__.__name__ = "CommandAgent"
+        mock_agent.mcp_servers.return_value = []
+        
+        return StageContext(
+            chain_context=chain_context,
+            available_tools=AvailableTools(tools=[]),
+            agent=mock_agent
+        )
+    
+    def test_build_native_thinking_prompt_first_stage(self, builder, stage_context_first_stage):
+        """Test building native thinking prompt for first stage."""
+        prompt = builder.build_native_thinking_prompt(stage_context_first_stage)
+        
+        # Check alert information is included
+        assert "kubernetes" in prompt.lower()
+        assert "Pod OOMKilled" in prompt or "oomkilled" in prompt.lower()
+        
+        # Check runbook is included
+        assert "Runbook" in prompt or "runbook" in prompt.lower()
+        assert "Check pod logs" in prompt or "check pod logs" in prompt.lower()
+        
+        # Check first stage indicator
+        assert "No previous stage data" in prompt or "first stage" in prompt.lower()
+    
+    def test_build_native_thinking_prompt_with_previous_stages(self, builder, stage_context_with_previous_stages):
+        """Test building native thinking prompt with previous stage context."""
+        prompt = builder.build_native_thinking_prompt(stage_context_with_previous_stages)
+        
+        # Check alert information is included
+        assert "kubernetes" in prompt.lower()
+        
+        # Check runbook is included
+        assert "Restart the pod" in prompt or "restart" in prompt.lower()
+        
+        # Check previous stage data is included
+        assert "Previous Stage Data" in prompt
+        assert "CrashLoopBackOff" in prompt
+    
+    def test_build_native_thinking_prompt_includes_alert_section(self, builder, stage_context_first_stage):
+        """Test that prompt includes formatted alert section."""
+        prompt = builder.build_native_thinking_prompt(stage_context_first_stage)
+        
+        # Alert component should format the alert data (type and timestamp, not severity/environment)
+        assert "kubernetes" in prompt.lower()
+        assert "Alert Metadata" in prompt or "alert" in prompt.lower()
+    
+    def test_build_native_thinking_prompt_includes_runbook_section(self, builder, stage_context_first_stage):
+        """Test that prompt includes formatted runbook section."""
+        prompt = builder.build_native_thinking_prompt(stage_context_first_stage)
+        
+        # Runbook content should be included
+        assert "memory usage" in prompt.lower() or "Runbook" in prompt
+    
+    def test_build_native_thinking_prompt_formats_previous_stages_context(
+        self, builder, stage_context_with_previous_stages
+    ):
+        """Test that previous stages context is properly formatted."""
+        prompt = builder.build_native_thinking_prompt(stage_context_with_previous_stages)
+        
+        # Should use the StageContext's format_previous_stages_context method
+        assert "## Previous Stage Data" in prompt
+        assert "Results from 'analysis' stage" in prompt or "CrashLoopBackOff" in prompt
+    
+    def test_build_native_thinking_prompt_handles_no_runbook(self, builder):
+        """Test building prompt when runbook is None or empty."""
+        processing_alert = ProcessingAlert(
+            alert_type="kubernetes",
+            severity="critical",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={'title': 'Test', 'description': 'Test alert'}
+        )
+        
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="session-no-runbook",
+            current_stage_name="analysis"
+        )
+        # Don't set runbook_content - leave it as None
+        
+        mock_agent = Mock()
+        mock_agent.__class__.__name__ = "TestAgent"
+        mock_agent.mcp_servers.return_value = []
+        
+        stage_context = StageContext(
+            chain_context=chain_context,
+            available_tools=AvailableTools(tools=[]),
+            agent=mock_agent
+        )
+        
+        prompt = builder.build_native_thinking_prompt(stage_context)
+        
+        # Should still build valid prompt
+        assert "kubernetes" in prompt.lower()
+        assert len(prompt) > 100
+    
+    def test_build_native_thinking_prompt_consistent_structure(self, builder, stage_context_first_stage):
+        """Test that prompt has consistent structure across calls."""
+        prompt1 = builder.build_native_thinking_prompt(stage_context_first_stage)
+        prompt2 = builder.build_native_thinking_prompt(stage_context_first_stage)
+        
+        # Should produce identical output for same input
+        assert prompt1 == prompt2
+    
+    def test_build_native_thinking_prompt_with_parallel_previous_stage(self, builder):
+        """Test building prompt when previous stage was parallel execution."""
+        timestamp = now_us()
+        
+        processing_alert = ProcessingAlert(
+            alert_type="kubernetes",
+            severity="critical",
+            timestamp=timestamp,
+            environment="production",
+            alert_data={'title': 'Multi-perspective alert'}
+        )
+        
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="session-parallel",
+            current_stage_name="synthesis"
+        )
+        chain_context.set_runbook_content("# Synthesis")
+        
+        # Add parallel stage result
+        parallel_result = ParallelStageResult(
+            stage_name="investigation",
+            results=[
+                AgentExecutionResult(
+                    status=StageStatus.COMPLETED,
+                    agent_name="KubernetesAgent",
+                    timestamp_us=timestamp,
+                    result_summary="K8s analysis",
+                    complete_conversation_history="Pod memory exceeded"
+                ),
+                AgentExecutionResult(
+                    status=StageStatus.COMPLETED,
+                    agent_name="VMAgent",
+                    timestamp_us=timestamp,
+                    result_summary="VM analysis",
+                    complete_conversation_history="Node under pressure"
+                )
+            ],
+            metadata=ParallelStageMetadata(
+                parent_stage_execution_id="exec-p1",
+                parallel_type="multi_agent",
+                failure_policy=FailurePolicy.ALL,
+                started_at_us=timestamp - 5000,
+                completed_at_us=timestamp,
+                agent_metadatas=[
+                    AgentExecutionMetadata(
+                        agent_name="KubernetesAgent",
+                        llm_provider="openai",
+                        iteration_strategy="react",
+                        started_at_us=timestamp - 5000,
+                        completed_at_us=timestamp,
+                        status=StageStatus.COMPLETED
+                    ),
+                    AgentExecutionMetadata(
+                        agent_name="VMAgent",
+                        llm_provider="anthropic",
+                        iteration_strategy="native-thinking",
+                        started_at_us=timestamp - 5000,
+                        completed_at_us=timestamp,
+                        status=StageStatus.COMPLETED
+                    )
+                ]
+            ),
+            status=StageStatus.COMPLETED,
+            timestamp_us=timestamp
+        )
+        chain_context.add_stage_result("investigation", parallel_result)
+        
+        mock_agent = Mock()
+        mock_agent.__class__.__name__ = "SynthesisAgent"
+        mock_agent.mcp_servers.return_value = []
+        
+        stage_context = StageContext(
+            chain_context=chain_context,
+            available_tools=AvailableTools(tools=[]),
+            agent=mock_agent
+        )
+        
+        prompt = builder.build_native_thinking_prompt(stage_context)
+        
+        # Check that parallel results are included
+        assert "Previous Stage Data" in prompt
+        assert "parallel stage" in prompt.lower() or "KubernetesAgent" in prompt
+        assert "Pod memory exceeded" in prompt or "Node under pressure" in prompt

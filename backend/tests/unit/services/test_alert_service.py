@@ -16,6 +16,7 @@ from tarsy.models.alert import Alert
 from tarsy.models.alert_processing import AlertKey
 from tarsy.models.processing_context import ChainContext
 from tarsy.services.alert_service import AlertService
+from tarsy.services.response_formatter import format_error_response
 from tarsy.utils.timestamp import now_us
 from tests.conftest import alert_to_api_format
 from tests.utils import AlertFactory, MockFactory
@@ -259,6 +260,9 @@ class TestAlertProcessing:
     @pytest.fixture
     async def initialized_service(self, sample_alert):
         """Create fully initialized AlertService."""
+        from tarsy.services.session_manager import SessionManager
+        from tarsy.services.stage_execution_manager import StageExecutionManager
+        
         mock_settings = MockFactory.create_mock_settings(
             github_token="test_token",
             history_enabled=True,
@@ -277,16 +281,54 @@ class TestAlertProcessing:
         
         # Create mock history service for proper testing
         from tarsy.services.history_service import HistoryService
+        from tarsy.models.db_models import StageExecution
+        from types import SimpleNamespace
+        
         mock_history_service = Mock(spec=HistoryService)
         mock_history_service.is_enabled = True
         mock_history_service.create_session.return_value = True
         mock_history_service.update_session_status = Mock()
         mock_history_service.store_llm_interaction = Mock()
         mock_history_service.store_mcp_interaction = Mock()
+        # All async methods must be AsyncMock for StageExecutionManager compatibility
+        mock_history_service.create_stage_execution = AsyncMock(return_value="exec-1")
+        mock_history_service.update_stage_execution = AsyncMock(return_value=True)
+        mock_history_service.update_session_current_stage = AsyncMock(return_value=True)
         mock_history_service.record_session_interaction = AsyncMock()
         mock_history_service.get_stage_executions = AsyncMock(return_value=[])
-        mock_history_service.get_stage_execution = AsyncMock(return_value=None)
+        mock_history_service.start_session_processing = AsyncMock(return_value=True)
+        # Mock get_stage_execution to return a proper stage execution object for updates
+        def create_mock_stage_execution(execution_id):
+            return SimpleNamespace(
+                execution_id=execution_id,
+                session_id="test-session",
+                stage_index=0,
+                stage_id="test-stage",
+                stage_name="test-stage",
+                status="active",
+                started_at_us=now_us(),
+                completed_at_us=None,
+                duration_ms=None,
+                error_message=None,
+                stage_output=None,
+                current_iteration=None
+            )
+        mock_history_service.get_stage_execution = AsyncMock(side_effect=create_mock_stage_execution)
+        # Mock database verification for stage creation
+        mock_history_service._retry_database_operation_async = AsyncMock(return_value=True)
         service.history_service = mock_history_service
+        
+        # Initialize manager classes
+        service.stage_manager = StageExecutionManager(service.history_service)
+        service.session_manager = SessionManager(service.history_service)
+        
+        # Mock parallel executor
+        service.parallel_executor = Mock()
+        service.parallel_executor.is_final_stage_parallel = Mock(return_value=False)
+        service.parallel_executor.execute_parallel_agents = AsyncMock()
+        service.parallel_executor.execute_replicated_agent = AsyncMock()
+        service.parallel_executor.synthesize_parallel_results = AsyncMock()
+        service.parallel_executor.resume_parallel_stage = AsyncMock()
         
         yield service, dependencies
     
@@ -525,6 +567,8 @@ class TestHistorySessionManagement:
     @pytest.fixture
     def alert_service_with_history(self):
         """Create AlertService with mocked history service."""
+        from tarsy.services.session_manager import SessionManager
+        
         mock_settings = Mock(spec=Settings)
         mock_settings.agent_config_path = None  # No agent config for unit tests
         
@@ -538,6 +582,8 @@ class TestHistorySessionManagement:
             service = AlertService(mock_settings)
             service.history_service = Mock()
             service.history_service.is_enabled = True
+            # Create real SessionManager with mocked history service
+            service.session_manager = SessionManager(service.history_service)
             
             yield service
     
@@ -563,7 +609,7 @@ class TestHistorySessionManagement:
         """Test successful session status update."""
         service = alert_service_with_history
         
-        service._update_session_status("session_123", "in_progress")
+        service.session_manager.update_session_status("session_123", "in_progress")
         
         service.history_service.update_session_status.assert_called_once_with(
             session_id="session_123",
@@ -579,7 +625,7 @@ class TestHistorySessionManagement:
         service = alert_service_with_history
         service.history_service.is_enabled = False
         
-        service._update_session_status("session_123", "in_progress")
+        service.session_manager.update_session_status("session_123", "in_progress")
         
         service.history_service.update_session_status.assert_not_called()
     
@@ -587,7 +633,7 @@ class TestHistorySessionManagement:
         """Test marking session as completed."""
         service = alert_service_with_history
         
-        service._update_session_status("session_123", "completed")
+        service.session_manager.update_session_status("session_123", "completed")
         
         service.history_service.update_session_status.assert_called_once_with(
             session_id="session_123",
@@ -603,7 +649,7 @@ class TestHistorySessionManagement:
         service = alert_service_with_history
         analysis = "# Alert Analysis\n\nSuccessfully resolved the issue."
         
-        service._update_session_status("session_123", "completed", final_analysis=analysis)
+        service.session_manager.update_session_status("session_123", "completed", final_analysis=analysis)
         
         service.history_service.update_session_status.assert_called_once_with(
             session_id="session_123",
@@ -620,7 +666,7 @@ class TestHistorySessionManagement:
         analysis = "# Alert Analysis\n\nSuccessfully resolved the issue."
         summary = "Brief summary of the analysis"
         
-        service._update_session_status("session_123", "completed", final_analysis=analysis, final_analysis_summary=summary)
+        service.session_manager.update_session_status("session_123", "completed", final_analysis=analysis, final_analysis_summary=summary)
         
         service.history_service.update_session_status.assert_called_once_with(
             session_id="session_123",
@@ -635,7 +681,7 @@ class TestHistorySessionManagement:
         """Test marking session as failed with error."""
         service = alert_service_with_history
         
-        service._update_session_error("session_123", "Processing failed")
+        service.session_manager.update_session_error("session_123", "Processing failed")
         
         service.history_service.update_session_status.assert_called_once_with(
             session_id="session_123",
@@ -647,21 +693,6 @@ class TestHistorySessionManagement:
 @pytest.mark.unit
 class TestResponseFormatting:
     """Test response formatting methods."""
-    
-    @pytest.fixture
-    def alert_service(self):
-        """Create basic AlertService for formatting tests."""
-        mock_settings = Mock(spec=Settings)
-        mock_settings.agent_config_path = None  # No agent config for unit tests
-        
-        with patch('tarsy.services.alert_service.RunbookService'), \
-             patch('tarsy.services.alert_service.get_history_service'), \
-             patch('tarsy.services.alert_service.ChainRegistry'), \
-             patch('tarsy.services.alert_service.MCPServerRegistry'), \
-             patch('tarsy.services.alert_service.MCPClient'), \
-             patch('tarsy.services.alert_service.LLMManager'):
-            
-            return AlertService(mock_settings)
     
     @pytest.fixture
     def sample_alert(self):
@@ -680,52 +711,13 @@ class TestResponseFormatting:
             }
         )
     
-    def test_format_success_response(self, alert_service, sample_alert):
-        """Test formatting successful response."""
-        chain_context = alert_to_api_format(sample_alert)
-        chain_context.session_id = str(uuid.uuid4())
-        chain_context.current_stage_name = "test-stage"
-        
-        result = alert_service._format_success_response(
-            chain_context=chain_context,
-            agent_name="KubernetesAgent",
-            analysis="Detailed analysis result",
-            iterations=3,
-            timestamp_us=1704110400000000  # 2024-01-01T12:00:00Z in microseconds since epoch
-        )
-        
-        assert "# Alert Analysis Report" in result
-        assert "**Alert Type:** kubernetes" in result  
-        assert "**Processing Agent:** KubernetesAgent" in result
-        assert "**Timestamp:** 1704110400000000" in result
-        assert "## Analysis" in result
-        assert "Detailed analysis result" in result
-        assert "*Processed by KubernetesAgent in 3 iterations*" in result
-    
-    def test_format_success_response_without_timestamp(self, alert_service, sample_alert):
-        """Test formatting successful response without timestamp."""
-        chain_context = alert_to_api_format(sample_alert)
-        chain_context.session_id = str(uuid.uuid4())
-        chain_context.current_stage_name = "test-stage"
-        
-        result = alert_service._format_success_response(
-            chain_context=chain_context,
-            agent_name="KubernetesAgent",
-            analysis="Test analysis",
-            iterations=1
-        )
-        
-        # Should include current timestamp
-        assert "**Timestamp:**" in result
-        assert "# Alert Analysis Report" in result
-    
-    def test_format_error_response_basic(self, alert_service, sample_alert):
+    def test_format_error_response_basic(self, sample_alert):
         """Test formatting basic error response."""
         chain_context = alert_to_api_format(sample_alert)
         chain_context.session_id = str(uuid.uuid4())
         chain_context.current_stage_name = "test-stage"
         
-        result = alert_service._format_error_response(
+        result = format_error_response(
             chain_context=chain_context,
             error="Test error occurred"
         )
@@ -734,13 +726,13 @@ class TestResponseFormatting:
         assert "**Alert Type:** kubernetes" in result
         assert "Test error occurred" in result
     
-    def test_format_error_response_with_agent(self, alert_service, sample_alert):
+    def test_format_error_response_with_agent(self, sample_alert):
         """Test formatting error response with agent information."""
         chain_context = alert_to_api_format(sample_alert)
         chain_context.session_id = str(uuid.uuid4())
         chain_context.current_stage_name = "test-stage"
         
-        result = alert_service._format_error_response(
+        result = format_error_response(
             chain_context=chain_context,
             error="Agent processing failed",
             agent_name="KubernetesAgent"
@@ -1124,6 +1116,9 @@ class TestEnhancedChainExecution:
     @pytest.fixture
     async def initialized_service(self):
         """Create fully initialized AlertService for chain execution tests."""
+        from tarsy.services.session_manager import SessionManager
+        from tarsy.services.stage_execution_manager import StageExecutionManager
+        
         mock_settings = MockFactory.create_mock_settings(
             github_token="test_token",
             history_enabled=True,
@@ -1142,17 +1137,28 @@ class TestEnhancedChainExecution:
         service.history_service.is_enabled = True
         service.history_service.create_session.return_value = True
         service.history_service.update_session_status = Mock()
+        # All async methods must be AsyncMock for StageExecutionManager compatibility
+        service.history_service.create_stage_execution = AsyncMock(return_value="exec-1")
+        service.history_service.update_stage_execution = AsyncMock(return_value=True)
+        service.history_service.update_session_current_stage = AsyncMock(return_value=True)
         service.history_service.get_stage_execution = AsyncMock()
         service.history_service.get_stage_executions = AsyncMock(return_value=[])
-        service.history_service.update_session_current_stage = AsyncMock()
         service.history_service.record_session_interaction = AsyncMock()
+        service.history_service.start_session_processing = AsyncMock(return_value=True)
+        # Mock database verification for stage creation
+        service.history_service._retry_database_operation_async = AsyncMock(return_value=True)
         
-        # Mock stage execution methods
-        service._create_stage_execution = AsyncMock(return_value="stage_exec_123")
-        service._update_stage_execution_started = AsyncMock()
-        service._update_stage_execution_completed = AsyncMock()
-        service._update_stage_execution_failed = AsyncMock()
-        service._update_session_current_stage = AsyncMock()
+        # Initialize manager classes
+        service.stage_manager = StageExecutionManager(service.history_service)
+        service.session_manager = SessionManager(service.history_service)
+        
+        # Mock parallel executor
+        service.parallel_executor = Mock()
+        service.parallel_executor.is_final_stage_parallel = Mock(return_value=False)
+        service.parallel_executor.execute_parallel_agents = AsyncMock()
+        service.parallel_executor.execute_replicated_agent = AsyncMock()
+        service.parallel_executor.synthesize_parallel_results = AsyncMock()
+        service.parallel_executor.resume_parallel_stage = AsyncMock()
         
         yield service, dependencies
     
@@ -1371,6 +1377,9 @@ class TestFullErrorPropagation:
     @pytest.fixture
     async def service_with_failing_stages(self):
         """Create service setup to simulate stage failures."""
+        from tarsy.services.session_manager import SessionManager
+        from tarsy.services.stage_execution_manager import StageExecutionManager
+        
         mock_settings = MockFactory.create_mock_settings(
             github_token="test_token", 
             history_enabled=True,
@@ -1381,6 +1390,8 @@ class TestFullErrorPropagation:
         service = AlertService(mock_settings)
         
         # Setup service with dependencies
+        from types import SimpleNamespace
+        
         service.agent_factory = Mock()
         service.chain_registry = dependencies['chain_registry']
         service.runbook_service = dependencies['runbook']
@@ -1389,17 +1400,44 @@ class TestFullErrorPropagation:
         service.history_service.is_enabled = True
         service.history_service.create_session.return_value = True
         service.history_service.update_session_status = Mock()
-        service.history_service.get_stage_execution = AsyncMock()
-        service.history_service.get_stage_executions = AsyncMock(return_value=[])
+        # All async methods must be AsyncMock for StageExecutionManager compatibility
+        service.history_service.create_stage_execution = AsyncMock(return_value="exec-1")
+        service.history_service.update_stage_execution = AsyncMock(return_value=True)
+        service.history_service.update_session_current_stage = AsyncMock(return_value=True)
         service.history_service.record_session_interaction = AsyncMock()
+        service.history_service.get_stage_executions = AsyncMock(return_value=[])
         service.history_service.start_session_processing = AsyncMock(return_value=True)
+        # Mock get_stage_execution to return proper stage execution objects
+        def create_mock_stage_execution(execution_id):
+            return SimpleNamespace(
+                execution_id=execution_id,
+                session_id="test-session",
+                stage_index=0,
+                stage_id="test-stage",
+                stage_name="test-stage",
+                status="active",
+                started_at_us=now_us(),
+                completed_at_us=None,
+                duration_ms=None,
+                error_message=None,
+                stage_output=None,
+                current_iteration=None
+            )
+        service.history_service.get_stage_execution = AsyncMock(side_effect=create_mock_stage_execution)
+        # Mock database verification for stage creation
+        service.history_service._retry_database_operation_async = AsyncMock(return_value=True)
         
-        # Mock stage execution methods
-        service._create_stage_execution = AsyncMock(return_value="stage_exec_123")
-        service._update_stage_execution_started = AsyncMock()
-        service._update_stage_execution_completed = AsyncMock()
-        service._update_stage_execution_failed = AsyncMock()
-        service._update_session_current_stage = AsyncMock()
+        # Initialize manager classes
+        service.stage_manager = StageExecutionManager(service.history_service)
+        service.session_manager = SessionManager(service.history_service)
+        
+        # Mock parallel executor
+        service.parallel_executor = Mock()
+        service.parallel_executor.is_final_stage_parallel = Mock(return_value=False)
+        service.parallel_executor.execute_parallel_agents = AsyncMock()
+        service.parallel_executor.execute_replicated_agent = AsyncMock()
+        service.parallel_executor.synthesize_parallel_results = AsyncMock()
+        service.parallel_executor.resume_parallel_stage = AsyncMock()
         
         # Configure chain registry to return test chain
         dependencies['chain_registry'].get_chain_for_alert_type.return_value = ChainConfigModel(
@@ -1562,4 +1600,110 @@ class TestFullErrorPropagation:
         assert "Chain processing failed: Stage 'only-stage' (agent: OnlyAgent): Critical system error detected" in result
         # Should NOT contain "with X stage failures:" since it's a single failure
         assert "stage failures:" not in result
+
+
+@pytest.mark.unit
+class TestAlertServicePausedWithNoneFinalAnalysis:
+    """Test AlertService handles None final_analysis for PAUSED status correctly."""
+    
+    @pytest.mark.asyncio
+    async def test_process_alert_paused_with_none_final_analysis(self):
+        """Test that process_alert handles None final_analysis gracefully for PAUSED status."""
+        from tarsy.models.api_models import ChainExecutionResult
+        from tarsy.models.constants import ChainStatus
+        from tarsy.models.alert import ProcessingAlert
+        
+        # Create mock settings
+        mock_settings = MockFactory.create_mock_settings(
+            agent_config_path=None,
+            history_enabled=True
+        )
+        
+        # Create alert service with mocked dependencies
+        with patch('tarsy.services.alert_service.RunbookService'), \
+             patch('tarsy.services.alert_service.get_history_service') as mock_history, \
+             patch('tarsy.services.alert_service.ChainRegistry') as mock_chain_registry, \
+             patch('tarsy.services.alert_service.MCPServerRegistry'), \
+             patch('tarsy.services.alert_service.MCPClient'), \
+             patch('tarsy.services.mcp_client_factory.MCPClientFactory') as mock_mcp_factory, \
+             patch('tarsy.services.alert_service.LLMManager'):
+            
+            service = AlertService(mock_settings)
+            
+            # Mock chain registry to return a simple chain
+            mock_chain = ChainConfigModel(
+                chain_id='test-chain',
+                alert_types=['test-alert'],
+                stages=[
+                    ChainStageConfigModel(name='stage1', agent='TestAgent')
+                ],
+                description='Test chain'
+            )
+            mock_chain_registry.return_value.get_chain_for_alert_type.return_value = mock_chain
+            
+            # Mock history service
+            mock_history_instance = Mock()
+            mock_history_instance.start_session_processing = AsyncMock()
+            mock_history_instance.record_session_interaction = AsyncMock()
+            mock_history.return_value = mock_history_instance
+            service.history_service = mock_history_instance
+            
+            # Mock session manager
+            service.session_manager.create_chain_history_session = Mock(return_value=True)
+            service.session_manager.update_session_status = Mock()
+            
+            # Mock agent factory (required for process_alert)
+            service.agent_factory = Mock()
+            
+            # Mock MCP client factory
+            mock_mcp_client = AsyncMock()
+            mock_mcp_client.close = AsyncMock()
+            mock_mcp_factory.return_value.create_client = AsyncMock(return_value=mock_mcp_client)
+            
+            # Mock _execute_chain_stages to return PAUSED with None final_analysis (the bug case)
+            service._execute_chain_stages = AsyncMock(
+                return_value=ChainExecutionResult(
+                    status=ChainStatus.PAUSED,
+                    timestamp_us=now_us(),
+                    final_analysis=None  # This was causing the crash
+                )
+            )
+            
+            # Create processing alert
+            processing_alert = ProcessingAlert(
+                alert_type="test-alert",
+                severity="warning",
+                timestamp=now_us(),
+                environment="production",
+                alert_data={"test": "data"}
+            )
+            chain_context = ChainContext.from_processing_alert(
+                processing_alert=processing_alert,
+                session_id=str(uuid.uuid4())
+            )
+            
+            # Mock event publishing
+            with patch('tarsy.services.events.event_helpers.publish_session_created', new=AsyncMock()), \
+                 patch('tarsy.services.events.event_helpers.publish_session_started', new=AsyncMock()), \
+                 patch('tarsy.hooks.hook_context.stage_execution_context'):
+                
+                # Process alert - should not crash
+                result = await service.process_alert(chain_context)
+            
+            # Verify result contains default pause message (not None)
+            assert "# Alert Analysis Report" in result
+            assert "Session paused - waiting for user to resume" in result
+            assert "**Processing Chain:** test-chain" in result
+            assert "**Alert Type:** test-alert" in result
+            
+            # Verify session status was NOT updated to COMPLETED (should stay PAUSED)
+            status_calls = [
+                call for call in service.session_manager.update_session_status.call_args_list
+            ]
+            # Check that no call set status to COMPLETED
+            for call in status_calls:
+                if len(call.args) > 1:
+                    assert call.args[1] != 'completed'
+                if 'status' in call.kwargs:
+                    assert call.kwargs['status'] != 'completed'
 

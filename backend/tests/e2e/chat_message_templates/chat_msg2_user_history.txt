@@ -28,9 +28,7 @@ Please provide detailed, actionable insights about what's happening and potentia
 
 ### Alert Metadata
 **Alert Type:** test-kubernetes
-**Severity:** warning
 **Timestamp:** {TIMESTAMP}
-**Environment:** production
 
 ### Alert Data
 ```json
@@ -118,8 +116,9 @@ Final Answer: I checked the pods in stuck-namespace and found no pods are curren
 **Question:** Does the namespace still exist?
 
 **Your Task:**
-Answer using the ReAct format from your system instructions.
+Answer the user's question based on the investigation context above.
 - Reference investigation history when relevant
 - Use tools to get fresh data if needed
+- Provide clear, actionable responses
 
-Begin your ReAct reasoning:
+Begin your response:

@@ -30,6 +30,39 @@ if TYPE_CHECKING:
 logger = get_module_logger(__name__)
 
 
+# Helper functions for consecutive timeout detection
+def _create_consecutive_timeout_error(count: int, failure_type: str = "tool") -> str:
+    """
+    Create standardized error message for consecutive timeout failures.
+    
+    Args:
+        count: Number of consecutive timeouts
+        failure_type: Type of timeout ("tool" or "iteration")
+        
+    Returns:
+        Standardized error message string
+    """
+    return f"Stopping after {count} consecutive {failure_type} timeout failures"
+
+
+def _is_consecutive_timeout_error(exception: Exception) -> bool:
+    """
+    Check if an exception is our own consecutive timeout failure exception.
+    
+    This allows us to detect and re-raise our intentional timeout exceptions
+    without processing them again.
+    
+    Args:
+        exception: Exception to check
+        
+    Returns:
+        True if this is our consecutive timeout exception, False otherwise
+    """
+    error_msg = str(exception).lower()
+    # Check for our specific error message pattern
+    return "consecutive" in error_msg and "timeout failures" in error_msg
+
+
 class NativeThinkingController(IterationController):
     """
     Gemini-specific controller using native thinking and function calling.
@@ -187,11 +220,14 @@ class NativeThinkingController(IterationController):
             
             # Check for consecutive timeout failures (prevent infinite retry loops)
             if consecutive_timeout_failures >= 2:
-                error_msg = f"Stopping after {consecutive_timeout_failures} consecutive timeout failures"
+                error_msg = _create_consecutive_timeout_error(consecutive_timeout_failures, "iteration")
                 self.logger.error(error_msg)
                 raise Exception(error_msg)
             
             try:
+                # Get parallel execution metadata for streaming
+                parallel_metadata = agent.get_parallel_execution_metadata()
+                
                 # Call LLM with native thinking
                 response = await asyncio.wait_for(
                     native_client.generate(
@@ -201,7 +237,8 @@ class NativeThinkingController(IterationController):
                         stage_execution_id=agent.get_current_stage_execution_id(),
                         thinking_level="high",  # Use high thinking for complex SRE analysis
                         thought_signature=thought_signature,
-                        native_tools_override=native_tools_override
+                        native_tools_override=native_tools_override,
+                        parallel_metadata=parallel_metadata
                     ),
                     timeout=iteration_timeout
                 )
@@ -219,11 +256,13 @@ class NativeThinkingController(IterationController):
                 
                 # Mark this interaction as successful
                 last_interaction_failed = False
-                consecutive_timeout_failures = 0  # Reset on successful call
+                # Note: consecutive_timeout_failures NOT reset here - only reset on successful
+                # tool execution or non-timeout errors, so timeouts accumulate across iterations
                 
                 # Check if we have a final answer (no tool calls)
                 if response.is_final:
                     self.logger.info("Native thinking completed with final answer")
+                    self._last_conversation = conversation  # Store for investigation_history
                     return self._build_final_result(response.content, all_thinking_content)
                 
                 # Execute tool calls
@@ -252,6 +291,9 @@ class NativeThinkingController(IterationController):
                                 context.chain_context.mcp
                             )
                             
+                            # Tool succeeded - reset timeout failure counter
+                            consecutive_timeout_failures = 0
+                            
                             # Format observation and append to conversation
                             observation = self._format_tool_result(mcp_data)
                             conversation.append_observation(f"Tool Result: {observation}")
@@ -263,16 +305,29 @@ class NativeThinkingController(IterationController):
                             self.logger.error(error_msg)
                             conversation.append_observation(f"Tool Error: {error_msg}")
                             
-                            # Track timeout failures specifically
-                            error_str = str(e).lower()
-                            if 'timeout' in error_str or 'timed out' in error_str:
+                            # Track timeout failures specifically using exception type checking
+                            # Check for standard timeout exceptions from asyncio and built-in TimeoutError
+                            is_timeout = isinstance(e, (TimeoutError, asyncio.TimeoutError))
+                            
+                            # Note: We only check exception types, not messages, for reliability.
+                            # If other libraries raise custom timeout exceptions, they should either:
+                            # 1. Inherit from TimeoutError (proper design)
+                            # 2. Be caught and re-raised as TimeoutError by the calling code
+                            
+                            if is_timeout:
                                 consecutive_timeout_failures += 1
                                 self.logger.warning(f"Tool timeout detected ({consecutive_timeout_failures} consecutive)")
+                                
+                                # Check if we should stop immediately (don't wait for next iteration)
+                                if consecutive_timeout_failures >= 2:
+                                    error_msg = _create_consecutive_timeout_error(consecutive_timeout_failures, "tool")
+                                    raise Exception(error_msg) from None
                             else:
                                 consecutive_timeout_failures = 0  # Reset on non-timeout errors
                 else:
                     # No tool calls and not marked as final - unusual state
                     self.logger.warning("Response has no tool calls but is not marked as final")
+                    self._last_conversation = conversation  # Store for investigation_history
                     return self._build_final_result(response.content, all_thinking_content)
                     
             except asyncio.TimeoutError:
@@ -283,13 +338,20 @@ class NativeThinkingController(IterationController):
                 
                 # Check if we should stop
                 if consecutive_timeout_failures >= 2:
-                    raise Exception(f"Stopping after {consecutive_timeout_failures} consecutive iteration timeouts") from None
+                    error_msg = _create_consecutive_timeout_error(consecutive_timeout_failures, "iteration")
+                    raise Exception(error_msg) from None
                 
                 # Otherwise, append error and continue
                 conversation.append_observation(f"Error: {error_msg}")
                 
             except Exception as e:
                 import traceback
+                
+                # Check if this is already our consecutive timeout exception
+                # If so, re-raise it immediately without further processing to avoid double-counting
+                if _is_consecutive_timeout_error(e):
+                    raise
+                
                 error_msg = f"Native thinking iteration {iteration + 1} failed: {str(e)}"
                 self.logger.error(error_msg)
                 self.logger.error(f"Full traceback:\n{traceback.format_exc()}")
@@ -297,13 +359,15 @@ class NativeThinkingController(IterationController):
                 # Mark this interaction as failed
                 last_interaction_failed = True
                 
-                # Check if it's a timeout-related failure
-                error_str = str(e).lower()
-                if 'timeout' in error_str or 'timed out' in error_str:
+                # Check if it's a timeout-related failure using exception type only
+                is_timeout = isinstance(e, (TimeoutError, asyncio.TimeoutError))
+                
+                if is_timeout:
                     consecutive_timeout_failures += 1
-                    self.logger.warning(f"Exception contains timeout ({consecutive_timeout_failures} consecutive)")
+                    self.logger.warning(f"Exception is timeout type ({consecutive_timeout_failures} consecutive)")
                     if consecutive_timeout_failures >= 2:
-                        raise Exception(f"Stopping after {consecutive_timeout_failures} consecutive timeout failures") from e
+                        error_msg = _create_consecutive_timeout_error(consecutive_timeout_failures, "general")
+                        raise Exception(error_msg) from e
                 else:
                     consecutive_timeout_failures = 0  # Reset on non-timeout errors
                 

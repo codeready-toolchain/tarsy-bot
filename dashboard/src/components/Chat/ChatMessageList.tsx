@@ -219,8 +219,9 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
         console.log('💬 Chat response completed, hiding typing indicator');
         setIsTyping(false);
         
-        // Clear streaming items for this stage
-        setStreamingItems(new Map());
+        // DON'T clear streaming items here - let them remain until DB data replaces them
+        // The streaming items will naturally be filtered out when we fetch the updated data
+        // and the DB records appear. This prevents the "flash and disappear" bug.
         
         // Map event status to StageExecution status type using constants
         const stageStatus = mapEventStatusToStageStatus(event.status);
@@ -316,6 +317,10 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
                 stage_execution_id: event.stage_execution_id,
                 mcp_event_id: event.mcp_event_id,
                 llm_interaction_id: event.llm_interaction_id,
+                // Store parallel execution metadata from backend
+                parent_stage_execution_id: event.parent_stage_execution_id,
+                parallel_index: event.parallel_index,
+                agent_name: event.agent_name,
                 waitingForDb: true
               });
             }
@@ -327,6 +332,10 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
               stage_execution_id: event.stage_execution_id,
               mcp_event_id: event.mcp_event_id,
               llm_interaction_id: event.llm_interaction_id,
+              // Store parallel execution metadata from backend
+              parent_stage_execution_id: event.parent_stage_execution_id,
+              parallel_index: event.parallel_index,
+              agent_name: event.agent_name,
               waitingForDb: false
             });
           }
@@ -353,6 +362,76 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
 
     return () => unsubscribe();
   }, [sessionId, chatId, fetchMessages]);
+
+  // Clear streaming items when their corresponding DB records appear
+  // Uses TYPE-AWARE ID-based matching to avoid false deduplication
+  // This is the proper way to deduplicate - when new data arrives, not on stage.completed
+  useEffect(() => {
+    if (streamingItems.size === 0 || messages.length === 0) return;
+    
+    // Build sets of IDs from DB items (from LLM interactions in assistant messages)
+    // IMPORTANT: Separate tool_call and summarization mcp_event_ids!
+    // Both share the same mcp_event_id (tool call's communication_id), but they're different items.
+    const dbInteractionIds = new Set<string>();
+    const dbToolCallMcpIds = new Set<string>();      // mcp_event_ids from tool_call (MCP communications)
+    const dbSummarizationMcpIds = new Set<string>(); // mcp_event_ids from summarization (LLM interactions)
+    
+    for (const msg of messages) {
+      if (msg.type === 'assistant') {
+        // Extract IDs from llm_interactions
+        for (const interaction of (msg.llm_interactions || [])) {
+          if (interaction.id || interaction.event_id) {
+            dbInteractionIds.add(interaction.id || interaction.event_id);
+          }
+          // Summarization LLM interactions have mcp_event_id linking to the tool call
+          const mcpEventId = (interaction.details as any)?.mcp_event_id;
+          if (mcpEventId && (interaction.details as any)?.interaction_type === 'summarization') {
+            dbSummarizationMcpIds.add(mcpEventId);
+          }
+        }
+        // Extract IDs from mcp_communications (these are tool_calls)
+        for (const mcp of (msg.mcp_communications || [])) {
+          if (mcp.event_id || mcp.id) {
+            dbToolCallMcpIds.add(mcp.event_id || mcp.id);
+          }
+        }
+      }
+    }
+    
+    // Filter out streaming items that now exist in DB (matching by TYPE)
+    setStreamingItems(prev => {
+      const updated = new Map(prev);
+      let itemsCleared = 0;
+      
+      for (const [key, item] of prev.entries()) {
+        let shouldRemove = false;
+        
+        if (item.llm_interaction_id && dbInteractionIds.has(item.llm_interaction_id)) {
+          // LLM interactions (thought, final_answer, native_thinking)
+          shouldRemove = true;
+        } else if (item.type === 'tool_call' && item.mcp_event_id && dbToolCallMcpIds.has(item.mcp_event_id)) {
+          // Tool call streaming items - only deduplicate against tool_call DB items
+          shouldRemove = true;
+        } else if (item.type === 'summarization' && item.mcp_event_id && dbSummarizationMcpIds.has(item.mcp_event_id)) {
+          // Summarization streaming items - only deduplicate against summarization DB items
+          shouldRemove = true;
+        }
+        
+        if (shouldRemove) {
+          updated.delete(key);
+          itemsCleared++;
+          console.log(`🎯 [Chat] Cleared streaming item via ID match: ${item.type}`);
+        }
+      }
+      
+      if (itemsCleared > 0) {
+        console.log(`🧹 [Chat] Cleared ${itemsCleared} streaming items via ID-based matching`);
+        return updated;
+      }
+      
+      return prev; // Return same reference to avoid unnecessary re-renders
+    });
+  }, [messages]); // Only depend on messages - triggers when fetchMessages completes
 
   return (
     <Box 

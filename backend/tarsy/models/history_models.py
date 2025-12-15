@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 from pydantic import BaseModel, Field, computed_field, model_validator
 
 # Import existing enums and models
-from tarsy.models.constants import AlertSessionStatus, StageStatus
+from tarsy.models.constants import AlertSessionStatus, ParallelType, StageStatus
 from tarsy.models.mcp_selection_models import MCPSelectionConfig
 from tarsy.models.unified_interactions import LLMInteraction
 
@@ -219,6 +219,7 @@ class SessionOverview(BaseModel):
     completed_stages: Optional[int] = None
     failed_stages: int = 0
     current_stage_index: Optional[int] = None  # Matches AlertSession field type
+    has_parallel_stages: bool = False  # Indicates if session has any stages with parallel execution
     
     # MCP configuration override
     mcp_selection: Optional[MCPSelectionConfig] = None
@@ -257,6 +258,12 @@ class DetailedStage(BaseModel):
     chat_id: Optional[str] = None
     chat_user_message_id: Optional[str] = None
     chat_user_message: Optional[ChatUserMessageData] = None  # Full user message data (populated when chat_user_message_id exists)
+    
+    # Parallel execution tracking
+    parent_stage_execution_id: Optional[str] = None
+    parallel_index: int = 0
+    parallel_type: str = ParallelType.SINGLE.value
+    parallel_executions: Optional[List['DetailedStage']] = None  # Nested children for parallel stages
     
     # ALL interactions that happened during this stage (FULL objects with complete details)
     llm_interactions: List[LLMTimelineEvent] = Field(default_factory=list)  # Complete LLM interactions with full details
@@ -329,6 +336,42 @@ class DetailedStage(BaseModel):
         
         # Sort chronologically by timestamp_us
         return sorted(all_interactions, key=lambda x: x.timestamp_us)
+    
+    @computed_field
+    @property
+    def iteration_strategy(self) -> Optional[str]:
+        """
+        Extract iteration strategy from stage output.
+        
+        For all stages: Reads from stage_output.iteration_strategy
+        (This is set by AgentExecutionResult for both single and parallel child executions)
+        
+        Returns:
+            Iteration strategy string (e.g., 'react', 'native-thinking') or None if not available
+        """
+        if not self.stage_output:
+            return None
+        
+        # All execution types store this in their AgentExecutionResult or ParallelStageResult
+        return self.stage_output.get('iteration_strategy')
+    
+    @computed_field
+    @property
+    def llm_provider(self) -> Optional[str]:
+        """
+        Extract LLM provider from stage output.
+        
+        For all stages: Reads from stage_output.llm_provider
+        (This is set by AgentExecutionResult for both single and parallel child executions)
+        
+        Returns:
+            LLM provider name or None if not available
+        """
+        if not self.stage_output:
+            return None
+        
+        # All execution types store this in their AgentExecutionResult or ParallelStageResult
+        return self.stage_output.get('llm_provider')
 
 
 class DetailedSession(BaseModel):

@@ -392,7 +392,7 @@ class TestCombinedConfigModel:
                     "stages": [
                         {
                             "name": "analysis",
-                            "agent": "ConfigurableAgent:my-security-agent"
+                            "agent": "my-security-agent"
                         },
                         {
                             "name": "response",
@@ -400,7 +400,7 @@ class TestCombinedConfigModel:
                         },
                         {
                             "name": "final",
-                            "agent": "ConfigurableAgent:performance-agent"
+                            "agent": "performance-agent"
                         }
                     ]
                 }
@@ -436,7 +436,7 @@ class TestCombinedConfigModel:
                     "stages": [
                         {
                             "name": "analysis",
-                            "agent": "ConfigurableAgent:nonexistent-agent"
+                            "agent": "nonexistent-agent"
                         }
                     ]
                 }
@@ -449,10 +449,10 @@ class TestCombinedConfigModel:
         errors = exc_info.value.errors()
         assert len(errors) == 1
         error_msg = str(errors[0]["msg"])
-        assert "Chain 'test-chain' stage 'analysis' references missing configurable agent 'nonexistent-agent'" in error_msg
+        assert "Chain 'test-chain' stage 'analysis' references unknown agent 'nonexistent-agent'" in error_msg
 
-    def test_non_configurable_agent_references_ignored(self):
-        """Test that non-configurable agent references are ignored by validator."""
+    def test_builtin_agent_references_allowed(self):
+        """Test that builtin agent references are allowed by validation."""
         
         config_data = {
             "agents": {},
@@ -464,18 +464,18 @@ class TestCombinedConfigModel:
                     "stages": [
                         {
                             "name": "k8s-analysis",
-                            "agent": "KubernetesAgent"  # Non-configurable, should be ignored
+                            "agent": "KubernetesAgent"  # Builtin agent, should be allowed
                         },
                         {
-                            "name": "custom-analysis", 
-                            "agent": "SomeCustomAgent"  # Non-configurable, should be ignored
+                            "name": "chat-analysis", 
+                            "agent": "ChatAgent"  # Builtin agent, should be allowed
                         }
                     ]
                 }
             }
         }
         
-        # Should not raise any validation errors since these are not ConfigurableAgent references
+        # Should not raise any validation errors for builtin agents
         config = CombinedConfigModel(**config_data)
         assert len(config.agent_chains) == 1
         assert "builtin-chain" in config.agent_chains
@@ -498,7 +498,7 @@ class TestCombinedConfigModel:
                     "stages": [
                         {
                             "name": "stage1",
-                            "agent": "ConfigurableAgent:missing-agent-1"
+                            "agent": "missing-agent-1"
                         }
                     ]
                 },
@@ -508,11 +508,11 @@ class TestCombinedConfigModel:
                     "stages": [
                         {
                             "name": "stage2",
-                            "agent": "ConfigurableAgent:valid-agent"  # This one exists
+                            "agent": "valid-agent"  # This one exists
                         },
                         {
                             "name": "stage3",
-                            "agent": "ConfigurableAgent:missing-agent-2"  # This one doesn't
+                            "agent": "missing-agent-2"  # This one doesn't
                         }
                     ]
                 }
@@ -526,7 +526,7 @@ class TestCombinedConfigModel:
         assert len(errors) == 1  # Should fail fast on first missing agent
         error_msg = str(errors[0]["msg"])
         # Should reference the first missing agent found
-        assert "missing configurable agent" in error_msg
+        assert "unknown agent" in error_msg
         assert ("missing-agent-1" in error_msg or "missing-agent-2" in error_msg)
 
 
@@ -633,4 +633,313 @@ class TestSummarizationConfig:
         assert config.summarization is not None
         assert config.summarization.enabled is False
         assert config.summarization.size_threshold_tokens == 5000
-        assert config.summarization.summary_max_token_limit == 2000 
+        assert config.summarization.summary_max_token_limit == 2000
+
+
+@pytest.mark.unit
+class TestAgentIdentifierValidation:
+    """Test cases for agent identifier validation in chain configurations."""
+    
+    def test_valid_builtin_agent_in_stage(self):
+        """Test that builtin agents are accepted in stage configuration."""
+        config_data = {
+            "agents": {},
+            "mcp_servers": {},
+            "agent_chains": {
+                "test-chain": {
+                    "chain_id": "test-chain",
+                    "alert_types": ["test"],
+                    "stages": [
+                        {
+                            "name": "stage1",
+                            "agent": "KubernetesAgent"  # Builtin agent
+                        }
+                    ]
+                }
+            }
+        }
+        
+        config = CombinedConfigModel(**config_data)
+        assert config.agent_chains["test-chain"].stages[0].agent == "KubernetesAgent"
+    
+    def test_valid_configurable_agent_direct_reference(self):
+        """Test that configurable agents can be referenced directly by name."""
+        config_data = {
+            "agents": {
+                "custom-agent": {
+                    "mcp_servers": ["test-server"]
+                }
+            },
+            "mcp_servers": {},
+            "agent_chains": {
+                "test-chain": {
+                    "chain_id": "test-chain",
+                    "alert_types": ["test"],
+                    "stages": [
+                        {
+                            "name": "stage1",
+                            "agent": "custom-agent"  # Direct reference
+                        }
+                    ]
+                }
+            }
+        }
+        
+        config = CombinedConfigModel(**config_data)
+        assert config.agent_chains["test-chain"].stages[0].agent == "custom-agent"
+    
+    def test_invalid_builtin_agent_in_stage(self):
+        """Test that invalid builtin agent names are rejected."""
+        config_data = {
+            "agents": {},
+            "mcp_servers": {},
+            "agent_chains": {
+                "test-chain": {
+                    "chain_id": "test-chain",
+                    "alert_types": ["test"],
+                    "stages": [
+                        {
+                            "name": "stage1",
+                            "agent": "NonExistentAgent"  # Invalid agent
+                        }
+                    ]
+                }
+            }
+        }
+        
+        with pytest.raises(ValidationError) as exc_info:
+            CombinedConfigModel(**config_data)
+        
+        error_msg = str(exc_info.value)
+        assert "unknown agent 'NonExistentAgent'" in error_msg
+        assert "Available agents:" in error_msg
+    
+    def test_invalid_configurable_agent_direct_reference(self):
+        """Test that references to non-existent configurable agents are rejected."""
+        config_data = {
+            "agents": {},
+            "mcp_servers": {},
+            "agent_chains": {
+                "test-chain": {
+                    "chain_id": "test-chain",
+                    "alert_types": ["test"],
+                    "stages": [
+                        {
+                            "name": "stage1",
+                            "agent": "missing-agent"  # Direct reference to non-existent agent
+                        }
+                    ]
+                }
+            }
+        }
+        
+        with pytest.raises(ValidationError) as exc_info:
+            CombinedConfigModel(**config_data)
+        
+        error_msg = str(exc_info.value)
+        assert "unknown agent 'missing-agent'" in error_msg
+        assert "Available agents:" in error_msg
+    
+    def test_valid_chat_agent_builtin(self):
+        """Test that builtin chat agents are accepted."""
+        config_data = {
+            "agents": {},
+            "mcp_servers": {},
+            "agent_chains": {
+                "test-chain": {
+                    "chain_id": "test-chain",
+                    "alert_types": ["test"],
+                    "stages": [
+                        {
+                            "name": "stage1",
+                            "agent": "KubernetesAgent"
+                        }
+                    ],
+                    "chat": {
+                        "enabled": True,
+                        "agent": "ChatAgent"  # Builtin chat agent
+                    }
+                }
+            }
+        }
+        
+        config = CombinedConfigModel(**config_data)
+        assert config.agent_chains["test-chain"].chat.agent == "ChatAgent"
+    
+    def test_valid_chat_agent_configurable_direct(self):
+        """Test that configurable chat agents can be referenced directly."""
+        config_data = {
+            "agents": {
+                "custom-chat-agent": {
+                    "mcp_servers": ["test-server"]
+                }
+            },
+            "mcp_servers": {},
+            "agent_chains": {
+                "test-chain": {
+                    "chain_id": "test-chain",
+                    "alert_types": ["test"],
+                    "stages": [
+                        {
+                            "name": "stage1",
+                            "agent": "KubernetesAgent"
+                        }
+                    ],
+                    "chat": {
+                        "enabled": True,
+                        "agent": "custom-chat-agent"  # Direct reference
+                    }
+                }
+            }
+        }
+        
+        config = CombinedConfigModel(**config_data)
+        assert config.agent_chains["test-chain"].chat.agent == "custom-chat-agent"
+    
+    def test_invalid_chat_agent(self):
+        """Test that invalid chat agent references are rejected."""
+        config_data = {
+            "agents": {},
+            "mcp_servers": {},
+            "agent_chains": {
+                "test-chain": {
+                    "chain_id": "test-chain",
+                    "alert_types": ["test"],
+                    "stages": [
+                        {
+                            "name": "stage1",
+                            "agent": "KubernetesAgent"
+                        }
+                    ],
+                    "chat": {
+                        "enabled": True,
+                        "agent": "InvalidChatAgent"
+                    }
+                }
+            }
+        }
+        
+        with pytest.raises(ValidationError) as exc_info:
+            CombinedConfigModel(**config_data)
+        
+        error_msg = str(exc_info.value)
+        assert "unknown agent 'InvalidChatAgent'" in error_msg
+        assert "Chain 'test-chain' chat config" in error_msg
+    
+    def test_invalid_synthesis_agent(self):
+        """Test that invalid synthesis agent references are rejected."""
+        config_data = {
+            "agents": {},
+            "mcp_servers": {},
+            "agent_chains": {
+                "test-chain": {
+                    "chain_id": "test-chain",
+                    "alert_types": ["test"],
+                    "stages": [
+                        {
+                            "name": "parallel-stage",
+                            "agents": [
+                                {"name": "KubernetesAgent"},
+                                {"name": "ChatAgent"}
+                            ],
+                            "synthesis": {
+                                "agent": "InvalidSynthesisAgent"
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+        
+        with pytest.raises(ValidationError) as exc_info:
+            CombinedConfigModel(**config_data)
+        
+        error_msg = str(exc_info.value)
+        assert "unknown agent 'InvalidSynthesisAgent'" in error_msg
+        assert "synthesis" in error_msg
+    
+    def test_valid_synthesis_agent(self):
+        """Test that valid synthesis agent references are accepted."""
+        config_data = {
+            "agents": {},
+            "mcp_servers": {},
+            "agent_chains": {
+                "test-chain": {
+                    "chain_id": "test-chain",
+                    "alert_types": ["test"],
+                    "stages": [
+                        {
+                            "name": "parallel-stage",
+                            "agents": [
+                                {"name": "KubernetesAgent"},
+                                {"name": "ChatAgent"}
+                            ],
+                            "synthesis": {
+                                "agent": "SynthesisAgent"  # Builtin synthesis agent
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+        
+        config = CombinedConfigModel(**config_data)
+        assert config.agent_chains["test-chain"].stages[0].synthesis.agent == "SynthesisAgent"
+    
+    def test_parallel_agents_validation_invalid(self):
+        """Test that invalid parallel agents are rejected."""
+        config_data = {
+            "agents": {},
+            "mcp_servers": {},
+            "agent_chains": {
+                "test-chain": {
+                    "chain_id": "test-chain",
+                    "alert_types": ["test"],
+                    "stages": [
+                        {
+                            "name": "parallel-stage",
+                            "agents": [
+                                {"name": "KubernetesAgent"},  # Valid
+                                {"name": "InvalidAgent"}  # Invalid
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+        
+        with pytest.raises(ValidationError) as exc_info:
+            CombinedConfigModel(**config_data)
+        
+        error_msg = str(exc_info.value)
+        assert "unknown agent 'InvalidAgent'" in error_msg
+        assert "parallel agent" in error_msg
+    
+    def test_configured_agent_priority_over_builtin(self):
+        """Test that configured agents take priority over builtin agents with same name."""
+        config_data = {
+            "agents": {
+                "KubernetesAgent": {  # Override builtin with same name
+                    "mcp_servers": ["custom-server"],
+                    "custom_instructions": "Custom instructions"
+                }
+            },
+            "mcp_servers": {},
+            "agent_chains": {
+                "test-chain": {
+                    "chain_id": "test-chain",
+                    "alert_types": ["test"],
+                    "stages": [
+                        {
+                            "name": "stage1",
+                            "agent": "KubernetesAgent"  # Should resolve to configured, not builtin
+                        }
+                    ]
+                }
+            }
+        }
+        
+        # Should validate successfully - configured agent takes priority
+        config = CombinedConfigModel(**config_data)
+        assert "KubernetesAgent" in config.agents
+        assert config.agent_chains["test-chain"].stages[0].agent == "KubernetesAgent" 

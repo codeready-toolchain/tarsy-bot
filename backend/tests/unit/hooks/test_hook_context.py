@@ -14,10 +14,12 @@ from tarsy.hooks.hook_context import (
     BaseHook,
     HookManager,
     InteractionHookContext,
+    StageExecutionHookContext,
     _apply_llm_interaction_truncation,
     get_hook_manager,
     llm_interaction_context,
     mcp_interaction_context,
+    stage_execution_context,
 )
 from tarsy.models.constants import MAX_LLM_MESSAGE_CONTENT_SIZE
 from tarsy.models.db_models import StageExecution
@@ -489,6 +491,133 @@ class TestInteractionHookContextCompletion:
 
 
 @pytest.mark.unit
+class TestStageExecutionHookContext:
+    """Test StageExecutionHookContext functionality."""
+    
+    @pytest.fixture
+    def mock_hook_manager(self):
+        """Create a mock hook manager."""
+        mock_manager = Mock()
+        mock_manager.trigger_stage_hooks = AsyncMock()
+        return mock_manager
+    
+    @pytest.fixture
+    def stage_execution(self):
+        """Create a test stage execution."""
+        return StageExecution(
+            execution_id="test-stage-id",
+            session_id="test-session",
+            stage_id="test-stage",
+            stage_index=1,
+            stage_name="Test Stage",
+            agent="test_agent",
+            status="pending"
+        )
+    
+    @pytest.mark.asyncio
+    async def test_init_stores_allow_exceptions_flag(self, stage_execution, mock_hook_manager):
+        """Test that allow_exceptions flag is stored during initialization."""
+        ctx_true = StageExecutionHookContext(stage_execution, mock_hook_manager, allow_exceptions=True)
+        ctx_false = StageExecutionHookContext(stage_execution, mock_hook_manager, allow_exceptions=False)
+        
+        assert ctx_true.allow_exceptions is True
+        assert ctx_false.allow_exceptions is False
+    
+    @pytest.mark.asyncio
+    async def test_init_defaults_allow_exceptions_true(self, stage_execution, mock_hook_manager):
+        """Test that allow_exceptions defaults to True for critical stage operations."""
+        ctx = StageExecutionHookContext(stage_execution, mock_hook_manager)
+        
+        assert ctx.allow_exceptions is True
+    
+    @pytest.mark.asyncio
+    async def test_aexit_propagates_hook_exception_when_allow_exceptions_true(
+        self, stage_execution, mock_hook_manager
+    ):
+        """Test that hook exceptions propagate when allow_exceptions is True."""
+        mock_hook_manager.trigger_stage_hooks = AsyncMock(
+            side_effect=ValueError("Critical hook error")
+        )
+        
+        ctx = StageExecutionHookContext(stage_execution, mock_hook_manager, allow_exceptions=True)
+        
+        with pytest.raises(ValueError, match="Critical hook error"):
+            async with ctx:
+                pass  # Normal exit triggers hooks in __aexit__
+    
+    @pytest.mark.asyncio
+    async def test_aexit_suppresses_hook_exception_when_allow_exceptions_false(
+        self, stage_execution, mock_hook_manager
+    ):
+        """Test that hook exceptions are suppressed when allow_exceptions is False."""
+        mock_hook_manager.trigger_stage_hooks = AsyncMock(
+            side_effect=ValueError("Non-critical hook error")
+        )
+        
+        ctx = StageExecutionHookContext(stage_execution, mock_hook_manager, allow_exceptions=False)
+        
+        # Should not raise - exception is caught and logged
+        async with ctx:
+            pass
+        
+        # Hook was still called
+        mock_hook_manager.trigger_stage_hooks.assert_called_once_with(stage_execution)
+    
+    @pytest.mark.asyncio
+    async def test_aexit_does_not_suppress_body_exceptions(
+        self, stage_execution, mock_hook_manager
+    ):
+        """Test that exceptions from context body are never suppressed."""
+        ctx = StageExecutionHookContext(stage_execution, mock_hook_manager, allow_exceptions=False)
+        
+        with pytest.raises(RuntimeError, match="Body exception"):
+            async with ctx:
+                raise RuntimeError("Body exception")
+    
+    @pytest.mark.asyncio
+    async def test_context_manager_triggers_hooks_on_normal_exit(
+        self, stage_execution, mock_hook_manager
+    ):
+        """Test that hooks are triggered on normal context exit."""
+        async with StageExecutionHookContext(stage_execution, mock_hook_manager):
+            pass
+        
+        mock_hook_manager.trigger_stage_hooks.assert_called_once_with(stage_execution)
+
+
+@pytest.mark.unit
+class TestStageExecutionContextFactory:
+    """Test stage_execution_context factory function."""
+    
+    @pytest.fixture
+    def stage_execution(self):
+        """Create a test stage execution."""
+        return StageExecution(
+            execution_id="test-stage-id",
+            session_id="test-session",
+            stage_id="test-stage",
+            stage_index=1,
+            stage_name="Test Stage",
+            agent="test_agent",
+            status="pending"
+        )
+    
+    @pytest.mark.asyncio
+    async def test_defaults_to_allow_exceptions_true(self, stage_execution):
+        """Test that factory defaults to allow_exceptions=True."""
+        async with stage_execution_context(stage_execution) as ctx:
+            assert ctx.allow_exceptions is True
+    
+    @pytest.mark.asyncio
+    async def test_passes_allow_exceptions_false(self, stage_execution):
+        """Test that factory passes allow_exceptions=False correctly."""
+        async with stage_execution_context(
+            stage_execution, allow_exceptions=False
+        ) as ctx:
+            assert ctx.allow_exceptions is False
+
+
+@pytest.mark.unit
 class TestLLMInteractionTruncation:
     """Test the _apply_llm_interaction_truncation utility function."""
     
@@ -567,7 +696,7 @@ class TestLLMInteractionTruncation:
         assert result.conversation is small_conversation
         
         # Verify no messages were modified
-        for original_msg, result_msg in zip(small_conversation.messages, result.conversation.messages):
+        for original_msg, result_msg in zip(small_conversation.messages, result.conversation.messages, strict=True):
             assert original_msg.content == result_msg.content
     
     def test_large_user_message_gets_truncated(self, large_user_message_conversation):
@@ -662,7 +791,7 @@ class TestLLMInteractionTruncation:
         assert len(result.conversation.messages) == len(large_user_message_conversation.messages)
         
         # Check message roles are preserved
-        for original_msg, truncated_msg in zip(large_user_message_conversation.messages, result.conversation.messages):
+        for original_msg, truncated_msg in zip(large_user_message_conversation.messages, result.conversation.messages, strict=True):
             assert original_msg.role == truncated_msg.role
     
     def test_truncation_metadata_format(self, large_user_message_conversation):

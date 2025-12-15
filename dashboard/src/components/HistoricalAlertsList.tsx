@@ -13,8 +13,9 @@ import {
   Box,
   Button,
   TableSortLabel,
+  Tooltip,
 } from '@mui/material';
-import { Refresh, SearchOff } from '@mui/icons-material';
+import { Refresh, SearchOff, CallSplit, Chat as ChatIcon } from '@mui/icons-material';
 import AlertListItem from './AlertListItem';
 import PaginationControls from './PaginationControls';
 import { hasActiveFilters } from '../utils/search';
@@ -71,7 +72,6 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
 
   // Phase 6: Sortable columns configuration
   const sortableColumns = [
-    { field: 'status', label: 'Status' },
     { field: 'alert_type', label: 'Type' },
     { field: 'agent_type', label: 'Agent Chain' },
     { field: 'author', label: 'Submitted by' },
@@ -80,6 +80,10 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
     // Note: session_total_tokens sorting not implemented in backend (requires complex aggregation)
     // Column is still displayed but not sortable
   ];
+
+  // Calculate total column count dynamically:
+  // 1 (Status) + 1 (Parallel Agents icon) + sortableColumns.length + 1 (Tokens) + 1 (Follow-up Chats icon) + 1 (Actions)
+  const totalColumns = 1 + 1 + sortableColumns.length + 1 + 1 + 1;
 
   return (
     <Paper sx={{ p: 3 }}>
@@ -136,6 +140,35 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
             <Table>
               <TableHead>
                 <TableRow>
+                  {/* Status column - sortable */}
+                  <TableCell sx={{ fontWeight: 600 }}>
+                    {onSortChange ? (
+                      <TableSortLabel
+                        active={sortState?.field === 'status'}
+                        direction={sortState?.field === 'status' ? sortState.direction : 'asc'}
+                        onClick={() => handleSortClick('status')}
+                      >
+                        Status
+                      </TableSortLabel>
+                    ) : (
+                      'Status'
+                    )}
+                  </TableCell>
+                  {/* Parallel agents indicator column - icon header */}
+                  <TableCell sx={{ width: 40, px: 0.5, textAlign: 'center' }}>
+                    <Tooltip title="Parallel Agents" arrow>
+                      <CallSplit 
+                        sx={{ 
+                          fontSize: '1.1rem', 
+                          color: 'secondary.main',
+                          verticalAlign: 'middle',
+                          cursor: 'help'
+                        }} 
+                        aria-label="Parallel Agents"
+                      />
+                    </Tooltip>
+                  </TableCell>
+                  {/* Other sortable columns */}
                   {sortableColumns.map((column) => (
                     <TableCell key={column.field} sx={{ fontWeight: 600 }}>
                       {onSortChange ? (
@@ -152,14 +185,26 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
                     </TableCell>
                   ))}
                   <TableCell sx={{ fontWeight: 600 }}>Tokens</TableCell>
-                  <TableCell sx={{ fontWeight: 600, width: 60, textAlign: 'center' }}>Chats</TableCell>
+                  <TableCell sx={{ width: 40, px: 0.5, textAlign: 'center' }}>
+                    <Tooltip title="Follow-up Chats" arrow>
+                      <ChatIcon 
+                        sx={{ 
+                          fontSize: '1.1rem', 
+                          color: 'primary.main',
+                          verticalAlign: 'middle',
+                          cursor: 'help'
+                        }} 
+                        aria-label="Follow-up Chats"
+                      />
+                    </Tooltip>
+                  </TableCell>
                   <TableCell sx={{ fontWeight: 600, width: 60, textAlign: 'center' }}></TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {sessions.length === 0 ? (
                   <TableRow key="empty-state">
-                    <TableCell colSpan={9} align="center">
+                    <TableCell colSpan={totalColumns} align="center">
                       <Box sx={{ py: 6, textAlign: 'center' }}>
                         {/* Phase 4: Different empty states for filtered vs unfiltered */}
                         {filters && hasActiveFilters(filters) ? (

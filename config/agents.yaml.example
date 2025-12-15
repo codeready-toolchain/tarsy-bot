@@ -472,6 +472,73 @@ agent_chains:
         iteration_strategy: "react-final-analysis"
     description: "2-stage investigation using Gemini native thinking for deep analysis"
 
+  # Parallel multi-agent investigation with synthesis
+  # Demonstrates parallel execution with configurable synthesis
+  parallel-investigation-with-synthesis:
+    alert_types: ["ComplexSystemFailure", "MultiDomainIncident"]
+    stages:
+      - name: "parallel-investigation"
+        agents:
+          - name: "KubernetesAgent"
+            llm_provider: "google-default"
+            iteration_strategy: "react"
+          - name: "database-agent"
+            llm_provider: "anthropic-default"
+            iteration_strategy: "react"
+        # Optional synthesis configuration
+        synthesis:
+          agent: "SynthesisAgent"                # Optional, defaults to SynthesisAgent
+          iteration_strategy: "synthesis"        # or "synthesis-native-thinking"
+          llm_provider: "anthropic-default"      # Optional, uses stage/chain default if not set
+    description: "Multi-agent parallel investigation with configurable synthesis"
+
+  # Replica execution with native thinking synthesis
+  # Demonstrates replica redundancy with Gemini synthesis
+  replica-with-native-synthesis:
+    alert_types: ["HighConfidenceRequired"]
+    llm_provider: "google-default"  # Chain-level default
+    stages:
+      - name: "replicated-analysis"
+        agent: "KubernetesAgent"
+        replicas: 3
+        synthesis:
+          iteration_strategy: "synthesis-native-thinking"  # Use Gemini native thinking for synthesis
+          # agent and llm_provider inherit defaults
+    description: "Replicated analysis with Gemini native thinking synthesis"
+
+  # Chat configuration examples
+  # Demonstrates different chat configuration patterns
+  custom-chat-config-chain:
+    alert_types: ["CustomChatExample"]
+    llm_provider: "anthropic-default"  # Chain default
+    chat:
+      enabled: true                         # Optional, defaults to true
+      agent: "ChatAgent"                    # Optional, defaults to ChatAgent
+      iteration_strategy: "native-thinking" # Optional, determined from last stage if not set
+      llm_provider: "google-default"        # Optional, uses chain/system default if not set
+    stages:
+      - name: "investigation"
+        agent: "KubernetesAgent"
+    description: "Chain with custom chat configuration (agent, strategy, provider)"
+
+  chat-disabled-chain:
+    alert_types: ["NoChatExample"]
+    chat:
+      enabled: false  # Explicitly disable chat for this chain
+    stages:
+      - name: "investigation"
+        agent: "database-agent"
+    description: "Chain with chat explicitly disabled"
+
+  default-chat-chain:
+    alert_types: ["DefaultChatExample"]
+    # chat field not specified = enabled with all defaults
+    # (ChatAgent, strategy determined from last stage, chain/system LLM provider)
+    stages:
+      - name: "investigation"
+        agent: "KubernetesAgent"
+    description: "Chain with default chat configuration (enabled, all defaults)"
+
 # =============================================================================
 # CONFIGURATION VALIDATION NOTES
 # =============================================================================

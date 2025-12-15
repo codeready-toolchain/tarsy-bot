@@ -8,10 +8,83 @@ to reduce duplication and improve maintainability.
 import asyncio
 import re
 import time
+from contextlib import contextmanager
 from typing import Any, Callable, Dict, List, Optional, Tuple
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 from mcp.types import Tool
+
+
+def assert_conversation_messages(
+    expected_conversation: dict, actual_messages: list, n: int
+):
+    """
+    Get the first N messages from expected_conversation['messages'] and compare with actual_messages.
+
+    Args:
+        expected_conversation: Dictionary with 'messages' key containing expected message list
+        actual_messages: List of actual messages from the LLM interaction
+        n: Number of messages to compare (a count)
+    """
+    expected_messages = expected_conversation.get("messages", [])
+    
+    # Ensure we have enough expected messages to compare
+    assert (
+        len(expected_messages) >= n
+    ), f"Expected messages count insufficient: need at least {n} messages, got {len(expected_messages)}"
+    
+    assert (
+        len(actual_messages) == n
+    ), f"Actual messages count mismatch: expected {n}, got {len(actual_messages)}"
+
+    # Extract first N messages
+    first_n_expected = expected_messages[:n]
+
+    # Compare each message
+    for i in range(len(first_n_expected)):
+        assert (
+            i < len(actual_messages)
+        ), f"Missing actual message: Expected {len(first_n_expected)} messages, got {len(actual_messages)}"
+
+        expected_msg = first_n_expected[i]
+        actual_msg = actual_messages[i]
+
+        # Compare role
+        expected_role = expected_msg.get("role", "")
+        actual_role = actual_msg.get("role", "")
+        assert (
+            expected_role == actual_role
+        ), f"Role mismatch: expected {expected_role}, got {actual_role}"
+
+        # Normalize content for comparison
+        expected_content = E2ETestUtils.normalize_content(expected_msg.get("content", ""))
+        actual_content = E2ETestUtils.normalize_content(actual_msg.get("content", ""))
+        
+        if expected_content != actual_content:
+            # Show difference for debugging
+            print(f"\n❌ Content mismatch in message {i}:")
+            print(f"  Expected length: {len(expected_content)}")
+            print(f"  Actual length: {len(actual_content)}")
+            
+            # Find where they differ
+            for idx, (e_char, a_char) in enumerate(zip(expected_content, actual_content)):
+                if e_char != a_char:
+                    print(f"  First difference at position {idx}:")
+                    print(f"    Expected: ...{expected_content[max(0,idx-50):idx+50]}...")
+                    print(f"    Actual:   ...{actual_content[max(0,idx-50):idx+50]}...")
+                    break
+            else:
+                # One is longer than the other
+                min_len = min(len(expected_content), len(actual_content))
+                print(f"  Strings match until position {min_len}, then one continues:")
+                if len(expected_content) > len(actual_content):
+                    print(f"    Expected has extra: {expected_content[min_len:]}")
+                else:
+                    print(f"    Actual has extra: {actual_content[min_len:]}")
+        
+        assert (
+            expected_content == actual_content
+        ), f"Content mismatch in message {i}: expected length {len(expected_content)}, got {len(actual_content)}"
 
 
 class E2ETestUtils:
@@ -47,6 +120,9 @@ class E2ETestUtils:
         content = re.sub(
             r"test-kubernetes_[a-f0-9]+_\d+", "test-kubernetes_{DATA_KEY}", content
         )
+        
+        # Strip leading/trailing whitespace for consistent comparison
+        content = content.strip()
         
         return content
 
@@ -384,6 +460,128 @@ class E2ETestUtils:
         raise AssertionError(f"Failed to get session details after {max_retries} attempts")
 
     @staticmethod
+    async def wait_for_parallel_execution_statuses(
+        e2e_test_client,
+        session_id: str,
+        stage_name: str,
+        expected_statuses: dict[str, str],
+        max_wait_seconds: float = 10.0,
+        poll_interval: float = 0.1
+    ) -> dict[str, Any]:
+        """
+        Wait for parallel execution statuses to match expected values.
+        
+        This helps avoid race conditions where session status updates before
+        child parallel execution statuses are committed to the database.
+        
+        Args:
+            e2e_test_client: Test client for making API calls
+            session_id: The session ID to check
+            stage_name: Name of the parallel stage to check
+            expected_statuses: Dict mapping agent names to expected statuses (e.g., {"LogAgent": "completed"})
+            max_wait_seconds: Maximum time to wait for statuses to match
+            poll_interval: Time between polling attempts
+            
+        Returns:
+            stage_data: The stage data once statuses match
+            
+        Raises:
+            AssertionError: If statuses don't match within timeout
+        """
+        import asyncio
+        start_time = asyncio.get_event_loop().time()
+        attempt = 0
+        
+        while True:
+            attempt += 1
+            elapsed = asyncio.get_event_loop().time() - start_time
+            
+            # Get current session details
+            detail_data = await E2ETestUtils.get_session_details_async(e2e_test_client, session_id)
+            stages = detail_data.get("stages", [])
+            
+            # Find the target stage
+            target_stage = next((s for s in stages if s["stage_name"] == stage_name), None)
+            if target_stage is None:
+                if elapsed >= max_wait_seconds:
+                    raise AssertionError(f"Stage '{stage_name}' not found after {max_wait_seconds}s")
+                await asyncio.sleep(poll_interval)
+                continue
+            
+            # Check parallel executions
+            parallel_executions = target_stage.get("parallel_executions", [])
+            if not parallel_executions:
+                if elapsed >= max_wait_seconds:
+                    raise AssertionError(f"No parallel executions found for stage '{stage_name}' after {max_wait_seconds}s")
+                await asyncio.sleep(poll_interval)
+                continue
+            
+            # First check if all expected agents are present
+            all_agents_present = True
+            current_statuses = {}
+            for agent_name, expected_status in expected_statuses.items():
+                agent_exec = next((e for e in parallel_executions if e.get("agent") == agent_name), None)
+                if agent_exec is None:
+                    all_agents_present = False
+                    current_statuses[agent_name] = "NOT_FOUND"
+                else:
+                    current_statuses[agent_name] = agent_exec.get("status")
+            
+            # If not all agents present yet, wait and retry (unless timeout)
+            if not all_agents_present:
+                if elapsed >= max_wait_seconds:
+                    raise AssertionError(
+                        f"Not all expected agents found after {max_wait_seconds}s:\n"
+                        f"Expected agents: {list(expected_statuses.keys())}\n"
+                        f"Current statuses: {current_statuses}"
+                    )
+                await asyncio.sleep(poll_interval)
+                continue
+            
+            # Check if all statuses match
+            all_match = True
+            for agent_name, expected_status in expected_statuses.items():
+                actual_status = current_statuses[agent_name]
+                if actual_status != expected_status:
+                    all_match = False
+                    break
+            
+            if all_match:
+                print(f"✅ Parallel execution statuses verified after {elapsed:.2f}s (attempt {attempt})")
+                return target_stage
+            
+            # Log mismatches every 10 attempts to help diagnose issues
+            if attempt % 10 == 0:
+                print(f"🔄 Still waiting for status match (attempt {attempt}, {elapsed:.2f}s): Expected {expected_statuses}, Got {current_statuses}")
+            
+            # Check timeout
+            if elapsed >= max_wait_seconds:
+                # Get fresh data for better error message
+                final_detail = await E2ETestUtils.get_session_details_async(e2e_test_client, session_id)
+                final_stages = final_detail.get("stages", [])
+                final_stage = next((s for s in final_stages if s["stage_name"] == stage_name), None)
+                
+                error_msg = (
+                    f"Parallel execution statuses did not match after {max_wait_seconds}s:\n"
+                    f"Expected: {expected_statuses}\n"
+                    f"Got: {current_statuses}\n"
+                    f"Session status: {final_detail.get('status')}\n"
+                    f"Stage status: {final_stage.get('status') if final_stage else 'NOT_FOUND'}"
+                )
+                
+                # Include LLM interaction counts for debugging
+                if final_stage and final_stage.get("parallel_executions"):
+                    error_msg += "\nParallel execution details:"
+                    for exec in final_stage["parallel_executions"]:
+                        llm_count = len(exec.get("llm_interactions", []))
+                        error_msg += f"\n  - {exec.get('agent')}: status={exec.get('status')}, llm_interactions={llm_count}"
+                
+                raise AssertionError(error_msg)
+            
+            # Wait before next poll
+            await asyncio.sleep(poll_interval)
+
+    @staticmethod
     def get_session_details(e2e_test_client, session_id: str, max_retries: int = 1, retry_delay: float = 0.5) -> Dict[str, Any]:
         """
         Get session details with optional retry logic for robustness (sync version).
@@ -423,3 +621,213 @@ class E2ETestUtils:
 
         # This should never be reached due to the loop logic, but just in case
         raise AssertionError(f"Failed to get session details after {max_retries} attempts")
+
+    @staticmethod
+    def create_agent_aware_streaming_mock(agent_counters: dict, agent_responses: dict, agent_identifiers: dict):
+        """
+        Create an agent-aware streaming mock for LangChain LLM clients.
+        
+        This factory creates a mock that identifies which agent is calling based on system message content
+        and returns appropriate responses from the agent_responses dictionary.
+        
+        Args:
+            agent_counters: Dict tracking interaction count per agent (will be mutated)
+            agent_responses: Dict mapping agent names to lists of response data
+            agent_identifiers: Dict mapping agent names to identifier strings in system messages
+                              e.g., {"LogAgent": "log analysis specialist"}
+        
+        Returns:
+            Mock astream function that can be used to patch LangChain clients
+            
+        Example:
+            agent_counters = {"LogAgent": 0, "SynthesisAgent": 0}
+            agent_responses = {
+                "LogAgent": [
+                    {"response_content": "...", "input_tokens": 200, "output_tokens": 75, "total_tokens": 275}
+                ]
+            }
+            agent_identifiers = {"LogAgent": "log analysis specialist"}
+            
+            streaming_mock = E2ETestUtils.create_agent_aware_streaming_mock(
+                agent_counters, agent_responses, agent_identifiers
+            )
+        """
+        from .conftest import create_mock_stream
+        
+        def create_streaming_mock():
+            """Create a mock astream function that identifies the agent and returns appropriate responses."""
+            async def mock_astream(*args, **kwargs):
+                # Identify which agent is calling by inspecting the conversation
+                agent_name = "Unknown"
+                
+                # Extract messages from args
+                # When patching instance methods, args[0] is 'self', args[1] is the messages
+                messages = []
+                if args and len(args) > 1:
+                    messages = args[1] if isinstance(args[1], list) else []
+                elif args and len(args) > 0 and isinstance(args[0], list):
+                    # Fallback: if args[0] is a list, use it (shouldn't happen with patch.object)
+                    messages = args[0]
+                
+                # Look for agent-specific instructions in the system message
+                for msg in messages:
+                    # Handle both dict and Message object formats
+                    content = ""
+                    msg_type = ""
+                    
+                    if isinstance(msg, dict):
+                        content = msg.get("content", "")
+                        msg_type = msg.get("role", "") or msg.get("type", "")
+                    elif hasattr(msg, "content"):
+                        content = msg.content if isinstance(msg.content, str) else str(msg.content)
+                        msg_type = getattr(msg, "type", "") or msg.__class__.__name__.lower().replace("message", "")
+                    
+                    # Check if this is a system message  
+                    if msg_type in ["system", "systemmessage"]:
+                        # Check all agent identifiers
+                        for agent, identifier in agent_identifiers.items():
+                            if identifier.lower() in content.lower():
+                                agent_name = agent
+                                break
+                        if agent_name != "Unknown":
+                            break
+                
+                # Get the next response for this agent
+                if agent_name in agent_counters:
+                    agent_interaction_num = agent_counters[agent_name]
+                    agent_counters[agent_name] += 1
+                
+                    print(f"\n🔍 LLM REQUEST from {agent_name} (interaction #{agent_interaction_num + 1})")
+                
+                    # Get response for this agent's interaction
+                    agent_response_list = agent_responses.get(agent_name, [])
+                    if agent_interaction_num < len(agent_response_list):
+                        response_data = agent_response_list[agent_interaction_num]
+                    else:
+                        response_data = {
+                            "response_content": f"Default response for {agent_name}",
+                            "input_tokens": 100,
+                            "output_tokens": 50,
+                            "total_tokens": 150
+                        }
+                else:
+                    response_data = {
+                        "response_content": "Default response",
+                        "input_tokens": 100,
+                        "output_tokens": 50,
+                        "total_tokens": 150
+                    }
+                
+                content = response_data["response_content"]
+                usage_metadata = {
+                    "input_tokens": response_data["input_tokens"],
+                    "output_tokens": response_data["output_tokens"],
+                    "total_tokens": response_data["total_tokens"]
+                }
+                
+                # Yield chunks from the mock stream - must be an async generator
+                async for chunk in create_mock_stream(content, usage_metadata):
+                    yield chunk
+            
+            return mock_astream
+        
+        return create_streaming_mock()
+
+    @staticmethod
+    async def run_with_timeout(coro, timeout_seconds: float = 120.0, test_name: str = "Test"):
+        """
+        Run a coroutine with timeout and proper cleanup.
+        
+        This utility wraps async test execution with a timeout mechanism,
+        ensuring proper task cancellation if the timeout is exceeded.
+        
+        Args:
+            coro: Coroutine to execute
+            timeout_seconds: Maximum time to wait in seconds (default: 120.0)
+            test_name: Name of the test for error messages (default: "Test")
+            
+        Returns:
+            The result of the coroutine execution
+            
+        Raises:
+            AssertionError: If the coroutine exceeds the timeout
+            Exception: Any exception raised by the coroutine
+            
+        Example:
+            async def run_test():
+                # Test logic here
+                return result
+            
+            result = await E2ETestUtils.run_with_timeout(
+                run_test(),
+                timeout_seconds=120.0,
+                test_name="LangChain failure test"
+            )
+        """
+        try:
+            task = asyncio.create_task(coro)
+            _, pending = await asyncio.wait({task}, timeout=timeout_seconds)
+            
+            if pending:
+                for t in pending:
+                    t.cancel()
+                print(f"❌ TIMEOUT: {test_name} exceeded {timeout_seconds} seconds!")
+                raise AssertionError(f"{test_name} exceeded timeout of {timeout_seconds} seconds")
+            else:
+                return task.result()
+        except Exception as e:
+            print(f"❌ {test_name} failed with exception: {e}")
+            raise
+
+    @staticmethod
+    @contextmanager
+    def create_llm_patch_context(gemini_mock_factory=None, streaming_mock=None):
+        """
+        Create a context manager that patches LLM clients.
+        
+        This is a static version of the method from ParallelTestBase, making it
+        available to all E2E tests without needing to inherit from a base class.
+        
+        Args:
+            gemini_mock_factory: Optional factory for Gemini SDK mocking (native thinking)
+            streaming_mock: Optional mock for LangChain streaming (ReAct)
+            
+        Yields:
+            None (patches are active within the context)
+            
+        Example:
+            with E2ETestUtils.create_llm_patch_context(gemini_mock, streaming_mock):
+                # Test code here with patched LLM clients
+        """
+        from langchain_anthropic import ChatAnthropic
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        from langchain_openai import ChatOpenAI
+        from langchain_xai import ChatXAI
+        
+        patches = []
+        
+        # Patch Gemini SDK if provided
+        if gemini_mock_factory:
+            patches.append(
+                patch("tarsy.integrations.llm.gemini_client.genai.Client", gemini_mock_factory)
+            )
+        
+        # Patch LangChain clients if streaming mock provided
+        if streaming_mock:
+            patches.extend([
+                patch.object(ChatOpenAI, 'astream', streaming_mock),
+                patch.object(ChatAnthropic, 'astream', streaming_mock),
+                patch.object(ChatXAI, 'astream', streaming_mock),
+                patch.object(ChatGoogleGenerativeAI, 'astream', streaming_mock)
+            ])
+        
+        # Apply all patches
+        started_patches = []
+        try:
+            for p in patches:
+                started_patches.append(p.start())
+            yield
+        finally:
+            # Stop all patches
+            for p in patches:
+                p.stop()

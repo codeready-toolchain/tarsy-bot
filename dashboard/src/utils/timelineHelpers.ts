@@ -1,6 +1,7 @@
-import type { TimelineItem, LLMInteraction, MCPInteraction, StageExecution } from '../types';
+import type { TimelineItem, MCPInteraction, StageExecution } from '../types';
 import { formatTimestamp, formatDurationMs } from './timestamp';
 import { getMessages } from './conversationParser';
+import { isLLMInteraction, isMCPInteraction } from './typeGuards';
 
 /**
  * Shared helper functions for timeline components
@@ -53,20 +54,19 @@ export const formatInteractionForCopy = (interaction: TimelineItem): string => {
   content += `Time: ${timestamp}\n`;
   
   if (interaction.details) {
-    if (interaction.type === 'llm') {
-      const llmDetails = interaction.details as LLMInteraction;
-      content += `Model: ${llmDetails.model_name || 'N/A'}\n`;
+    if (interaction.type === 'llm' && isLLMInteraction(interaction.details)) {
+      content += `Model: ${interaction.details.model_name || 'N/A'}\n`;
       
       // Show interaction type if it's a summarization
-      const interactionType = llmDetails.interaction_type || 'investigation';
+      const interactionType = interaction.details.interaction_type || 'investigation';
       if (interactionType === 'summarization') {
-        content += `Interaction Type: Summarization${llmDetails.mcp_event_id ? ` (MCP Event: ${llmDetails.mcp_event_id})` : ''}\n`;
+        content += `Interaction Type: Summarization${interaction.details.mcp_event_id ? ` (MCP Event: ${interaction.details.mcp_event_id})` : ''}\n`;
       } else if (interactionType === 'final_analysis') {
         content += `Interaction Type: Final Analysis\n`;
       }
       
       // EP-0014: Use getMessages helper to extract conversation messages properly
-      const messages = getMessages(llmDetails);
+      const messages = getMessages(interaction.details);
       
       if (messages.length > 0) {
         content += `\n--- CONVERSATION ---\n`;
@@ -82,47 +82,46 @@ export const formatInteractionForCopy = (interaction: TimelineItem): string => {
       }
       
       // Show error if failed
-      if (llmDetails.success === false) {
-        content += `ERROR: ${llmDetails.error_message || 'LLM request failed - no response received'}\n`;
+      if (interaction.details.success === false) {
+        content += `ERROR: ${interaction.details.error_message || 'LLM request failed - no response received'}\n`;
       }
       
-      if (llmDetails.total_tokens) {
-        content += `Tokens Used: ${llmDetails.total_tokens}\n`;
+      if (interaction.details.total_tokens) {
+        content += `Tokens Used: ${interaction.details.total_tokens}\n`;
       }
-      if (llmDetails.temperature !== undefined) {
-        content += `Temperature: ${llmDetails.temperature}\n`;
+      if (interaction.details.temperature !== undefined) {
+        content += `Temperature: ${interaction.details.temperature}\n`;
       }
-    } else if (interaction.type === 'mcp') {
-      const mcpDetails = interaction.details as MCPInteraction;
-      content += `Server: ${mcpDetails.server_name || 'N/A'}\n`;
-      content += `Communication Type: ${mcpDetails.communication_type || 'N/A'}\n`;
-      content += `Success: ${mcpDetails.success}\n`;
+    } else if (interaction.type === 'mcp' && isMCPInteraction(interaction.details)) {
+      content += `Server: ${interaction.details.server_name || 'N/A'}\n`;
+      content += `Communication Type: ${interaction.details.communication_type || 'N/A'}\n`;
+      content += `Success: ${interaction.details.success}\n`;
       
-      if (isToolList(mcpDetails)) {
+      if (isToolList(interaction.details)) {
         // For tool list operations, show available tools instead of parameters/result
         content += `Tool: list_tools\n`;
-        if (mcpDetails.available_tools) {
+        if (interaction.details.available_tools) {
           content += `\n--- AVAILABLE TOOLS ---\n`;
-          content += `${JSON.stringify(mcpDetails.available_tools, null, 2)}\n`;
+          content += `${JSON.stringify(interaction.details.available_tools, null, 2)}\n`;
         } else {
           content += `Available Tools: None listed\n`;
         }
       } else {
         // For regular tool calls, show tool name, parameters, and result
-        content += `Tool: ${mcpDetails.tool_name || 'N/A'}\n`;
+        content += `Tool: ${interaction.details.tool_name || 'N/A'}\n`;
         
-        if (mcpDetails.tool_arguments && Object.keys(mcpDetails.tool_arguments).length > 0) {
+        if (interaction.details.tool_arguments && Object.keys(interaction.details.tool_arguments).length > 0) {
           content += `\n--- PARAMETERS ---\n`;
-          content += `${JSON.stringify(mcpDetails.tool_arguments, null, 2)}\n`;
+          content += `${JSON.stringify(interaction.details.tool_arguments, null, 2)}\n`;
         } else {
           content += `Parameters: None\n`;
         }
         
-        if (mcpDetails.tool_result && Object.keys(mcpDetails.tool_result).length > 0) {
+        if (interaction.details.tool_result && Object.keys(interaction.details.tool_result).length > 0) {
           content += `\n--- RESULT ---\n`;
-          content += `${JSON.stringify(mcpDetails.tool_result, null, 2)}\n`;
+          content += `${JSON.stringify(interaction.details.tool_result, null, 2)}\n`;
         } else {
-          content += `Result: ${mcpDetails.success ? 'Success (no data)' : 'Failed'}\n`;
+          content += `Result: ${interaction.details.success ? 'Success (no data)' : 'Failed'}\n`;
         }
       }
     }

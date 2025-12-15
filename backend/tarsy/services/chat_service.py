@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
     from tarsy.agents.prompts.builders import ChatExchange
+    from tarsy.models.db_models import AlertSession
 
 from tarsy.config.settings import get_settings
 from tarsy.hooks.hook_context import stage_execution_context
@@ -80,7 +81,7 @@ class ChatService:
         Steps:
         1. Validate session exists and is in terminal state (completed, failed, or cancelled)
         2. Check if chat already exists
-        3. Validate chain has chat_enabled=true
+        3. Validate chain has chat.enabled=true
         4. Capture session context (using _capture_session_context)
         5. Determine MCP servers (chain config + session custom)
         6. Create Chat record with initial_context
@@ -95,8 +96,8 @@ class ChatService:
         Raises:
             ValueError: If session not found, not in terminal state, or chat disabled
         """
-        # Get session and validate
-        session = self.history_service.get_session(session_id)
+        # Get session and validate (wrap synchronous call in to_thread to avoid blocking)
+        session = await asyncio.to_thread(self.history_service.get_session, session_id)
         if not session:
             raise ValueError(f"Session {session_id} not found")
         
@@ -119,10 +120,10 @@ class ChatService:
         
         # Validate chain has chat enabled
         chain_config = session.chain_config
-        if chain_config and not chain_config.chat_enabled:
+        if chain_config and chain_config.chat and not chain_config.chat.enabled:
             raise ValueError(
                 f"Chat is disabled for chain '{chain_config.chain_id}'. "
-                f"Set chat_enabled=true in agents.yaml to enable chat for this chain."
+                f"Set chat.enabled=true in agents.yaml to enable chat for this chain."
             )
         
         # Capture session context from LLM interactions (returns typed dataclass)
@@ -309,7 +310,22 @@ class ChatService:
             # 3. Build context (initial context OR cumulative from last execution)
             message_context = await self._build_message_context(chat, user_question)
             
-            # 4. Create stage execution for this response
+            # 4. Determine iteration strategy, LLM provider, and chat agent from parent session's chain config
+            session = await asyncio.to_thread(self.history_service.get_session, chat.session_id)
+            if not session:
+                logger.warning(
+                    f"Session {chat.session_id} not found when processing chat message. "
+                    f"Using default iteration strategy, LLM provider, and ChatAgent for chat {chat_id}."
+                )
+                iteration_strategy = None
+                llm_provider = None
+                chat_agent_name = "ChatAgent"
+            else:
+                iteration_strategy = self._determine_iteration_strategy_from_session(session)
+                llm_provider = self._determine_llm_provider_from_session(session)
+                chat_agent_name = self._determine_chat_agent_from_session(session)
+            
+            # 5. Create stage execution for this response
             # Uses stage execution context manager (like AlertService)
             # Use the provided execution_id for consistent tracking
             stage_execution = StageExecution(
@@ -318,19 +334,19 @@ class ChatService:
                 stage_id=f"chat-response-{message_id}",
                 stage_index=0,  # Chat messages don't have meaningful stage index
                 stage_name="Chat Response",
-                agent="ChatAgent",
+                agent=chat_agent_name,
                 status=StageStatus.PENDING.value,
                 chat_id=chat_id,
                 chat_user_message_id=message_id
             )
             
             # Trigger stage execution hooks (creates DB record, publishes events)
-            async with stage_execution_context(chat.session_id, stage_execution):
+            async with stage_execution_context(stage_execution):
                 pass
             
             logger.info(f"Created chat message execution {execution_id} for chat {chat_id}")
             
-            # 5. Track pod ownership for graceful shutdown (mirrors AlertService)
+            # 6. Track pod ownership for graceful shutdown (mirrors AlertService)
             from tarsy.main import get_pod_id
             pod_id = get_pod_id()
             
@@ -345,7 +361,7 @@ class ChatService:
             
             logger.debug(f"Chat message {execution_id} being processed by pod {pod_id}")
             
-            # 6. Record interaction timestamps for orphan detection
+            # 7. Record interaction timestamps for orphan detection
             # Both session (parent) and chat need their timestamps updated
             if self.history_service:
                 # Update parent session timestamp
@@ -371,28 +387,23 @@ class ChatService:
             )
             logger.debug(f"Started interaction recording task for chat {chat_id}")
             
-            # 7. Update stage execution to started
+            # 8. Update stage execution to started
             await self._update_stage_execution_started(execution_id)
             
-            # 8. Get MCP selection from chat
+            # 9. Get MCP selection from chat
             mcp_selection = (
                 MCPSelectionConfig(**chat.mcp_selection) 
                 if chat.mcp_selection 
                 else None
             )
             
-            # 9. Determine iteration strategy and LLM provider from parent session's chain config
-            session = self.history_service.get_session(chat.session_id)
-            iteration_strategy = self._determine_iteration_strategy_from_session(session) if session else None
-            llm_provider = self._determine_llm_provider_from_session(session) if session else None
-            
             # 10. Create session-scoped MCP client for this chat execution
             logger.info(f"Creating MCP client for chat message {execution_id}")
             chat_mcp_client = await self.mcp_client_factory.create_client()
             
-            # 11. Create ChatAgent with iteration strategy and LLM provider from parent session
+            # 11. Create chat agent with iteration strategy and LLM provider from parent session
             chat_agent = self.agent_factory.get_agent(
-                agent_identifier="ChatAgent",
+                agent_identifier=chat_agent_name,
                 mcp_client=chat_mcp_client,
                 iteration_strategy=iteration_strategy,
                 llm_provider=llm_provider
@@ -557,8 +568,13 @@ class ChatService:
             llm_interactions
         )
         
-        # Get session for metadata
-        session = self.history_service.get_session(session_id)
+        # Get session for metadata (wrap synchronous call in to_thread to avoid blocking)
+        session = await asyncio.to_thread(self.history_service.get_session, session_id)
+        if not session:
+            raise ValueError(
+                f"Session {session_id} not found when capturing context. "
+                "Cannot create chat without valid session metadata."
+            )
         
         # Return typed dataclass
         return SessionContextData(
@@ -567,9 +583,45 @@ class ChatService:
             captured_at_us=now_us()
         )
     
+    def _collect_agent_mcp_servers(self, agent_name: str) -> List[str]:
+        """
+        Collect MCP server names for a given agent.
+        
+        Checks both configured agents (from YAML) and builtin agents.
+        
+        Args:
+            agent_name: Agent identifier (e.g., 'KubernetesAgent', 'ArgoCDAgent')
+            
+        Returns:
+            List of MCP server names (may be empty)
+        """
+        servers = []
+        
+        # Try configured agents first, then builtin agents
+        if self.agent_factory.agent_configs and agent_name in self.agent_factory.agent_configs:
+            agent_config = self.agent_factory.agent_configs[agent_name]
+            servers = agent_config.mcp_servers
+            logger.debug(f"Got MCP servers from configured agent {agent_name}: {servers}")
+        else:
+            # Builtin agent - get MCP servers by calling the classmethod
+            try:
+                # Get the agent class from the factory's registry
+                agent_class = self.agent_factory.static_agent_classes.get(agent_name)
+                if agent_class:
+                    # Call mcp_servers() as a classmethod (no instantiation needed)
+                    if hasattr(agent_class, 'mcp_servers'):
+                        mcp_server_list = agent_class.mcp_servers()
+                        if mcp_server_list:  # Guard against None
+                            servers = mcp_server_list
+                            logger.debug(f"Got MCP servers from builtin agent {agent_name}: {servers}")
+            except Exception as e:
+                logger.warning(f"Failed to get MCP servers from builtin agent '{agent_name}': {e}")
+        
+        return servers
+    
     def _determine_mcp_selection_from_session(
         self,
-        session
+        session: 'AlertSession'
     ) -> Optional[MCPSelectionConfig]:
         """
         Capture the MCP configuration that was actually used during the session.
@@ -587,6 +639,11 @@ class ChatService:
            → Extract default servers from chain_definition.stages
            → Look up each agent's default mcp_servers from configuration
            → Build MCPSelectionConfig from those defaults (no tool filtering)
+        
+        This method correctly handles:
+        - Sequential stages (stage.agent)
+        - Parallel stages (stage.agents)
+        - Synthesis agents (stage.synthesis.agent)
         
         Args:
             session: AlertSession object
@@ -610,29 +667,24 @@ class ChatService:
         server_names = set()
         
         for stage in chain_config.stages:
-            agent_name = stage.agent
-            if not agent_name:
-                continue
+            # Handle sequential stages (single agent)
+            if stage.agent:
+                agent_name = stage.agent
+                servers = self._collect_agent_mcp_servers(agent_name)
+                server_names.update(servers)
             
-            # Look up agent's default MCP servers from configuration
-            # Try configured agents first, then builtin agents
-            if self.agent_factory.agent_configs and agent_name in self.agent_factory.agent_configs:
-                agent_config = self.agent_factory.agent_configs[agent_name]
-                server_names.update(agent_config.mcp_servers)
-            else:
-                # Builtin agent - get MCP servers by calling the classmethod
-                try:
-                    # Get the agent class from the factory's registry
-                    agent_class = self.agent_factory.static_agent_classes.get(agent_name)
-                    if agent_class:
-                        # Call mcp_servers() as a classmethod (no instantiation needed)
-                        if hasattr(agent_class, 'mcp_servers'):
-                            mcp_server_list = agent_class.mcp_servers()
-                            if mcp_server_list:  # Guard against None
-                                server_names.update(mcp_server_list)
-                                logger.debug(f"Got MCP servers from builtin agent {agent_name}: {mcp_server_list}")
-                except Exception as e:
-                    logger.warning(f"Failed to get MCP servers from builtin agent '{agent_name}': {e}")
+            # Handle parallel stages (multiple agents)
+            elif stage.agents:
+                for parallel_agent_config in stage.agents:
+                    agent_name = parallel_agent_config.name
+                    servers = self._collect_agent_mcp_servers(agent_name)
+                    server_names.update(servers)
+            
+            # Handle synthesis agent (if configured)
+            if stage.synthesis and stage.synthesis.agent:
+                agent_name = stage.synthesis.agent
+                servers = self._collect_agent_mcp_servers(agent_name)
+                server_names.update(servers)
         
         if not server_names:
             logger.warning(f"No MCP servers found in chain definition for session {session.session_id}")
@@ -650,19 +702,25 @@ class ChatService:
     
     def _determine_iteration_strategy_from_session(
         self,
-        session
+        session: 'AlertSession'
     ) -> Optional[str]:
         """
         Determine the iteration strategy to use for chat based on the session's chain config.
         
-        Uses the last stage's iteration strategy from the chain configuration,
-        ensuring chat uses the same strategy as the final investigation stage.
+        Uses explicit chat config first, then falls back to the last stage's iteration strategy
+        from the chain configuration.
         
         Strategy resolution:
-        1. Get the last stage from the chain configuration
-        2. If stage has explicit iteration_strategy, use that
-        3. Otherwise, look up the agent's default strategy from configuration
-        4. Fall back to None (ChatAgent will use its default - REACT)
+        1. Explicit chat config iteration_strategy (highest priority)
+        2. Get the last stage from the chain configuration
+        3. If stage has explicit iteration_strategy, use that
+        4. Otherwise, look up the agent's default strategy from configuration
+        5. Translate synthesis strategies to chat-appropriate equivalents
+        6. Fall back to None (ChatAgent will use its default - REACT)
+        
+        Synthesis strategy translation:
+        - "synthesis" → "react" (generic synthesis uses ReAct-style chat)
+        - "synthesis-native-thinking" → "native-thinking" (Gemini synthesis uses Gemini chat)
         
         Args:
             session: AlertSession object with chain_config
@@ -671,54 +729,90 @@ class ChatService:
             Iteration strategy string (e.g., "react", "native-thinking") or None
         """
         chain_config = session.chain_config
-        if not chain_config or not chain_config.stages:
-            logger.debug(f"No chain config or stages for session {session.session_id}, using default strategy")
+        if not chain_config:
+            logger.debug(f"No chain config for session {session.session_id}, using default strategy")
+            return None
+        
+        # Priority 1: Explicit chat config
+        if chain_config.chat and chain_config.chat.iteration_strategy:
+            strategy = chain_config.chat.iteration_strategy.value
+            logger.info(f"Chat using explicit chat config strategy: {strategy}")
+            return strategy
+        
+        # Priority 2: Determine from last stage
+        if not chain_config.stages:
+            logger.debug(f"No stages in chain config for session {session.session_id}, using default strategy")
             return None
         
         # Use the last stage's strategy (most relevant for chat follow-up)
         last_stage = chain_config.stages[-1]
         
+        strategy = None
+        
         # Check if stage has explicit strategy override
         if last_stage.iteration_strategy:
-            logger.info(f"Chat using explicit stage strategy: {last_stage.iteration_strategy}")
-            return last_stage.iteration_strategy
+            # Normalize to string (supports both IterationStrategy enum and raw string)
+            strategy = getattr(last_stage.iteration_strategy, "value", last_stage.iteration_strategy)
+            logger.info(f"Chat using explicit stage strategy: {strategy}")
+        else:
+            # Otherwise, look up agent's default strategy or synthesis strategy
+            agent_name = last_stage.agent
+            
+            # Check for synthesis configuration if no single agent
+            if not agent_name and last_stage.synthesis:
+                strategy = last_stage.synthesis.iteration_strategy.value
+                logger.info(f"Chat using synthesis strategy: {strategy}")
+            elif not agent_name:
+                return None
+            else:
+                # Try configured agents first
+                if self.agent_factory.agent_configs and agent_name in self.agent_factory.agent_configs:
+                    agent_config = self.agent_factory.agent_configs[agent_name]
+                    if agent_config.iteration_strategy:
+                        strategy = agent_config.iteration_strategy.value
+                        logger.info(f"Chat using configured agent '{agent_name}' default strategy: {strategy}")
+                
+                # Try builtin agents if not found
+                if not strategy:
+                    from tarsy.config.builtin_config import get_builtin_agent_config
+                    try:
+                        builtin_config = get_builtin_agent_config(agent_name)
+                        strategy = builtin_config.get("iteration_strategy")
+                        if strategy:
+                            logger.info(f"Chat using builtin agent '{agent_name}' default strategy: {strategy}")
+                    except ValueError:
+                        pass  # Not a builtin agent
         
-        # Otherwise, look up agent's default strategy
-        agent_name = last_stage.agent
-        if not agent_name:
-            return None
+        # Translate synthesis strategies to chat-appropriate equivalents
+        from tarsy.models.constants import IterationStrategy
         
-        # Try configured agents first
-        if self.agent_factory.agent_configs and agent_name in self.agent_factory.agent_configs:
-            agent_config = self.agent_factory.agent_configs[agent_name]
-            strategy = agent_config.iteration_strategy
-            if strategy:
-                logger.info(f"Chat using configured agent '{agent_name}' default strategy: {strategy.value}")
-                return strategy.value
+        if strategy == IterationStrategy.SYNTHESIS.value:
+            logger.info("Translating synthesis strategy to react for chat")
+            return IterationStrategy.REACT.value
+        elif strategy == IterationStrategy.SYNTHESIS_NATIVE_THINKING.value:
+            logger.info("Translating synthesis-native-thinking strategy to native-thinking for chat")
+            return IterationStrategy.NATIVE_THINKING.value
         
-        # Try builtin agents
-        from tarsy.config.builtin_config import get_builtin_agent_config
-        try:
-            builtin_config = get_builtin_agent_config(agent_name)
-            strategy = builtin_config.get("iteration_strategy")
-            if strategy:
-                logger.info(f"Chat using builtin agent '{agent_name}' default strategy: {strategy}")
-                return strategy
-        except ValueError:
-            pass  # Not a builtin agent
+        if not strategy:
+            logger.debug(f"No strategy found for agent '{last_stage.agent}', using ChatAgent default")
         
-        logger.debug(f"No strategy found for agent '{agent_name}', using ChatAgent default")
-        return None
+        return strategy
     
     def _determine_llm_provider_from_session(
         self,
-        session
+        session: 'AlertSession'
     ) -> Optional[str]:
         """
         Determine the LLM provider to use for chat based on the session's chain config.
         
-        Uses the chain-level provider from the chain configuration. If no chain-level
-        provider is defined, returns None to use the global default.
+        Uses explicit chat config first, then falls back to synthesis provider (if last stage
+        has synthesis), then chain-level provider.
+        
+        Priority:
+        1. Explicit chat config llm_provider (highest priority)
+        2. Last stage synthesis llm_provider (if synthesis exists)
+        3. Chain-level provider
+        4. Global default (None)
         
         Args:
             session: AlertSession object with chain_config
@@ -731,13 +825,48 @@ class ChatService:
             logger.debug(f"No chain config for session {session.session_id}, using default LLM provider")
             return None
         
-        # Use chain-level provider for chat (consistent with executive summary)
+        # Priority 1: Explicit chat config
+        if chain_config.chat and chain_config.chat.llm_provider:
+            logger.info(f"Chat using explicit chat config LLM provider: {chain_config.chat.llm_provider}")
+            return chain_config.chat.llm_provider
+        
+        # Priority 2: Last stage synthesis provider (if applicable)
+        if chain_config.stages:
+            last_stage = chain_config.stages[-1]
+            if last_stage.synthesis and last_stage.synthesis.llm_provider:
+                logger.info(f"Chat using synthesis LLM provider: {last_stage.synthesis.llm_provider}")
+                return last_stage.synthesis.llm_provider
+        
+        # Priority 3: Chain-level provider
         if chain_config.llm_provider:
             logger.info(f"Chat using chain-level LLM provider: {chain_config.llm_provider}")
             return chain_config.llm_provider
         
-        logger.debug(f"No chain-level LLM provider for session {session.session_id}, using global default")
+        logger.debug(f"No LLM provider configured for session {session.session_id}, using global default")
         return None
+    
+    def _determine_chat_agent_from_session(
+        self,
+        session: 'AlertSession'
+    ) -> str:
+        """
+        Determine which agent to use for chat based on the session's chain config.
+        
+        Uses explicit chat config agent if provided, otherwise defaults to ChatAgent.
+        
+        Args:
+            session: AlertSession object with chain_config
+            
+        Returns:
+            Agent identifier string (defaults to "ChatAgent")
+        """
+        chain_config = session.chain_config
+        if chain_config and chain_config.chat and chain_config.chat.agent:
+            logger.info(f"Chat using configured agent: {chain_config.chat.agent}")
+            return chain_config.chat.agent
+        
+        # Default to ChatAgent
+        return "ChatAgent"
     
     async def _build_chat_exchanges(
         self,
@@ -877,33 +1006,52 @@ class ChatService:
         """
         Update stage execution as started.
         
-        Similar to AlertService._update_stage_execution_started()
+        Similar to StageExecutionManager.update_stage_execution_started()
         
         Args:
             stage_execution_id: Stage execution identifier
-        """
-        try:
-            if not self.history_service:
-                return
             
+        Raises:
+            RuntimeError: If stage execution cannot be updated to started status
+        """
+        if not self.history_service:
+            raise RuntimeError(
+                f"Cannot update stage execution {stage_execution_id} as started: History service is disabled. "
+                "All chat processing must be done with proper stage tracking."
+            )
+        
+        try:
             # Get existing stage execution record
             existing_stage = await self.history_service.get_stage_execution(stage_execution_id)
             if not existing_stage:
-                logger.warning(f"Stage execution {stage_execution_id} not found for update")
-                return
+                raise RuntimeError(
+                    f"Stage execution {stage_execution_id} not found in database for start update. "
+                    "This indicates a critical bug in stage lifecycle management."
+                )
             
-            # Update to active status and set start time
+            # Capture previous status before mutating for proper start time handling
+            previous_status = existing_stage.status
+            
+            # Update to active status
             existing_stage.status = StageStatus.ACTIVE.value
-            existing_stage.started_at_us = now_us()
+            
+            # Set started_at_us ONLY for new starts (PENDING→ACTIVE or no start time yet)
+            # For potential future PAUSED→ACTIVE (resumed), preserve original start time for accurate duration tracking
+            if previous_status == StageStatus.PENDING.value or existing_stage.started_at_us is None:
+                existing_stage.started_at_us = now_us()
             
             # Trigger stage execution hooks (updates DB + broadcasts to dashboard)
-            async with stage_execution_context(existing_stage.session_id, existing_stage):
+            async with stage_execution_context(existing_stage):
                 pass
             
             logger.debug(f"Chat execution {stage_execution_id} marked as started")
             
         except Exception as e:
-            logger.warning(f"Failed to update stage execution as started: {str(e)}")
+            logger.error(f"Failed to update stage execution as started: {str(e)}")
+            raise RuntimeError(
+                f"Cannot update stage execution {stage_execution_id} to started status. "
+                f"Database persistence is required for stage tracking. Error: {str(e)}"
+            ) from e
     
     async def _update_stage_execution_completed(
         self, 
@@ -913,21 +1061,29 @@ class ChatService:
         """
         Update stage execution as completed.
         
-        Similar to AlertService._update_stage_execution_completed()
+        Similar to StageExecutionManager.update_stage_execution_completed()
         
         Args:
             stage_execution_id: Stage execution identifier
             result: Agent execution result
-        """
-        try:
-            if not self.history_service:
-                return
             
+        Raises:
+            RuntimeError: If stage execution cannot be updated to completed status
+        """
+        if not self.history_service:
+            raise RuntimeError(
+                f"Cannot update stage execution {stage_execution_id} as completed: History service is disabled. "
+                "All chat processing must be done with proper stage tracking."
+            )
+        
+        try:
             # Get existing stage execution record
             existing_stage = await self.history_service.get_stage_execution(stage_execution_id)
             if not existing_stage:
-                logger.warning(f"Stage execution {stage_execution_id} not found for update")
-                return
+                raise RuntimeError(
+                    f"Stage execution {stage_execution_id} not found in database for completion update. "
+                    "This indicates a critical bug in stage lifecycle management."
+                )
             
             # Update completion fields
             existing_stage.status = result.status.value
@@ -942,33 +1098,45 @@ class ChatService:
                 )
             
             # Trigger stage execution hooks (updates DB + broadcasts to dashboard)
-            async with stage_execution_context(existing_stage.session_id, existing_stage):
+            async with stage_execution_context(existing_stage):
                 pass
             
             logger.debug(f"Chat execution {stage_execution_id} marked as completed")
             
         except Exception as e:
-            logger.warning(f"Failed to update stage execution as completed: {str(e)}")
+            logger.error(f"Failed to update stage execution as completed: {str(e)}")
+            raise RuntimeError(
+                f"Cannot update stage execution {stage_execution_id} to completed status. "
+                f"Database persistence is required for audit trail. Error: {str(e)}"
+            ) from e
     
     async def _update_stage_execution_failed(self, stage_execution_id: str, error_message: str):
         """
         Update stage execution as failed.
         
-        Similar to AlertService._update_stage_execution_failed()
+        Similar to StageExecutionManager.update_stage_execution_failed()
         
         Args:
             stage_execution_id: Stage execution identifier
             error_message: Error description
-        """
-        try:
-            if not self.history_service:
-                return
             
+        Raises:
+            RuntimeError: If stage execution cannot be updated to failed status
+        """
+        if not self.history_service:
+            raise RuntimeError(
+                f"Cannot update stage execution {stage_execution_id} as failed: History service is disabled. "
+                "All chat processing must be done with proper stage tracking."
+            )
+        
+        try:
             # Get existing stage execution record
             existing_stage = await self.history_service.get_stage_execution(stage_execution_id)
             if not existing_stage:
-                logger.warning(f"Stage execution {stage_execution_id} not found for update")
-                return
+                raise RuntimeError(
+                    f"Stage execution {stage_execution_id} not found in database for failure update. "
+                    "This indicates a critical bug in stage lifecycle management."
+                )
             
             # Update failure fields
             existing_stage.status = StageStatus.FAILED.value
@@ -983,13 +1151,17 @@ class ChatService:
                 )
             
             # Trigger stage execution hooks (updates DB + broadcasts to dashboard)
-            async with stage_execution_context(existing_stage.session_id, existing_stage):
+            async with stage_execution_context(existing_stage):
                 pass
             
             logger.debug(f"Chat execution {stage_execution_id} marked as failed")
             
         except Exception as e:
-            logger.warning(f"Failed to update stage execution as failed: {str(e)}")
+            logger.error(f"Failed to update stage execution as failed: {str(e)}")
+            raise RuntimeError(
+                f"Cannot update stage execution {stage_execution_id} to failed status. "
+                f"Database persistence is required for audit trail. Error: {str(e)}"
+            ) from e
 
 
 # ===== Service Factory for Dependency Injection =====

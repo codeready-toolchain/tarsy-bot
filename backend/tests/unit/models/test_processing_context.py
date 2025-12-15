@@ -269,19 +269,21 @@ class TestChainContext:
         completed_result = AgentExecutionResult(
             status=StageStatus.COMPLETED,
             agent_name="CompletedAgent",
+            stage_name="completed_stage",
             timestamp_us=1234567890,
             result_summary="Completed stage result"
         )
-        context.add_stage_result("completed_stage", completed_result)
+        context.add_stage_result("completed_stage_exec_id", completed_result)
         
         # Add running stage (should be excluded)
         running_result = AgentExecutionResult(
             status=StageStatus.ACTIVE,
             agent_name="RunningAgent",
+            stage_name="running_stage",
             timestamp_us=1234567891,
             result_summary="Running stage result"
         )
-        context.add_stage_result("running_stage", running_result)
+        context.add_stage_result("running_stage_exec_id", running_result)
         
         results = context.get_previous_stages_results()
         
@@ -312,25 +314,28 @@ class TestChainContext:
         result1 = AgentExecutionResult(
             status=StageStatus.COMPLETED,
             agent_name="Agent1",
+            stage_name="stage1",
             timestamp_us=1234567890,
             result_summary="First stage completed"
         )
         result2 = AgentExecutionResult(
             status=StageStatus.COMPLETED,
             agent_name="Agent2",
+            stage_name="stage2",
             timestamp_us=1234567891,
             result_summary="Second stage completed"
         )
         result3 = AgentExecutionResult(
             status=StageStatus.COMPLETED,
             agent_name="Agent3",
+            stage_name="stage3",
             timestamp_us=1234567892,
             result_summary="Third stage completed"
         )
         
-        context.add_stage_result("stage1", result1)
-        context.add_stage_result("stage2", result2)
-        context.add_stage_result("stage3", result3)
+        context.add_stage_result("stage1_exec_id", result1)
+        context.add_stage_result("stage2_exec_id", result2)
+        context.add_stage_result("stage3_exec_id", result3)
         
         results = context.get_previous_stages_results()
         
@@ -515,6 +520,7 @@ class TestStageContext:
         result1 = AgentExecutionResult(
             status=StageStatus.COMPLETED,
             agent_name="DataAgent",
+            stage_name="collection",
             stage_description="Data Collection",
             timestamp_us=1234567890,
             result_summary="Collected system metrics and logs."
@@ -523,13 +529,14 @@ class TestStageContext:
         result2 = AgentExecutionResult(
             status=StageStatus.COMPLETED,
             agent_name="AnalysisAgent",
+            stage_name="initial_analysis",
             stage_description="Initial Analysis",
             timestamp_us=1234567891,
             result_summary="Identified potential CPU bottleneck."
         )
         
-        chain_context.add_stage_result("collection", result1)
-        chain_context.add_stage_result("initial_analysis", result2)
+        chain_context.add_stage_result("collection_exec_id", result1)
+        chain_context.add_stage_result("initial_analysis_exec_id", result2)
         
         available_tools = self.create_test_available_tools()
         agent = self.create_mock_agent()
@@ -561,12 +568,13 @@ class TestStageContext:
         result = AgentExecutionResult(
             status=StageStatus.COMPLETED,
             agent_name="UnnamedAgent",
+            stage_name="unnamed_stage",
             stage_description=None,  # Missing description
             timestamp_us=1234567890,
             result_summary="Stage completed successfully."
         )
         
-        chain_context.add_stage_result("unnamed_stage", result)
+        chain_context.add_stage_result("unnamed_stage_exec_id", result)
         
         available_tools = self.create_test_available_tools()
         agent = self.create_mock_agent()

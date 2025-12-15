@@ -155,12 +155,32 @@ class HookManager:
         return await self._trigger_hooks(self.mcp_list_hooks, interaction, "MCP_LIST")
 
     async def trigger_stage_hooks(self, stage_execution: StageExecution) -> Dict[str, bool]:
-        """Trigger all stage execution hooks with typed data."""
-        return await self._trigger_hooks(self.stage_hooks, stage_execution, "STAGE_EXECUTION")
+        """
+        Trigger all stage execution hooks with typed data.
+        
+        Unlike other hooks, stage execution hooks use stricter error handling because
+        stage creation/updates are critical operations that must succeed.
+        """
+        return await self._trigger_hooks(
+            self.stage_hooks, 
+            stage_execution, 
+            "STAGE_EXECUTION",
+            allow_exceptions=True  # Let exceptions propagate for critical stage operations
+        )
 
     async def _trigger_hooks(self, hooks: Dict[str, BaseHook[TInteraction]], 
-                           interaction: TInteraction, hook_type: str) -> Dict[str, bool]:
-        """Generic hook triggering with type safety."""
+                           interaction: TInteraction, hook_type: str,
+                           allow_exceptions: bool = False) -> Dict[str, bool]:
+        """
+        Generic hook triggering with type safety.
+        
+        Args:
+            hooks: Dictionary of hooks to execute
+            interaction: Interaction data to pass to hooks
+            hook_type: Type of hook for logging
+            allow_exceptions: If True, let exceptions propagate instead of catching them.
+                            Use for critical operations like stage execution creation.
+        """
         if not hooks:
             return {}
         
@@ -173,24 +193,38 @@ class HookManager:
         
         for hook_name, hook in hooks.items():
             if hook.is_enabled:
-                tasks.append(hook.safe_execute(interaction))
+                # For critical hooks, call execute() directly to propagate exceptions
+                # For non-critical hooks, use safe_execute() to catch and log errors
+                if allow_exceptions:
+                    tasks.append(hook.execute(interaction))
+                else:
+                    tasks.append(hook.safe_execute(interaction))
                 hook_names.append(hook_name)
         
         if tasks:
             try:
-                hook_results = await asyncio.gather(*tasks, return_exceptions=True)
-                
-                for hook_name, result in zip(hook_names, hook_results, strict=False):
-                    if isinstance(result, Exception):
-                        logger.error(f"Typed {hook_type} hook '{hook_name}' raised exception: {result}")
-                        results[hook_name] = False
-                    else:
-                        results[hook_name] = result
+                # For critical hooks, don't catch exceptions - let them propagate
+                if allow_exceptions:
+                    await asyncio.gather(*tasks)
+                    # All hooks succeeded if we reach here (exceptions would have propagated)
+                    for hook_name in hook_names:
+                        results[hook_name] = True
+                else:
+                    # For non-critical hooks, catch exceptions and log them
+                    hook_results = await asyncio.gather(*tasks, return_exceptions=True)
+                    
+                    for hook_name, result in zip(hook_names, hook_results, strict=False):
+                        if isinstance(result, Exception):
+                            logger.error(f"Typed {hook_type} hook '{hook_name}' raised exception: {result}")
+                            results[hook_name] = False
+                        else:
+                            results[hook_name] = result
                 
             except Exception as e:
-                logger.error(f"Unexpected error executing typed {hook_type} hooks: {e}")
-                for hook_name in hook_names:
-                    results[hook_name] = False
+                # Only reached for critical hooks with allow_exceptions=True
+                logger.error(f"CRITICAL: {hook_type} hook failed: {e}", exc_info=True)
+                # Re-raise to propagate critical failures
+                raise
         
         duration_ms = (now_us() - start_time_us) / 1000
         logger.debug(f"Triggered {len(results)} typed {hook_type} hooks in {duration_ms:.1f}ms")
@@ -425,9 +459,24 @@ class StageExecutionHookContext:
     which has different field names and semantics.
     """
     
-    def __init__(self, stage_execution: StageExecution, hook_manager: HookManager):
+    def __init__(
+        self,
+        stage_execution: StageExecution,
+        hook_manager: HookManager,
+        allow_exceptions: bool = True,
+    ):
+        """
+        Initialize stage execution hook context.
+        
+        Args:
+            stage_execution: Stage execution data
+            hook_manager: Manager for hooks
+            allow_exceptions: If True, let hook exceptions propagate instead of suppressing.
+                            Stage execution hooks are critical operations, so defaults to True.
+        """
         self.stage_execution = stage_execution
         self.hook_manager = hook_manager
+        self.allow_exceptions = allow_exceptions
 
     async def __aenter__(self) -> 'StageExecutionHookContext':
         """Enter async context."""
@@ -440,21 +489,29 @@ class StageExecutionHookContext:
             await self.hook_manager.trigger_stage_hooks(self.stage_execution)
         except Exception as e:
             logger.error(f"Failed to trigger stage execution hooks: {e}")
+            if self.allow_exceptions:
+                raise
         
-        return False  # Don't suppress exceptions
+        return False  # Don't suppress exceptions from the context body
 
 
 @asynccontextmanager
-async def stage_execution_context(session_id: str, stage_execution: StageExecution) -> AsyncContextManager[StageExecutionHookContext]:
+async def stage_execution_context(
+    stage_execution: StageExecution,
+    allow_exceptions: bool = True,
+) -> AsyncContextManager[StageExecutionHookContext]:
     """
     Create a simple context for stage execution events.
     
     Args:
-        session_id: Session identifier
         stage_execution: Stage execution data
+        allow_exceptions: If True, let hook exceptions propagate.
+                         Stage execution hooks are critical, so defaults to True.
         
     Yields:
         Simple hook context for stage execution
     """
-    async with StageExecutionHookContext(stage_execution, get_hook_manager()) as ctx:
+    async with StageExecutionHookContext(
+        stage_execution, get_hook_manager(), allow_exceptions=allow_exceptions
+    ) as ctx:
         yield ctx

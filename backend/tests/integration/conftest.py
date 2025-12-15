@@ -56,6 +56,10 @@ def mock_settings():
     settings.github_token = "mock-github-token"
     settings.llm_provider = "google-default"  # Updated to match EP-0013
     settings.max_llm_mcp_iterations = 3
+    # Add timeout settings for alert processing
+    settings.alert_processing_timeout = 600  # Default 10 minute timeout
+    settings.llm_iteration_timeout = 210  # Default 3.5 minute iteration timeout
+    settings.mcp_tool_call_timeout = 70  # Default 70 second tool timeout
     settings.log_level = "INFO"
     settings.agent_config_path = None  # No agent config for integration tests
     
@@ -889,6 +893,68 @@ async def alert_service(ensure_integration_test_isolation, mock_settings, mock_r
     # Replace the agent_factory with our mock AFTER initialization
     service.agent_factory = mock_agent_factory
     
+    # Mock history service for stage execution verification
+    from tarsy.services.history_service import HistoryService
+    mock_history_service = Mock(spec=HistoryService)
+    mock_history_service.is_enabled = True
+    mock_history_service.create_session.return_value = "test-session-id"
+    mock_history_service.update_session_status = Mock()
+    mock_history_service.complete_session = Mock()
+    mock_history_service.record_error = Mock()
+    mock_history_service.create_stage_execution.return_value = "test-stage-execution-id"
+    
+    # Create proper mock stage execution with timestamp fields to avoid arithmetic errors
+    def create_mock_stage_execution():
+        mock_stage = Mock()
+        mock_stage.execution_id = "test-stage-execution-id"
+        mock_stage.started_at_us = now_us()
+        mock_stage.completed_at_us = None
+        return mock_stage
+    
+    mock_history_service.get_stage_execution = AsyncMock(side_effect=lambda _: create_mock_stage_execution())
+    mock_history_service.update_stage_execution = Mock()
+    mock_history_service.record_session_interaction = AsyncMock()
+    
+    # Mock get_repository for stage verification - must be a context manager
+    # The repo mock needs to return stage execution objects for ANY execution_id
+    mock_repo = Mock()
+    
+    def mock_session_get(entity_class, execution_id):
+        """Mock database get that returns a mock entity for any execution_id."""
+        mock_entity = Mock()
+        mock_entity.execution_id = execution_id  # Use the actual execution_id passed
+        return mock_entity
+    
+    mock_repo.session.get.side_effect = mock_session_get
+    
+    from unittest.mock import MagicMock
+    mock_context_manager = MagicMock()
+    mock_context_manager.__enter__.return_value = mock_repo
+    mock_context_manager.__exit__.return_value = None
+    mock_history_service.get_repository.return_value = mock_context_manager
+    
+    # Mock _retry_database_operation_async
+    async def mock_retry_db_operation(operation_name, operation, treat_none_as_success=True):
+        result = operation()
+        return result
+    mock_history_service._retry_database_operation_async = mock_retry_db_operation
+    
+    service.history_service = mock_history_service
+    
+    # Update manager classes with mocked history service
+    from tarsy.services.session_manager import SessionManager
+    from tarsy.services.stage_execution_manager import StageExecutionManager
+    service.stage_manager = StageExecutionManager(history_service=mock_history_service)
+    service.session_manager = SessionManager(history_service=mock_history_service)
+    
+    # Update parallel executor with new stage manager
+    from tarsy.services.parallel_stage_executor import ParallelStageExecutor
+    service.parallel_executor = ParallelStageExecutor(
+        agent_factory=mock_agent_factory,
+        settings=mock_settings,
+        stage_manager=service.stage_manager,
+    )
+    
     yield service
 
 
@@ -933,7 +999,62 @@ def alert_service_with_mocks(
     mock_history_service.update_session_status = Mock()
     mock_history_service.complete_session = Mock()
     mock_history_service.record_error = Mock()
+    # Mock stage execution methods for EP-0030 validation
+    mock_history_service.create_stage_execution.return_value = "test-stage-execution-id"
+    
+    # Create proper mock stage execution with timestamp fields to avoid arithmetic errors
+    def create_mock_stage_execution_2():
+        mock_stage = Mock()
+        mock_stage.execution_id = "test-stage-execution-id"
+        mock_stage.started_at_us = now_us()
+        mock_stage.completed_at_us = None
+        return mock_stage
+    
+    mock_history_service.get_stage_execution = AsyncMock(side_effect=lambda _: create_mock_stage_execution_2())
+    mock_history_service.update_stage_execution = Mock()
+    
+    # Mock get_repository to support stage execution verification - must be a context manager
+    mock_repo = Mock()
+    mock_db_stage_exec = Mock()
+    mock_db_stage_exec.execution_id = "test-stage-execution-id"
+    mock_repo.session.get.return_value = mock_db_stage_exec
+    
+    from unittest.mock import MagicMock
+    mock_context_manager = MagicMock()
+    mock_context_manager.__enter__.return_value = mock_repo
+    mock_context_manager.__exit__.return_value = None
+    mock_history_service.get_repository.return_value = mock_context_manager
+    
+    # Mock _retry_database_operation_async for stage verification BEFORE creating managers  
+    # Must be an async function that returns True
+    async def mock_retry_operation(*args, **kwargs):
+        return True
+    mock_history_service._retry_database_operation_async = mock_retry_operation
+    
     service.history_service = mock_history_service
+    
+    # Initialize manager classes AFTER all history_service mocks are set up
+    from tarsy.services.session_manager import SessionManager
+    from tarsy.services.stage_execution_manager import StageExecutionManager
+    service.stage_manager = StageExecutionManager(mock_history_service)
+    service.session_manager = SessionManager(mock_history_service)
+    
+    # Mock stage_manager.create_stage_execution to bypass database verification
+    # These integration tests don't need to test the actual database verification logic
+    original_create = service.stage_manager.create_stage_execution
+    async def mock_create_stage(*args, **kwargs):
+        # Generate a mock stage execution ID
+        import uuid
+        return f"test-stage-exec-{uuid.uuid4()}"
+    service.stage_manager.create_stage_execution = mock_create_stage
+    
+    # Mock parallel executor
+    service.parallel_executor = Mock()
+    service.parallel_executor.is_final_stage_parallel = Mock(return_value=False)
+    service.parallel_executor.execute_parallel_agents = AsyncMock()
+    service.parallel_executor.execute_replicated_agent = AsyncMock()
+    service.parallel_executor.synthesize_parallel_results = AsyncMock()
+    service.parallel_executor.resume_parallel_stage = AsyncMock()
     
     # Bundle dependencies for easy access in tests
     mock_dependencies = {

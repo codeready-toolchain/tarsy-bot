@@ -1777,7 +1777,9 @@ class TestHistoryControllerResponseFormat:
             "mcp_selection",
             "chat_message_count",
             # Pause/resume metadata
-            "pause_metadata"
+            "pause_metadata",
+            # Parallel stages indicator
+            "has_parallel_stages"
         }
         actual_fields = set(session.keys())
         assert required_fields.issubset(actual_fields)

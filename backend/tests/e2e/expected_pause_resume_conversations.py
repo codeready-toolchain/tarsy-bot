@@ -157,9 +157,7 @@ Question: Investigate this test-kubernetes alert and provide stage-specific anal
 
 ### Alert Metadata
 **Alert Type:** test-kubernetes
-**Severity:** warning
 **Timestamp:** {TIMESTAMP}
-**Environment:** production
 
 ### Alert Data
 ```json
@@ -293,23 +291,23 @@ EXPECTED_PAUSE_RESUME_STAGES = {
         'expected_conversation': EXPECTED_RESUMED_DATA_COLLECTION_CONVERSATION,  # Verify conversation history was restored
         'interactions': [
             # Initial execution (before first pause at iteration 2)
-            {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
-            {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
-            {'type': 'llm', 'position': 1, 'success': True, 'input_tokens': 200, 'output_tokens': 80, 'total_tokens': 280},
-            {'type': 'mcp', 'position': 3, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get'},
-            {'type': 'llm', 'position': 2, 'success': True, 'input_tokens': 220, 'output_tokens': 90, 'total_tokens': 310},
-            {'type': 'mcp', 'position': 4, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_describe'},
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
+            {'type': 'llm', 'success': True, 'input_tokens': 200, 'output_tokens': 80, 'total_tokens': 280},
+            {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get'},
+            {'type': 'llm', 'success': True, 'input_tokens': 220, 'output_tokens': 90, 'total_tokens': 310},
+            {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_describe'},
             # After first resume (before second pause at iteration 1 of resumed session)
-            {'type': 'mcp', 'position': 5, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
-            {'type': 'mcp', 'position': 6, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
-            {'type': 'llm', 'position': 3, 'success': True, 'input_tokens': 240, 'output_tokens': 100, 'total_tokens': 340},
-            {'type': 'mcp', 'position': 7, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get'},
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
+            {'type': 'llm', 'success': True, 'input_tokens': 240, 'output_tokens': 100, 'total_tokens': 340},
+            {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get'},
             # After second resume (continues ReAct loop with tool call, then final answer)
-            {'type': 'mcp', 'position': 8, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
-            {'type': 'mcp', 'position': 9, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
-            {'type': 'llm', 'position': 4, 'success': True, 'input_tokens': 260, 'output_tokens': 100, 'total_tokens': 360},
-            {'type': 'mcp', 'position': 10, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get'},
-            {'type': 'llm', 'position': 5, 'success': True, 'input_tokens': 280, 'output_tokens': 150, 'total_tokens': 430, 'interaction_type': 'final_analysis'},
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
+            {'type': 'llm', 'success': True, 'input_tokens': 260, 'output_tokens': 100, 'total_tokens': 360},
+            {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get'},
+            {'type': 'llm', 'success': True, 'input_tokens': 280, 'output_tokens': 150, 'total_tokens': 430, 'interaction_type': 'final_analysis'},
         ]
     },
     'verification': {
@@ -317,8 +315,8 @@ EXPECTED_PAUSE_RESUME_STAGES = {
         'mcp_count': 1,
         'expected_status': 'completed',
         'interactions': [
-            {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
-            {'type': 'llm', 'position': 1, 'success': True, 'input_tokens': 200, 'output_tokens': 100, 'total_tokens': 300, 'interaction_type': 'final_analysis'},
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            {'type': 'llm', 'success': True, 'input_tokens': 200, 'output_tokens': 100, 'total_tokens': 300, 'interaction_type': 'final_analysis'},
         ]
     },
     'analysis': {
@@ -326,7 +324,7 @@ EXPECTED_PAUSE_RESUME_STAGES = {
         'mcp_count': 0,
         'expected_status': 'completed',
         'interactions': [
-            {'type': 'llm', 'position': 1, 'success': True, 'input_tokens': 250, 'output_tokens': 140, 'total_tokens': 390, 'interaction_type': 'final_analysis'},
+            {'type': 'llm', 'success': True, 'input_tokens': 250, 'output_tokens': 140, 'total_tokens': 390, 'interaction_type': 'final_analysis'},
         ]
     }
 }

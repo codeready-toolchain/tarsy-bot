@@ -114,6 +114,9 @@ class ConfigurationLoader:
             logger.debug("Validating configuration completeness")
             self._validate_configuration_completeness(config)
             
+            logger.debug("Validating parallel stage configurations")
+            self._validate_parallel_stage_configurations(config)
+            
             logger.info("Configuration validation completed successfully")
             return config
             
@@ -166,13 +169,34 @@ class ConfigurationLoader:
                         {
                             "name": stage.name,
                             "agent": stage.agent,
+                            "agents": [
+                                {
+                                    "name": agent.name,
+                                    "llm_provider": agent.llm_provider,
+                                    "iteration_strategy": agent.iteration_strategy
+                                }
+                                for agent in stage.agents
+                            ] if stage.agents else None,
+                            "replicas": stage.replicas,
+                            "failure_policy": stage.failure_policy,
                             "iteration_strategy": stage.iteration_strategy,
-                            "llm_provider": stage.llm_provider
+                            "llm_provider": stage.llm_provider,
+                            "synthesis": {
+                                "agent": stage.synthesis.agent,
+                                "iteration_strategy": stage.synthesis.iteration_strategy,
+                                "llm_provider": stage.synthesis.llm_provider
+                            } if stage.synthesis else None
                         }
                         for stage in chain_config.stages
                     ],
                     "description": chain_config.description,
-                    "llm_provider": chain_config.llm_provider
+                    "llm_provider": chain_config.llm_provider,
+                    "chat": {
+                        "enabled": chain_config.chat.enabled,
+                        "agent": chain_config.chat.agent,
+                        "iteration_strategy": chain_config.chat.iteration_strategy,
+                        "llm_provider": chain_config.chat.llm_provider
+                    } if chain_config.chat else None
                 }
             
             return chain_configs
@@ -393,6 +417,74 @@ class ConfigurationLoader:
                     )
         
         logger.debug("Configuration completeness validation passed")
+    
+    def _validate_parallel_stage_configurations(self, config: CombinedConfigModel) -> None:
+        """
+        Validate parallel stage configurations in agent chains.
+        
+        Checks that:
+        - All agent names in 'agents' lists exist (either as built-ins or configured)
+        - Single agent references in 'agent' field exist (for replica parallelism)
+        - Parallel configurations are valid
+        
+        Note: Synthesis and chat agent validation is already handled by Pydantic model
+        validators in CombinedConfigModel (validate_configurable_agent_references and
+        validate_chat_agent_references).
+        
+        Args:
+            config: The parsed configuration to validate
+            
+        Raises:
+            ConfigurationError: If parallel stage configurations are invalid
+        """
+        # Get all available agents (built-in + configured)
+        available_agents = set(self.BUILTIN_AGENT_CLASSES)
+        available_agents.update(config.agents.keys())
+        
+        logger.debug(f"Available agents for parallel stage validation: {available_agents}")
+        
+        # Validate each chain's stages
+        for chain_id, chain_config in config.agent_chains.items():
+            for stage_idx, stage in enumerate(chain_config.stages, 1):
+                stage_name = stage.name
+                
+                # Validate multi-agent parallelism (agents list)
+                if stage.agents is not None:
+                    logger.debug(
+                        f"Chain '{chain_id}', stage '{stage_name}': Validating multi-agent parallelism "
+                        f"with {len(stage.agents)} agents"
+                    )
+                    
+                    for agent_idx, parallel_agent in enumerate(stage.agents, 1):
+                        agent_name = parallel_agent.name
+                        
+                        # Check if agent exists in available agents
+                        if agent_name not in available_agents:
+                            raise ConfigurationError(
+                                f"Chain '{chain_id}', stage '{stage_name}', agent {agent_idx}: "
+                                f"References unknown agent '{agent_name}'. "
+                                f"Available agents: {sorted(available_agents)}"
+                            )
+                
+                # Validate single-agent parallelism (replicas)
+                elif stage.agent is not None:
+                    agent_name = stage.agent
+                    
+                    if stage.replicas > 1:
+                        logger.debug(
+                            f"Chain '{chain_id}', stage '{stage_name}': Validating replica parallelism "
+                            f"with {stage.replicas} replicas of agent '{agent_name}'"
+                        )
+                    
+                    # Check if agent exists in available agents
+                    if agent_name not in available_agents:
+                        raise ConfigurationError(
+                            f"Chain '{chain_id}', stage '{stage_name}': "
+                            f"References unknown agent '{agent_name}'. "
+                            f"Available agents: {sorted(available_agents)}"
+                        )
+        
+        logger.debug("Parallel stage configuration validation passed")
     
     def _format_yaml_error(self, error: yaml.YAMLError) -> str:
         """

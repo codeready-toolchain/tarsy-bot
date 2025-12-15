@@ -13,7 +13,8 @@ from tarsy.config.builtin_config import (
     DEFAULT_ALERT_TYPE,
     get_builtin_chain_definitions,
 )
-from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel, ParallelAgentConfig, SynthesisConfig, ChatConfig
+from tarsy.models.constants import FailurePolicy
 from tarsy.utils.logger import get_module_logger
 
 logger = get_module_logger(__name__)
@@ -96,21 +97,51 @@ class ChainRegistry:
             
             for chain_id, chain_data in chain_configs.items():
                 try:
-                    # Convert dictionary data to ChainConfigModel with proper stage objects  
+                    # Convert dictionary data to ChainConfigModel with proper stage objects
+                    stages = []
+                    for stage in chain_data["stages"]:
+                        # Build synthesis config with optional iteration_strategy
+                        synthesis_config = None
+                        if stage.get("synthesis"):
+                            synthesis_kwargs = {
+                                "agent": stage["synthesis"].get("agent", "SynthesisAgent"),
+                                "llm_provider": stage["synthesis"].get("llm_provider")
+                            }
+                            # Only include iteration_strategy if it's explicitly provided
+                            if stage["synthesis"].get("iteration_strategy") is not None:
+                                synthesis_kwargs["iteration_strategy"] = stage["synthesis"]["iteration_strategy"]
+                            synthesis_config = SynthesisConfig(**synthesis_kwargs)
+                        
+                        stages.append(ChainStageConfigModel(
+                            name=stage["name"],
+                            agent=stage.get("agent"),
+                            agents=[
+                                ParallelAgentConfig(
+                                    name=agent["name"],
+                                    llm_provider=agent.get("llm_provider"),
+                                    iteration_strategy=agent.get("iteration_strategy")
+                                )
+                                for agent in stage["agents"]
+                            ] if stage.get("agents") else None,
+                            replicas=stage.get("replicas", 1),
+                            failure_policy=FailurePolicy(stage.get("failure_policy", "all")),
+                            iteration_strategy=stage.get("iteration_strategy"),
+                            llm_provider=stage.get("llm_provider"),
+                            synthesis=synthesis_config
+                        ))
+                    
                     chain_def = ChainConfigModel(
                         chain_id=chain_id,
                         alert_types=chain_data["alert_types"],
-                        stages=[
-                            ChainStageConfigModel(
-                                name=stage["name"],
-                                agent=stage["agent"],
-                                iteration_strategy=stage.get("iteration_strategy"),
-                                llm_provider=stage.get("llm_provider")
-                            )
-                            for stage in chain_data["stages"]
-                        ],
+                        stages=stages,
                         description=chain_data.get("description"),
-                        llm_provider=chain_data.get("llm_provider")
+                        llm_provider=chain_data.get("llm_provider"),
+                        chat=ChatConfig(
+                            enabled=chain_data["chat"].get("enabled", True),
+                            agent=chain_data["chat"].get("agent"),
+                            iteration_strategy=chain_data["chat"].get("iteration_strategy"),
+                            llm_provider=chain_data["chat"].get("llm_provider")
+                        ) if chain_data.get("chat") else None
                     )
                     yaml_chains[chain_id] = chain_def
                     logger.debug(f"Loaded YAML chain: {chain_id}")
@@ -278,7 +309,7 @@ class ChainRegistry:
     
     def get_default_alert_type(self) -> str:
         """
-        Get the default alert type for clietns.
+        Get the default alert type for clients.
         
         Returns:
             Default alert type (from config or DEFAULT_ALERT_TYPE constant)

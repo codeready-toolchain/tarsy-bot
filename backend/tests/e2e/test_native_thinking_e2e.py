@@ -27,7 +27,7 @@ from tarsy.config.builtin_config import BUILTIN_MCP_SERVERS
 from tarsy.integrations.mcp.client import MCPClient
 
 from .conftest import MockGeminiClient, create_native_thinking_response
-from .e2e_utils import E2ETestUtils
+from .e2e_utils import E2ETestUtils, assert_conversation_messages
 from .expected_native_thinking_conversations import (
     EXPECTED_NATIVE_THINKING_ANALYSIS_CONVERSATION,
     EXPECTED_NATIVE_THINKING_CHAT_INTERACTIONS,
@@ -42,50 +42,6 @@ from .expected_native_thinking_conversations import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def assert_conversation_messages(
-    expected_conversation: dict, actual_messages: list, n: int
-):
-    """
-    Get the first N messages from expected_conversation['messages'] and compare with actual_messages.
-
-    Args:
-        expected_conversation: Dictionary with 'messages' key containing expected message list
-        actual_messages: List of actual messages from the LLM interaction
-        n: Number of messages to compare (a count)
-    """
-    expected_messages = expected_conversation.get("messages", [])
-    assert (
-        len(actual_messages) == n
-    ), f"Actual messages count mismatch: expected {n}, got {len(actual_messages)}"
-
-    # Extract first N messages
-    first_n_expected = expected_messages[:n]
-
-    # Compare each message
-    for i in range(len(first_n_expected)):
-        assert (
-            i < len(actual_messages)
-        ), f"Missing actual message: Expected {len(first_n_expected)} messages, got {len(actual_messages)}"
-
-        expected_msg = first_n_expected[i]
-        actual_msg = actual_messages[i]
-
-        # Compare role
-        expected_role = expected_msg.get("role", "")
-        actual_role = actual_msg.get("role", "")
-        assert (
-            expected_role == actual_role
-        ), f"Role mismatch: expected {expected_role}, got {actual_role}"
-
-        # Normalize content for comparison
-        expected_content = E2ETestUtils.normalize_content(expected_msg.get("content", ""))
-        actual_content = E2ETestUtils.normalize_content(actual_msg.get("content", ""))
-        
-        assert (
-            expected_content == actual_content
-        ), f"Content mismatch in message {i}: expected length {len(expected_content)}, got {len(actual_content)}"
 
 
 @pytest.mark.asyncio
@@ -455,20 +411,12 @@ class TestNativeThinkingE2E:
 
             # Mock LangChain streaming (used by summarizer)
             langchain_streaming_mock = create_langchain_streaming_mock()
-            
-            # Import LangChain clients to patch
-            from langchain_anthropic import ChatAnthropic
-            from langchain_google_genai import ChatGoogleGenerativeAI
-            from langchain_openai import ChatOpenAI
-            from langchain_xai import ChatXAI
 
-            # Mock Gemini SDK - patch the genai.Client constructor
-            with patch("google.genai.Client", create_gemini_mock_client), \
-                 patch.object(ChatOpenAI, 'astream', langchain_streaming_mock), \
-                 patch.object(ChatAnthropic, 'astream', langchain_streaming_mock), \
-                 patch.object(ChatXAI, 'astream', langchain_streaming_mock), \
-                 patch.object(ChatGoogleGenerativeAI, 'astream', langchain_streaming_mock):
-                
+            # Patch both Gemini SDK and LangChain clients using shared utility
+            with E2ETestUtils.create_llm_patch_context(
+                gemini_mock_factory=create_gemini_mock_client,
+                streaming_mock=langchain_streaming_mock
+            ):
                 # Mock MCP client
                 mock_sessions = {
                     "kubernetes-server": mock_kubernetes_session,
@@ -909,7 +857,8 @@ class TestNativeThinkingE2E:
         await self._verify_chat_response(
             chat_stage=message_1_stage,
             message_key='message_1',
-            expected_conversation=EXPECTED_NATIVE_THINKING_CHAT_MESSAGE_1_CONVERSATION
+            expected_conversation=EXPECTED_NATIVE_THINKING_CHAT_MESSAGE_1_CONVERSATION,
+            expected_spec=EXPECTED_NATIVE_THINKING_CHAT_INTERACTIONS['message_1']
         )
         verified_chat_stage_ids.add(message_1_stage.get("stage_id"))
 
@@ -926,7 +875,8 @@ class TestNativeThinkingE2E:
         await self._verify_chat_response(
             chat_stage=message_2_stage,
             message_key='message_2',
-            expected_conversation=EXPECTED_NATIVE_THINKING_CHAT_MESSAGE_2_CONVERSATION
+            expected_conversation=EXPECTED_NATIVE_THINKING_CHAT_MESSAGE_2_CONVERSATION,
+            expected_spec=EXPECTED_NATIVE_THINKING_CHAT_INTERACTIONS['message_2']
         )
 
         # Verify message history
@@ -988,24 +938,108 @@ class TestNativeThinkingE2E:
 
     async def _verify_chat_response(
         self,
-        chat_stage,
+        chat_stage: dict,
         message_key: str,
-        expected_conversation: dict
-    ):
-        """Verify chat response structure."""
-        assert chat_stage is not None
-        assert chat_stage.get("agent") == "ChatAgent"
-        assert chat_stage.get("status") == "completed"
+        expected_conversation: dict,
+        expected_spec: dict
+    ) -> None:
+        """
+        Verify the structure of a chat response using the same pattern as stage verification.
         
-        expected_chat = EXPECTED_NATIVE_THINKING_CHAT_INTERACTIONS[message_key]
+        Args:
+            chat_stage: The chat stage execution data from the API
+            message_key: Key to look up expected interactions (e.g., 'message_1', 'message_2')
+            expected_conversation: Expected conversation structure for this message (with 'messages' key)
+            expected_spec: Expected interaction specification (with 'llm_count', 'mcp_count', 'interactions')
+        """
+        # Verify basic stage structure
+        assert chat_stage is not None, "Chat stage not found"
+        assert chat_stage.get("agent") == "ChatAgent", (
+            f"Expected ChatAgent, got {chat_stage.get('agent')}"
+        )
+        assert chat_stage.get("status") == "completed", (
+            f"Chat stage not completed: {chat_stage.get('status')}"
+        )
+        
+        # Verify chat-specific fields
+        assert chat_stage.get("chat_id") is not None, "Chat ID missing from stage"
+        assert chat_stage.get("chat_user_message_id") is not None, (
+            "Chat user message ID missing from stage"
+        )
+        
+        # Verify embedded user message data (added in user message display feature)
+        chat_user_message = chat_stage.get("chat_user_message")
+        assert chat_user_message is not None, (
+            "Chat user message data missing from stage - should be embedded"
+        )
+        assert chat_user_message.get("message_id") is not None, "User message ID missing"
+        assert chat_user_message.get("content") is not None, "User message content missing"
+        assert chat_user_message.get("author") == "test-user@example.com", (
+            f"User message author mismatch: expected 'test-user@example.com', "
+            f"got '{chat_user_message.get('author')}'"
+        )
+        created_at_us = chat_user_message.get("created_at_us")
+        assert isinstance(created_at_us, int) and created_at_us > 0, "User message timestamp invalid"
+        
+        # Verify the content matches what we expect for each message
+        expected_content_map = {
+            'message_1': "Can you check the pods in the stuck-namespace?",
+            'message_2': "Does the namespace still exist?"
+        }
+        assert message_key in expected_content_map, f"Unknown message_key: {message_key}"
+        expected_content = expected_content_map[message_key]
+        assert chat_user_message.get("content") == expected_content, (
+            f"User message content mismatch for {message_key}: "
+            f"expected '{expected_content}', got '{chat_user_message.get('content')}'"
+        )
+        
+        # Get expected interactions for this message
         llm_interactions = chat_stage.get("llm_interactions", [])
         mcp_interactions = chat_stage.get("mcp_communications", [])
         
-        assert len(llm_interactions) == expected_chat["llm_count"]
-        assert len(mcp_interactions) == expected_chat["mcp_count"]
+        # Verify interaction counts
+        assert len(llm_interactions) == expected_spec["llm_count"], (
+            f"Chat {message_key}: Expected {expected_spec['llm_count']} LLM interactions, "
+            f"got {len(llm_interactions)}"
+        )
+        assert len(mcp_interactions) == expected_spec["mcp_count"], (
+            f"Chat {message_key}: Expected {expected_spec['mcp_count']} MCP interactions, "
+            f"got {len(mcp_interactions)}"
+        )
         
+        # Verify complete interaction flow in chronological order
         chronological_interactions = chat_stage.get("chronological_interactions", [])
-        assert len(chronological_interactions) == len(expected_chat["interactions"])
+        assert len(chronological_interactions) == len(expected_spec["interactions"]), (
+            f"Chat {message_key} chronological interaction count mismatch: "
+            f"expected {len(expected_spec['interactions'])}, got {len(chronological_interactions)}"
+        )
+        
+        # Use the shared verification method from _verify_interactions
+        # This will verify conversation content, token counts, interaction types, etc.
+        # Note: stage_name=None because chat thinking_content uses different keying (verified separately below)
+        self._verify_interactions(
+            interactions=chronological_interactions,
+            expected_spec=expected_spec,
+            context_label=f"Chat {message_key}",
+            expected_conversation=expected_conversation,
+            stage_name=None  # chat thinking_content verified below (different keying)
+        )
+        
+        # Verify thinking content for chat (EXPECTED_THINKING_CONTENT['chat'] keys are like: message_1_1, message_1_2)
+        expected_chat_thinking = EXPECTED_THINKING_CONTENT.get("chat", {})
+        llm_pos = 0
+        for interaction in chronological_interactions:
+            if interaction.get("type") != "llm":
+                continue
+            llm_pos += 1
+            expected_key = f"{message_key}_{llm_pos}"
+            if expected_key in expected_chat_thinking:
+                actual_thinking = interaction.get("details", {}).get("thinking_content")
+                assert actual_thinking == expected_chat_thinking[expected_key], (
+                    f"Chat {message_key} LLM {llm_pos}: thinking_content mismatch.\n"
+                    f"Expected: '{expected_chat_thinking[expected_key]}'\n"
+                    f"Actual:   '{actual_thinking}'"
+                )
 
         print(f"    ✅ Chat {message_key} validated")
 

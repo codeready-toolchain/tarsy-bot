@@ -3,7 +3,6 @@ import {
   Box,
   Card,
   CardContent,
-  CardHeader,
   Typography,
   Accordion,
   AccordionSummary,
@@ -18,38 +17,36 @@ import {
 } from '@mui/material';
 import {
   ExpandMore,
-  ExpandLess,
   CheckCircle,
   Error as ErrorIcon,
   Schedule,
   PlayArrow,
-  Psychology,
-  Build,
   Settings,
   Timeline as TimelineIcon,
   NavigateNext,
   NavigateBefore,
+  CallSplit,
 } from '@mui/icons-material';
-import type { ChainExecution, TimelineItem, LLMInteraction, MCPInteraction } from '../types';
+import type { ChainExecution, TimelineItem } from '../types';
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
 import { 
   getStageStatusColor, 
-  getInteractionColor, 
-  getInteractionBackgroundColor,
   formatStageForCopy
 } from '../utils/timelineHelpers';
-import InteractionDetails from './InteractionDetails';
-import LLMInteractionPreview from './LLMInteractionPreview';
-import MCPInteractionPreview from './MCPInteractionPreview';
 import CopyButton from './CopyButton';
 import InteractionCountBadges from './InteractionCountBadges';
 import TypingIndicator from './TypingIndicator';
+import ParallelStageExecutionTabs from './ParallelStageExecutionTabs';
+import InteractionCard from './InteractionCard';
 import { STAGE_STATUS } from '../utils/statusConstants';
+import { isParallelStage, getAggregateStatus } from '../utils/parallelStageHelpers';
+import { PARALLEL_TYPE } from '../utils/parallelConstants';
 // Auto-scroll is now handled by the centralized system in SessionDetailPageBase
 
 interface NestedAccordionTimelineProps {
   chainExecution: ChainExecution;
   autoScroll?: boolean; // Kept for compatibility, but auto-scroll is now centralized
+  progressStatus?: string;
 }
 
 // Helper function to get stage status icon
@@ -67,65 +64,7 @@ const getStageStatusIcon = (status: string) => {
   }
 };
 
-// Helper functions moved to shared utils
-
-// Helper function to get interaction type icon
-const getInteractionIcon = (type: string) => {
-  switch (type) {
-    case 'llm':
-    case 'llm_interaction':
-      return <Psychology />;
-    case 'mcp':
-    case 'mcp_communication':
-      return <Build />;
-    case 'system':
-      return <Settings />;
-    default:
-      return <Settings />;
-  }
-};
-
-// Helper function to get interaction type styles for LLM interactions
-const getInteractionTypeStyle = (interaction: TimelineItem) => {
-  if (interaction.type !== 'llm') return null;
-  
-  const llmDetails = interaction.details as LLMInteraction;
-  const interactionType = llmDetails?.interaction_type || 'investigation';
-  
-  switch (interactionType) {
-    case 'summarization':
-      return {
-        label: 'Summarization',
-        color: 'warning' as const,
-        borderColor: '2px solid rgba(237, 108, 2, 0.5)',
-        hoverBorderColor: '2px solid rgba(237, 108, 2, 0.8)'
-      };
-    case 'final_analysis':
-      return {
-        label: 'Final Analysis',
-        color: 'success' as const,
-        borderColor: '2px solid rgba(46, 125, 50, 0.5)',
-        hoverBorderColor: '2px solid rgba(46, 125, 50, 0.8)'
-      };
-    case 'final_analysis_summary':
-      return {
-        label: 'Executive Summary',
-        color: 'info' as const,
-        borderColor: '2px solid rgba(2, 136, 209, 0.5)',
-        hoverBorderColor: '2px solid rgba(2, 136, 209, 0.8)'
-      };
-    case 'investigation':
-    default:
-      return {
-        label: 'Investigation',
-        color: 'primary' as const,
-        borderColor: '2px solid rgba(25, 118, 210, 0.5)',
-        hoverBorderColor: '2px solid rgba(25, 118, 210, 0.8)'
-      };
-  }
-};
-
-// Removed duplicate helper functions - now imported from shared utils
+// Helper functions moved to shared utils and InteractionCard component
 
 // Helper function to format entire flow for copying
 const formatEntireFlowForCopy = (chainExecution: ChainExecution): string => {
@@ -364,6 +303,12 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
           const stageInteractions = getStageInteractions(stage.execution_id);
           const isExpanded = expandedStages.has(stage.execution_id);
           const isCurrentStage = stageIndex === currentStageIndex;
+          
+          // Check if this is a parallel stage
+          const isParallel = isParallelStage(stage);
+          const aggregateStatusLabel = isParallel && stage.parallel_executions
+            ? getAggregateStatus(stage.parallel_executions)
+            : null;
 
           return (
             <Accordion
@@ -403,15 +348,29 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                   </Avatar>
                   
                   <Box flex={1}>
-                    <Typography variant="h6" fontWeight={600}>
-                      {stage.chat_id 
-                        ? `Chat: ${stage.stage_name}`
-                        : `Stage ${stage.stage_index + 1}: ${stage.stage_name}`
-                      }
-                    </Typography>
+                    <Box display="flex" alignItems="center" gap={1}>
+                      <Typography variant="h6" fontWeight={600}>
+                        {stage.chat_id 
+                          ? `Chat: ${stage.stage_name}`
+                          : `Stage ${stage.stage_index + 1}: ${stage.stage_name}`
+                        }
+                      </Typography>
+                      {isParallel && stage.parallel_executions && (
+                        <Chip
+                          icon={<CallSplit fontSize="small" />}
+                          label={`${stage.parallel_executions.length}x`}
+                          size="small"
+                          color="primary"
+                          variant="outlined"
+                        />
+                      )}
+                    </Box>
                     <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
                       <Typography variant="body2" color="text.secondary">
-                        {stage.agent}
+                        {isParallel 
+                          ? `Parallel Execution (${stage.parallel_type === PARALLEL_TYPE.REPLICA ? 'Replica Mode' : 'Multi-Agent Mode'})`
+                          : stage.agent
+                        }
                       </Typography>
                       
                       {/* Interaction count badges similar to session summary */}
@@ -452,7 +411,7 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
 
                   <Box display="flex" gap={1} alignItems="center">
                     <Chip 
-                      label={stage.status} 
+                      label={isParallel && aggregateStatusLabel ? aggregateStatusLabel : stage.status} 
                       color={getStageStatusColor(stage.status)}
                       size="small"
                     />
@@ -468,23 +427,30 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
               </AccordionSummary>
 
               <AccordionDetails sx={{ pt: 1, px: 1 }}>
-                {/* Stage Metadata */}
-                <Card
-                  variant="outlined"
-                  sx={{ mb: 1, bgcolor: (theme) => theme.palette.grey[50] }}
-                >
-                  <CardContent>
-                    <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-                      <Typography variant="subtitle2">
-                        Stage Information
-                      </Typography>
-                      <CopyButton
-                        text={formatStageForCopy(stage, stageIndex, stageInteractions)}
-                        variant="icon"
-                        size="small"
-                        tooltip="Copy stage timeline to clipboard"
-                      />
-                    </Box>
+                {/* Parallel Stage Tabs */}
+                {isParallel && stage.parallel_executions && stage.parallel_executions.length > 0 ? (
+                  <ParallelStageExecutionTabs 
+                    stage={stage}
+                  />
+                ) : (
+                  <>
+                    {/* Stage Metadata */}
+                    <Card
+                      variant="outlined"
+                      sx={{ mb: 1, bgcolor: (theme) => theme.palette.grey[50] }}
+                    >
+                      <CardContent>
+                        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+                          <Typography variant="subtitle2">
+                            Stage Information
+                          </Typography>
+                          <CopyButton
+                            text={formatStageForCopy(stage, stageIndex, stageInteractions)}
+                            variant="icon"
+                            size="small"
+                            tooltip="Copy stage timeline to clipboard"
+                          />
+                        </Box>
                     <Box display="flex" gap={1} flexWrap="wrap" alignItems="center">
                       {(() => {
                         const metadataItems = [
@@ -551,198 +517,12 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                       const isDetailsExpanded = expandedInteractionDetails[itemKey];
                       
                       return (
-                        <Card
+                        <InteractionCard
                           key={itemKey}
-                          elevation={2}
-                          sx={{ 
-                            bgcolor: 'background.paper',
-                            borderRadius: 2,
-                            overflow: 'hidden',
-                            transition: 'all 0.2s ease-in-out',
-                            border: (() => {
-                              const typeStyle = getInteractionTypeStyle(interaction);
-                              if (typeStyle) return typeStyle.borderColor;
-                              if (interaction.type === 'mcp') return '2px solid #ce93d8';
-                              return '2px solid #ffcc02';
-                            })(),
-                            '&:hover': {
-                              elevation: 4,
-                              transform: 'translateY(-1px)',
-                              border: (() => {
-                                const typeStyle = getInteractionTypeStyle(interaction);
-                                if (typeStyle) return typeStyle.hoverBorderColor;
-                                if (interaction.type === 'mcp') return '2px solid #ba68c8';
-                                return '2px solid #ffa000';
-                              })()
-                            }
-                          }}
-                        >
-                          <CardHeader
-                            avatar={
-                              <Avatar
-                                sx={{
-                                  bgcolor: `${getInteractionColor(interaction.type)}.main`,
-                                  color: 'white',
-                                  width: 40,
-                                  height: 40
-                                }}
-                              >
-                                {getInteractionIcon(interaction.type)}
-                              </Avatar>
-                            }
-                            title={
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                                <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                                  {interaction.step_description}
-                                </Typography>
-                                
-                                {/* Show interaction type for LLM interactions */}
-                                {(() => {
-                                  const typeStyle = getInteractionTypeStyle(interaction);
-                                  return typeStyle && (
-                                    <Chip 
-                                      label={typeStyle.label}
-                                      size="small"
-                                      color={typeStyle.color}
-                                      sx={{ fontSize: '0.7rem', height: 22, fontWeight: 600 }}
-                                    />
-                                  );
-                                })()}
-                                
-                                {interaction.duration_ms && (
-                                  <Chip 
-                                    label={formatDurationMs(interaction.duration_ms)} 
-                                    size="small" 
-                                    variant="filled"
-                                    color={getInteractionColor(interaction.type)}
-                                    sx={{ fontSize: '0.75rem', height: 24 }}
-                                  />
-                                )}
-                              </Box>
-                            }
-                            subheader={
-                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                                <Typography variant="body2" color="text.secondary">
-                                  {formatTimestamp(interaction.timestamp_us, 'short')}
-                                </Typography>
-                                <Typography variant="body2" sx={{ color: `${getInteractionColor(interaction.type)}.main`, fontWeight: 500 }}>
-                                  • {interaction.type.toUpperCase()}
-                                </Typography>
-                              </Box>
-                            }
-                            action={null}
-                            sx={{ 
-                              pb: interaction.details && !isDetailsExpanded ? 2 : 1,
-                              bgcolor: getInteractionBackgroundColor(interaction.type)
-                            }}
-                          />
-                              
-                          
-                          {/* Expandable interaction details */}
-                          {interaction.details && (
-                            <CardContent sx={{ 
-                              pt: 2,
-                              bgcolor: 'background.paper'
-                            }}>
-                              {/* Show LLM preview when not expanded */}
-                              {interaction.type === 'llm' && !isDetailsExpanded && (
-                                <LLMInteractionPreview 
-                                  interaction={interaction.details as LLMInteraction}
-                                  showFullPreview={true}
-                                />
-                              )}
-                              
-                              {/* Show MCP preview when not expanded */}
-                              {interaction.type === 'mcp' && !isDetailsExpanded && (
-                                <MCPInteractionPreview 
-                                  interaction={interaction.details as MCPInteraction}
-                                  showFullPreview={true}
-                                />
-                              )}
-                              
-                              {/* Expand/Collapse button */}
-                              <Box sx={{ 
-                                display: 'flex', 
-                                justifyContent: 'center', 
-                                mt: 2,
-                                mb: 1
-                              }}>
-                                                                    <Box 
-                                  onClick={() => toggleInteractionDetails(itemKey)}
-                                  sx={{ 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    gap: 0.5,
-                                    cursor: 'pointer',
-                                    py: 0.75,
-                                    px: 1.5,
-                                    borderRadius: 1,
-                                    bgcolor: interaction.type === 'llm' 
-                                      ? 'rgba(25, 118, 210, 0.04)' 
-                                      : interaction.type === 'mcp'
-                                      ? 'rgba(156, 39, 176, 0.04)'
-                                      : 'rgba(255, 152, 0, 0.04)',
-                                    border: interaction.type === 'llm' 
-                                      ? '1px solid rgba(25, 118, 210, 0.12)' 
-                                      : interaction.type === 'mcp'
-                                      ? '1px solid rgba(156, 39, 176, 0.12)'
-                                      : '1px solid rgba(255, 152, 0, 0.12)',
-                                    '&:hover': { 
-                                      bgcolor: interaction.type === 'llm' 
-                                        ? 'rgba(25, 118, 210, 0.08)' 
-                                        : interaction.type === 'mcp'
-                                        ? 'rgba(156, 39, 176, 0.08)'
-                                        : 'rgba(255, 152, 0, 0.08)',
-                                      border: interaction.type === 'llm' 
-                                        ? '1px solid rgba(25, 118, 210, 0.2)' 
-                                        : interaction.type === 'mcp'
-                                        ? '1px solid rgba(156, 39, 176, 0.2)'
-                                        : '1px solid rgba(255, 152, 0, 0.2)',
-                                      '& .expand-text': {
-                                        textDecoration: 'underline'
-                                      }
-                                    },
-                                    transition: 'all 0.2s ease-in-out'
-                                  }}
-                                >
-                                  <Typography 
-                                    className="expand-text"
-                                    variant="body2" 
-                                    sx={{ 
-                                      color: interaction.type === 'llm' 
-                                        ? '#1976d2' 
-                                        : interaction.type === 'mcp'
-                                        ? '#9c27b0'
-                                        : '#f57c00',
-                                      fontWeight: 500,
-                                      fontSize: '0.875rem'
-                                    }}
-                                  >
-                                    {isDetailsExpanded ? 'Show Less' : 'Show Full Details'}
-                                  </Typography>
-                                  <Box sx={{ 
-                                    color: interaction.type === 'llm' 
-                                      ? '#1976d2' 
-                                      : interaction.type === 'mcp'
-                                      ? '#9c27b0'
-                                      : '#f57c00',
-                                    display: 'flex',
-                                    alignItems: 'center'
-                                  }}>
-                                    {isDetailsExpanded ? <ExpandLess /> : <ExpandMore />}
-                                  </Box>
-                                </Box>
-                              </Box>
-                              
-                              {/* Full interaction details when expanded */}
-                              <InteractionDetails
-                                type={interaction.type as 'llm' | 'mcp' | 'system'}
-                                details={interaction.details}
-                                expanded={isDetailsExpanded}
-                              />
-                            </CardContent>
-                          )}
-                        </Card>
+                          interaction={interaction}
+                          isExpanded={isDetailsExpanded}
+                          onToggle={() => toggleInteractionDetails(itemKey)}
+                        />
                       );
                     })}
                   </Box>
@@ -754,44 +534,46 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
                   </Card>
                 )}
 
-                {/* Show typing indicator for active or pending stages */}
-                {(() => {
-                  const shouldShow = stage.status === STAGE_STATUS.ACTIVE || stage.status === STAGE_STATUS.PENDING;
-                  
-                  if (shouldShow) {
-                    return (
-                      <Box sx={{ mt: 2 }}>
-                        <TypingIndicator
-                          dotsOnly={true}
-                          size="small"
-                        />
-                      </Box>
-                    );
-                  }
-                  return null;
-                })()}
+                    {/* Show typing indicator for active or pending stages */}
+                    {(() => {
+                      const shouldShow = stage.status === STAGE_STATUS.ACTIVE || stage.status === STAGE_STATUS.PENDING;
+                      
+                      if (shouldShow) {
+                        return (
+                          <Box sx={{ mt: 2 }}>
+                            <TypingIndicator
+                              dotsOnly={true}
+                              size="small"
+                            />
+                          </Box>
+                        );
+                      }
+                      return null;
+                    })()}
 
-                {/* Stage Summary/Next Steps */}
-                <Box mt={1.5} display="flex" justifyContent="space-between" alignItems="center">
-                  <Typography variant="body2" color="text.secondary">
-                    {stage.status === STAGE_STATUS.COMPLETED 
-                      ? `Stage completed in ${formatDurationMs(stage.duration_ms || 0)}`
-                      : stage.status === STAGE_STATUS.ACTIVE
-                      ? 'Stage in progress...'
-                      : 'Waiting for stage to begin'
-                    }
-                  </Typography>
-                  
-                  {stageIndex < chainExecution.stages.length - 1 && (
-                    <Chip 
-                      label={`Next: ${chainExecution.stages[stageIndex + 1].stage_name}`}
-                      variant="outlined"
-                      size="small"
-                      onClick={() => navigateToStage('next')}
-                      clickable
-                    />
-                  )}
-                </Box>
+                    {/* Stage Summary/Next Steps */}
+                    <Box mt={1.5} display="flex" justifyContent="space-between" alignItems="center">
+                      <Typography variant="body2" color="text.secondary">
+                        {stage.status === STAGE_STATUS.COMPLETED 
+                          ? `Stage completed in ${formatDurationMs(stage.duration_ms || 0)}`
+                          : stage.status === STAGE_STATUS.ACTIVE
+                          ? 'Stage in progress...'
+                          : 'Waiting for stage to begin'
+                        }
+                      </Typography>
+                      
+                      {stageIndex < chainExecution.stages.length - 1 && (
+                        <Chip 
+                          label={`Next: ${chainExecution.stages[stageIndex + 1].stage_name}`}
+                          variant="outlined"
+                          size="small"
+                          onClick={() => navigateToStage('next')}
+                          clickable
+                        />
+                      )}
+                    </Box>
+                  </>
+                )}
               </AccordionDetails>
             </Accordion>
           );
@@ -828,206 +610,14 @@ const NestedAccordionTimeline: React.FC<NestedAccordionTimelineProps> = ({
               {chainExecution.session_level_interactions.map((interaction: TimelineItem, index: number) => {
                 const itemKey = interaction.event_id || `session-interaction-${index}`;
                 const isDetailsExpanded = expandedInteractionDetails[itemKey];
-                const typeStyle = getInteractionTypeStyle(interaction);
                 
                 return (
-                  <Card
+                  <InteractionCard
                     key={itemKey}
-                    elevation={2}
-                    sx={{ 
-                      bgcolor: 'background.paper',
-                      borderRadius: 2,
-                      overflow: 'hidden',
-                      transition: 'all 0.2s ease-in-out',
-                      border: (() => {
-                        if (typeStyle) return typeStyle.borderColor;
-                        if (interaction.type === 'mcp') return '2px solid #ce93d8';
-                        return '2px solid rgba(33, 150, 243, 0.5)'; // info color
-                      })(),
-                      '&:hover': {
-                        elevation: 4,
-                        transform: 'translateY(-1px)',
-                        border: (() => {
-                          if (typeStyle) return typeStyle.hoverBorderColor;
-                          if (interaction.type === 'mcp') return '2px solid #ba68c8';
-                          return '2px solid rgba(33, 150, 243, 0.8)'; // info color
-                        })()
-                      }
-                    }}
-                  >
-                    <CardHeader
-                      avatar={
-                        <Avatar
-                          sx={{
-                            bgcolor: `${getInteractionColor(interaction.type)}.main`,
-                            color: 'white',
-                            width: 40,
-                            height: 40
-                          }}
-                        >
-                          {getInteractionIcon(interaction.type)}
-                        </Avatar>
-                      }
-                      title={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-                          <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>
-                            {interaction.step_description}
-                          </Typography>
-                          
-                          {/* Show interaction type for LLM interactions */}
-                          {(() => {
-                            const typeStyleInner = getInteractionTypeStyle(interaction);
-                            return typeStyleInner && (
-                              <Chip 
-                                label={typeStyleInner.label}
-                                size="small"
-                                color={typeStyleInner.color}
-                                sx={{ fontSize: '0.7rem', height: 22, fontWeight: 600 }}
-                              />
-                            );
-                          })()}
-                          
-                          {interaction.duration_ms && (
-                            <Chip 
-                              label={formatDurationMs(interaction.duration_ms)} 
-                              size="small" 
-                              variant="filled"
-                              color={getInteractionColor(interaction.type)}
-                              sx={{ fontSize: '0.75rem', height: 24 }}
-                            />
-                          )}
-                        </Box>
-                      }
-                      subheader={
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                          <Typography variant="body2" color="text.secondary">
-                            {formatTimestamp(interaction.timestamp_us, 'short')}
-                          </Typography>
-                          <Typography variant="body2" sx={{ color: `${getInteractionColor(interaction.type)}.main`, fontWeight: 500 }}>
-                            • {interaction.type.toUpperCase()}
-                          </Typography>
-                          <Chip 
-                            label="Session Level"
-                            size="small"
-                            color="info"
-                            variant="outlined"
-                            sx={{ fontSize: '0.65rem', height: 20 }}
-                          />
-                        </Box>
-                      }
-                      action={null}
-                      sx={{ 
-                        pb: interaction.details && !isDetailsExpanded ? 2 : 1,
-                        bgcolor: (theme) => alpha(theme.palette.info.main, 0.05)
-                      }}
-                    />
-                        
-                    
-                    {/* Expandable interaction details */}
-                    {interaction.details && (
-                      <CardContent sx={{ 
-                        pt: 2,
-                        bgcolor: 'background.paper'
-                      }}>
-                        {/* Show LLM preview when not expanded */}
-                        {interaction.type === 'llm' && !isDetailsExpanded && (
-                          <LLMInteractionPreview 
-                            interaction={interaction.details as LLMInteraction}
-                            showFullPreview={true}
-                          />
-                        )}
-                        
-                        {/* Show MCP preview when not expanded */}
-                        {interaction.type === 'mcp' && !isDetailsExpanded && (
-                          <MCPInteractionPreview 
-                            interaction={interaction.details as MCPInteraction}
-                            showFullPreview={true}
-                          />
-                        )}
-                        
-                        {/* Expand/Collapse button */}
-                        <Box sx={{ 
-                          display: 'flex', 
-                          justifyContent: 'center', 
-                          mt: 2,
-                          mb: 1
-                        }}>
-                          <Box 
-                            onClick={() => toggleInteractionDetails(itemKey)}
-                            sx={{ 
-                              display: 'flex', 
-                              alignItems: 'center', 
-                              gap: 0.5,
-                              cursor: 'pointer',
-                              py: 0.75,
-                              px: 1.5,
-                              borderRadius: 1,
-                              bgcolor: interaction.type === 'llm' 
-                                ? 'rgba(25, 118, 210, 0.04)' 
-                                : interaction.type === 'mcp'
-                                ? 'rgba(156, 39, 176, 0.04)'
-                                : 'rgba(33, 150, 243, 0.04)',
-                              border: interaction.type === 'llm' 
-                                ? '1px solid rgba(25, 118, 210, 0.12)' 
-                                : interaction.type === 'mcp'
-                                ? '1px solid rgba(156, 39, 176, 0.12)'
-                                : '1px solid rgba(33, 150, 243, 0.12)',
-                              '&:hover': { 
-                                bgcolor: interaction.type === 'llm' 
-                                  ? 'rgba(25, 118, 210, 0.08)' 
-                                  : interaction.type === 'mcp'
-                                  ? 'rgba(156, 39, 176, 0.08)'
-                                  : 'rgba(33, 150, 243, 0.08)',
-                                border: interaction.type === 'llm' 
-                                  ? '1px solid rgba(25, 118, 210, 0.2)' 
-                                  : interaction.type === 'mcp'
-                                  ? '1px solid rgba(156, 39, 176, 0.2)'
-                                  : '1px solid rgba(33, 150, 243, 0.2)',
-                                '& .expand-text': {
-                                  textDecoration: 'underline'
-                                }
-                              },
-                              transition: 'all 0.2s ease-in-out'
-                            }}
-                          >
-                            <Typography 
-                              className="expand-text"
-                              variant="body2" 
-                              sx={{ 
-                                color: interaction.type === 'llm' 
-                                  ? '#1976d2' 
-                                  : interaction.type === 'mcp'
-                                  ? '#9c27b0'
-                                  : '#2196f3',
-                                fontWeight: 500,
-                                fontSize: '0.875rem'
-                              }}
-                            >
-                              {isDetailsExpanded ? 'Show Less' : 'Show Full Details'}
-                            </Typography>
-                            <Box sx={{ 
-                              color: interaction.type === 'llm' 
-                                ? '#1976d2' 
-                                : interaction.type === 'mcp'
-                                ? '#9c27b0'
-                                : '#2196f3',
-                              display: 'flex',
-                              alignItems: 'center'
-                            }}>
-                              {isDetailsExpanded ? <ExpandLess /> : <ExpandMore />}
-                            </Box>
-                          </Box>
-                        </Box>
-                        
-                        {/* Full interaction details when expanded */}
-                        <InteractionDetails
-                          type={interaction.type as 'llm' | 'mcp' | 'system'}
-                          details={interaction.details}
-                          expanded={isDetailsExpanded}
-                        />
-                      </CardContent>
-                    )}
-                  </Card>
+                    interaction={interaction}
+                    isExpanded={isDetailsExpanded}
+                    onToggle={() => toggleInteractionDetails(itemKey)}
+                  />
                 );
               })}
             </Box>

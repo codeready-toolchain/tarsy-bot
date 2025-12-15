@@ -26,6 +26,7 @@ from tarsy.integrations.llm.streaming import StreamingPublisher
 from tarsy.models.constants import LLMInteractionType, StreamingEventType
 from tarsy.models.llm_models import LLMProviderConfig, LLMProviderType
 from tarsy.models.mcp_selection_models import NativeToolsConfig
+from tarsy.models.parallel_metadata import ParallelExecutionMetadata
 from tarsy.models.processing_context import ToolWithServer
 from tarsy.models.unified_interactions import LLMConversation, MessageRole
 from tarsy.utils.logger import get_module_logger
@@ -218,7 +219,8 @@ class GeminiNativeThinkingClient:
         thought_signature: Optional[bytes] = None,
         max_tokens: Optional[int] = None,
         timeout_seconds: int = 180,
-        native_tools_override: Optional[NativeToolsConfig] = None
+        native_tools_override: Optional[NativeToolsConfig] = None,
+        parallel_metadata: Optional[ParallelExecutionMetadata] = None
     ) -> NativeThinkingResponse:
         """
         Generate response using Gemini's native thinking and function calling.
@@ -395,7 +397,8 @@ class GeminiNativeThinkingClient:
                                                     session_id, stage_execution_id,
                                                     StreamingEventType.NATIVE_THINKING, accumulated_thinking,
                                                     is_complete=False,
-                                                    llm_interaction_id=ctx.interaction.interaction_id
+                                                    llm_interaction_id=ctx.interaction.interaction_id,
+                                                    parallel_metadata=parallel_metadata
                                                 )
                                                 thinking_token_count = 0
                                     
@@ -410,7 +413,8 @@ class GeminiNativeThinkingClient:
                                                 session_id, stage_execution_id,
                                                 StreamingEventType.NATIVE_THINKING, accumulated_thinking,
                                                 is_complete=True,
-                                                llm_interaction_id=ctx.interaction.interaction_id
+                                                llm_interaction_id=ctx.interaction.interaction_id,
+                                                parallel_metadata=parallel_metadata
                                             )
                                             is_streaming_thinking = False
                                             logger.debug(f"[{request_id}] Completed streaming thinking content")
@@ -426,7 +430,8 @@ class GeminiNativeThinkingClient:
                                                 session_id, stage_execution_id,
                                                 StreamingEventType.FINAL_ANSWER, accumulated_content,
                                                 is_complete=False,
-                                                llm_interaction_id=ctx.interaction.interaction_id
+                                                llm_interaction_id=ctx.interaction.interaction_id,
+                                                parallel_metadata=parallel_metadata
                                             )
                                             response_token_count = 0
                                     
@@ -470,7 +475,8 @@ class GeminiNativeThinkingClient:
                             session_id, stage_execution_id,
                             StreamingEventType.NATIVE_THINKING, accumulated_thinking,
                             is_complete=True,
-                            llm_interaction_id=ctx.interaction.interaction_id
+                            llm_interaction_id=ctx.interaction.interaction_id,
+                            parallel_metadata=parallel_metadata
                         )
                     
                     if is_streaming_response and accumulated_content:
@@ -478,7 +484,8 @@ class GeminiNativeThinkingClient:
                             session_id, stage_execution_id,
                             StreamingEventType.FINAL_ANSWER, accumulated_content,
                             is_complete=True,
-                            llm_interaction_id=ctx.interaction.interaction_id
+                            llm_interaction_id=ctx.interaction.interaction_id,
+                            parallel_metadata=parallel_metadata
                         )
                 
                 # Combine thinking content

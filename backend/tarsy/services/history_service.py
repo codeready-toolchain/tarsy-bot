@@ -601,6 +601,21 @@ class HistoryService:
         )
         return result or []
     
+    async def get_parallel_stage_children(self, parent_execution_id: str) -> List[StageExecution]:
+        """Get all child stage executions for a parallel stage parent."""
+        def _get_children_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    raise RuntimeError("History repository unavailable - cannot retrieve parallel stage children")
+                return repo.get_parallel_stage_children(parent_execution_id)
+        
+        result = await self._retry_database_operation_async(
+            "get_parallel_stage_children",
+            _get_children_operation,
+            treat_none_as_success=True,
+        )
+        return result or []
+    
     # LLM Interaction Logging
     def store_llm_interaction(self, interaction: LLMInteraction) -> bool:
         """

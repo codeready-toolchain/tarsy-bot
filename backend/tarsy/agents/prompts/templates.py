@@ -96,6 +96,16 @@ Question: {question}
 {history_text}Begin!""")
 
 
+# Synthesis Prompt Template (no tools section)
+# Used for synthesis stages which don't use tools - just analyzes and combines results
+# Simple instruction with context (alert + runbook + previous stages)
+SYNTHESIS_PROMPT_TEMPLATE = PromptTemplate.from_template("""Synthesize the investigation results and provide recommendations.
+
+{context}
+
+{history_text}Begin!""")
+
+
 # Analysis Question Template
 ANALYSIS_QUESTION_TEMPLATE = PromptTemplate.from_template("""Analyze this {alert_type} alert and provide actionable recommendations.
 
@@ -224,14 +234,6 @@ CRITICAL INSTRUCTION: You MUST return ONLY plain text. DO NOT include "Final Ans
 
 # Native Thinking System Message Template
 NATIVE_THINKING_SYSTEM_TEMPLATE = PromptTemplate.from_template("""{composed_instructions}
-
-You are an SRE agent analyzing incidents. Use the available tools to investigate and provide actionable recommendations.
-
-When you have gathered sufficient information, provide your final analysis with:
-1. Root cause analysis
-2. Current system state assessment
-3. Specific remediation steps for human operators
-4. Prevention recommendations
 
 Focus on {task_focus} for human operators to execute.""")
 

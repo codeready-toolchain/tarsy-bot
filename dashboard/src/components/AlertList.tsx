@@ -12,8 +12,9 @@ import {
   Alert,
   Box,
   Button,
+  Tooltip,
 } from '@mui/material';
-import { Refresh } from '@mui/icons-material';
+import { Refresh, CallSplit } from '@mui/icons-material';
 import AlertListItem from './AlertListItem';
 import { apiClient, handleAPIError } from '../services/api';
 import type { Session } from '../types';
@@ -99,6 +100,19 @@ const AlertList: React.FC = () => {
               <TableHead>
                 <TableRow>
                   <TableCell>Status</TableCell>
+                  <TableCell sx={{ width: 40, px: 0.5, textAlign: 'center' }}>
+                    <Tooltip title="Parallel Agents" arrow>
+                      <CallSplit 
+                        sx={{ 
+                          fontSize: '1.1rem', 
+                          color: 'secondary.main',
+                          verticalAlign: 'middle',
+                          cursor: 'help'
+                        }} 
+                        aria-label="Parallel Agents"
+                      />
+                    </Tooltip>
+                  </TableCell>
                   <TableCell>Type</TableCell>
                   <TableCell>Agent Chain</TableCell>
                   <TableCell>Time</TableCell>
@@ -108,7 +122,7 @@ const AlertList: React.FC = () => {
               <TableBody>
                 {sessions.length === 0 ? (
                   <TableRow key="empty-state">
-                    <TableCell colSpan={5} align="center">
+                    <TableCell colSpan={6} align="center">
                       <Typography color="text.secondary" sx={{ py: 4 }}>
                         No alerts found
                       </Typography>

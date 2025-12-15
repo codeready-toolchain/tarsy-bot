@@ -213,8 +213,9 @@ agents:
     mcp_servers: ["security-scanner", "kubernetes-server"]  # Mix of custom + built-in
     iteration_strategy: "react"
     custom_instructions: "Focus on security implications and threat analysis..."
-    
-chains:
+
+# Chain definitions
+agent_chains:
   security-incident-chain:
     alert_types: ["SecurityBreach", "SuspiciousActivity"]
     llm_provider: "google-default"  # Optional: chain-level default provider
@@ -324,9 +325,9 @@ llm_providers:
 
 ### 3. Chain Management & Execution
 **Purpose**: Chain definition, selection, and sequential stage execution  
-**Key Responsibility**: Managing multi-stage agent workflows
+**Key Responsibility**: Managing multi-stage agent workflows with support for parallel execution
 
-Chains enable multi-stage workflows where specialized agents build upon each other's work. Each chain consists of sequential stages executed by domain-expert agents, with data accumulating as it flows through stages.
+Chains enable multi-stage workflows where specialized agents build upon each other's work. Each chain consists of sequential stages executed by domain-expert agents, with data accumulating as it flows through stages. Stages can execute in parallel when multiple agents need to investigate independently, with automatic synthesis of parallel results.
 
 #### Chain Architecture
 
@@ -373,7 +374,7 @@ sequenceDiagram
 **Multi-stage Chain Example**:
 ```yaml
 # In agents.yaml
-chains:
+agent_chains:
   incident-investigation-chain:
     alert_types: ["CriticalIncident"]
     llm_provider: "google-default"  # Optional: chain-level default
@@ -391,6 +392,66 @@ chains:
         iteration_strategy: "react-final-analysis"
         llm_provider: "openai-default"  # Optional: different provider for synthesis
 ```
+
+#### Parallel Stage Execution
+
+Stages can execute multiple agents in parallel for independent domain investigation or redundancy. Parallel results are automatically synthesized into a unified analysis before passing to the next stage.
+
+**Multi-Agent Parallelism** (different agents run concurrently):
+```yaml
+stages:
+  - name: "investigation"
+    agents:  # Multiple agents run in parallel
+      - name: "kubernetes"
+        llm_provider: "openai"
+        iteration_strategy: "react"
+      - name: "vm"
+        llm_provider: "anthropic"
+        iteration_strategy: "native-thinking"
+    failure_policy: "any"  # Continue if at least one succeeds
+    synthesis:  # Optional synthesis configuration
+      agent: "SynthesisAgent"  # Optional, defaults to SynthesisAgent
+      iteration_strategy: "synthesis"  # or "synthesis-native-thinking"
+      llm_provider: "anthropic-default"  # Optional
+  
+  - name: "recommendations"
+    agent: "SynthesisAgent"  # Uses synthesized results from investigation
+```
+
+**Replica Parallelism** (same agent runs multiple times):
+```yaml
+stages:
+  - name: "analysis"
+    agent: "kubernetes"
+    replicas: 3  # Run same agent 3 times with same config
+    llm_provider: "openai"
+    synthesis:  # Optional custom synthesis
+      iteration_strategy: "synthesis-native-thinking"
+      llm_provider: "google-default"
+```
+
+**Comparison Parallelism** (same agent with different configurations):
+```yaml
+stages:
+  - name: "analysis"
+    agents:  # Explicit configs for A/B testing
+      - name: "kubernetes"
+        llm_provider: "openai"
+        iteration_strategy: "react"
+      - name: "kubernetes"
+        llm_provider: "anthropic"
+        iteration_strategy: "react-stage"
+      - name: "kubernetes"
+        llm_provider: "gemini"
+        iteration_strategy: "native-thinking"
+```
+
+**Key Parallel Execution Features**:
+- **Automatic synthesis**: SynthesisAgent automatically synthesizes parallel results
+- **Failure policies**: `all` (strict) or `any` (resilient) success requirements
+- **Per-agent configuration**: Each agent can specify its own LLM provider and iteration strategy
+- **Pause/Resume support**: Individual agents can pause; resume re-executes only paused agents
+- **Rich investigation history**: Full conversation history (thoughts, tool observations) for synthesis
 
 #### Per-Stage LLM Provider Configuration
 
@@ -440,6 +501,8 @@ class ProcessingAlert(BaseModel):
 Agents are specialized AI-powered components that analyze alerts using domain expertise and configurable reasoning strategies. The system supports both hardcoded agents (like KubernetesAgent) and YAML-configured agents.
 
 **Pause & Resume Support**: Agents automatically pause when reaching iteration limits (configurable via `max_llm_mcp_iterations`). The complete conversation state, stage context, and processing metadata are preserved, allowing engineers to manually resume processing from the exact point where it paused. Sessions are marked as "paused" (recoverable) only if the last LLM interaction succeeded; otherwise, they fail.
+
+**Parallel Stage Pause Behavior**: When any parallel agent hits max_iterations, the entire stage is marked as PAUSED (pause takes priority over success/failure). Other agents continue naturally, preserving their results. Resume re-executes only paused agents while preserving completed and failed agent results.
 
 #### Agent Framework Architecture
 
@@ -501,13 +564,21 @@ class BaseAgent(ABC):
         """Main execution method using configured iteration strategy"""
 ```
 
+#### Built-in Agents
+
+**KubernetesAgent**: Domain expert for Kubernetes infrastructure with access to kubernetes-server MCP tools.
+
+**SynthesisAgent**: Specialized agent for synthesizing parallel investigation results. Automatically invoked after parallel stages to unify findings from multiple agents. Uses no MCP tools - focuses purely on analysis and synthesis of accumulated investigation data. Available for explicit use in chains or automatic invocation after parallel stages.
+
 #### Iteration Strategies
 
-**Three distinct processing approaches**:
+**Five distinct processing approaches**:
 
 1. **ReAct (Standard)**: Think→Action→Observation cycles for complete analysis
 2. **ReAct Stage**: Stage-specific analysis within multi-stage chains  
 3. **ReAct Final Analysis**: Synthesis without tools, uses accumulated data
+4. **ReAct Synthesis**: Synthesis strategy for parallel results (default for SynthesisAgent)
+5. **Native Thinking Synthesis**: Gemini thinking mode for synthesis (alternative for SynthesisAgent)
 
 **📍 Strategy Controllers**: `backend/tarsy/agents/iteration_controllers/`
 
@@ -1465,6 +1536,10 @@ session = AlertSession(
 - **LLMInteraction**: Complete LLM request/response tracking with timing
 - **MCPInteraction**: MCP tool calls with parameters, results, and errors
 - **StageExecution**: Chain stage tracking with status and metadata
+  - Supports parent-child relationships for parallel execution grouping
+  - `parent_stage_execution_id`: Links child executions to parent stage
+  - `parallel_index`: Position in parallel group (0 for single stages, 1-N for parallel)
+  - `parallel_type`: `single`, `multi_agent`, or `replica`
 
 **Timeline Data Structure**:
 ```python
@@ -1489,11 +1564,14 @@ class DetailedSession(BaseModel):
 **Core Endpoints**:
 - **`GET /api/v1/history/sessions`** - Paginated session list with filtering
 - **`GET /api/v1/history/sessions/{id}`** - Detailed session with complete timeline  
+  - Parallel stage executions include `parallel_executions` array with child execution details
+  - Parent-child relationship enables nested display of parallel agent results
 - **`GET /api/v1/history/sessions/{id}/final-analysis`** - Get final analysis content and executive summary with optional conversation history
   - Query params: `include_conversation=true` (LLM conversation), `include_chat_conversation=true` (chat conversation)
   - Conversation includes: model name, provider, timestamp, token usage, and flat message list
 - **`GET /api/v1/history/active-sessions`** - Currently processing sessions
 - **`POST /api/v1/history/sessions/{id}/resume`** - Resume a paused session from where it left off
+  - For parallel stages: only paused agents re-execute; completed/failed results preserved
 - **`POST /api/v1/history/sessions/{id}/cancel`** - Cancel an active or paused session
 - **`GET /api/v1/history/health`** - History service health check
 
@@ -1587,13 +1665,15 @@ graph TB
 - **Pod tracking & graceful shutdown** - Multi-replica support (mirrors AlertService patterns)
 
 **📍 Chat Agent**: `backend/tarsy/agents/chat_agent.py`
-- **Built-in agent** for follow-up conversations using ReAct strategy
+- **Built-in agent** for follow-up conversations (configurable per chain)
+- **Multiple iteration strategies** - Supports ReAct and NativeThinking (auto-determined from last stage or explicitly configured)
 - **Dynamic MCP configuration** - Uses servers from original session
 - **Context-aware processing** - Receives complete investigation history
 
-**📍 Chat Controller**: `backend/tarsy/agents/iteration_controllers/chat_react_controller.py`
-- **Extends ReactController** with conversation history
-- **Formats prompts** with investigation context prepended to user questions
+**📍 Chat Controllers**: 
+- `chat_react_controller.py` - ReAct-based chat with conversation history
+- `chat_native_thinking_controller.py` - Gemini native thinking for chat
+- **Strategy selection** - Auto-translates synthesis strategies (synthesis → react, synthesis-native-thinking → native-thinking)
 
 #### Database Schema
 
@@ -1613,7 +1693,24 @@ graph TB
 # In config/agents.yaml
 agent_chains:
   kubernetes-agent-chain:
-    chat_enabled: true  # Default: true
+    # Option 1: Default chat (enabled with defaults)
+    # Omit chat field = enabled with ChatAgent, auto-determined strategy, chain LLM provider
+    
+    # Option 2: Custom chat configuration
+    chat:
+      enabled: true                         # Optional, defaults to true
+      agent: "ChatAgent"                    # Optional, defaults to ChatAgent
+      iteration_strategy: "native-thinking" # Optional, auto-determined from last stage if not set
+      llm_provider: "google-default"        # Optional, uses chain/system default if not set
+    
+    # Option 3: Disable chat
+    # chat:
+    #   enabled: false
+
+# Configuration Hierarchy:
+# - Iteration Strategy: chat.iteration_strategy > last stage (translated) > agent default > REACT
+# - LLM Provider: chat.llm_provider > chain.llm_provider > system default
+# - Agent: chat.agent > "ChatAgent" (default)
 ```
 
 **REST Endpoints**: `backend/tarsy/controllers/chat_controller.py`
@@ -1699,6 +1796,10 @@ graph TB
 - **Session list view** with filtering and real-time updates
 - **Timeline visualization** for processing stages
 - **Active session monitoring** with live progress
+- **Parallel execution tabs** for viewing multiple agent results from parallel stages
+  - Tab-based interface for switching between parallel executions
+  - Per-agent timing, status, and metadata display
+  - Aggregate status indicators for parallel stages
 
 **📍 Manual Alert Submission**: Integrated into dashboard at `/submit-alert` (React TypeScript)  
 - **Alert submission interface** for manual alert testing

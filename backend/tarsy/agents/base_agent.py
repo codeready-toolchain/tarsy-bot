@@ -16,6 +16,7 @@ from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.agent_execution_result import AgentExecutionResult
 from tarsy.models.constants import StageStatus
 from tarsy.models.mcp_selection_models import MCPSelectionConfig
+from tarsy.models.parallel_metadata import ParallelExecutionMetadata
 from tarsy.models.processing_context import (
     AvailableTools,
     ChainContext,
@@ -93,6 +94,9 @@ class BaseAgent(ABC):
         # Stage execution tracking for chain processing
         self._current_stage_execution_id: Optional[str] = None
         
+        # Parallel execution metadata (for streaming events)
+        self._parallel_metadata: Optional['ParallelExecutionMetadata'] = None
+        
         # Chat tracking for interaction recording
         self._current_chat_id: Optional[str] = None
         
@@ -128,7 +132,18 @@ class BaseAgent(ABC):
             from .iteration_controllers.native_thinking_controller import (
                 NativeThinkingController,
             )
+            logger.debug("Creating NativeThinkingController")
             return NativeThinkingController(self.llm_manager, self._prompt_builder)
+        elif strategy == IterationStrategy.SYNTHESIS:
+            from .iteration_controllers.synthesis_controller import (
+                SynthesisController,
+            )
+            return SynthesisController(self.llm_manager, self._prompt_builder)
+        elif strategy == IterationStrategy.SYNTHESIS_NATIVE_THINKING:
+            from .iteration_controllers.synthesis_native_thinking_controller import (
+                SynthesisNativeThinkingController,
+            )
+            return SynthesisNativeThinkingController(self.llm_manager, self._prompt_builder)
         else:
             assert_never(strategy)
     
@@ -224,13 +239,23 @@ class BaseAgent(ABC):
                 context=stage_context
             )
             
+            # Generate investigation history for synthesis strategies
+            investigation_history = ""
+            last_conversation = self._iteration_controller.get_last_conversation()
+            if last_conversation:
+                investigation_history = self._iteration_controller.build_synthesis_conversation(last_conversation)
+            
             return AgentExecutionResult(
                 status=StageStatus.COMPLETED,
                 agent_name=self.__class__.__name__,
+                stage_name=context.current_stage_name,
                 timestamp_us=now_us(),
                 result_summary=result_summary,
-                complete_conversation_history=analysis_result,
-                final_analysis=final_analysis
+                complete_conversation_history=analysis_result,  # Last assistant message
+                investigation_history=investigation_history,  # Full conversation for synthesis
+                final_analysis=final_analysis,
+                iteration_strategy=self._iteration_strategy.value,
+                llm_provider=self._llm_provider_name
             )
             
         except AgentError as e:
@@ -245,9 +270,12 @@ class BaseAgent(ABC):
             return AgentExecutionResult(
                 status=StageStatus.FAILED,
                 agent_name=self.__class__.__name__,
+                stage_name=context.current_stage_name,
                 timestamp_us=now_us(),
                 result_summary=f"Agent execution failed: {str(e)}",
-                error_message=str(e)
+                error_message=str(e),
+                iteration_strategy=self._iteration_strategy.value,
+                llm_provider=self._llm_provider_name
             )
         except Exception as e:
             # Handle unexpected errors
@@ -257,9 +285,12 @@ class BaseAgent(ABC):
             return AgentExecutionResult(
                 status=StageStatus.FAILED,
                 agent_name=self.__class__.__name__,
+                stage_name=context.current_stage_name,
                 timestamp_us=now_us(),
                 result_summary=f"Agent execution failed with unexpected error: {str(e)}",
-                error_message=error_msg
+                error_message=error_msg,
+                iteration_strategy=self._iteration_strategy.value,
+                llm_provider=self._llm_provider_name
             )
 
     def _compose_instructions(self) -> str:
@@ -308,6 +339,18 @@ class BaseAgent(ABC):
         """
         return self._prompt_builder.get_general_instructions()
     
+    def get_general_instructions(self) -> str:
+        """
+        Get general SRE instructions common to all agents.
+        
+        Public API for controllers and other components that need to access
+        general instructions for composing system messages.
+        
+        Returns:
+            General instruction text
+        """
+        return self._get_general_instructions()
+    
     def set_current_stage_execution_id(self, stage_execution_id: Optional[str]):
         """Set the current stage execution ID for chain processing context."""
         self._current_stage_execution_id = stage_execution_id
@@ -315,6 +358,14 @@ class BaseAgent(ABC):
     def get_current_stage_execution_id(self) -> Optional[str]:
         """Get the current stage execution ID."""
         return self._current_stage_execution_id
+    
+    def set_parallel_execution_metadata(self, metadata: 'ParallelExecutionMetadata'):
+        """Set parallel execution metadata for streaming events."""
+        self._parallel_metadata = metadata
+    
+    def get_parallel_execution_metadata(self) -> Optional['ParallelExecutionMetadata']:
+        """Get parallel execution metadata for streaming events."""
+        return self._parallel_metadata
     
     def set_current_chat_id(self, chat_id: Optional[str]):
         """Set the current chat ID for interaction recording."""

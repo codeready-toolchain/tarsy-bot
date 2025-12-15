@@ -69,7 +69,9 @@ class TestMCPResultSummarizer:
         
         # Verify result structure
         assert isinstance(result, dict)
-        assert result["result"] == "Summarized: 2 pods found - pod1 and pod2"
+        # Check that result contains the summary wrapper
+        assert "[NOTE: The tool output was too long and has been summarized below." in result["result"]
+        assert "Summarized: 2 pods found - pod1 and pod2" in result["result"]
         assert result["metadata"] == "some metadata"  # Original metadata preserved
         
         # Verify prompt builder was called correctly
@@ -108,7 +110,9 @@ class TestMCPResultSummarizer:
             "server", "tool", test_result, investigation_conversation, "session"
         )
         
-        assert result["result"] == "Summary of string result"
+        # Check that result contains the summary wrapper and the actual summary
+        assert "[NOTE: The tool output was too long and has been summarized below." in result["result"]
+        assert "Summary of string result" in result["result"]
         
         # Verify user prompt was built with string content (not JSON)
         user_prompt_call = self.mock_prompt_builder.build_mcp_summarization_user_prompt.call_args
@@ -134,7 +138,9 @@ class TestMCPResultSummarizer:
             "server", "tool", test_result, investigation_conversation, "session"
         )
         
-        assert result["result"] == "Summary of full result"
+        # Check that result contains the summary wrapper and the actual summary
+        assert "[NOTE: The tool output was too long and has been summarized below." in result["result"]
+        assert "Summary of full result" in result["result"]
         
         # Original structure should be preserved except for result content
         assert result["status"] == "running"
@@ -280,8 +286,9 @@ class TestMCPResultSummarizer:
             max_summary_tokens=100  # Very small limit to test enforcement
         )
         
-        # Verify result contains the constrained response
-        assert result["result"] == constrained_response
+        # Verify result contains the constrained response wrapped with summary note
+        assert "[NOTE: The tool output was too long and has been summarized below." in result["result"]
+        assert constrained_response in result["result"]
         
         # Verify max_tokens was passed correctly
         call_args = self.mock_llm_client.generate_response.call_args

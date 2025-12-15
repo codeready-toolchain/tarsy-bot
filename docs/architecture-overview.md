@@ -40,11 +40,13 @@ graph LR
 - Each chain consists of **sequential stages** executed by domain expert agents
 - **Progressive data enrichment** as data flows from stage to stage
 - **Flexible chain definitions** supporting both single-stage (traditional) and multi-stage processing
+- **Parallel execution support** where multiple agents can investigate independently within a stage, with automatic synthesis of results
 
 ### 3. Specialized Agents (Enhanced for Chains)
 - **Domain experts** for different infrastructure areas (Kubernetes, databases, networks, etc.)
 - Each agent comes with its own **dedicated MCP servers/tools** (kubectl, database clients, network diagnostics, etc.)
-- **Advanced processing approaches**: ReAct (systematic reasoning), ReAct Stage (stage-specific analysis within chains), ReAct Final Analysis (comprehensive analysis of data collected by previous stages, no tool calling)
+- **Advanced processing approaches**: ReAct (systematic reasoning), ReAct Stage (stage-specific analysis within chains), ReAct Final Analysis (comprehensive analysis of data collected by previous stages, no tool calling), ReAct Synthesis (parallel result synthesis)
+- **Built-in SynthesisAgent**: Specialized agent for unifying findings from parallel investigations - automatically invoked after parallel stages to critically evaluate and synthesize multiple agent results
 - **Stage-aware processing**: Agents can access data from all previous stages in the chain
 - Uses AI to intelligently select and use the right tools based on stage requirements and accumulated data
 
@@ -70,8 +72,8 @@ graph LR
 - **Context Preservation**: Chat agent maintains full investigation context and tool access
 - **Multi-user Collaboration**: Multiple engineers can participate in the same conversation
 - **Unified Timeline**: Chat messages appear inline with investigation stages in the reasoning view
-- **Real-time Streaming**: Follow-up questions trigger the same ReAct reasoning visible during initial investigation
-- **Per-chain Configuration**: Chat capability can be enabled/disabled per agent chain
+- **Real-time Streaming**: Follow-up questions trigger investigation reasoning (ReAct or NativeThinking, auto-determined or explicitly configured)
+- **Per-chain Configuration**: Chat capability fully configurable per chain (agent, iteration strategy, LLM provider, enabled/disabled)
 
 ## How It Works
 
@@ -148,7 +150,7 @@ When a stage reaches its maximum iteration limit, the system automatically pause
 
 ### Follow-up Chat
 
-After a session completes (or fails/is cancelled), engineers can start a chat conversation to ask follow-up questions. The chat agent uses the same ReAct processing shown above, with full investigation context and access to the same MCP tools used during the original session. Responses stream in real-time and appear inline in the conversation timeline.
+After a session completes (or fails/is cancelled), engineers can start a chat conversation to ask follow-up questions. The chat agent (configurable per chain) uses investigation reasoning (ReAct or NativeThinking, auto-determined or explicitly configured) with full investigation context and access to the same MCP tools used during the original session. Responses stream in real-time and appear inline in the conversation timeline.
 
 ## Authentication & Access Control
 
@@ -252,7 +254,26 @@ The AI combines all four to make intelligent decisions about investigation appro
       # - Each stage can have specialized MCP servers (focused expertise)
       # - Each stage can use different LLM providers (cost/performance optimization)
       # - Chain-level provider serves as default for stages without explicit override
-      # - Follow-up chat and executive summary use chain-level provider
+      # - Follow-up chat uses chain-level provider by default (can be overridden in chat config)
+      # - Executive summary uses chain-level provider
+
+    # Parallel execution example
+    multi-perspective-investigation-chain:
+      alert_types:
+        - "ComplexOutage"
+      stages:
+        - name: "parallel-investigation"
+          agents:  # Multiple agents run in parallel
+            - name: "kubernetes"
+              llm_provider: "openai"
+            - name: "vm"
+              llm_provider: "anthropic"
+          failure_policy: "any"  # Continue if at least one succeeds
+          synthesis:
+            iteration_strategy: "react-synthesis"  # Automatically synthesizes results
+        - name: "recommendations"
+          agent: "SynthesisAgent"
+      description: "Multi-domain parallel investigation with automatic synthesis"
   ```
 - **Integration Points**: Connect with existing monitoring and ticketing systems
   - *Examples: AlertManager, PagerDuty, Jira, ServiceNow integrations*

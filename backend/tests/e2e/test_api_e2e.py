@@ -21,7 +21,7 @@ from tarsy.config.builtin_config import BUILTIN_MCP_SERVERS
 from tarsy.integrations.mcp.client import MCPClient
 
 from .conftest import create_mock_stream
-from .e2e_utils import E2ETestUtils
+from .e2e_utils import E2ETestUtils, assert_conversation_messages
 from .expected_conversations import (
     EXPECTED_ANALYSIS_CONVERSATION,
     EXPECTED_CHAT_INTERACTIONS,
@@ -35,50 +35,6 @@ from .expected_conversations import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def assert_conversation_messages(
-    expected_conversation: dict, actual_messages: list, n: int
-):
-    """
-    Get the first N messages from expected_conversation['messages'] and compare with actual_messages.
-
-    Args:
-        expected_conversation: Dictionary with 'messages' key containing expected message list
-        actual_messages: List of actual messages from the LLM interaction
-        n: Number of messages to compare (a count)
-    """
-    expected_messages = expected_conversation.get("messages", [])
-    assert (
-        len(actual_messages) == n
-    ), f"Actual messages count mismatch: expected {n}, got {len(actual_messages)}"
-
-    # Extract first N messages
-    first_n_expected = expected_messages[:n]
-
-    # Compare each message
-    for i in range(len(first_n_expected)):
-        assert (
-            i < len(actual_messages)
-        ), f"Missing actual message: Expected {len(first_n_expected)} messages, got {len(actual_messages)}"
-
-        expected_msg = first_n_expected[i]
-        actual_msg = actual_messages[i]
-
-        # Compare role
-        expected_role = expected_msg.get("role", "")
-        actual_role = actual_msg.get("role", "")
-        assert (
-            expected_role == actual_role
-        ), f"Role mismatch: expected {expected_role}, got {actual_role}"
-
-        # Normalize content for comparison
-        expected_content = E2ETestUtils.normalize_content(expected_msg.get("content", ""))
-        actual_content = E2ETestUtils.normalize_content(actual_msg.get("content", ""))
-        
-        assert (
-            expected_content == actual_content
-        ), f"Content mismatch in message {i}: expected length {len(expected_content)}, got {len(actual_content)}"
 
 
 @pytest.mark.asyncio
@@ -451,19 +407,8 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             # 1. Mock LLM streaming (preserves LLM hooks!)
             streaming_mock = create_streaming_mock()
             
-            # Import LangChain clients to patch
-            from langchain_anthropic import ChatAnthropic
-            from langchain_google_genai import ChatGoogleGenerativeAI
-            from langchain_openai import ChatOpenAI
-            from langchain_xai import ChatXAI
-            
-            # Patch the astream method on all LangChain client classes
-            # This works because the method will be called on instances
-            with patch.object(ChatOpenAI, 'astream', streaming_mock), \
-                 patch.object(ChatAnthropic, 'astream', streaming_mock), \
-                 patch.object(ChatXAI, 'astream', streaming_mock), \
-                 patch.object(ChatGoogleGenerativeAI, 'astream', streaming_mock):
-                
+            # Patch LangChain clients using shared utility
+            with E2ETestUtils.create_llm_patch_context(streaming_mock=streaming_mock):
                 # 2. Mock MCP client using shared utility with custom sessions
                 mock_sessions = {
                     "kubernetes-server": mock_kubernetes_session,
@@ -1015,7 +960,8 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
         await self._verify_chat_response(
             chat_stage=message_1_stage,
             message_key='message_1',
-            expected_conversation=EXPECTED_CHAT_MESSAGE_1_CONVERSATION
+            expected_conversation=EXPECTED_CHAT_MESSAGE_1_CONVERSATION,
+            expected_spec=EXPECTED_CHAT_INTERACTIONS['message_1']
         )
         verified_chat_stage_ids.add(message_1_stage.get("stage_id"))
         logger.info("First chat response verified")
@@ -1036,7 +982,8 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
         await self._verify_chat_response(
             chat_stage=message_2_stage,
             message_key='message_2',
-            expected_conversation=EXPECTED_CHAT_MESSAGE_2_CONVERSATION
+            expected_conversation=EXPECTED_CHAT_MESSAGE_2_CONVERSATION,
+            expected_spec=EXPECTED_CHAT_INTERACTIONS['message_2']
         )
         verified_chat_stage_ids.add(message_2_stage.get("stage_id"))
         logger.info("Second chat response verified")
@@ -1207,7 +1154,8 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
         self,
         chat_stage,
         message_key: str,
-        expected_conversation: dict
+        expected_conversation: dict,
+        expected_spec: dict
     ):
         """
         Verify the structure of a chat response using the same pattern as stage verification.
@@ -1215,7 +1163,8 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
         Args:
             chat_stage: The chat stage execution data from the API
             message_key: Key to look up expected interactions (e.g., 'message_1', 'message_2')
-            expected_conversation: Expected conversation structure for this message
+            expected_conversation: Expected conversation structure for this message (with 'messages' key)
+            expected_spec: Expected interaction specification (with 'llm_count', 'mcp_count', 'interactions')
         """
         # Verify basic stage structure
         assert chat_stage is not None, "Chat stage not found"
@@ -1258,25 +1207,24 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
             )
         
         # Get expected interactions for this message
-        expected_chat = EXPECTED_CHAT_INTERACTIONS[message_key]
         llm_interactions = chat_stage.get("llm_interactions", [])
         mcp_interactions = chat_stage.get("mcp_communications", [])
         
         # Verify interaction counts
-        assert len(llm_interactions) == expected_chat["llm_count"], (
-            f"Chat {message_key}: Expected {expected_chat['llm_count']} LLM interactions, "
+        assert len(llm_interactions) == expected_spec["llm_count"], (
+            f"Chat {message_key}: Expected {expected_spec['llm_count']} LLM interactions, "
             f"got {len(llm_interactions)}"
         )
-        assert len(mcp_interactions) == expected_chat["mcp_count"], (
-            f"Chat {message_key}: Expected {expected_chat['mcp_count']} MCP interactions, "
+        assert len(mcp_interactions) == expected_spec["mcp_count"], (
+            f"Chat {message_key}: Expected {expected_spec['mcp_count']} MCP interactions, "
             f"got {len(mcp_interactions)}"
         )
         
         # Verify complete interaction flow in chronological order
         chronological_interactions = chat_stage.get("chronological_interactions", [])
-        assert len(chronological_interactions) == len(expected_chat["interactions"]), (
+        assert len(chronological_interactions) == len(expected_spec["interactions"]), (
             f"Chat {message_key} chronological interaction count mismatch: "
-            f"expected {len(expected_chat['interactions'])}, got {len(chronological_interactions)}"
+            f"expected {len(expected_spec['interactions'])}, got {len(chronological_interactions)}"
         )
         
         # Track token totals
@@ -1284,7 +1232,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}""",
         expected_output_tokens = 0
         expected_total_tokens = 0
         
-        for i, expected_interaction in enumerate(expected_chat["interactions"]):
+        for i, expected_interaction in enumerate(expected_spec["interactions"]):
             actual_interaction = chronological_interactions[i]
             interaction_type = expected_interaction["type"]
             

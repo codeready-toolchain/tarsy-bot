@@ -61,6 +61,11 @@ agent_chains:
     alert_types:
       - "test-kubernetes"
       - "test-NamespaceTerminating"
+    chat:
+      enabled: true
+      agent: "ChatAgent"
+      iteration_strategy: "react"           # Custom: Force ReAct strategy
+      llm_provider: "openai-default"        # Custom: Use OpenAI
     stages:
       - name: "data-collection"
         agent: "DataCollectionAgent"

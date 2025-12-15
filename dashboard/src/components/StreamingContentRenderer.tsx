@@ -31,6 +31,10 @@ export interface StreamingItem {
   messageId?: string;
   // LLM interaction ID for deduplication of thought/final_answer/native_thinking streams
   llm_interaction_id?: string;
+  // Parallel execution metadata
+  parent_stage_execution_id?: string;
+  parallel_index?: number;
+  agent_name?: string;
 }
 
 interface StreamingContentRendererProps {

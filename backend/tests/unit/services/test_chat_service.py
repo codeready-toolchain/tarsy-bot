@@ -35,7 +35,10 @@ class TestChatService:
     @pytest.fixture
     def mock_agent_factory(self):
         """Mock agent factory for testing."""
-        return Mock()
+        mock = Mock()
+        mock.agent_configs = {}
+        mock.static_agent_classes = {}
+        return mock
     
     @pytest.fixture
     def mock_mcp_client_factory(self):
@@ -47,8 +50,6 @@ class TestChatService:
     @pytest.fixture
     def chat_service(self, mock_history_service, mock_agent_factory, mock_mcp_client_factory):
         """Create ChatService with mocked dependencies."""
-        # Mock agent_configs as dict (not Mock) for iteration
-        mock_agent_factory.agent_configs = {}
         return ChatService(
             history_service=mock_history_service,
             agent_factory=mock_agent_factory,
@@ -184,20 +185,21 @@ class TestChatService:
         self, chat_service, mock_history_service, sample_session
     ):
         """Test create chat fails when chat is disabled for the chain."""
+        from tarsy.models.agent_config import ChainConfigModel
+        
         sample_session.chain_definition = {
             "chain_id": "test-chain",
             "alert_types": ["TestAlert"],
             "stages": [{"agent": "TestAgent", "name": "Test"}],
-            "chat_enabled": False
+            "chat": {"enabled": False}
         }
-        # Update the mock chain_config property
-        from tarsy.models.agent_config import ChainConfigModel
+        # Update chain_config to reflect the new definition (Mock doesn't auto-parse)
         sample_session.chain_config = ChainConfigModel(**sample_session.chain_definition)
         
         mock_history_service.get_session.return_value = sample_session
         mock_history_service.get_chat_by_session = AsyncMock(return_value=None)
         
-        with pytest.raises(ValueError, match="Chat is disabled for chain"):
+        with pytest.raises(ValueError, match="Chat is disabled"):
             await chat_service.create_chat(
                 session_id="test-session-123",
                 created_by="user@example.com"
@@ -253,6 +255,89 @@ class TestChatService:
         assert result is not None
         server_names = {s.name for s in result.servers}
         assert server_names == {"kubectl", "prometheus", "postgres"}
+        # No tool filtering for defaults
+        assert all(s.tools is None for s in result.servers)
+    
+    def test_determine_mcp_selection_from_parallel_agents(
+        self, chat_service, mock_agent_factory, sample_session
+    ):
+        """Test MCP selection correctly collects servers from parallel stages."""
+        sample_session.mcp_selection = None
+        sample_session.chain_definition = {
+            "chain_id": "test-parallel-chain",
+            "alert_types": ["TestAlert"],
+            "stages": [
+                {
+                    "name": "investigation",
+                    "agents": [
+                        {"name": "KubernetesAgent"},
+                        {"name": "LogAgent"}
+                    ],
+                    "failure_policy": "all"
+                }
+            ]
+        }
+        # Update the mock chain_config property
+        from tarsy.models.agent_config import ChainConfigModel
+        sample_session.chain_config = ChainConfigModel(**sample_session.chain_definition)
+        
+        # Mock agent configs
+        mock_agent_factory.agent_configs = {
+            "KubernetesAgent": Mock(mcp_servers=["kubernetes-server"]),
+            "LogAgent": Mock(mcp_servers=["kubernetes-server", "log-server"])
+        }
+        
+        with patch("tarsy.config.builtin_config.get_builtin_agent_config", return_value=None):
+            result = chat_service._determine_mcp_selection_from_session(sample_session)
+        
+        assert result is not None
+        server_names = {s.name for s in result.servers}
+        # Should deduplicate kubernetes-server (appears in both agents)
+        assert server_names == {"kubernetes-server", "log-server"}
+        # No tool filtering for defaults
+        assert all(s.tools is None for s in result.servers)
+    
+    def test_determine_mcp_selection_from_mixed_sequential_and_parallel(
+        self, chat_service, mock_agent_factory, sample_session
+    ):
+        """Test MCP selection handles chains with both sequential and parallel stages."""
+        sample_session.mcp_selection = None
+        sample_session.chain_definition = {
+            "chain_id": "test-mixed-chain",
+            "alert_types": ["TestAlert"],
+            "stages": [
+                {
+                    "name": "parallel-investigation",
+                    "agents": [
+                        {"name": "KubernetesAgent"},
+                        {"name": "LogAgent"}
+                    ],
+                    "failure_policy": "all"
+                },
+                {
+                    "name": "sequential-action",
+                    "agent": "DatabaseAgent"
+                }
+            ]
+        }
+        # Update the mock chain_config property
+        from tarsy.models.agent_config import ChainConfigModel
+        sample_session.chain_config = ChainConfigModel(**sample_session.chain_definition)
+        
+        # Mock agent configs
+        mock_agent_factory.agent_configs = {
+            "KubernetesAgent": Mock(mcp_servers=["kubernetes-server"]),
+            "LogAgent": Mock(mcp_servers=["log-server"]),
+            "DatabaseAgent": Mock(mcp_servers=["postgres"])
+        }
+        
+        with patch("tarsy.config.builtin_config.get_builtin_agent_config", return_value=None):
+            result = chat_service._determine_mcp_selection_from_session(sample_session)
+        
+        assert result is not None
+        server_names = {s.name for s in result.servers}
+        # Should collect from both parallel and sequential stages
+        assert server_names == {"kubernetes-server", "log-server", "postgres"}
         # No tool filtering for defaults
         assert all(s.tools is None for s in result.servers)
     
@@ -872,11 +957,45 @@ class TestChatServiceStageExecution:
         return Mock()
     
     @pytest.fixture
-    def chat_service(self, mock_history_service):
+    def mock_agent_factory(self):
+        """Mock agent factory for testing."""
+        mock = Mock()
+        mock.agent_configs = {}
+        mock.static_agent_classes = {}
+        return mock
+    
+    @pytest.fixture
+    def sample_session(self):
+        """Sample completed session for testing."""
+        from tarsy.models.db_models import AlertSession
+        from tarsy.utils.timestamp import now_us
+        
+        session = AlertSession(
+            session_id="test-session-123",
+            alert_type="kubernetes",
+            agent_type="KubernetesAgent",
+            chain_id="kubernetes-investigation",
+            status=AlertSessionStatus.COMPLETED.value,
+            started_at_us=now_us(),
+            completed_at_us=now_us(),
+            author="test-user@example.com",
+            chain_definition={
+                "chain_id": "kubernetes-investigation",
+                "alert_types": ["kubernetes"],
+                "stages": [
+                    {"agent": "KubernetesAgent", "name": "Initial Investigation"}
+                ]
+            },
+            mcp_selection=None
+        )
+        return session
+    
+    @pytest.fixture
+    def chat_service(self, mock_history_service, mock_agent_factory):
         """Create ChatService with mocked history."""
         return ChatService(
             history_service=mock_history_service,
-            agent_factory=Mock(),
+            agent_factory=mock_agent_factory,
             mcp_client_factory=AsyncMock()
         )
     
@@ -945,4 +1064,641 @@ class TestChatServiceStageExecution:
         assert mock_stage.status == StageStatus.FAILED.value
         assert mock_stage.error_message == "Test error"
         assert mock_stage.completed_at_us > 0
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_started_fails_when_history_service_is_none(self):
+        """Test that update fails when history service is None."""
+        service = ChatService(
+            history_service=None,
+            agent_factory=Mock(),
+            mcp_client_factory=AsyncMock()
+        )
+        
+        with pytest.raises(RuntimeError, match="History service is disabled"):
+            await service._update_stage_execution_started("exec-123")
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_started_fails_when_not_found(
+        self, chat_service, mock_history_service
+    ):
+        """Test that update fails when stage execution is not found."""
+        mock_history_service.get_stage_execution = AsyncMock(return_value=None)
+        
+        with pytest.raises(RuntimeError, match="not found in database"):
+            await chat_service._update_stage_execution_started("exec-123")
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_started_propagates_hook_failures(
+        self, chat_service, mock_history_service
+    ):
+        """Test that hook failures are propagated, not silently swallowed."""
+        mock_stage = Mock()
+        mock_stage.session_id = "session-123"
+        mock_stage.status = StageStatus.PENDING.value
+        mock_history_service.get_stage_execution = AsyncMock(return_value=mock_stage)
+        
+        # Simulate hook failure
+        with patch("tarsy.services.chat_service.stage_execution_context") as stage_ctx:
+            stage_ctx.return_value.__aenter__ = AsyncMock(side_effect=Exception("Hook failure"))
+            
+            with pytest.raises(RuntimeError, match="Database persistence is required"):
+                await chat_service._update_stage_execution_started("exec-123")
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_completed_fails_when_history_service_is_none(self):
+        """Test that update fails when history service is None."""
+        service = ChatService(
+            history_service=None,
+            agent_factory=Mock(),
+            mcp_client_factory=AsyncMock()
+        )
+        
+        result = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="ChatAgent",
+            result_summary="Analysis complete",
+            final_analysis="Analysis complete",
+            timestamp_us=now_us()
+        )
+        
+        with pytest.raises(RuntimeError, match="History service is disabled"):
+            await service._update_stage_execution_completed("exec-123", result)
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_completed_fails_when_not_found(
+        self, chat_service, mock_history_service
+    ):
+        """Test that update fails when stage execution is not found."""
+        mock_history_service.get_stage_execution = AsyncMock(return_value=None)
+        
+        result = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="ChatAgent",
+            result_summary="Analysis complete",
+            final_analysis="Analysis complete",
+            timestamp_us=now_us()
+        )
+        
+        with pytest.raises(RuntimeError, match="not found in database"):
+            await chat_service._update_stage_execution_completed("exec-123", result)
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_completed_propagates_hook_failures(
+        self, chat_service, mock_history_service
+    ):
+        """Test that hook failures are propagated, not silently swallowed."""
+        mock_stage = Mock()
+        mock_stage.session_id = "session-123"
+        mock_stage.started_at_us = now_us()
+        mock_history_service.get_stage_execution = AsyncMock(return_value=mock_stage)
+        
+        result = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="ChatAgent",
+            result_summary="Analysis complete",
+            final_analysis="Analysis complete",
+            timestamp_us=now_us()
+        )
+        
+        # Simulate hook failure
+        with patch("tarsy.services.chat_service.stage_execution_context") as stage_ctx:
+            stage_ctx.return_value.__aenter__ = AsyncMock(side_effect=Exception("Hook failure"))
+            
+            with pytest.raises(RuntimeError, match="Database persistence is required"):
+                await chat_service._update_stage_execution_completed("exec-123", result)
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_failed_fails_when_history_service_is_none(self):
+        """Test that update fails when history service is None."""
+        service = ChatService(
+            history_service=None,
+            agent_factory=Mock(),
+            mcp_client_factory=AsyncMock()
+        )
+        
+        with pytest.raises(RuntimeError, match="History service is disabled"):
+            await service._update_stage_execution_failed("exec-123", "Test error")
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_failed_fails_when_not_found(
+        self, chat_service, mock_history_service
+    ):
+        """Test that update fails when stage execution is not found."""
+        mock_history_service.get_stage_execution = AsyncMock(return_value=None)
+        
+        with pytest.raises(RuntimeError, match="not found in database"):
+            await chat_service._update_stage_execution_failed("exec-123", "Test error")
+    
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_failed_propagates_hook_failures(
+        self, chat_service, mock_history_service
+    ):
+        """Test that hook failures are propagated, not silently swallowed."""
+        mock_stage = Mock()
+        mock_stage.session_id = "session-123"
+        mock_stage.started_at_us = now_us()
+        mock_history_service.get_stage_execution = AsyncMock(return_value=mock_stage)
+        
+        # Simulate hook failure
+        with patch("tarsy.services.chat_service.stage_execution_context") as stage_ctx:
+            stage_ctx.return_value.__aenter__ = AsyncMock(side_effect=Exception("Hook failure"))
+            
+            with pytest.raises(RuntimeError, match="Database persistence is required"):
+                await chat_service._update_stage_execution_failed("exec-123", "Test error")
+    
+    # ===== Iteration Strategy Determination Tests =====
+    
+    def test_determine_iteration_strategy_from_explicit_stage_strategy(
+        self, chat_service, sample_session
+    ):
+        """Test iteration strategy uses explicit stage strategy override."""
+        sample_session.chain_definition = {
+            "chain_id": "test-chain",
+            "alert_types": ["TestAlert"],
+            "stages": [
+                {"agent": "TestAgent", "name": "Stage 1", "iteration_strategy": "native-thinking"}
+            ]
+        }
+        
+        result = chat_service._determine_iteration_strategy_from_session(sample_session)
+        
+        assert result == "native-thinking"
+    
+    def test_determine_iteration_strategy_translates_synthesis_to_react(
+        self, chat_service, sample_session
+    ):
+        """Test that synthesis strategy is translated to react for chat."""
+        sample_session.chain_definition = {
+            "chain_id": "test-chain",
+            "alert_types": ["TestAlert"],
+            "stages": [
+                {"agent": "SynthesisAgent", "name": "Synthesis", "iteration_strategy": "synthesis"}
+            ]
+        }
+        
+        result = chat_service._determine_iteration_strategy_from_session(sample_session)
+        
+        # synthesis should be translated to react for chat
+        assert result == "react"
+    
+    def test_determine_iteration_strategy_translates_synthesis_native_thinking(
+        self, chat_service, sample_session
+    ):
+        """Test that synthesis-native-thinking is translated to native-thinking for chat."""
+        sample_session.chain_definition = {
+            "chain_id": "test-chain",
+            "alert_types": ["TestAlert"],
+            "stages": [
+                {"agent": "SynthesisAgent", "name": "Synthesis", "iteration_strategy": "synthesis-native-thinking"}
+            ]
+        }
+        
+        result = chat_service._determine_iteration_strategy_from_session(sample_session)
+        
+        # synthesis-native-thinking should be translated to native-thinking for chat
+        assert result == "native-thinking"
+    
+    def test_determine_iteration_strategy_from_agent_default(
+        self, chat_service, mock_agent_factory, sample_session
+    ):
+        """Test iteration strategy falls back to agent default from config."""
+        from tarsy.models.agent_config import IterationStrategy
+        
+        sample_session.chain_definition = {
+            "chain_id": "test-chain",
+            "alert_types": ["TestAlert"],
+            "stages": [
+                {"agent": "CustomAgent", "name": "Stage 1"}  # No explicit strategy
+            ]
+        }
+        
+        # Mock agent config with default strategy
+        mock_agent_factory.agent_configs = {
+            "CustomAgent": Mock(iteration_strategy=IterationStrategy.NATIVE_THINKING)
+        }
+        
+        result = chat_service._determine_iteration_strategy_from_session(sample_session)
+        
+        assert result == "native-thinking"
+    
+    def test_determine_iteration_strategy_from_builtin_agent(
+        self, chat_service, mock_agent_factory, sample_session
+    ):
+        """Test iteration strategy falls back to builtin agent default."""
+        sample_session.chain_definition = {
+            "chain_id": "test-chain",
+            "alert_types": ["TestAlert"],
+            "stages": [
+                {"agent": "SynthesisAgent", "name": "Synthesis"}  # No explicit strategy
+            ]
+        }
+        
+        # Empty agent configs (builtin lookup will happen)
+        mock_agent_factory.agent_configs = {}
+        
+        with patch("tarsy.config.builtin_config.get_builtin_agent_config") as mock_builtin:
+            mock_builtin.return_value = {"iteration_strategy": "synthesis"}
+            
+            result = chat_service._determine_iteration_strategy_from_session(sample_session)
+        
+        # Should translate synthesis from builtin to react for chat
+        assert result == "react"
+    
+    def test_determine_iteration_strategy_returns_none_when_no_config(
+        self, chat_service, sample_session
+    ):
+        """Test iteration strategy returns None when no chain config exists."""
+        sample_session.chain_definition = None
+        
+        result = chat_service._determine_iteration_strategy_from_session(sample_session)
+        
+        assert result is None
+    
+    def test_determine_iteration_strategy_returns_none_when_no_stages(
+        self, chat_service, sample_session
+    ):
+        """Test iteration strategy returns None when chain has no stages."""
+        # Set chain_definition to None (simpler than creating invalid chain config)
+        sample_session.chain_definition = None
+        
+        result = chat_service._determine_iteration_strategy_from_session(sample_session)
+        
+        assert result is None
+    
+    def test_determine_iteration_strategy_uses_last_stage(
+        self, chat_service, sample_session
+    ):
+        """Test iteration strategy uses last stage in chain (most relevant for chat)."""
+        sample_session.chain_definition = {
+            "chain_id": "test-chain",
+            "alert_types": ["TestAlert"],
+            "stages": [
+                {"agent": "Agent1", "name": "Stage 1", "iteration_strategy": "react"},
+                {"agent": "Agent2", "name": "Stage 2", "iteration_strategy": "native-thinking"}
+            ]
+        }
+        
+        result = chat_service._determine_iteration_strategy_from_session(sample_session)
+        
+        # Should use the last stage's strategy (native-thinking, not react)
+        assert result == "native-thinking"
+    
+    def test_determine_iteration_strategy_normalizes_enum_to_string(
+        self, chat_service, sample_session
+    ):
+        """Test that iteration strategy normalizes IterationStrategy enum to string."""
+        from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+        from tarsy.models.constants import IterationStrategy
+        
+        # Create a real ChainConfigModel with enum iteration_strategy
+        chain_config = ChainConfigModel(
+            chain_id="test-chain",
+            alert_types=["TestAlert"],
+            stages=[
+                ChainStageConfigModel(
+                    name="Stage 1",
+                    agent="TestAgent",
+                    iteration_strategy=IterationStrategy.NATIVE_THINKING  # Pass as enum
+                )
+            ]
+        )
+        
+        # Serialize to dict (simulating what would be stored in DB)
+        sample_session.chain_definition = chain_config.model_dump(mode='json')
+        
+        # When we access chain_config property, it deserializes back to ChainConfigModel
+        # and iteration_strategy becomes an IterationStrategy enum again
+        result = chat_service._determine_iteration_strategy_from_session(sample_session)
+        
+        # Result should be a string, not an enum
+        assert isinstance(result, str)
+        assert result == "native-thinking"
+    
+    def test_determine_iteration_strategy_enum_synthesis_translation(
+        self, chat_service, sample_session
+    ):
+        """Test that enum synthesis strategies are correctly translated."""
+        from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
+        from tarsy.models.constants import IterationStrategy
+        
+        # Create ChainConfigModel with SYNTHESIS enum
+        chain_config = ChainConfigModel(
+            chain_id="test-chain",
+            alert_types=["TestAlert"],
+            stages=[
+                ChainStageConfigModel(
+                    name="Synthesis",
+                    agent="SynthesisAgent",
+                    iteration_strategy=IterationStrategy.SYNTHESIS  # Enum, not string
+                )
+            ]
+        )
+        
+        sample_session.chain_definition = chain_config.model_dump(mode='json')
+        
+        result = chat_service._determine_iteration_strategy_from_session(sample_session)
+        
+        # Should translate enum SYNTHESIS to string "react"
+        assert isinstance(result, str)
+        assert result == "react"
+
+
+@pytest.mark.unit
+class TestChatConfig:
+    """Test ChatConfig model validation."""
+    
+    def test_chat_config_defaults(self):
+        """Test ChatConfig uses correct defaults."""
+        from tarsy.models.agent_config import ChatConfig
+        
+        config = ChatConfig()
+        
+        assert config.enabled is True
+        assert config.agent == "ChatAgent"
+        assert config.iteration_strategy is None
+        assert config.llm_provider is None
+    
+    def test_chat_config_with_custom_values(self):
+        """Test ChatConfig with custom values."""
+        from tarsy.models.agent_config import ChatConfig, IterationStrategy
+        
+        config = ChatConfig(
+            enabled=False,
+            agent="CustomChatAgent",
+            iteration_strategy=IterationStrategy.NATIVE_THINKING,
+            llm_provider="google-default"
+        )
+        
+        assert config.enabled is False
+        assert config.agent == "CustomChatAgent"
+        assert config.iteration_strategy == IterationStrategy.NATIVE_THINKING
+        assert config.llm_provider == "google-default"
+    
+    def test_chat_config_extra_fields_forbidden(self):
+        """Test that extra fields are not allowed."""
+        from tarsy.models.agent_config import ChatConfig
+        from pydantic import ValidationError
+        
+        with pytest.raises(ValidationError):
+            ChatConfig(unknown_field="value")
+
+
+@pytest.mark.unit
+class TestChatServiceWithChatConfig:
+    """Test ChatService with new ChatConfig functionality."""
+    
+    @pytest.fixture
+    def mock_history_service(self):
+        """Mock history service."""
+        return Mock()
+    
+    @pytest.fixture
+    def mock_agent_factory(self):
+        """Mock agent factory for testing."""
+        mock = Mock()
+        mock.agent_configs = {}
+        mock.static_agent_classes = {}
+        return mock
+    
+    @pytest.fixture
+    def sample_session(self):
+        """Sample completed session for testing."""
+        from tarsy.models.db_models import AlertSession
+        from tarsy.utils.timestamp import now_us
+        
+        session = AlertSession(
+            session_id="test-session-123",
+            alert_type="kubernetes",
+            agent_type="KubernetesAgent",
+            chain_id="kubernetes-investigation",
+            status=AlertSessionStatus.COMPLETED.value,
+            started_at_us=now_us(),
+            completed_at_us=now_us(),
+            author="test-user@example.com",
+            chain_definition={
+                "chain_id": "kubernetes-investigation",
+                "alert_types": ["kubernetes"],
+                "stages": [
+                    {"agent": "KubernetesAgent", "name": "Initial Investigation"}
+                ]
+            },
+            mcp_selection=None
+        )
+        return session
+    
+    @pytest.fixture
+    def chat_service(self, mock_history_service, mock_agent_factory):
+        """Create ChatService with mocked history."""
+        return ChatService(
+            history_service=mock_history_service,
+            agent_factory=mock_agent_factory,
+            mcp_client_factory=AsyncMock()
+        )
+    
+    @pytest.mark.asyncio
+    async def test_create_chat_disabled_with_chat_config(
+        self, chat_service, mock_history_service, sample_session
+    ):
+        """Test chat creation fails when chat.enabled is false."""
+        from tarsy.models.agent_config import ChatConfig
+        
+        # Mock chat config with enabled=false
+        sample_session.chain_definition["chat"] = {"enabled": False}
+        
+        mock_history_service.get_session.return_value = sample_session
+        mock_history_service.get_chat_by_session = AsyncMock(return_value=None)
+        
+        with pytest.raises(ValueError, match="Chat is disabled"):
+            await chat_service.create_chat("test-session-123", "test-user")
+    
+    def test_chat_config_strategy_priority_over_last_stage(
+        self, chat_service, sample_session
+    ):
+        """Test chat config iteration strategy takes priority over last stage."""
+        from tarsy.models.agent_config import IterationStrategy
+        
+        sample_session.chain_definition = {
+            "chain_id": "test-chain",
+            "alert_types": ["TestAlert"],
+            "chat": {
+                "enabled": True,
+                "iteration_strategy": "native-thinking"
+            },
+            "stages": [
+                {"agent": "TestAgent", "name": "Stage 1", "iteration_strategy": "react"}
+            ]
+        }
+        
+        result = chat_service._determine_iteration_strategy_from_session(sample_session)
+        
+        # Should use chat config strategy, not last stage
+        assert result == "native-thinking"
+    
+    def test_chat_config_llm_provider_priority_over_chain(
+        self, chat_service, sample_session
+    ):
+        """Test chat config LLM provider takes priority over chain-level."""
+        sample_session.chain_definition = {
+            "chain_id": "test-chain",
+            "alert_types": ["TestAlert"],
+            "llm_provider": "anthropic-default",
+            "chat": {
+                "enabled": True,
+                "llm_provider": "google-default"
+            },
+            "stages": [
+                {"agent": "TestAgent", "name": "Stage 1"}
+            ]
+        }
+        
+        result = chat_service._determine_llm_provider_from_session(sample_session)
+        
+        # Should use chat config provider, not chain-level
+        assert result == "google-default"
+    
+    def test_chat_config_agent_selection(
+        self, chat_service, sample_session
+    ):
+        """Test custom chat agent can be specified in config."""
+        sample_session.chain_definition = {
+            "chain_id": "test-chain",
+            "alert_types": ["TestAlert"],
+            "chat": {
+                "enabled": True,
+                "agent": "CustomChatAgent"
+            },
+            "stages": [
+                {"agent": "TestAgent", "name": "Stage 1"}
+            ]
+        }
+        
+        result = chat_service._determine_chat_agent_from_session(sample_session)
+        
+        assert result == "CustomChatAgent"
+    
+    def test_default_chat_agent_when_not_configured(
+        self, chat_service, sample_session
+    ):
+        """Test default ChatAgent is used when not configured."""
+        sample_session.chain_definition = {
+            "chain_id": "test-chain",
+            "alert_types": ["TestAlert"],
+            "stages": [
+                {"agent": "TestAgent", "name": "Stage 1"}
+            ]
+        }
+        
+        result = chat_service._determine_chat_agent_from_session(sample_session)
+        
+        assert result == "ChatAgent"
+    
+    def test_default_chat_behavior_missing_config(
+        self, chat_service, sample_session
+    ):
+        """Test default chat behavior when config is missing (enabled by default)."""
+        # Chain config without explicit chat field = enabled with defaults
+        sample_session.chain_definition = {
+            "chain_id": "test-chain",
+            "alert_types": ["TestAlert"],
+            "stages": [
+                {"agent": "TestAgent", "name": "Stage 1", "iteration_strategy": "react"}
+            ]
+        }
+        
+        # Should use last stage strategy (no chat config override)
+        strategy = chat_service._determine_iteration_strategy_from_session(sample_session)
+        assert strategy == "react"
+        
+        # Should use chain-level provider (no chat config override)
+        provider = chat_service._determine_llm_provider_from_session(sample_session)
+        assert provider is None
+        
+        # Should use default agent (no chat config override)
+        agent = chat_service._determine_chat_agent_from_session(sample_session)
+        assert agent == "ChatAgent"
+    
+    def test_chat_inherits_synthesis_strategy_from_last_stage(
+        self, chat_service, sample_session
+    ):
+        """Test chat inherits and translates synthesis strategy from last stage's synthesis config."""
+        # Multi-agent stage with synthesis configuration
+        sample_session.chain_definition = {
+            "chain_id": "test-chain",
+            "alert_types": ["TestAlert"],
+            "stages": [
+                {
+                    "name": "Multi-Agent Stage",
+                    "agents": [
+                        {"name": "Agent1", "iteration_strategy": "react"},
+                        {"name": "Agent2", "iteration_strategy": "native-thinking"}
+                    ],
+                    "synthesis": {
+                        "agent": "SynthesisAgent",
+                        "iteration_strategy": "synthesis-native-thinking",
+                        "llm_provider": "gemini-3-pro"
+                    }
+                }
+            ]
+        }
+        
+        result = chat_service._determine_iteration_strategy_from_session(sample_session)
+        
+        # Should translate synthesis-native-thinking to native-thinking for chat
+        assert result == "native-thinking"
+    
+    def test_chat_inherits_generic_synthesis_strategy(
+        self, chat_service, sample_session
+    ):
+        """Test chat inherits and translates generic synthesis strategy to react."""
+        sample_session.chain_definition = {
+            "chain_id": "test-chain",
+            "alert_types": ["TestAlert"],
+            "stages": [
+                {
+                    "name": "Multi-Agent Stage",
+                    "agents": [
+                        {"name": "Agent1"},
+                        {"name": "Agent2"}
+                    ],
+                    "synthesis": {
+                        "agent": "SynthesisAgent",
+                        "iteration_strategy": "synthesis"
+                    }
+                }
+            ]
+        }
+        
+        result = chat_service._determine_iteration_strategy_from_session(sample_session)
+        
+        # Should translate synthesis to react for chat
+        assert result == "react"
+    
+    def test_chat_inherits_synthesis_llm_provider(
+        self, chat_service, sample_session
+    ):
+        """Test chat inherits LLM provider from synthesis config."""
+        sample_session.chain_definition = {
+            "chain_id": "test-chain",
+            "alert_types": ["TestAlert"],
+            "llm_provider": "anthropic-default",  # Chain-level provider
+            "stages": [
+                {
+                    "name": "Multi-Agent Stage",
+                    "agents": [
+                        {"name": "Agent1"},
+                        {"name": "Agent2"}
+                    ],
+                    "synthesis": {
+                        "agent": "SynthesisAgent",
+                        "iteration_strategy": "synthesis-native-thinking",
+                        "llm_provider": "gemini-3-pro"  # Synthesis-specific provider
+                    }
+                }
+            ]
+        }
+        
+        result = chat_service._determine_llm_provider_from_session(sample_session)
+        
+        # Should use synthesis provider, not chain-level
+        assert result == "gemini-3-pro"
 

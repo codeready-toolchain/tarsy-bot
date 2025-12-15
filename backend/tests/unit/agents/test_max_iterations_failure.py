@@ -212,7 +212,7 @@ class TestReactFinalAnalysisControllerFailureDetection:
         """Create mock agent."""
         agent = Mock()
         agent.get_current_stage_execution_id.return_value = "stage-456"
-        agent._get_general_instructions.return_value = "General instructions"
+        agent.get_general_instructions.return_value = "General instructions"
         agent.custom_instructions.return_value = "Custom instructions"
         return agent
     

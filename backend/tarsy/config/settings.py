@@ -77,14 +77,6 @@ class Settings(BaseSettings):
         default=30,
         description="Maximum number of LLM->MCP iterative loops for multi-step runbook processing"
     )
-    max_total_tool_calls: int = Field(
-        default=20,
-        description="Maximum total tool calls per alert across all iterations"
-    )
-    max_data_points: int = Field(
-        default=20,
-        description="Maximum data points before stopping processing (when combined with min iterations)"
-    )
     
     # LLM Streaming Configuration
     enable_llm_streaming: bool = Field(

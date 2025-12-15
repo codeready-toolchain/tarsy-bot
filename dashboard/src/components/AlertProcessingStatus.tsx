@@ -40,6 +40,7 @@ import {
   getAlertProcessingStatusChipColor,
   getAlertProcessingStatusProgressColor,
 } from '../utils/statusConstants';
+import { mapEventToProgressStatus, ProgressStatusMessage } from '../utils/statusMapping';
 
 const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onComplete }) => {
   const [status, setStatus] = useState<ProcessingStatus | null>(null);
@@ -48,6 +49,12 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
   const [sessionExists, setSessionExists] = useState<boolean>(false);
   const [checkingSession, setCheckingSession] = useState<boolean>(true);
   const [pollError, setPollError] = useState<string | null>(null);
+  const [progressStatus, setProgressStatus] = useState<string>(ProgressStatusMessage.PROCESSING);
+  
+  // Keep a ref in sync with progressStatus to avoid stale closures in event handlers
+  // (the WebSocket subscription effect intentionally omits progressStatus from deps)
+  const progressStatusRef = useRef<string>(ProgressStatusMessage.PROCESSING);
+  progressStatusRef.current = progressStatus;
 
   // Store onComplete in a ref to avoid effect re-runs when it changes
   const onCompleteRef = useRef(onComplete);
@@ -231,6 +238,14 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
     const handleSessionUpdate = (update: any) => {
       const eventType = update.type || '';
       
+      // Update progress status based on stage events only.
+      // `session.progress_update` is handled inline below so we can use
+      // the freshly computed label when building `updatedStatus`.
+      if (eventType.startsWith('stage.')) {
+        const newStatus = mapEventToProgressStatus(update);
+        setProgressStatus(newStatus);
+      }
+      
       // Prevent overwriting terminal states with intermediate events (catchup protection)
       // Once completed or errored, ignore all processing/stage/interaction events
       // Use ref to check immediately (React state updates are async)
@@ -245,7 +260,19 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
         const isCompleted = eventType === SESSION_EVENTS.COMPLETED;
         const isFailed = eventType === SESSION_EVENTS.FAILED;
         const isCancelled = eventType === SESSION_EVENTS.CANCELLED;
-        
+        const isProgressUpdate = eventType === 'session.progress_update';
+
+        const dynamicStep =
+          isCompleted ? 'Processing completed' :
+          isFailed ? 'Processing failed' :
+          isCancelled ? 'Processing cancelled' :
+          isProgressUpdate ? mapEventToProgressStatus(update) :
+          progressStatusRef.current;
+
+        if (isProgressUpdate) {
+          setProgressStatus(dynamicStep);
+        }
+
         updatedStatus = {
           session_id: sessionId,
           status: isCompleted ? ALERT_PROCESSING_STATUS.COMPLETED : 
@@ -253,10 +280,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
                   isCancelled ? ALERT_PROCESSING_STATUS.CANCELLED : 
                   ALERT_PROCESSING_STATUS.PROCESSING,
           progress: 0,
-          current_step: isCompleted ? 'Processing completed' : 
-                       isFailed ? 'Processing failed' : 
-                       isCancelled ? 'Processing cancelled' : 
-                       'Processing...',
+          current_step: dynamicStep,
           timestamp: new Date().toISOString(),
           error: update.error_message || undefined,
           result: update.final_analysis || undefined
@@ -340,7 +364,12 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
     return () => {
       unsubscribeSession();
     };
-  }, [sessionId]); // sessionId dependency
+  // progressStatus is intentionally omitted to avoid recreating the subscription on every state change.
+  // Tradeoff: Line 270 reads progressStatusRef.current as a fallback, which is kept in sync with state.
+  // This means rare unhandled events might briefly show stale status in the UI until the next state update,
+  // but this is acceptable to avoid expensive subscription teardown/recreation on every progress change.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sessionId]);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -363,7 +392,7 @@ const AlertProcessingStatus: React.FC<ProcessingStatusProps> = ({ sessionId, onC
       <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>
-            Processing...
+            {progressStatus}
           </Typography>
           <LinearProgress />
           {wsError && (

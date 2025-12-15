@@ -120,13 +120,6 @@ class AgentFactory:
             if agent_name in self.static_agent_classes:
                 return self._create_traditional_agent(agent_name, mcp_client)
             
-            # Handle legacy format for backwards compatibility
-            if agent_name.startswith("ConfigurableAgent:"):
-                legacy_agent_name = agent_name.split(":", 1)[1]
-                if self.agent_configs and legacy_agent_name in self.agent_configs:
-                    logger.warning(f"Using legacy format '{agent_name}'. Consider updating to just '{legacy_agent_name}'")
-                    return self._create_configured_agent(legacy_agent_name, mcp_client)
-            
             # Generate helpful error message
             available_agents = []
             if self.agent_configs:
@@ -154,8 +147,7 @@ class AgentFactory:
         Always creates a unique instance to prevent race conditions between stages.
         
         Args:
-            agent_identifier: Either class name (e.g., "KubernetesAgent") 
-                            or "ConfigurableAgent:agent-name" format
+            agent_identifier: Agent name (e.g., "KubernetesAgent" for builtin or "ArgoCDAgent" for configured)
             mcp_client: Session-scoped MCP client for this agent instance
             iteration_strategy: Strategy to use for this stage (overrides agent default)
             llm_provider: Optional LLM provider name for this agent (overrides global default)
@@ -201,9 +193,11 @@ class AgentFactory:
             # Validate dependencies before creation
             self._validate_dependencies_for_traditional_agent(agent_class_name)
             
+            # All built-in agents now extend BaseAgent with standard constructor
             # Get iteration strategy from built-in configuration
             agent_config = get_builtin_agent_config(agent_class_name)
             strategy_value = agent_config.get("iteration_strategy", IterationStrategy.REACT)
+            
             # Convert string from builtin config to IterationStrategy enum and validate
             try:
                 iteration_strategy = IterationStrategy(strategy_value)

@@ -30,6 +30,11 @@ export interface StageConversation {
   stage_input_tokens?: number;
   stage_output_tokens?: number;
   stage_total_tokens?: number;
+  // Parallel execution tracking
+  parent_stage_execution_id?: string | null;
+  parallel_index?: number;
+  parallel_type?: string;
+  parallel_executions?: StageConversation[];
 }
 
 export interface ParsedSession {
@@ -436,7 +441,12 @@ export function parseStageConversation(stage: StageExecution): StageConversation
     // Token usage aggregations
     stage_input_tokens: stage.stage_input_tokens ?? undefined,
     stage_output_tokens: stage.stage_output_tokens ?? undefined,
-    stage_total_tokens: stage.stage_total_tokens ?? undefined
+    stage_total_tokens: stage.stage_total_tokens ?? undefined,
+    // Parallel execution tracking
+    parent_stage_execution_id: stage.parent_stage_execution_id ?? undefined,
+    parallel_index: stage.parallel_index ?? undefined,
+    parallel_type: stage.parallel_type ?? undefined,
+    parallel_executions: stage.parallel_executions?.map(child => parseStageConversation(child)) ?? undefined
   };
 }
 

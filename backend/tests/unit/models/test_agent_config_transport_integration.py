@@ -262,7 +262,7 @@ class TestCombinedConfigModelTransport:
                     "alert_types": ["mixed"],
                     "stages": [{
                         "name": "analysis",
-                        "agent": "ConfigurableAgent:mixed-agent"
+                        "agent": "mixed-agent"
                     }]
                 }
             }

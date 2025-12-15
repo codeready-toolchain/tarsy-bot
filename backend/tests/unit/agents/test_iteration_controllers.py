@@ -354,7 +354,7 @@ class TestReactFinalAnalysisController:
         agent = Mock()
         # EP-0012: create_prompt_context method removed, using StageContext directly
         agent.get_current_stage_execution_id.return_value = "stage-exec-123"
-        agent._get_general_instructions.return_value = "## General SRE Agent Instructions\nYou are an expert SRE..."
+        agent.get_general_instructions.return_value = "## General SRE Agent Instructions\nYou are an expert SRE..."
         agent.custom_instructions.return_value = "Custom agent instructions here"
         return agent
     

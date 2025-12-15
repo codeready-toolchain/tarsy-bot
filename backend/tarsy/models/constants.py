@@ -63,6 +63,45 @@ class StageStatus(Enum):
     PARTIAL = "partial"  # Some results but with warnings/issues
 
 
+class ParallelType(str, Enum):
+    """Types of parallel execution for stage executions (EP-0030)."""
+    
+    SINGLE = "single"  # Non-parallel (regular) stage execution
+    MULTI_AGENT = "multi_agent"  # Different agents running in parallel
+    REPLICA = "replica"  # Same agent running multiple times for redundancy
+    
+    @classmethod
+    def values(cls) -> List[str]:
+        """All parallel type values as strings."""
+        return [ptype.value for ptype in cls]
+    
+    @classmethod
+    def parallel_values(cls) -> List[str]:
+        """Parallel execution type values (excluding SINGLE)."""
+        return [cls.MULTI_AGENT.value, cls.REPLICA.value]
+
+
+class FailurePolicy(str, Enum):
+    """Failure policy for parallel stage execution (EP-0030).
+    
+    Determines how to handle failures when multiple agents run in parallel:
+    - ALL: All agents must succeed for the stage to succeed (strict)
+    - ANY: At least one agent must succeed for the stage to succeed (resilient)
+    """
+    ALL = "all"
+    ANY = "any"
+
+
+class ProgressPhase(str, Enum):
+    """Progress phases for session processing status updates.
+    
+    These phases provide user-friendly status messages during alert processing.
+    """
+    INVESTIGATING = "investigating"  # Default phase - agents are investigating the issue
+    SYNTHESIZING = "synthesizing"    # Synthesis agent is combining parallel results
+    SUMMARIZING = "summarizing"      # Executive summary is being generated
+
+
 class ChainStatus(Enum):
     """Status values for overall chain execution progress (calculated from stage statuses)."""
     
@@ -90,11 +129,15 @@ class IterationStrategy(str, Enum):
     - REACT_STAGE: ReAct pattern for stage-specific analysis within multi-stage chains
     - REACT_FINAL_ANALYSIS: ReAct final analysis only, no tools, uses all accumulated data
     - NATIVE_THINKING: Gemini-specific native thinking with structured function calling (no text parsing)
+    - SYNTHESIS: Generic synthesis strategy for parallel results (no tools, provider-agnostic)
+    - SYNTHESIS_NATIVE_THINKING: Gemini synthesis with native thinking for deep reasoning
     """
     REACT = "react"
     REACT_STAGE = "react-stage"           # ReAct pattern for stage-specific analysis
     REACT_FINAL_ANALYSIS = "react-final-analysis"   # ReAct final analysis only, no tools
     NATIVE_THINKING = "native-thinking"   # Gemini native thinking + function calling
+    SYNTHESIS = "synthesis"               # Generic synthesis (no tools)
+    SYNTHESIS_NATIVE_THINKING = "synthesis-native-thinking"  # Gemini synthesis with thinking
 
 
 class LLMInteractionType(str, Enum):

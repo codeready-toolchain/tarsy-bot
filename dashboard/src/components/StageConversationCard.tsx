@@ -15,7 +15,8 @@ import {
   Error as ErrorIcon,
   Schedule,
   PlayArrow,
-  Build
+  Build,
+  CallSplit
 } from '@mui/icons-material';
 import type { StageConversation } from '../utils/conversationParser';
 import ConversationStep from './ConversationStep';
@@ -24,6 +25,8 @@ import TypingIndicator from './TypingIndicator';
 import TokenUsageDisplay from './TokenUsageDisplay';
 import { formatTimestamp, formatDurationMs } from '../utils/timestamp';
 import { STAGE_STATUS, getStageStatusDisplayName } from '../utils/statusConstants';
+import { isParallelStage, getAggregateStatus, getSuccessFailureCounts } from '../utils/parallelStageHelpers';
+import { PARALLEL_TYPE } from '../utils/parallelConstants';
 
 export interface StageConversationCardProps {
   stage: StageConversation;
@@ -62,6 +65,14 @@ const getStageStatusConfig = (status: string, stageIndex: number) => {
         bgColor: (theme: any) => alpha(theme.palette.primary.main, 0.06),
         borderColor: 'primary.main'
       };
+    case STAGE_STATUS.PAUSED:
+      return {
+        color: 'warning' as const,
+        icon: <Schedule />,
+        label: getStageStatusDisplayName(STAGE_STATUS.PAUSED),
+        bgColor: (theme: any) => alpha(theme.palette.warning.main, 0.06),
+        borderColor: 'warning.main'
+      };
     case STAGE_STATUS.PENDING:
     default:
       return {
@@ -84,6 +95,15 @@ function StageConversationCard({
   isRecentlyUpdated = false
 }: StageConversationCardProps) {
   const statusConfig = getStageStatusConfig(stage.status, stageIndex);
+  
+  // Check if this is a parallel stage
+  const isParallel = isParallelStage(stage);
+  const parallelCounts = isParallel && stage.parallel_executions 
+    ? getSuccessFailureCounts(stage.parallel_executions)
+    : null;
+  const aggregateStatusLabel = isParallel && stage.parallel_executions
+    ? getAggregateStatus(stage.parallel_executions)
+    : null;
   
   const formatStageForCopy = (): string => {
     let content = `=== Stage ${stageIndex + 1}: ${stage.stage_name} ===\n`;
@@ -193,6 +213,15 @@ function StageConversationCard({
             <Typography variant="h6" sx={{ fontWeight: 600, fontSize: '1.1rem' }}>
               Stage {stageIndex + 1}: {stage.stage_name}
             </Typography>
+            {isParallel && stage.parallel_executions && (
+              <Chip
+                icon={<CallSplit fontSize="small" />}
+                label={`${stage.parallel_executions.length}x Parallel`}
+                size="small"
+                color="primary"
+                variant="outlined"
+              />
+            )}
             {isRecentlyUpdated && (
               <Box
                 sx={{
@@ -221,15 +250,41 @@ function StageConversationCard({
         subheader={
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
             <Typography variant="body2" color="text.secondary">
-              Agent: {stage.agent}
+              {isParallel 
+                ? `Parallel Execution (${stage.parallel_type === PARALLEL_TYPE.REPLICA ? 'Replica Mode' : 'Multi-Agent Mode'})`
+                : `Agent: ${stage.agent}`
+              }
             </Typography>
             
             <Chip 
-              label={statusConfig.label}
+              label={isParallel && aggregateStatusLabel ? aggregateStatusLabel : statusConfig.label}
               size="small" 
               color={statusConfig.color}
               sx={{ height: 22 }}
             />
+            
+            {isParallel && parallelCounts && (
+              <>
+                {parallelCounts.completed > 0 && (
+                  <Chip
+                    size="small"
+                    label={`${parallelCounts.completed} completed`}
+                    color="success"
+                    variant="outlined"
+                    sx={{ height: 22, fontSize: '0.7rem' }}
+                  />
+                )}
+                {parallelCounts.failed > 0 && (
+                  <Chip
+                    size="small"
+                    label={`${parallelCounts.failed} failed`}
+                    color="error"
+                    variant="outlined"
+                    sx={{ height: 22, fontSize: '0.7rem' }}
+                  />
+                )}
+              </>
+            )}
             
             {/* Step Statistics */}
             {stage.steps.length > 0 && (
@@ -306,96 +361,106 @@ function StageConversationCard({
 
       {/* Stage Content */}
       <CardContent sx={{ pt: 2, pb: 2 }}>
-        {/* Stage Error Message */}
-        {stage.errorMessage && (
-          <Alert 
-            severity="error" 
-            sx={{ mb: 2 }}
-            icon={<ErrorIcon />}
-          >
+        {/* Parallel Execution Notice */}
+        {isParallel && stage.parallel_executions && stage.parallel_executions.length > 0 && (
+          <Alert severity="info" sx={{ mb: 2 }}>
             <Typography variant="body2">
-              <strong>Stage Error:</strong> {stage.errorMessage}
+              <strong>Parallel Execution:</strong> This stage ran {stage.parallel_executions.length} agents concurrently.
+              {parallelCounts && ` ${parallelCounts.completed} completed, ${parallelCounts.failed} failed.`}
             </Typography>
           </Alert>
         )}
 
-        {/* Timing Information */}
-        {(stage.started_at_us || stage.completed_at_us) && (
-          <Box sx={{ 
-            mb: 2, 
-            p: 1.5,
-            bgcolor: (theme) => alpha(theme.palette.grey[400], 0.06),
-            borderRadius: 1,
-            border: '1px solid',
-            borderColor: 'grey.200'
-          }}>
-            <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-              {stage.started_at_us && (
-                <Typography variant="body2" color="text.secondary">
-                  <strong>Started:</strong> {formatTimestamp(stage.started_at_us, 'absolute')}
+        {/* Stage Error Message */}
+            {stage.errorMessage && (
+              <Alert 
+                severity="error" 
+                sx={{ mb: 2 }}
+                icon={<ErrorIcon />}
+              >
+                <Typography variant="body2">
+                  <strong>Stage Error:</strong> {stage.errorMessage}
                 </Typography>
-              )}
-              
-              {stage.completed_at_us && (
-                <Typography variant="body2" color="text.secondary">
-                  <strong>Completed:</strong> {formatTimestamp(stage.completed_at_us, 'absolute')}
-                </Typography>
-              )}
-              
-              {stage.duration_ms && (
-                <Typography variant="body2" color="text.secondary">
-                  <strong>Duration:</strong> {formatDurationMs(stage.duration_ms)}
-                </Typography>
-              )}
-            </Box>
-          </Box>
-        )}
+              </Alert>
+            )}
 
-        {/* Conversation Steps */}
-        {stage.steps.length > 0 ? (
-          <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-            {stage.steps.map((step, stepIndex) => (
-              <ConversationStep
-                key={stepIndex}
-                step={step}
-                stepIndex={stepIndex}
-                isLastStep={stepIndex === stage.steps.length - 1}
-              />
-            ))}
-          </Box>
-        ) : (
-          <Box sx={{ 
-            textAlign: 'center', 
-            py: 4,
-            color: 'text.secondary',
-            fontStyle: 'italic'
-          }}>
-            <Build sx={{ fontSize: 48, opacity: 0.3, mb: 1 }} />
-            <Typography variant="body2">
-              {stage.status === STAGE_STATUS.PENDING ? 
-                'Stage is waiting to begin...' :
-                'No conversation steps recorded for this stage'
-              }
-            </Typography>
-          </Box>
-        )}
-
-        {/* Show typing indicator for active or pending stages */}
-        {(() => {
-          const shouldShow = stage.status === STAGE_STATUS.ACTIVE || stage.status === STAGE_STATUS.PENDING;
-          
-          if (shouldShow) {
-            return (
-              <Box sx={{ mt: 2 }}>
-                <TypingIndicator
-                  dotsOnly={true}
-                  size="small"
-                />
+            {/* Timing Information */}
+            {(stage.started_at_us || stage.completed_at_us) && (
+              <Box sx={{ 
+                mb: 2, 
+                p: 1.5,
+                bgcolor: (theme) => alpha(theme.palette.grey[400], 0.06),
+                borderRadius: 1,
+                border: '1px solid',
+                borderColor: 'grey.200'
+              }}>
+                <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                  {stage.started_at_us && (
+                    <Typography variant="body2" color="text.secondary">
+                      <strong>Started:</strong> {formatTimestamp(stage.started_at_us, 'absolute')}
+                    </Typography>
+                  )}
+                  
+                  {stage.completed_at_us && (
+                    <Typography variant="body2" color="text.secondary">
+                      <strong>Completed:</strong> {formatTimestamp(stage.completed_at_us, 'absolute')}
+                    </Typography>
+                  )}
+                  
+                  {stage.duration_ms && (
+                    <Typography variant="body2" color="text.secondary">
+                      <strong>Duration:</strong> {formatDurationMs(stage.duration_ms)}
+                    </Typography>
+                  )}
+                </Box>
               </Box>
-            );
-          }
-          return null;
-        })()}
+            )}
+
+            {/* Conversation Steps */}
+            {stage.steps.length > 0 ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                {stage.steps.map((step, stepIndex) => (
+                  <ConversationStep
+                    key={stepIndex}
+                    step={step}
+                    stepIndex={stepIndex}
+                    isLastStep={stepIndex === stage.steps.length - 1}
+                  />
+                ))}
+              </Box>
+            ) : (
+              <Box sx={{ 
+                textAlign: 'center', 
+                py: 4,
+                color: 'text.secondary',
+                fontStyle: 'italic'
+              }}>
+                <Build sx={{ fontSize: 48, opacity: 0.3, mb: 1 }} />
+                <Typography variant="body2">
+                  {stage.status === STAGE_STATUS.PENDING ? 
+                    'Stage is waiting to begin...' :
+                    'No conversation steps recorded for this stage'
+                  }
+                </Typography>
+              </Box>
+            )}
+
+            {/* Show typing indicator for active or pending stages */}
+            {(() => {
+              const shouldShow = stage.status === STAGE_STATUS.ACTIVE || stage.status === STAGE_STATUS.PENDING;
+              
+              if (shouldShow) {
+                return (
+                  <Box sx={{ mt: 2 }}>
+                    <TypingIndicator
+                      dotsOnly={true}
+                      size="small"
+                    />
+                  </Box>
+                );
+              }
+              return null;
+            })()}
       </CardContent>
     </Card>
   );

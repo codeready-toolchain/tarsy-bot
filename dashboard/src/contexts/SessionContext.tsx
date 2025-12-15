@@ -1,8 +1,12 @@
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import { apiClient, handleAPIError } from '../services/api';
-import type { DetailedSession, Session } from '../types';
+import type { DetailedSession, Session, StageExecution } from '../types';
 import { isValidSessionStatus, SESSION_STATUS } from '../utils/statusConstants';
+import {
+  createParallelPlaceholders,
+  replacePlaceholderWithRealStage
+} from '../utils/parallelPlaceholders';
 
 interface SessionContextData {
   session: DetailedSession | null;
@@ -16,6 +20,9 @@ interface SessionContextData {
   refreshSessionStages: (sessionId: string) => Promise<void>;
   updateFinalAnalysis: (analysis: string) => void;
   updateSessionStatus: (newStatus: DetailedSession['status'], errorMessage?: string) => void;
+  // Placeholder management for parallel stages
+  handleParallelStageStarted: (stageExecution: StageExecution) => void;
+  handleParallelChildStageStarted: (stageExecution: StageExecution) => void;
 }
 
 const SessionContext = createContext<SessionContextData | null>(null);
@@ -232,6 +239,78 @@ export function SessionProvider({ children }: SessionProviderProps) {
     });
   };
 
+  /**
+   * Handle parallel parent stage started event - inject placeholders immediately
+   */
+  const handleParallelStageStarted = (stageExecution: StageExecution) => {
+    console.log('🚀 [SessionContext] Parallel parent stage started, injecting placeholders:', {
+      execution_id: stageExecution.execution_id,
+      parallel_type: stageExecution.parallel_type,
+      expected_count: stageExecution.expected_parallel_count
+    });
+
+    setSession(prevSession => {
+      if (!prevSession) return prevSession;
+
+      const expectedCount = stageExecution.expected_parallel_count || 0;
+      if (expectedCount <= 0) {
+        console.warn('🚫 [SessionContext] No expected_parallel_count for parallel stage, skipping placeholders');
+        return prevSession;
+      }
+
+      // Create placeholders for expected parallel children
+      const placeholders = createParallelPlaceholders(stageExecution, expectedCount);
+      
+      // Insert parent stage and placeholders at the correct position
+      const updatedStages = [...(prevSession.stages || [])];
+      
+      // Find insertion point for parent stage (by stage_index)
+      const insertIndex = updatedStages.findIndex(
+        s => s.stage_index > stageExecution.stage_index
+      );
+      
+      if (insertIndex === -1) {
+        // Add at end
+        updatedStages.push(stageExecution, ...placeholders);
+      } else {
+        // Insert before the next stage
+        updatedStages.splice(insertIndex, 0, stageExecution, ...placeholders);
+      }
+
+      console.log(`✅ [SessionContext] Injected ${placeholders.length} placeholders for parallel stage`);
+      
+      return {
+        ...prevSession,
+        stages: updatedStages
+      };
+    });
+  };
+
+  /**
+   * Handle parallel child stage started event - replace placeholder with real data
+   */
+  const handleParallelChildStageStarted = (stageExecution: StageExecution) => {
+    console.log('🔄 [SessionContext] Parallel child stage started, replacing placeholder:', {
+      execution_id: stageExecution.execution_id,
+      parent_id: stageExecution.parent_stage_execution_id,
+      parallel_index: stageExecution.parallel_index
+    });
+
+    setSession(prevSession => {
+      if (!prevSession) return prevSession;
+
+      const updatedStages = replacePlaceholderWithRealStage(
+        prevSession.stages || [],
+        stageExecution
+      );
+
+      return {
+        ...prevSession,
+        stages: updatedStages
+      };
+    });
+  };
+
   const contextValue: SessionContextData = {
     session,
     loading,
@@ -243,7 +322,10 @@ export function SessionProvider({ children }: SessionProviderProps) {
     refreshSessionSummary,
     refreshSessionStages,
     updateFinalAnalysis,
-    updateSessionStatus
+    updateSessionStatus,
+    // Placeholder management
+    handleParallelStageStarted,
+    handleParallelChildStageStarted
   };
 
   return (
@@ -281,7 +363,9 @@ export function useSession(sessionId: string | undefined) {
     refreshSessionSummary,
     refreshSessionStages,
     updateFinalAnalysis,
-    updateSessionStatus
+    updateSessionStatus,
+    handleParallelStageStarted,
+    handleParallelChildStageStarted
   } = useSessionContext();
 
   // Track the last session ID we fetched to prevent StrictMode duplicates
@@ -328,6 +412,8 @@ export function useSession(sessionId: string | undefined) {
       return targetId ? refreshSessionStages(targetId) : Promise.resolve();
     },
     updateFinalAnalysis,
-    updateSessionStatus
+    updateSessionStatus,
+    handleParallelStageStarted,
+    handleParallelChildStageStarted
   };
 }

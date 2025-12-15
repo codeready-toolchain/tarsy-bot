@@ -1,6 +1,6 @@
 import React from 'react';
 import { TableRow, TableCell, Typography, IconButton, Tooltip, Chip } from '@mui/material';
-import { OpenInNew, Chat as ChatIcon } from '@mui/icons-material';
+import { OpenInNew, Chat as ChatIcon, CallSplit } from '@mui/icons-material';
 import StatusBadge from './StatusBadge';
 import TokenUsageDisplay from './TokenUsageDisplay';
 import { highlightSearchTermNodes } from '../utils/search';
@@ -49,6 +49,25 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
     >
       <TableCell>
         <StatusBadge status={session.status} />
+      </TableCell>
+      {/* Parallel agents indicator column - narrow, no header */}
+      <TableCell sx={{ width: 40, textAlign: 'center', px: 0.5 }}>
+        {session.has_parallel_stages && (
+          <Tooltip title="Parallel Agents - Multiple agents run in parallel">
+            <Chip
+              icon={<CallSplit sx={{ fontSize: '0.875rem' }} />}
+              size="small"
+              color="secondary"
+              variant="outlined"
+              sx={{ 
+                height: 24, 
+                minWidth: 24,
+                '& .MuiChip-label': { px: 0, display: 'none' },
+                '& .MuiChip-icon': { mx: 0 }
+              }}
+            />
+          </Tooltip>
+        )}
       </TableCell>
       <TableCell>
         <Typography 
@@ -99,16 +118,20 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
         )}
       </TableCell>
       {/* Chat indicator badge */}
-      <TableCell sx={{ width: 60, textAlign: 'center' }}>
+      <TableCell sx={{ width: 40, textAlign: 'center', px: 0.5 }}>
         {session.chat_message_count && session.chat_message_count > 0 && (
-          <Tooltip title="Follow-up chat active">
+          <Tooltip title={`Follow-up chat active (${session.chat_message_count} message${session.chat_message_count !== 1 ? 's' : ''})`}>
             <Chip
-              icon={<ChatIcon />}
-              label={session.chat_message_count}
+              icon={<ChatIcon sx={{ fontSize: '0.875rem' }} />}
               size="small"
               color="primary"
               variant="outlined"
-              sx={{ height: 24, fontSize: '0.75rem' }}
+              sx={{ 
+                height: 24, 
+                minWidth: 24,
+                '& .MuiChip-label': { px: 0, display: 'none' },
+                '& .MuiChip-icon': { mx: 0 }
+              }}
             />
           </Tooltip>
         )}

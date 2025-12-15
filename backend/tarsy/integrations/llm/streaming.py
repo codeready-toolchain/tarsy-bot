@@ -8,6 +8,7 @@ and native Google SDK clients for publishing LLM response chunks to WebSockets.
 from typing import TYPE_CHECKING, Optional
 
 from tarsy.models.constants import StreamingEventType
+from tarsy.models.parallel_metadata import ParallelExecutionMetadata
 from tarsy.utils.logger import get_module_logger
 
 if TYPE_CHECKING:
@@ -49,20 +50,22 @@ class StreamingPublisher:
         chunk: str,
         is_complete: bool,
         mcp_event_id: Optional[str] = None,
-        llm_interaction_id: Optional[str] = None
+        llm_interaction_id: Optional[str] = None,
+        parallel_metadata: Optional['ParallelExecutionMetadata'] = None
     ) -> None:
         """
         Publish streaming chunk via transient channel for WebSocket delivery.
         
         Args:
             session_id: Session identifier for routing
-            stage_execution_id: Stage execution identifier for tracking
+            stage_execution_id: Stage execution identifier for tracking (child ID for parallel stages)
             stream_type: Type of streaming content (THOUGHT, FINAL_ANSWER, 
                         NATIVE_THINKING, SUMMARIZATION)
             chunk: Content chunk (accumulated tokens)
             is_complete: Whether this is the final chunk
             mcp_event_id: Optional MCP event ID (for summarizations)
             llm_interaction_id: LLM interaction ID for deduplication
+            parallel_metadata: Parallel execution metadata for frontend filtering
         """
         # Check if streaming is enabled via config flag
         if self.settings and not self.settings.enable_llm_streaming:
@@ -90,6 +93,7 @@ class StreamingPublisher:
                         )
                         self._sqlite_warning_logged = True
                 
+                # Unpack parallel metadata for JSON serialization
                 event = LLMStreamChunkEvent(
                     session_id=session_id,
                     stage_execution_id=stage_execution_id,
@@ -98,6 +102,10 @@ class StreamingPublisher:
                     is_complete=is_complete,
                     mcp_event_id=mcp_event_id,
                     llm_interaction_id=llm_interaction_id,
+                    # Unpack parallel execution metadata (event model uses individual fields for JSON serialization)
+                    parent_stage_execution_id=parallel_metadata.parent_stage_execution_id if parallel_metadata else None,
+                    parallel_index=parallel_metadata.parallel_index if parallel_metadata else None,
+                    agent_name=parallel_metadata.agent_name if parallel_metadata else None,
                     timestamp_us=now_us()
                 )
                 

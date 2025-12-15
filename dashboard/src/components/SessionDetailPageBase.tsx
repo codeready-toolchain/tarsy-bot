@@ -36,6 +36,7 @@ import type { DetailedSession } from '../types';
 import { useAdvancedAutoScroll } from '../hooks/useAdvancedAutoScroll';
 import { isTerminalSessionEvent } from '../utils/eventTypes';
 import { isActiveSessionStatus, isTerminalSessionStatus, SESSION_STATUS } from '../utils/statusConstants';
+import { mapEventToProgressStatus, ProgressStatusMessage, StageName } from '../utils/statusMapping';
 
 // Lazy load shared components
 const SessionHeader = lazy(() => import('./SessionHeader'));
@@ -89,7 +90,7 @@ const TimelineSkeleton = () => (
 
 interface SessionDetailPageBaseProps {
   viewType: 'conversation' | 'technical';
-  timelineComponent: (session: DetailedSession, autoScroll?: boolean) => ReactNode;
+  timelineComponent: (session: DetailedSession, autoScroll?: boolean, progressStatus?: string) => ReactNode;
   timelineSkeleton?: ReactNode;
   onViewChange?: (newView: 'conversation' | 'technical') => void;
 }
@@ -114,7 +115,8 @@ function SessionDetailPageBase({
     error, 
     refetch, 
     refreshSessionSummary,
-    refreshSessionStages
+    refreshSessionStages,
+    handleParallelStageStarted
   } = useSession(sessionId);
 
   // Auth context for user information
@@ -152,8 +154,32 @@ function SessionDetailPageBase({
   // Trigger to force chat panel expansion (e.g., from "Jump to Chat" button)
   const [shouldExpandChat, setShouldExpandChat] = useState(false);
   
+  // Track current progress status message (Investigating/Synthesizing/Summarizing)
+  const [progressStatus, setProgressStatus] = useState<string>(ProgressStatusMessage.PROCESSING);
+  
   // Track previous session status to detect transitions
   const prevStatusRef = useRef<string | undefined>(undefined);
+  
+  // Initialize progress status from current session state on load
+  useEffect(() => {
+    if (!session || loading) return;
+    
+    // Only set initial status if session is actively processing
+    if (!isActiveSessionStatus(session.status)) return;
+    
+    // Find the currently active stage
+    const activeStage = session.stages?.find((s: any) => s.status === 'active');
+    if (!activeStage) return;
+    
+    // Set initial status based on active stage type
+    if (activeStage.stage_name === StageName.SYNTHESIS) {
+      console.log(`📊 Initial load: ${StageName.SYNTHESIS} stage active, setting ${ProgressStatusMessage.SYNTHESIZING}`);
+      setProgressStatus(ProgressStatusMessage.SYNTHESIZING);
+    } else {
+      console.log(`📊 Initial load: ${activeStage.stage_name} stage active, setting ${ProgressStatusMessage.INVESTIGATING}`);
+      setProgressStatus(ProgressStatusMessage.INVESTIGATING);
+    }
+  }, [session?.session_id, loading]); // Only run when session first loads
   
   // Bottom cancel dialog state
   const [showBottomCancelDialog, setShowBottomCancelDialog] = useState(false);
@@ -376,6 +402,12 @@ function SessionDetailPageBase({
       
       const eventType = update.type || '';
       
+      // Update progress status based on event
+      if (eventType.startsWith('stage.') || eventType === 'session.progress_update') {
+        const newStatus = mapEventToProgressStatus(update);
+        setProgressStatus(newStatus);
+      }
+      
       // Handle chat events (EP-0027)
       if (eventType === 'chat.created' || eventType === 'chat.user_message') {
         console.log('💬 Chat event received:', eventType);
@@ -407,6 +439,44 @@ function SessionDetailPageBase({
       else if (eventType.startsWith('stage.')) {
         // Stage events (stage.started, stage.completed, stage.failed)
         console.log('🔄 Stage event, using partial refresh');
+        
+        // Check if this is a parallel stage starting (has expected_parallel_count)
+        if (eventType === 'stage.started' && update.expected_parallel_count && update.expected_parallel_count > 0) {
+          console.log('🚀 Parallel parent stage starting - injecting placeholders immediately');
+          
+          // Create a minimal StageExecution object for placeholder injection
+          const parentStage = {
+            execution_id: update.stage_id,
+            session_id: update.session_id,
+            stage_id: update.stage_id,
+            stage_index: 0, // Will be updated by full refresh
+            stage_name: update.stage_name,
+            agent: 'parallel', // Placeholder
+            status: 'active' as const,
+            started_at_us: null,
+            completed_at_us: null,
+            duration_ms: null,
+            stage_output: null,
+            error_message: null,
+            current_iteration: null,
+            parent_stage_execution_id: null,
+            parallel_index: 0,
+            parallel_type: update.parallel_type,
+            expected_parallel_count: update.expected_parallel_count,
+            llm_interactions: [],
+            mcp_communications: [],
+            llm_interaction_count: 0,
+            mcp_communication_count: 0,
+            total_interactions: 0,
+            stage_interactions_duration_ms: null,
+            chronological_interactions: []
+          };
+          
+          handleParallelStageStarted(parentStage);
+        } else if (eventType === 'stage.started' && update.parent_stage_execution_id) {
+          console.log('🔄 Parallel child stage starting - will replace placeholder');
+          // Child stage starting - will be handled by full refresh which will replace placeholder
+        }
         
         // Update summary immediately
         if (sessionId) {
@@ -710,7 +780,7 @@ function SessionDetailPageBase({
             {/* Timeline Content - Conditional based on view type */}
             {session.stages && session.stages.length > 0 ? (
               <Suspense fallback={timelineSkeleton}>
-                {timelineComponent(session, autoScrollEnabled)}
+                {timelineComponent(session, autoScrollEnabled, progressStatus)}
               </Suspense>
             ) : (
               <Alert severity="error" sx={{ mb: 2 }}>

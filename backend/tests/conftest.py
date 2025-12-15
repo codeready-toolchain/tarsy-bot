@@ -98,6 +98,9 @@ def isolated_test_settings():
     settings.history_retention_days = 90
     settings.google_api_key = "test-google-key"
     settings.openai_api_key = "test-openai-key"
+    settings.alert_processing_timeout = 600  # Default 10 minute timeout
+    settings.llm_iteration_timeout = 210  # Default 3.5 minute iteration timeout
+    settings.mcp_tool_call_timeout = 70  # Default 70 second tool timeout
     settings.xai_api_key = "test-xai-key"
     settings.github_token = "test-github-token"
     settings.default_llm_provider = "gemini"

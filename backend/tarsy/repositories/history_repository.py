@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Union
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, and_, asc, case, desc, func, or_, select
 
-from tarsy.models.constants import AlertSessionStatus, StageStatus
+from tarsy.models.constants import AlertSessionStatus, ParallelType, StageStatus
 from tarsy.models.db_models import AlertSession, Chat, ChatUserMessage, StageExecution
 from tarsy.models.history_models import (
     ChatUserMessageData,
@@ -358,16 +358,18 @@ class HistoryRepository:
             raise
     
     def get_stage_executions_for_session(self, session_id: str) -> List['StageExecution']:
-        """Get all stage executions for a session in proper display order.
+        """Get all stage executions for a session with parent-child relationships.
+        
+        Returns parent stages with child executions embedded for parallel stages.
         
         Ordering:
         1. Regular stages (chat_id IS NULL) first, sorted by stage_index
         2. Chat stages (chat_id IS NOT NULL) last, sorted by started_at_us
         
-        This ensures chat follow-up stages appear after all regular chain stages,
-        even though chat stages have stage_index=0.
+        For parallel stages, children are grouped under their parent with parallel_executions attribute.
         """
         try:
+            # Get all stages (both parents and children)
             stmt = (
                 select(StageExecution)
                 .where(StageExecution.session_id == session_id)
@@ -376,14 +378,54 @@ class HistoryRepository:
                     case((StageExecution.chat_id.isnot(None), 1), else_=0),
                     # Then by stage_index (for regular stages)
                     asc(StageExecution.stage_index),
+                    # Then by parallel_index (for parallel children)
+                    asc(StageExecution.parallel_index),
                     # Then by timestamp (for chat stages with same stage_index)
                     asc(StageExecution.started_at_us)
                 )
             )
-            stage_executions = self.session.exec(stmt).all()
-            return list(stage_executions)
+            all_stages = self.session.exec(stmt).all()
+            
+            # Group children under parents
+            result = []
+            
+            for stage in all_stages:
+                if stage.parent_stage_execution_id is None:
+                    # Top-level stage (parent or single)
+                    # Attach children if parallel type
+                    if stage.parallel_type in ParallelType.parallel_values():
+                        # Find and attach children
+                        children = [
+                            s for s in all_stages 
+                            if s.parent_stage_execution_id == stage.execution_id
+                        ]
+                        # Add parallel_executions as a dynamic attribute (bypass Pydantic validation)
+                        object.__setattr__(stage, 'parallel_executions', children)
+                    result.append(stage)
+            
+            return result
         except Exception as e:
             logger.error(f"Failed to get stage executions for session {session_id}: {str(e)}")
+            raise
+    
+    def get_parallel_stage_children(self, parent_execution_id: str) -> List[StageExecution]:
+        """Get all child executions for a parallel stage parent.
+        
+        Args:
+            parent_execution_id: Parent stage execution ID
+            
+        Returns:
+            List of child StageExecution instances ordered by parallel_index
+        """
+        try:
+            stmt = (
+                select(StageExecution)
+                .where(StageExecution.parent_stage_execution_id == parent_execution_id)
+                .order_by(asc(StageExecution.parallel_index))
+            )
+            return list(self.session.exec(stmt).all())
+        except Exception as e:
+            logger.error(f"Failed to get parallel stage children for parent {parent_execution_id}: {str(e)}")
             raise
 
     def get_alert_sessions(
@@ -583,7 +625,28 @@ class HistoryRepository:
                                 chat_message_counts[session_id] = count
                 except Exception as e:
                     # Don't fail entire query if chat counting fails
-                    logger.warning(f"Failed to count chat messages for sessions: {e}")
+                    logger.error(f"Failed to count chat messages for sessions: {e}")
+                
+                # Check for parallel stages in sessions
+                parallel_stages_flags = {}
+                try:
+                    # Query for sessions that have at least one stage with parallel executions
+                    # A stage has parallel executions if it has children (parent_stage_execution_id points to it)
+                    # OR if its parallel_type is not 'single'
+                    parallel_stages_query = select(StageExecution.session_id).where(
+                        and_(
+                            StageExecution.session_id.in_(session_ids),
+                            or_(
+                                StageExecution.parallel_type != ParallelType.SINGLE.value,
+                                StageExecution.parent_stage_execution_id.is_not(None)
+                            )
+                        )
+                    ).distinct()
+                    parallel_results = self.session.exec(parallel_stages_query).all()
+                    parallel_stages_flags = {session_id: True for session_id in parallel_results}
+                except Exception as e:
+                    # Don't fail entire query if parallel stages check fails
+                    logger.error(f"Failed to check for parallel stages: {e}")
                 
                 # Combine counts for each session
                 for session_id in session_ids:
@@ -594,7 +657,8 @@ class HistoryRepository:
                         'input_tokens': tokens.get('input_tokens'),
                         'output_tokens': tokens.get('output_tokens'),
                         'total_tokens': tokens.get('total_tokens'),
-                        'chat_message_count': chat_message_counts.get(session_id)
+                        'chat_message_count': chat_message_counts.get(session_id),
+                        'has_parallel_stages': parallel_stages_flags.get(session_id, False)
                     }
             
             session_overviews = []
@@ -632,6 +696,7 @@ class HistoryRepository:
                     # Chain progress info
                     chain_id=alert_session.chain_id,
                     current_stage_index=alert_session.current_stage_index,
+                    has_parallel_stages=session_counts.get('has_parallel_stages', False),
                     
                     # MCP configuration override
                     mcp_selection=alert_session.mcp_selection,
@@ -757,9 +822,9 @@ class HistoryRepository:
                 stage_id = mcp_db.stage_execution_id or SESSION_LEVEL_STAGE_ID
                 interactions_by_stage[stage_id].append(mcp_interaction)
             
-            # Build DetailedStage objects
-            detailed_stages = []
-            for stage_db in stage_executions_db:
+            # Helper function to convert StageExecution to DetailedStage
+            def convert_stage_to_detailed(stage_db: StageExecution) -> DetailedStage:
+                """Convert a StageExecution DB model to DetailedStage API model."""
                 stage_interactions = interactions_by_stage.get(stage_db.execution_id, [])
                 
                 # Separate LLM and MCP interactions and sort chronologically
@@ -783,7 +848,14 @@ class HistoryRepository:
                         created_at_us=user_msg.created_at_us
                     )
                 
-                detailed_stage = DetailedStage(
+                # Convert nested children if they exist
+                parallel_executions_detailed = None
+                if hasattr(stage_db, 'parallel_executions') and stage_db.parallel_executions:
+                    parallel_executions_detailed = [
+                        convert_stage_to_detailed(child) for child in stage_db.parallel_executions
+                    ]
+                
+                return DetailedStage(
                     execution_id=stage_db.execution_id,
                     session_id=stage_db.session_id,
                     stage_id=stage_db.stage_id,
@@ -799,13 +871,19 @@ class HistoryRepository:
                     chat_id=stage_db.chat_id,
                     chat_user_message_id=stage_db.chat_user_message_id,
                     chat_user_message=chat_user_message_data,
+                    parent_stage_execution_id=stage_db.parent_stage_execution_id,
+                    parallel_index=stage_db.parallel_index,
+                    parallel_type=stage_db.parallel_type,
+                    parallel_executions=parallel_executions_detailed,  # Nested children already converted
                     llm_interactions=llm_stage_interactions,
                     mcp_communications=mcp_stage_interactions,
                     llm_interaction_count=len(llm_stage_interactions),
                     mcp_communication_count=len(mcp_stage_interactions),
                     total_interactions=len(llm_stage_interactions) + len(mcp_stage_interactions)
                 )
-                detailed_stages.append(detailed_stage)
+            
+            # Build DetailedStage objects (stage_executions_db already has children nested)
+            detailed_stages = [convert_stage_to_detailed(stage_db) for stage_db in stage_executions_db]
             
             # Extract session-level interactions (not associated with any stage)
             session_level_interactions = interactions_by_stage.get(SESSION_LEVEL_STAGE_ID, [])

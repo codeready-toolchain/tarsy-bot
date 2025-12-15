@@ -477,16 +477,11 @@ class TestNativeThinkingPauseResumeE2E:
                 
                 langchain_mock = create_langchain_streaming_mock()
                 
-                from langchain_anthropic import ChatAnthropic
-                from langchain_google_genai import ChatGoogleGenerativeAI
-                from langchain_openai import ChatOpenAI
-                from langchain_xai import ChatXAI
-                
-                with patch("google.genai.Client", create_gemini_mock_client), \
-                     patch.object(ChatOpenAI, 'astream', langchain_mock), \
-                     patch.object(ChatAnthropic, 'astream', langchain_mock), \
-                     patch.object(ChatXAI, 'astream', langchain_mock), \
-                     patch.object(ChatGoogleGenerativeAI, 'astream', langchain_mock):
+                # Patch both Gemini SDK and LangChain clients using shared utility
+                with E2ETestUtils.create_llm_patch_context(
+                    gemini_mock_factory=create_gemini_mock_client,
+                    streaming_mock=langchain_mock
+                ):
                     
                     mock_k8s_session = create_mcp_session_mock()
                     mock_data_session = create_custom_mcp_session_mock()

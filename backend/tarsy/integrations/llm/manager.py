@@ -11,6 +11,7 @@ from tarsy.config.settings import Settings
 from tarsy.integrations.llm.client import LLMClient
 from tarsy.models.llm_models import LLMProviderType
 from tarsy.models.mcp_selection_models import NativeToolsConfig
+from tarsy.models.parallel_metadata import ParallelExecutionMetadata
 from tarsy.models.unified_interactions import LLMConversation
 from tarsy.utils.logger import get_module_logger
 
@@ -138,7 +139,8 @@ class LLMManager:
                               max_tokens: Optional[int] = None,
                               interaction_type: Optional[str] = None,
                               mcp_event_id: Optional[str] = None,
-                              native_tools_override: Optional[NativeToolsConfig] = None) -> LLMConversation:
+                              native_tools_override: Optional[NativeToolsConfig] = None,
+                              parallel_metadata: Optional['ParallelExecutionMetadata'] = None) -> LLMConversation:
         """Generate a response using the specified or default LLM provider.
         
         Args:
@@ -167,7 +169,8 @@ class LLMManager:
             max_tokens, 
             interaction_type, 
             mcp_event_id=mcp_event_id,
-            native_tools_override=native_tools_override
+            native_tools_override=native_tools_override,
+            parallel_metadata=parallel_metadata
         )
 
     def list_available_providers(self) -> List[str]:

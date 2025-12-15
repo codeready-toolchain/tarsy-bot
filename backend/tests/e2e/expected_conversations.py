@@ -115,9 +115,7 @@ Question: Investigate this test-kubernetes alert and provide stage-specific anal
 
 ### Alert Metadata
 **Alert Type:** test-kubernetes
-**Severity:** warning
 **Timestamp:** {TIMESTAMP}
-**Environment:** production
 
 ### Alert Data
 ```json
@@ -206,8 +204,8 @@ Format:
     "llm_count": <number of LLM interactions>,
     "mcp_count": <number of MCP interactions>,
     "interactions": [
-        {"type": "mcp", "position": <position_among_mcp_interactions>, "communication_type": <tool_list or tool_call>, "success": <success>, "server_name": <server_name>},
-        {"type": "llm", "position": <position_among_llm_interactions>, "success": <success>, "conversation_index": <the number of messages from the expected conversation that should be included in the actual conversation, starting from 0>, "input_tokens": n, "output_tokens": n, "total_tokens": n},
+        {"type": "mcp", "communication_type": <tool_list or tool_call>, "success": <success>, "server_name": <server_name>},
+        {"type": "llm", "success": <success>, "conversation_index": <the number of messages from the expected conversation that should be included in the actual conversation, starting from 0>, "input_tokens": n, "output_tokens": n, "total_tokens": n},
     ]
 }
 """
@@ -218,30 +216,30 @@ EXPECTED_STAGES = {
         'mcp_count': 6,  # Tool discovery calls + tool execution calls are all tracked as MCP interactions
         'interactions': [
             # MCP 1 - Tool list discovery for kubernetes-server (first interaction)
-            {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
             # MCP 2 - Tool list discovery for test-data-server (returns 1 tool: collect_system_info)
-            {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
             # LLM 1 - Initial ReAct iteration (investigation type)
-            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 245, 'output_tokens': 85, 'total_tokens': 330, 'interaction_type': 'investigation'},
+            {'type': 'llm', 'success': True, 'conversation_index': 3, 'input_tokens': 245, 'output_tokens': 85, 'total_tokens': 330, 'interaction_type': 'investigation'},
             # MCP 3 - Successful kubectl_get attempt
-            {'type': 'mcp', 'position': 3, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
             # LLM 2 - Second ReAct iteration (investigation type)
-            {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 180, 'output_tokens': 65, 'total_tokens': 245, 'interaction_type': 'investigation'},
+            {'type': 'llm', 'success': True, 'conversation_index': 5, 'input_tokens': 180, 'output_tokens': 65, 'total_tokens': 245, 'interaction_type': 'investigation'},
             # MCP 4 - Failed kubectl_describe attempt (testing error handling)
-            {'type': 'mcp', 'position': 4, 'communication_type': 'tool_call', 'success': False, 'tool_name': 'kubectl_describe', 'server_name': 'kubernetes-server', 'error_message': "Failed to call tool kubectl_describe on kubernetes-server: Type=McpError | Message=tool 'kubectl_describe' not found: tool not found | error=ErrorData(code=-32602, message=\"tool 'kubectl_describe' not found: tool not found\", data=None)"},
+            {'type': 'mcp', 'communication_type': 'tool_call', 'success': False, 'tool_name': 'kubectl_describe', 'server_name': 'kubernetes-server', 'error_message': "Failed to call tool kubectl_describe on kubernetes-server: Type=McpError | Message=tool 'kubectl_describe' not found: tool not found | error=ErrorData(code=-32602, message=\"tool 'kubectl_describe' not found: tool not found\", data=None)"},
             # LLM 3 - Third ReAct iteration (investigation type)
-            {'type': 'llm', 'position': 3, 'success': True, 'conversation_index': 7, 'input_tokens': 220, 'output_tokens': 75, 'total_tokens': 295, 'interaction_type': 'investigation'},
+            {'type': 'llm', 'success': True, 'conversation_index': 7, 'input_tokens': 220, 'output_tokens': 75, 'total_tokens': 295, 'interaction_type': 'investigation'},
             # MCP 5 - Successful collect_system_info call (stores actual result, then triggers summarization)
-            {'type': 'mcp', 'position': 5, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'collect_system_info', 'server_name': 'test-data-server'},
+            {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'collect_system_info', 'server_name': 'test-data-server'},
             # LLM 4 - Summarization of large system info result (separate LLM call after MCP interaction stored)
             # The summarization interaction now happens AFTER the MCP interaction is stored to DB with actual result
-            {'type': 'llm', 'position': 4, 'success': True, 'conversation': EXPECTED_DATA_COLLECTION_SUMMARIZATION_CONVERSATION, 'input_tokens': 100, 'output_tokens': 50, 'total_tokens': 150, 'interaction_type': 'summarization'},
+            {'type': 'llm', 'success': True, 'conversation': EXPECTED_DATA_COLLECTION_SUMMARIZATION_CONVERSATION, 'input_tokens': 100, 'output_tokens': 50, 'total_tokens': 150, 'interaction_type': 'summarization'},
             # LLM 5 - Fourth ReAct iteration (kubectl events call) - continues after system info (investigation type)
-            {'type': 'llm', 'position': 5, 'success': True, 'conversation_index': 9, 'input_tokens': 200, 'output_tokens': 60, 'total_tokens': 260, 'interaction_type': 'investigation'},
+            {'type': 'llm', 'success': True, 'conversation_index': 9, 'input_tokens': 200, 'output_tokens': 60, 'total_tokens': 260, 'interaction_type': 'investigation'},
             # MCP 6 - Successful kubectl_get events call
-            {'type': 'mcp', 'position': 6, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
             # LLM 6 - Final completion with events observation (final_analysis type)
-            {'type': 'llm', 'position': 6, 'success': True, 'conversation_index': 11, 'input_tokens': 315, 'output_tokens': 125, 'total_tokens': 440, 'interaction_type': 'final_analysis'}
+            {'type': 'llm', 'success': True, 'conversation_index': 11, 'input_tokens': 315, 'output_tokens': 125, 'total_tokens': 440, 'interaction_type': 'final_analysis'}
         ]
     },
     'verification': {
@@ -249,13 +247,13 @@ EXPECTED_STAGES = {
         'mcp_count': 2,  # Tool discovery calls + tool execution calls are all tracked as MCP interactions
         'interactions': [
             # MCP 1 - Tool list discovery (first interaction)
-            {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
             # LLM 1 - Initial ReAct iteration (investigation type)
-            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 190, 'output_tokens': 70, 'total_tokens': 260, 'interaction_type': 'investigation'},
+            {'type': 'llm', 'success': True, 'conversation_index': 3, 'input_tokens': 190, 'output_tokens': 70, 'total_tokens': 260, 'interaction_type': 'investigation'},
             # MCP 2 - Successful kubectl_get attempt
-            {'type': 'mcp', 'position': 2, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
             # LLM 2 - Final answer (final_analysis type)
-            {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 280, 'output_tokens': 110, 'total_tokens': 390, 'interaction_type': 'final_analysis'}
+            {'type': 'llm', 'success': True, 'conversation_index': 5, 'input_tokens': 280, 'output_tokens': 110, 'total_tokens': 390, 'interaction_type': 'final_analysis'}
         ]
     },
     'analysis': {
@@ -263,7 +261,7 @@ EXPECTED_STAGES = {
         'mcp_count': 0,
         'interactions': [
             # LLM 1 - Final analysis (final_analysis type, explicit from ReactFinalAnalysisController)
-            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 420, 'output_tokens': 180, 'total_tokens': 600, 'interaction_type': 'final_analysis'}
+            {'type': 'llm', 'success': True, 'conversation_index': 3, 'input_tokens': 420, 'output_tokens': 180, 'total_tokens': 600, 'interaction_type': 'final_analysis'}
         ]
     }
 }
@@ -281,7 +279,7 @@ EXPECTED_SESSION_LEVEL_INTERACTIONS = {
     'mcp_count': 0,  # No MCP interactions at session level
     'interactions': [
         # LLM 1 - Executive summary generation (final_analysis_summary type)
-        {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 100, 'output_tokens': 50, 'total_tokens': 150, 'interaction_type': 'final_analysis_summary'}
+        {'type': 'llm', 'success': True, 'conversation_index': 3, 'input_tokens': 100, 'output_tokens': 50, 'total_tokens': 150, 'interaction_type': 'final_analysis_summary'}
     ]
 }
 
@@ -485,9 +483,7 @@ Question: Investigate this test-kubernetes alert and provide stage-specific anal
 
 ### Alert Metadata
 **Alert Type:** test-kubernetes
-**Severity:** warning
 **Timestamp:** {TIMESTAMP}
-**Environment:** production
 
 ### Alert Data
 ```json
@@ -561,7 +557,7 @@ Action Input: {"detailed": false}"""
         {
             "role": "user",
             "content": """Observation: test-data-server.collect_system_info: {
-  "result": "Summarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK."
+  "result": "[NOTE: The tool output was too long and has been summarized below.]\\n\\nSummarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK."
 }"""
         },
         {
@@ -710,9 +706,7 @@ Question: Analyze this test-kubernetes alert and provide actionable recommendati
 
 ### Alert Metadata
 **Alert Type:** test-kubernetes
-**Severity:** warning
 **Timestamp:** {TIMESTAMP}
-**Environment:** production
 
 ### Alert Data
 ```json
@@ -838,9 +832,7 @@ Please provide detailed, actionable insights about what's happening and potentia
 
 ### Alert Metadata
 **Alert Type:** test-kubernetes
-**Severity:** warning
 **Timestamp:** {TIMESTAMP}
-**Environment:** production
 
 ### Alert Data
 ```json
@@ -1147,7 +1139,7 @@ Action Input: {"resource": "namespaces", "name": "stuck-namespace"}"""
 # Expected final analysis endpoint responses (normalized)
 # These are compared as-is after normalizing timestamps and session_id
 EXPECTED_FINAL_ANALYSIS_LLM_ONLY = {
-    'final_analysis': '# Alert Analysis Report\n\n**Alert Type:** test-kubernetes\n**Processing Chain:** kubernetes-namespace-terminating-chain\n**Stages:** 3\n**Environment:** production\n**Severity:** warning\n**Timestamp:** {TIMESTAMP}\n\n## Analysis\n\nBased on previous stages, the namespace is stuck due to finalizers.\n\n---\n*Processed through 3 stages*',
+    'final_analysis': '# Alert Analysis Report\n\n**Alert Type:** test-kubernetes\n**Processing Chain:** kubernetes-namespace-terminating-chain\n**Stages:** 3\n**Timestamp:** {TIMESTAMP}\n\n## Analysis\n\nBased on previous stages, the namespace is stuck due to finalizers.\n\n---\n*Processed through 3 stages*',
     'final_analysis_summary': 'The namespace stuck-namespace is in Terminating state due to finalizers blocking deletion.',
     'session_id': '{SESSION_ID}',
     'status': 'completed',
@@ -1190,7 +1182,7 @@ EXPECTED_FINAL_ANALYSIS_LLM_ONLY = {
 }
 
 EXPECTED_FINAL_ANALYSIS_WITH_CHAT = {
-    'final_analysis': '# Alert Analysis Report\n\n**Alert Type:** test-kubernetes\n**Processing Chain:** kubernetes-namespace-terminating-chain\n**Stages:** 3\n**Environment:** production\n**Severity:** warning\n**Timestamp:** {TIMESTAMP}\n\n## Analysis\n\nBased on previous stages, the namespace is stuck due to finalizers.\n\n---\n*Processed through 3 stages*',
+    'final_analysis': '# Alert Analysis Report\n\n**Alert Type:** test-kubernetes\n**Processing Chain:** kubernetes-namespace-terminating-chain\n**Stages:** 3\n**Timestamp:** {TIMESTAMP}\n\n## Analysis\n\nBased on previous stages, the namespace is stuck due to finalizers.\n\n---\n*Processed through 3 stages*',
     'final_analysis_summary': 'The namespace stuck-namespace is in Terminating state due to finalizers blocking deletion.',
     'session_id': '{SESSION_ID}',
     'status': 'completed',
@@ -1269,15 +1261,15 @@ EXPECTED_CHAT_INTERACTIONS = {
         'mcp_count': 3,  # 2 tool_list discoveries + 1 tool_call
         'interactions': [
             # MCP 1 - Tool list discovery for kubernetes-server
-            {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
             # MCP 2 - Tool list discovery for test-data-server
-            {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
             # LLM 1 - Initial ReAct iteration (kubectl_get for pods)
-            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 150, 'output_tokens': 60, 'total_tokens': 210},
+            {'type': 'llm', 'success': True, 'conversation_index': 3, 'input_tokens': 150, 'output_tokens': 60, 'total_tokens': 210, 'interaction_type': 'investigation'},
             # MCP 3 - kubectl_get pods call
-            {'type': 'mcp', 'position': 3, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
             # LLM 2 - Final answer
-            {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 180, 'output_tokens': 90, 'total_tokens': 270}
+            {'type': 'llm', 'success': True, 'conversation_index': 5, 'input_tokens': 180, 'output_tokens': 90, 'total_tokens': 270, 'interaction_type': 'final_analysis'}
         ]
     },
     'message_2': {
@@ -1285,15 +1277,15 @@ EXPECTED_CHAT_INTERACTIONS = {
         'mcp_count': 3,  # 2 tool_list discoveries + 1 tool_call
         'interactions': [
             # MCP 1 - Tool list discovery for kubernetes-server
-            {'type': 'mcp', 'position': 1, 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
             # MCP 2 - Tool list discovery for test-data-server
-            {'type': 'mcp', 'position': 2, 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'test-data-server'},
             # LLM 1 - Initial ReAct iteration (kubectl_get for namespace)
-            {'type': 'llm', 'position': 1, 'success': True, 'conversation_index': 3, 'input_tokens': 200, 'output_tokens': 70, 'total_tokens': 270},
+            {'type': 'llm', 'success': True, 'conversation_index': 3, 'input_tokens': 200, 'output_tokens': 70, 'total_tokens': 270, 'interaction_type': 'investigation'},
             # MCP 3 - kubectl_get namespace call
-            {'type': 'mcp', 'position': 3, 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+            {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
             # LLM 2 - Final answer
-            {'type': 'llm', 'position': 2, 'success': True, 'conversation_index': 5, 'input_tokens': 220, 'output_tokens': 95, 'total_tokens': 315}
+            {'type': 'llm', 'success': True, 'conversation_index': 5, 'input_tokens': 220, 'output_tokens': 95, 'total_tokens': 315, 'interaction_type': 'final_analysis'}
         ]
     }
 }

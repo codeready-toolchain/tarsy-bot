@@ -543,7 +543,7 @@ class TestAgentFactoryIterationStrategies:
         mock_dependencies['mcp_registry'].get_server_config.return_value = mock_server_config
         mock_dependencies['mcp_registry'].get_server_configs.return_value = [mock_server_config]
         
-        agent = factory.create_agent("ConfigurableAgent:react-stage-agent", mock_dependencies['mcp_client'])
+        agent = factory.create_agent("react-stage-agent", mock_dependencies['mcp_client'])
         
         from tarsy.agents.configurable_agent import ConfigurableAgent
         from tarsy.models.constants import IterationStrategy
@@ -566,7 +566,7 @@ class TestAgentFactoryIterationStrategies:
         mock_dependencies['mcp_registry'].get_server_config.return_value = mock_server_config
         mock_dependencies['mcp_registry'].get_server_configs.return_value = [mock_server_config]
         
-        agent = factory.create_agent("ConfigurableAgent:react-agent", mock_dependencies['mcp_client'])
+        agent = factory.create_agent("react-agent", mock_dependencies['mcp_client'])
         
         from tarsy.agents.configurable_agent import ConfigurableAgent
         from tarsy.models.constants import IterationStrategy
@@ -596,8 +596,8 @@ class TestAgentFactoryIterationStrategies:
         mock_dependencies['mcp_registry'].get_server_configs.side_effect = mock_get_server_configs
         
         # Create both agents
-        react_stage_agent = factory.create_agent("ConfigurableAgent:react-stage-agent", mock_dependencies['mcp_client'])
-        react_agent = factory.create_agent("ConfigurableAgent:react-agent", mock_dependencies['mcp_client'])
+        react_stage_agent = factory.create_agent("react-stage-agent", mock_dependencies['mcp_client'])
+        react_agent = factory.create_agent("react-agent", mock_dependencies['mcp_client'])
         
         from tarsy.models.constants import IterationStrategy
         
@@ -636,7 +636,7 @@ class TestAgentFactoryIterationStrategies:
         mock_dependencies['mcp_registry'].get_server_configs.return_value = [Mock()]
         
         with caplog.at_level("INFO"):
-            agent = factory.create_agent("ConfigurableAgent:test-agent", mock_dependencies['mcp_client'])
+            agent = factory.create_agent("test-agent", mock_dependencies['mcp_client'])
             
             from tarsy.agents.configurable_agent import ConfigurableAgent
             assert isinstance(agent, ConfigurableAgent)
@@ -837,15 +837,15 @@ class TestAgentFactoryErrorHandling:
             mock_configurable.return_value = mock_agent
             
             # Test legacy format
-            result = factory.create_agent("ConfigurableAgent:legacy-agent", mcp_client)
+            result = factory.create_agent("legacy-agent", mcp_client)
             
             assert result == mock_agent
             mock_configurable.assert_called_once()
     
     def test_legacy_format_unknown_agent(self, factory_with_mocks):
         """Test legacy format with unknown agent."""
-        with pytest.raises(ValueError, match="Unknown agent 'ConfigurableAgent:unknown-legacy'"):
-            factory_with_mocks['factory'].create_agent("ConfigurableAgent:unknown-legacy", factory_with_mocks['mcp_client'])
+        with pytest.raises(ValueError, match="Unknown agent 'unknown-legacy'"):
+            factory_with_mocks['factory'].create_agent("unknown-legacy", factory_with_mocks['mcp_client'])
 
 
 @pytest.mark.unit

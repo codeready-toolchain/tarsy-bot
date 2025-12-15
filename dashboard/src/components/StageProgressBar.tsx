@@ -29,6 +29,8 @@ const getStepIcon = (status: string, isActive: boolean = false) => {
       return <ErrorIcon color="error" />;
     case STAGE_STATUS.ACTIVE:
       return <PlayArrow color="primary" />;
+    case STAGE_STATUS.PAUSED:
+      return <Schedule color="warning" />;
     case STAGE_STATUS.PENDING:
     default:
       return <Schedule color={isActive ? 'primary' : 'disabled'} />;
