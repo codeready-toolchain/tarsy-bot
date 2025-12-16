@@ -124,7 +124,7 @@ class TestCreateStageExecution:
         
         stage = SimpleNamespace(name="test-stage", agent="TestAgent")
         
-        with pytest.raises(RuntimeError, match="History service is disabled"):
+        with pytest.raises(RuntimeError, match="History service is unavailable"):
             await manager.create_stage_execution(
                 session_id="session-1",
                 stage=stage,
@@ -254,7 +254,7 @@ class TestUpdateStageExecutionStarted:
         
         manager = StageExecutionManager(history_service=history_service)
         
-        with pytest.raises(RuntimeError, match="History service is disabled"):
+        with pytest.raises(RuntimeError, match="History service is unavailable"):
             await manager.update_stage_execution_started("exec-123")
     
     @pytest.mark.asyncio
@@ -328,7 +328,7 @@ class TestUpdateStageExecutionCompleted:
             error_message=None
         )
         
-        with pytest.raises(RuntimeError, match="History service is disabled"):
+        with pytest.raises(RuntimeError, match="History service is unavailable"):
             await manager.update_stage_execution_completed("exec-123", result)
     
     @pytest.mark.asyncio
@@ -394,7 +394,7 @@ class TestUpdateStageExecutionFailed:
         
         manager = StageExecutionManager(history_service=history_service)
         
-        with pytest.raises(RuntimeError, match="History service is disabled"):
+        with pytest.raises(RuntimeError, match="History service is unavailable"):
             await manager.update_stage_execution_failed("exec-123", "Test error")
     
     @pytest.mark.asyncio
@@ -471,7 +471,7 @@ class TestUpdateStageExecutionPaused:
             error_message=None
         )
         
-        with pytest.raises(RuntimeError, match="History service is disabled"):
+        with pytest.raises(RuntimeError, match="History service is unavailable"):
             await manager.update_stage_execution_paused("exec-123", 5, paused_result)
     
     @pytest.mark.asyncio
@@ -524,6 +524,6 @@ class TestUpdateSessionCurrentStage:
         manager = StageExecutionManager(history_service=history_service)
         
         # Should raise RuntimeError when history is disabled
-        with pytest.raises(RuntimeError, match="History service is disabled"):
+        with pytest.raises(RuntimeError, match="History service is unavailable"):
             await manager.update_session_current_stage("session-1", 2, "exec-456")
 

@@ -74,18 +74,6 @@ class TestHistoryServiceCancellation:
             assert result is None
     
     @pytest.mark.unit
-    def test_get_session_returns_none_when_service_disabled(self) -> None:
-        """Test that get_session returns None when history service is disabled."""
-        mock_settings = MockFactory.create_mock_settings()
-        
-        with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
-            service = HistoryService()
-            
-            result = service.get_session("any-session-id")
-            
-            assert result is None
-    
-    @pytest.mark.unit
     @pytest.mark.parametrize(
         "current_status,expected_success,expected_returned_status",
         [
@@ -157,19 +145,6 @@ class TestHistoryServiceCancellation:
             
             assert success is False
             assert status == "not_found"
-    
-    @pytest.mark.unit
-    def test_update_session_to_canceling_when_service_disabled(self) -> None:
-        """Test update_session_to_canceling returns False when service is disabled."""
-        mock_settings = MockFactory.create_mock_settings()
-        
-        with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
-            service = HistoryService()
-            
-            success, status = service.update_session_to_canceling("any-session-id")
-            
-            assert success is False
-            assert status == "unknown"
     
     @pytest.mark.unit
     def test_update_session_to_canceling_idempotent_for_already_canceling(

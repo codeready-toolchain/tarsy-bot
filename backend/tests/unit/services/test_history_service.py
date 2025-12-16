@@ -1474,17 +1474,6 @@ async def test_cleanup_orphaned_sessions():
 
 @pytest.mark.asyncio
 @pytest.mark.unit
-async def test_cleanup_orphaned_sessions_disabled_service():
-    """Test that cleanup does nothing when history service is disabled."""
-    history_service = HistoryService()
-    
-    cleaned_count = history_service.cleanup_orphaned_sessions()
-    
-    assert cleaned_count == 0
-
-
-@pytest.mark.asyncio
-@pytest.mark.unit
 async def test_cleanup_orphaned_sessions_no_repository():
     """Test cleanup handles gracefully when repository is unavailable."""
     history_service = HistoryService()
@@ -2324,18 +2313,6 @@ class TestConversationHistory:
         
         # Assert
         assert session_conv is not None
-        assert chat_conv is None
-    
-    @pytest.mark.unit
-    def test_get_session_conversation_history_disabled_service(self, history_service):
-        """Test get_session_conversation_history when service is disabled."""
-        
-        session_conv, chat_conv = history_service.get_session_conversation_history(
-            session_id="test-session",
-            include_chat=True
-        )
-        
-        assert session_conv is None
         assert chat_conv is None
     
     @pytest.mark.unit

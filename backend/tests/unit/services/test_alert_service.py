@@ -616,14 +616,6 @@ class TestHistorySessionManagement:
             pause_metadata=None
         )
     
-    def test_update_session_status_disabled(self, alert_service_with_history):
-        """Test session status update when service is disabled."""
-        service = alert_service_with_history
-        
-        service.session_manager.update_session_status("session_123", "in_progress")
-        
-        service.history_service.update_session_status.assert_not_called()
-    
     def test_update_session_completed_success(self, alert_service_with_history):
         """Test marking session as completed."""
         service = alert_service_with_history
