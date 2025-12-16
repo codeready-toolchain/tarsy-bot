@@ -276,7 +276,10 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
                 {(execution.stageExecution.stage_input_tokens !== null || 
                   execution.stageExecution.stage_output_tokens !== null || 
                   execution.stageExecution.stage_total_tokens !== null) && (
-                  <Box mt={1}>
+                  <Box mt={1} display="flex" alignItems="center" gap={0.5}>
+                    <Typography variant="body2" sx={{ fontSize: '0.9rem' }}>
+                      🪙
+                    </Typography>
                     <TokenUsageDisplay
                       tokenData={{
                         input_tokens: execution.stageExecution.stage_input_tokens,
@@ -286,6 +289,9 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
                       variant="inline"
                       size="small"
                     />
+                    <Typography variant="caption" color="text.secondary">
+                      tokens
+                    </Typography>
                   </Box>
                 )}
               </Box>
