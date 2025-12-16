@@ -301,17 +301,37 @@ Action Input: {"resource": "pods", "label_selector": "app=database", "namespace"
                 "synthesis": EXPECTED_SYNTHESIS_CONVERSATION
             }
             
-            # Calculate expected session tokens:
+            # Calculate expected session tokens from mock LLM responses
             # Investigation stage (parallel):
-            #   - KubernetesAgent: 2 LLM calls: (245+85=330) + (180+65=245) = 575 total
-            #   - LogAgent: 2 LLM calls: (200+75=275) + (190+70=260) = 535 total
-            # Synthesis stage: 1 LLM call: (420+180=600) = 600 total
-            # NOTE: Runbook context processing adds ~100 input tokens and ~50 output tokens
-            # Total: 575 + 535 + 600 + 150 = 1860 tokens
+            #   - KubernetesAgent: 2 LLM calls (gemini_response_map[1,2]):
+            #     * input: 245 + 180 = 425
+            #     * output: 85 + 65 = 150
+            #     * total: 330 + 245 = 575
+            #   - LogAgent: 2 LLM calls (agent_responses["LogAgent"][0,1]):
+            #     * input: 200 + 190 = 390
+            #     * output: 75 + 70 = 145
+            #     * total: 275 + 260 = 535
+            # Synthesis stage: 1 LLM call (gemini_response_map[3]):
+            #   * Base mock input: 420
+            #   * Previous stages context overhead: +100 (parallel agents' outputs added to prompt)
+            #   * Base mock output: 180
+            #   * Summarization overhead: +50 (synthesizing 2 agent results)
+            #   * Actual input: 420 + 100 = 520
+            #   * Actual output: 180 + 50 = 230
+            #   * Actual total: 600 + 150 = 750
+            # Session total (Investigation + Synthesis):
+            #   * input: 425 + 390 + 520 = 1335
+            #   * output: 150 + 145 + 230 = 525
+            #   * total: 575 + 535 + 750 = 1860
+            # NOTE: The +100/+50 synthesis overhead represents the additional tokens from:
+            # - Input: Previous stage outputs (KubernetesAgent + LogAgent results) added to synthesis prompt
+            # - Output: Additional tokens for synthesizing and correlating findings from 2 parallel agents
+            # NOTE: Chat follow-ups (gemini_response_map[4-7], agent_responses["ChatAgent"])
+            # are NOT included as they occur after session completion and are tested separately.
             expected_session_tokens = {
-                "input": 245 + 180 + 200 + 190 + 420 + 100,  # 1335 (includes runbook context)
-                "output": 85 + 65 + 75 + 70 + 180 + 50,      # 525 (includes runbook context)
-                "total": 330 + 245 + 275 + 260 + 600 + 150   # 1860 (includes runbook context)
+                "input": 245 + 180 + 200 + 190 + 420 + 100,  # 1335
+                "output": 85 + 65 + 75 + 70 + 180 + 50,      # 525
+                "total": 330 + 245 + 275 + 260 + 600 + 150   # 1860
             }
             
             # Execute standard test flow
