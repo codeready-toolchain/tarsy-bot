@@ -118,25 +118,24 @@ class StageExecutionManager:
         # CRITICAL: Verify the stage execution was actually created in the database
         # The hooks use safe_execute which catches exceptions and returns False instead of propagating
         # We need to explicitly verify the record exists in the database
-        if self.history_service:
-            try:
-                # Use the history service's proper method to verify the record exists
-                verified_stage = await self.history_service.get_stage_execution(stage_execution.execution_id)
-                
-                if not verified_stage:
-                    raise RuntimeError(
-                        f"Stage execution {stage_execution.execution_id} for '{stage.name}' was not found in database after creation. "
-                        "The history hook may have failed silently. Check history service logs for errors."
-                    )
-                    
-                logger.debug(f"Verified stage execution {stage_execution.execution_id} exists in database")
-                
-            except Exception as e:
-                logger.error(f"Failed to verify stage execution in database: {e}")
+        try:
+            # Use the history service's proper method to verify the record exists
+            verified_stage = await self.history_service.get_stage_execution(stage_execution.execution_id)
+            
+            if not verified_stage:
                 raise RuntimeError(
-                    f"Cannot verify stage execution {stage_execution.execution_id} was created in database. "
-                    f"Chain processing cannot continue without confirmation. Error: {str(e)}"
-                ) from e
+                    f"Stage execution {stage_execution.execution_id} for '{stage.name}' was not found in database after creation. "
+                    "The history hook may have failed silently. Check history service logs for errors."
+                )
+                
+            logger.debug(f"Verified stage execution {stage_execution.execution_id} exists in database")
+            
+        except Exception as e:
+            logger.error(f"Failed to verify stage execution in database: {e}")
+            raise RuntimeError(
+                f"Cannot verify stage execution {stage_execution.execution_id} was created in database. "
+                f"Chain processing cannot continue without confirmation. Error: {str(e)}"
+            ) from e
         
         return stage_execution.execution_id
     
