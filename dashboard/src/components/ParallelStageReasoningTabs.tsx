@@ -17,6 +17,7 @@ import type { StageExecution } from '../types';
 import ChatFlowItem from './ChatFlowItem';
 import StreamingContentRenderer, { type StreamingItem } from './StreamingContentRenderer';
 import { getParallelStageLabel } from '../utils/parallelStageHelpers';
+import TokenUsageDisplay from './TokenUsageDisplay';
 
 // Extended streaming item type that includes parallel execution metadata
 interface ParallelStreamingItem extends StreamingItem {
@@ -270,6 +271,23 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
                     sx={{ height: 18, fontSize: '0.65rem' }}
                   />
                 </Box>
+                
+                {/* Token Usage */}
+                {(execution.stageExecution.stage_input_tokens !== null || 
+                  execution.stageExecution.stage_output_tokens !== null || 
+                  execution.stageExecution.stage_total_tokens !== null) && (
+                  <Box mt={1}>
+                    <TokenUsageDisplay
+                      tokenData={{
+                        input_tokens: execution.stageExecution.stage_input_tokens,
+                        output_tokens: execution.stageExecution.stage_output_tokens,
+                        total_tokens: execution.stageExecution.stage_total_tokens,
+                      }}
+                      variant="inline"
+                      size="small"
+                    />
+                  </Box>
+                )}
               </Box>
             );
           })}

@@ -399,3 +399,114 @@ class TestTokenAggregationIntegration:
         assert stage1_tokens == 260
         assert stage2_tokens is None  # No valid token data
         assert session_total == 260   # Only includes stage with token data
+    
+    def test_parallel_execution_token_aggregation(self):
+        """Test that parent stage aggregates tokens from parallel child executions."""
+        # Helper to create timeline events
+        def create_event(input_tokens, output_tokens, total_tokens, event_id):
+            conversation = LLMConversation(messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="You are a helpful assistant."),
+                LLMMessage(role=MessageRole.USER, content="Test question"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Test response")
+            ])
+            
+            interaction = LLMInteraction(
+                session_id="test-session",
+                stage_execution_id="test-stage",
+                model_name="gpt-4",
+                conversation=conversation,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=total_tokens
+            )
+            
+            return LLMTimelineEvent(
+                id=event_id,
+                event_id=event_id,
+                timestamp_us=1640995200000000,
+                step_description="Test LLM call",
+                duration_ms=1000,
+                stage_execution_id="test-stage",
+                details=interaction
+            )
+        
+        # Arrange - Create parallel child executions
+        llm_event1 = create_event(100, 50, 150, "event-1")
+        llm_event2 = create_event(120, 60, 180, "event-2")
+        llm_event3 = create_event(80, 40, 120, "event-3")
+        
+        # Create parallel child stages (e.g., multiple agents running in parallel)
+        child_stage1 = DetailedStage(
+            execution_id="child-1",
+            session_id="session-456",
+            stage_id="investigation",
+            stage_index=0,
+            stage_name="Investigation",
+            agent="Agent1",
+            status=StageStatus.COMPLETED,
+            parent_stage_execution_id="parent-123",
+            parallel_index=1,
+            parallel_type="multi_agent",
+            llm_interactions=[llm_event1],
+            mcp_communications=[]
+        )
+        
+        child_stage2 = DetailedStage(
+            execution_id="child-2",
+            session_id="session-456",
+            stage_id="investigation",
+            stage_index=0,
+            stage_name="Investigation",
+            agent="Agent2",
+            status=StageStatus.COMPLETED,
+            parent_stage_execution_id="parent-123",
+            parallel_index=2,
+            parallel_type="multi_agent",
+            llm_interactions=[llm_event2],
+            mcp_communications=[]
+        )
+        
+        child_stage3 = DetailedStage(
+            execution_id="child-3",
+            session_id="session-456",
+            stage_id="investigation",
+            stage_index=0,
+            stage_name="Investigation",
+            agent="Agent3",
+            status=StageStatus.COMPLETED,
+            parent_stage_execution_id="parent-123",
+            parallel_index=3,
+            parallel_type="multi_agent",
+            llm_interactions=[llm_event3],
+            mcp_communications=[]
+        )
+        
+        # Create parent stage with parallel executions
+        parent_stage = DetailedStage(
+            execution_id="parent-123",
+            session_id="session-456",
+            stage_id="investigation",
+            stage_index=0,
+            stage_name="Investigation",
+            agent="parallel-multi_agent",
+            status=StageStatus.COMPLETED,
+            parallel_type="multi_agent",
+            parallel_executions=[child_stage1, child_stage2, child_stage3],
+            llm_interactions=[],  # Parent has no direct interactions
+            mcp_communications=[]
+        )
+        
+        # Act - Get parent stage token totals (should aggregate from children)
+        parent_input = parent_stage.stage_input_tokens
+        parent_output = parent_stage.stage_output_tokens
+        parent_total = parent_stage.stage_total_tokens
+        
+        # Assert - Parent should aggregate all child tokens
+        assert parent_input == 300    # 100 + 120 + 80
+        assert parent_output == 150   # 50 + 60 + 40
+        assert parent_total == 450    # 150 + 180 + 120
+        
+        # Verify individual children have correct tokens
+        assert child_stage1.stage_input_tokens == 100
+        assert child_stage2.stage_input_tokens == 120
+        assert child_stage3.stage_input_tokens == 80
