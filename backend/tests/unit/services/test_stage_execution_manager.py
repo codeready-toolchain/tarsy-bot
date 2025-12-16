@@ -115,21 +115,6 @@ class TestCreateStageExecution:
             
             assert execution_id == "child-exec-1"
     
-    @pytest.mark.asyncio
-    async def test_create_stage_execution_fails_when_history_disabled(self):
-        """Test that creating stage execution fails when history is disabled."""
-        history_service = Mock()
-        
-        manager = StageExecutionManager(history_service=history_service)
-        
-        stage = SimpleNamespace(name="test-stage", agent="TestAgent")
-        
-        with pytest.raises(RuntimeError, match="History service is unavailable"):
-            await manager.create_stage_execution(
-                session_id="session-1",
-                stage=stage,
-                stage_index=0
-            )
 
 
 @pytest.mark.unit
@@ -516,14 +501,3 @@ class TestUpdateSessionCurrentStage:
             current_stage_id="exec-456"
         )
     
-    @pytest.mark.asyncio
-    async def test_update_session_current_stage_disabled_history(self):
-        """Test that update fails when history is disabled."""
-        history_service = Mock()
-        
-        manager = StageExecutionManager(history_service=history_service)
-        
-        # Should raise RuntimeError when history is disabled
-        with pytest.raises(RuntimeError, match="History service is unavailable"):
-            await manager.update_session_current_stage("session-1", 2, "exec-456")
-

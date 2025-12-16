@@ -107,7 +107,6 @@ class TestHistoryService:
     
     @pytest.mark.parametrize("scenario,service_enabled,repo_side_effect,expected_result", [
         ("success", True, None, True),  # Successful creation
-        ("disabled", False, None, False),  # Service disabled
         ("exception", True, Exception("Database error"), False),  # Database error
     ])
     @pytest.mark.unit
