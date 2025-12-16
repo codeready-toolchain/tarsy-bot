@@ -50,7 +50,7 @@ class E2ETestIsolation:
         
         # Store original environment variables we'll modify
         env_vars_to_isolate = [
-            "KUBECONFIG", "DATABASE_URL", "HISTORY_ENABLED",
+            "KUBECONFIG", "DATABASE_URL",
             "AGENT_CONFIG_PATH", "LLM_CONFIG_PATH",
             "GOOGLE_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "ANTHROPIC_API_KEY",
             "LLM_PROVIDER",
@@ -224,7 +224,6 @@ current-context: test-context
     
     # Set isolated environment variables
     e2e_isolation.set_isolated_env("DATABASE_URL", test_db_url)
-    e2e_isolation.set_isolated_env("HISTORY_ENABLED", "true")
     e2e_isolation.set_isolated_env("AGENT_CONFIG_PATH", str(test_agents_path))
     e2e_isolation.set_isolated_env("OPENAI_API_KEY", "test-key-123")
     e2e_isolation.set_isolated_env("LLM_PROVIDER", "openai-default")
@@ -235,7 +234,6 @@ current-context: test-context
     
     # Override specific values after creation to ensure they're isolated
     settings.database_url = test_db_url
-    settings.history_enabled = True
     settings.agent_config_path = str(test_agents_path)
     settings.openai_api_key = "test-key-123"
     settings.llm_provider = "openai-default"
@@ -270,7 +268,7 @@ def ensure_e2e_isolation(request):
     # Store original environment for e2e tests
     original_env = {}
     e2e_env_vars = [
-        "TESTING", "KUBECONFIG", "DATABASE_URL", "HISTORY_ENABLED",
+        "TESTING", "KUBECONFIG", "DATABASE_URL",
         "AGENT_CONFIG_PATH", "LLM_CONFIG_PATH",
         "GOOGLE_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "ANTHROPIC_API_KEY",
         "LLM_PROVIDER"
@@ -368,7 +366,7 @@ def pytest_runtest_teardown(item):
         
         # Clean up environment variables that might have been modified
         test_env_vars = [
-            "KUBECONFIG", "DATABASE_URL", "HISTORY_ENABLED",
+            "KUBECONFIG", "DATABASE_URL",
             "AGENT_CONFIG_PATH", "LLM_CONFIG_PATH",
             "GOOGLE_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "ANTHROPIC_API_KEY",
             "LLM_PROVIDER"
@@ -727,7 +725,6 @@ current-context: test-context
     
     # Set isolated environment variables
     e2e_isolation.set_isolated_env("DATABASE_URL", test_db_url)
-    e2e_isolation.set_isolated_env("HISTORY_ENABLED", "true")
     e2e_isolation.set_isolated_env("AGENT_CONFIG_PATH", str(test_agents_path))
     e2e_isolation.set_isolated_env("GOOGLE_API_KEY", "test-google-key-123")
     e2e_isolation.set_isolated_env("LLM_PROVIDER", "google-default")  # Use builtin Google provider
@@ -738,7 +735,6 @@ current-context: test-context
     
     # Override specific values after creation to ensure they're isolated
     settings.database_url = test_db_url
-    settings.history_enabled = True
     settings.agent_config_path = str(test_agents_path)
     settings.google_api_key = "test-google-key-123"
     settings.llm_provider = "google-default"  # Use builtin Google provider
@@ -810,7 +806,6 @@ current-context: test-context
     # Set isolated environment variables
     # Use google-default to support mixed iteration strategies (native-thinking + react)
     e2e_isolation.set_isolated_env("DATABASE_URL", test_db_url)
-    e2e_isolation.set_isolated_env("HISTORY_ENABLED", "true")
     e2e_isolation.set_isolated_env("AGENT_CONFIG_PATH", str(test_agents_path))
     e2e_isolation.set_isolated_env("GOOGLE_API_KEY", "test-google-key-123")
     e2e_isolation.set_isolated_env("OPENAI_API_KEY", "test-openai-key-123")
@@ -823,7 +818,6 @@ current-context: test-context
     
     # Override specific values after creation to ensure they're isolated
     settings.database_url = test_db_url
-    settings.history_enabled = True
     settings.agent_config_path = str(test_agents_path)
     settings.google_api_key = "test-google-key-123"
     settings.openai_api_key = "test-openai-key-123"

@@ -76,7 +76,7 @@ Added the missing environment variable and restarted the pod."""
         
         history_service = get_history_service()
         
-        if not history_service.is_enabled:
+        if not history_service:
             pytest.skip("History service disabled")
         
         session_id = f"test-summary-persist-{now_us()}"
@@ -249,7 +249,7 @@ class TestSummaryInAlertProcessingFlow:
         
         history_service = get_history_service()
         
-        if not history_service.is_enabled:
+        if not history_service:
             pytest.skip("History service disabled")
         
         session_id = f"test-processing-{now_us()}"
@@ -294,7 +294,7 @@ class TestSummaryInAlertProcessingFlow:
         
         history_service = get_history_service()
         
-        if not history_service.is_enabled:
+        if not history_service:
             pytest.skip("History service disabled")
         
         session_id = f"test-failure-{now_us()}"
@@ -335,7 +335,7 @@ class TestSummaryInAlertProcessingFlow:
         
         history_service = get_history_service()
         
-        if not history_service.is_enabled:
+        if not history_service:
             pytest.skip("History service disabled")
         
         session_id = f"test-optional-{now_us()}"

@@ -73,9 +73,9 @@ class StageExecutionManager:
         Raises:
             RuntimeError: If stage execution record cannot be created
         """
-        if not self.history_service or not self.history_service.is_enabled:
+        if not self.history_service:
             raise RuntimeError(
-                f"Cannot create stage execution for '{stage.name}': History service is disabled. "
+                f"Cannot create stage execution for '{stage.name}': History service is unavailable. "
                 "All alert processing must be done as chains with proper stage tracking."
             )
         
@@ -152,9 +152,9 @@ class StageExecutionManager:
         Raises:
             RuntimeError: If session current stage cannot be updated
         """
-        if not self.history_service or not self.history_service.is_enabled:
+        if not self.history_service:
             raise RuntimeError(
-                f"Cannot update session current stage for '{session_id}': History service is disabled. "
+                f"Cannot update session current stage for '{session_id}': History service is unavailable. "
                 "All alert processing must be done with proper stage tracking."
             )
         
@@ -189,7 +189,7 @@ class StageExecutionManager:
         """
         if not self.history_service:
             raise RuntimeError(
-                f"Cannot update stage execution {stage_execution_id} as completed: History service is disabled. "
+                f"Cannot update stage execution {stage_execution_id} as completed: History service is unavailable. "
                 "All alert processing must be done with proper stage tracking."
             )
         
@@ -240,7 +240,7 @@ class StageExecutionManager:
         """
         if not self.history_service:
             raise RuntimeError(
-                f"Cannot update stage execution {stage_execution_id} as failed: History service is disabled. "
+                f"Cannot update stage execution {stage_execution_id} as failed: History service is unavailable. "
                 "All alert processing must be done with proper stage tracking."
             )
         
@@ -296,7 +296,7 @@ class StageExecutionManager:
         """
         if not self.history_service:
             raise RuntimeError(
-                f"Cannot update stage execution {stage_execution_id} as paused: History service is disabled. "
+                f"Cannot update stage execution {stage_execution_id} as paused: History service is unavailable. "
                 "All alert processing must be done with proper stage tracking."
             )
         
@@ -351,7 +351,7 @@ class StageExecutionManager:
         """
         if not self.history_service:
             raise RuntimeError(
-                f"Cannot update stage execution {stage_execution_id} as started: History service is disabled. "
+                f"Cannot update stage execution {stage_execution_id} as started: History service is unavailable. "
                 "All alert processing must be done with proper stage tracking."
             )
         

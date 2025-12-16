@@ -179,14 +179,9 @@ def initialize_database() -> bool:
         alembic_logger = logging.getLogger('alembic.runtime.migration')
         alembic_logger.setLevel(logging.WARNING)
         
-        # Check if history service is enabled
-        if not settings.history_enabled:
-            logger.info("History service disabled - skipping database initialization")
-            return True
-        
         # Validate configuration
         if not settings.database_url:
-            logger.error("Database URL not configured but history service is enabled")
+            logger.error("Database URL not configured")
             return False
         
         if settings.history_retention_days <= 0:
@@ -223,8 +218,6 @@ def test_database_connection(database_url: Optional[str] = None) -> bool:
     try:
         if not database_url:
             settings = get_settings()
-            if not settings.history_enabled:
-                return False
             database_url = settings.database_url
         
         # Create engine with optimizations and test connection
@@ -251,22 +244,20 @@ def get_database_info() -> dict:
         settings = get_settings()
         
         info = {
-            "enabled": settings.history_enabled,
             # Omit DSN to avoid credential leakage
-            "database_name": settings.database_url.split('/')[-1] if settings.history_enabled else None,
-            "retention_days": settings.history_retention_days if settings.history_enabled else None,
-            "connection_test": test_database_connection() if settings.history_enabled else False,
+            "database_name": settings.database_url.split('/')[-1],
+            "retention_days": settings.history_retention_days,
+            "connection_test": test_database_connection(),
         }
         
-        # Add migration version if database is enabled
-        if settings.history_enabled:
-            try:
-                from tarsy.database.migrations import get_current_version
-                migration_version = get_current_version(str(settings.database_url))
-                info["migration_version"] = migration_version if migration_version else "not_initialized"
-            except Exception as e:
-                logger.debug(f"Could not get migration version: {e}")
-                info["migration_version"] = "unknown"
+        # Add migration version
+        try:
+            from tarsy.database.migrations import get_current_version
+            migration_version = get_current_version(str(settings.database_url))
+            info["migration_version"] = migration_version if migration_version else "not_initialized"
+        except Exception as e:
+            logger.debug(f"Could not get migration version: {e}")
+            info["migration_version"] = "unknown"
         
         return info
         

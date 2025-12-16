@@ -76,7 +76,7 @@ class TestHistoryServiceCancellation:
     @pytest.mark.unit
     def test_get_session_returns_none_when_service_disabled(self) -> None:
         """Test that get_session returns None when history service is disabled."""
-        mock_settings = MockFactory.create_mock_settings(history_enabled=False)
+        mock_settings = MockFactory.create_mock_settings()
         
         with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
             service = HistoryService()
@@ -161,7 +161,7 @@ class TestHistoryServiceCancellation:
     @pytest.mark.unit
     def test_update_session_to_canceling_when_service_disabled(self) -> None:
         """Test update_session_to_canceling returns False when service is disabled."""
-        mock_settings = MockFactory.create_mock_settings(history_enabled=False)
+        mock_settings = MockFactory.create_mock_settings()
         
         with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
             service = HistoryService()

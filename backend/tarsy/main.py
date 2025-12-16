@@ -198,9 +198,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     
     # Initialize database for history service
     db_init_success = initialize_database()
-    if not db_init_success and settings.history_enabled:
+    if not db_init_success:
         logger.critical(
-            "History service is enabled but database initialization failed. "
+            "Database initialization failed. "
             "This is a critical dependency - exiting to allow restart."
         )
         import sys
@@ -209,7 +209,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Clean up any orphaned sessions from previous pod crashes
     # Timeout-based detection: sessions with no interaction for configured timeout are marked as failed
     # This should happen after database initialization but before processing new alerts
-    if settings.history_enabled and db_init_success:
+    if db_init_success:
         try:
             from tarsy.services.history_service import get_history_service
             history_service = get_history_service()
@@ -258,12 +258,12 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     from tarsy.hooks.hook_registry import get_hook_registry
     from tarsy.services.history_service import get_history_service
     hook_registry = get_hook_registry()
-    if settings.history_enabled and db_init_success:
+    if db_init_success:
         history_service = get_history_service()
         await hook_registry.initialize_hooks(history_service=history_service)
         logger.info("Typed hook system initialized successfully")
     else:
-        logger.info("Typed hook system skipped - history service disabled")
+        logger.warning("Typed hook system skipped - database initialization failed")
     
     # Initialize event system (async database engine and event manager)
     try:
@@ -295,7 +295,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         logger.warning("Application will continue without event system")
     
     # Initialize history cleanup service
-    if settings.history_enabled and db_init_success:
+    if db_init_success:
         try:
             from tarsy.repositories.base_repository import DatabaseManager
             from tarsy.services.history_cleanup_service import HistoryCleanupService
@@ -333,13 +333,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     
     # Log history service status
     db_info = get_database_info()
-    if db_info.get("enabled"):
-        logger.info(f"History service: ENABLED (Database: {db_info.get('database_name', 'unknown')})")
-    else:
-        logger.info("History service: DISABLED")
+    logger.info(f"History service: Database: {db_info.get('database_name', 'unknown')}")
     
     # Initialize ChatService (requires AlertService components)
-    if settings.history_enabled and db_init_success:
+    if db_init_success:
         try:
             from tarsy.services.chat_service import initialize_chat_service
             

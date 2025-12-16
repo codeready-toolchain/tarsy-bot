@@ -264,7 +264,6 @@ class TestHistoryServiceOptionalMetadata:
         )
         
         mock_settings = Mock()
-        mock_settings.history_enabled = False
 
         with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
             service = HistoryService()

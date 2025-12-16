@@ -116,10 +116,6 @@ class Settings(BaseSettings):
         default="tarsy",
         description="Database name"
     )
-    history_enabled: bool = Field(
-        default=True,
-        description="Enable/disable history capture for alert processing"
-    )
     history_retention_days: int = Field(
         default=90,
         description="Number of days to retain alert processing history data"

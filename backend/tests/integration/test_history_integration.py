@@ -103,7 +103,6 @@ class TestHistoryServiceIntegration:
         
         # Mock settings to use the same in-memory database
         mock_settings = Mock()
-        mock_settings.history_enabled = True  
         mock_settings.database_url = "sqlite:///:memory:"
         mock_settings.history_retention_days = 90
         
@@ -602,7 +601,6 @@ class TestAlertServiceHistoryIntegration:
     def mock_settings(self):
         """Create mock settings."""
         settings = Mock()
-        settings.history_enabled = True
         settings.database_url = "sqlite:///:memory:"
         settings.history_retention_days = 90
         settings.agent_config_path = None  # No agent config for integration tests

@@ -47,7 +47,6 @@ class HistoryService:
         """Initialize history service with configuration."""
         self.settings = get_settings()
         self.db_manager: Optional[DatabaseManager] = None
-        self.is_enabled = self.settings.history_enabled
         self._initialization_attempted = False
         self._is_healthy = False
         
@@ -179,10 +178,6 @@ class HistoryService:
         Returns:
             True if initialization successful, False otherwise
         """
-        if not self.is_enabled:
-            logger.info("History service disabled via configuration")
-            return False
-        
         if self._initialization_attempted:
             return self._is_healthy
             
@@ -210,7 +205,7 @@ class HistoryService:
         Yields:
             HistoryRepository instance or None if unavailable
         """
-        if not self.is_enabled or not self._is_healthy:
+        if not self._is_healthy:
             yield None
             return
             
@@ -257,10 +252,6 @@ class HistoryService:
         Returns:
             True if created successfully, False if failed
         """
-        if not self.is_enabled:
-            logger.debug("History capture disabled - skipping session creation")
-            return False
-        
         def _create_session_operation():
             with self.get_repository() as repo:
                 if not repo:
@@ -313,7 +304,7 @@ class HistoryService:
         Returns:
             True if updated successfully, False otherwise
         """
-        if not self.is_enabled or not session_id:
+        if not session_id:
             return False
         
         def _update_status_operation():
@@ -361,7 +352,7 @@ class HistoryService:
         Returns:
             AlertSession if found, None otherwise
         """
-        if not self.is_enabled or not session_id:
+        if not session_id:
             return None
         
         def _get_operation():
@@ -390,7 +381,7 @@ class HistoryService:
             (success, current_status): True if updated to CANCELING, False if already terminal.
                                         Also returns the current status.
         """
-        if not self.is_enabled or not session_id:
+        if not session_id:
             return (False, "unknown")
         
         def _update_operation():
@@ -627,7 +618,7 @@ class HistoryService:
         Returns:
             True if logged successfully, False otherwise
         """
-        if not self.is_enabled or not interaction.session_id:
+        if not interaction.session_id:
             return False
             
         def _store_llm_operation():
@@ -653,7 +644,7 @@ class HistoryService:
         Returns:
             True if logged successfully, False otherwise
         """
-        if not self.is_enabled or not interaction.session_id:
+        if not interaction.session_id:
             return False
             
         def _store_mcp_operation():
@@ -670,12 +661,6 @@ class HistoryService:
         result = self._retry_database_operation("store_mcp_interaction", _store_mcp_operation)
         return bool(result)
     
-    # Properties
-    @property
-    def enabled(self) -> bool:
-        """Check if history service is enabled."""
-        return self.is_enabled
-
     def get_sessions_list(
         self,
         filters: Optional[Dict[str, Any]] = None,
@@ -893,9 +878,6 @@ class HistoryService:
         Returns:
             Number of sessions marked as failed
         """
-        if not self.is_enabled:
-            return 0
-        
         def _cleanup_operation():
             with self.get_repository() as repo:
                 if not repo:
@@ -933,9 +915,6 @@ class HistoryService:
         Returns:
             Number of sessions marked as failed
         """
-        if not self.is_enabled:
-            return 0
-        
         def _interrupt_operation():
             with self.get_repository() as repo:
                 if not repo:
@@ -973,9 +952,6 @@ class HistoryService:
         Returns:
             True if successful, False otherwise
         """
-        if not self.is_enabled:
-            return False
-        
         def _start_operation():
             with self.get_repository() as repo:
                 if not repo:
@@ -1004,9 +980,6 @@ class HistoryService:
         Returns:
             True if successful, False otherwise
         """
-        if not self.is_enabled:
-            return False
-        
         def _interaction_operation():
             with self.get_repository() as repo:
                 if not repo:
@@ -1025,9 +998,6 @@ class HistoryService:
     
     async def create_chat(self, chat: Chat) -> Chat:
         """Create a new chat record."""
-        if not self.is_enabled:
-            raise ValueError("History service is disabled")
-        
         def _create_operation():
             with self.get_repository() as repo:
                 if not repo:
@@ -1038,9 +1008,6 @@ class HistoryService:
     
     async def get_chat_by_id(self, chat_id: str) -> Optional[Chat]:
         """Get chat by ID."""
-        if not self.is_enabled:
-            return None
-        
         def _get_operation():
             with self.get_repository() as repo:
                 if not repo:
@@ -1055,9 +1022,6 @@ class HistoryService:
     
     async def get_chat_by_session(self, session_id: str) -> Optional[Chat]:
         """Get chat for a session (if exists)."""
-        if not self.is_enabled:
-            return None
-        
         def _get_operation():
             with self.get_repository() as repo:
                 if not repo:
@@ -1072,9 +1036,6 @@ class HistoryService:
     
     async def create_chat_user_message(self, message: ChatUserMessage) -> ChatUserMessage:
         """Create a new chat user message."""
-        if not self.is_enabled:
-            raise ValueError("History service is disabled")
-        
         def _create_operation():
             with self.get_repository() as repo:
                 if not repo:
@@ -1085,9 +1046,6 @@ class HistoryService:
     
     async def get_stage_executions_for_chat(self, chat_id: str) -> List[StageExecution]:
         """Get all stage executions for a chat."""
-        if not self.is_enabled:
-            return []
-        
         def _get_operation():
             with self.get_repository() as repo:
                 if not repo:
@@ -1101,9 +1059,6 @@ class HistoryService:
     
     async def get_llm_interactions_for_session(self, session_id: str) -> List['LLMInteraction']:
         """Get all LLM interactions for a session."""
-        if not self.is_enabled:
-            return []
-        
         def _get_operation():
             with self.get_repository() as repo:
                 if not repo:
@@ -1117,9 +1072,6 @@ class HistoryService:
     
     async def get_llm_interactions_for_stage(self, stage_execution_id: str) -> List['LLMInteraction']:
         """Get all LLM interactions for a stage execution."""
-        if not self.is_enabled:
-            return []
-        
         def _get_operation():
             with self.get_repository() as repo:
                 if not repo:
@@ -1133,9 +1085,6 @@ class HistoryService:
     
     async def get_chat_user_message_count(self, chat_id: str) -> int:
         """Get total user message count for a chat."""
-        if not self.is_enabled:
-            return 0
-        
         def _count_operation():
             with self.get_repository() as repo:
                 if not repo:
@@ -1154,9 +1103,6 @@ class HistoryService:
         offset: int = 0
     ) -> List[ChatUserMessage]:
         """Get user messages for a chat with pagination."""
-        if not self.is_enabled:
-            return []
-        
         def _get_operation():
             with self.get_repository() as repo:
                 if not repo:
@@ -1192,9 +1138,6 @@ class HistoryService:
         Returns:
             Tuple of (session_conversation, chat_conversation), either can be None
         """
-        if not self.is_enabled:
-            return None, None
-        
         def _get_conversation_history():
             with self.get_repository() as repo:
                 if not repo:
@@ -1271,9 +1214,6 @@ class HistoryService:
     
     async def start_chat_message_processing(self, chat_id: str, pod_id: str) -> bool:
         """Mark chat as processing a message on a specific pod."""
-        if not self.is_enabled:
-            return False
-        
         def _start_operation():
             with self.get_repository() as repo:
                 if not repo:
@@ -1287,9 +1227,6 @@ class HistoryService:
     
     def record_chat_interaction(self, chat_id: str) -> bool:
         """Update chat last_interaction_at timestamp (synchronous)."""
-        if not self.is_enabled:
-            return False
-        
         def _record_operation():
             with self.get_repository() as repo:
                 if not repo:
@@ -1307,9 +1244,6 @@ class HistoryService:
     
     def cleanup_orphaned_chats(self, timeout_minutes: int = 30) -> int:
         """Find and clear stale processing markers from orphaned chats."""
-        if not self.is_enabled:
-            return 0
-        
         def _cleanup_operation():
             with self.get_repository() as repo:
                 if not repo:
@@ -1342,9 +1276,6 @@ class HistoryService:
     
     async def mark_pod_chats_interrupted(self, pod_id: str) -> int:
         """Clear processing markers for chats on a shutting-down pod."""
-        if not self.is_enabled:
-            return 0
-        
         def _interrupt_operation():
             with self.get_repository() as repo:
                 if not repo:

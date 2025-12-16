@@ -31,7 +31,6 @@ class TestAlertServiceInitialization:
         """Mock settings for testing."""
         return MockFactory.create_mock_settings(
             github_token="test_token",
-            history_enabled=True,
             agent_config_path=None  # No agent config for unit tests
         )
     
@@ -265,7 +264,6 @@ class TestAlertProcessing:
         
         mock_settings = MockFactory.create_mock_settings(
             github_token="test_token",
-            history_enabled=True,
             agent_config_path=None  # No agent config for unit tests
         )
         
@@ -285,7 +283,6 @@ class TestAlertProcessing:
         from types import SimpleNamespace
         
         mock_history_service = Mock(spec=HistoryService)
-        mock_history_service.is_enabled = True
         mock_history_service.create_session.return_value = True
         mock_history_service.update_session_status = Mock()
         mock_history_service.store_llm_interaction = Mock()
@@ -581,7 +578,6 @@ class TestHistorySessionManagement:
             
             service = AlertService(mock_settings)
             service.history_service = Mock()
-            service.history_service.is_enabled = True
             # Create real SessionManager with mocked history service
             service.session_manager = SessionManager(service.history_service)
             
@@ -623,7 +619,6 @@ class TestHistorySessionManagement:
     def test_update_session_status_disabled(self, alert_service_with_history):
         """Test session status update when service is disabled."""
         service = alert_service_with_history
-        service.history_service.is_enabled = False
         
         service.session_manager.update_session_status("session_123", "in_progress")
         
@@ -836,7 +831,6 @@ class TestAlertServiceDuplicatePrevention:
         """Create AlertService with mocked dependencies."""
         mock_settings = Mock(spec=Settings) 
         mock_settings.github_token = "test_token"
-        mock_settings.history_enabled = True
         mock_settings.agent_config_path = None  # No agent config for unit tests
         
         service = AlertService(mock_settings)
@@ -1121,7 +1115,6 @@ class TestEnhancedChainExecution:
         
         mock_settings = MockFactory.create_mock_settings(
             github_token="test_token",
-            history_enabled=True,
             agent_config_path=None
         )
         
@@ -1134,7 +1127,6 @@ class TestEnhancedChainExecution:
         service.runbook_service = dependencies['runbook']
         service.llm_manager = dependencies['llm_manager']
         service.history_service = Mock()
-        service.history_service.is_enabled = True
         service.history_service.create_session.return_value = True
         service.history_service.update_session_status = Mock()
         # All async methods must be AsyncMock for StageExecutionManager compatibility
@@ -1382,7 +1374,6 @@ class TestFullErrorPropagation:
         
         mock_settings = MockFactory.create_mock_settings(
             github_token="test_token", 
-            history_enabled=True,
             agent_config_path=None
         )
         
@@ -1397,7 +1388,6 @@ class TestFullErrorPropagation:
         service.runbook_service = dependencies['runbook']
         service.llm_manager = dependencies['llm_manager']
         service.history_service = Mock()
-        service.history_service.is_enabled = True
         service.history_service.create_session.return_value = True
         service.history_service.update_session_status = Mock()
         # All async methods must be AsyncMock for StageExecutionManager compatibility

@@ -37,7 +37,6 @@ class TestCreateStageExecution:
     async def test_create_stage_execution_success(self):
         """Test creating a stage execution record successfully."""
         history_service = Mock()
-        history_service.is_enabled = True
         # Mock get_stage_execution to return a stage execution object for verification
         history_service.get_stage_execution = AsyncMock(
             return_value=Mock(execution_id="exec-123")
@@ -76,7 +75,6 @@ class TestCreateStageExecution:
     async def test_create_stage_execution_with_parallel_params(self):
         """Test creating a child stage execution with parallel parameters."""
         history_service = Mock()
-        history_service.is_enabled = True
         # Mock get_stage_execution to return a stage execution object for verification
         history_service.get_stage_execution = AsyncMock(
             return_value=Mock(execution_id="child-exec-1")
@@ -121,7 +119,6 @@ class TestCreateStageExecution:
     async def test_create_stage_execution_fails_when_history_disabled(self):
         """Test that creating stage execution fails when history is disabled."""
         history_service = Mock()
-        history_service.is_enabled = False
         
         manager = StageExecutionManager(history_service=history_service)
         
@@ -507,7 +504,6 @@ class TestUpdateSessionCurrentStage:
     async def test_update_session_current_stage(self):
         """Test updating current stage information for a session."""
         history_service = Mock()
-        history_service.is_enabled = True
         history_service.update_session_current_stage = AsyncMock()
         
         manager = StageExecutionManager(history_service=history_service)
@@ -524,7 +520,6 @@ class TestUpdateSessionCurrentStage:
     async def test_update_session_current_stage_disabled_history(self):
         """Test that update fails when history is disabled."""
         history_service = Mock()
-        history_service.is_enabled = False
         
         manager = StageExecutionManager(history_service=history_service)
         

@@ -696,7 +696,6 @@ class MockFactory:
         mock_settings = Mock()
         default_settings = {
             "github_token": "test_token",
-            "history_enabled": True,
             "agent_config_path": None,
             "log_level": "INFO",
             "max_concurrent_alerts": 5,

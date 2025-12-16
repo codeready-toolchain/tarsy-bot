@@ -31,7 +31,6 @@ class TestMainLifespan:
         return MockFactory.create_mock_settings(
             log_level="INFO",
             max_concurrent_alerts=5,
-            history_enabled=True,
             cors_origins=["*"],
             host="localhost",
             port=8000
@@ -108,7 +107,6 @@ class TestMainLifespan:
         mock_get_settings.return_value = Mock(
             log_level="INFO", 
             max_concurrent_alerts=5, 
-            history_enabled=True,
             cors_origins=["*"],
             database_url="sqlite:///test.db",
             history_retention_days=90,
@@ -144,7 +142,6 @@ class TestMainLifespan:
         mock_get_settings.return_value = Mock(
             log_level="INFO",
             max_concurrent_alerts=5,
-            history_enabled=False,
             cors_origins=["*"],
             database_url="sqlite:///test.db",
             history_retention_days=90,
@@ -180,7 +177,6 @@ class TestMainLifespan:
         mock_get_settings.return_value = Mock(
             log_level="INFO",
             max_concurrent_alerts=5,
-            history_enabled=True,
             cors_origins=["*"],
             database_url="sqlite:///test.db",
             history_retention_days=90,
@@ -221,7 +217,6 @@ class TestMainLifespan:
             history_retention_days=90,
             history_cleanup_interval_hours=12,
             max_concurrent_alerts=5,
-            history_enabled=True,  # History enabled
             cors_origins=["*"]
         )
         deps['init_db'].return_value = False  # DB initialization fails
@@ -258,7 +253,6 @@ class TestMainLifespan:
         mock_get_settings.return_value = Mock(
             log_level="INFO",
             max_concurrent_alerts=5,
-            history_enabled=True,
             cors_origins=["*"],
             database_url="sqlite:///test.db",
             history_retention_days=90,
@@ -300,7 +294,6 @@ class TestMainLifespan:
         mock_get_settings.return_value = Mock(
             log_level="INFO",
             max_concurrent_alerts=5,
-            history_enabled=True,
             cors_origins=["*"],
             database_url="sqlite:///test.db",
             history_retention_days=90,

@@ -644,7 +644,6 @@ class TestHistoryControllerEndpoints:
     @pytest.mark.unit
     def test_get_sessions_list_service_disabled(self, app, client, mock_history_service):
         """Test sessions list when history service is disabled."""
-        mock_history_service.is_enabled = False
         from tarsy.models.history_models import PaginatedSessions, PaginationInfo
         empty_paginated = PaginatedSessions(
             sessions=[],
@@ -1104,7 +1103,6 @@ class TestHistoryControllerEndpoints:
     @pytest.mark.unit
     def test_get_session_detail_service_disabled(self, app, client, mock_history_service):
         """Test session detail when service is disabled."""
-        mock_history_service.is_enabled = False
         mock_history_service.get_session_details.return_value = None
         
         # Override FastAPI dependency
@@ -1707,7 +1705,6 @@ class TestHistoryControllerResponseFormat:
         # Add settings mock
         mock_settings = Mock()
         mock_settings.database_url = "sqlite:///test_history.db"
-        mock_settings.history_enabled = True
         mock_settings.history_retention_days = 90
         service.settings = mock_settings
         

@@ -64,7 +64,6 @@ def mock_settings():
     settings.agent_config_path = None  # No agent config for integration tests
     
     # History/Database settings - use in-memory database for integration tests
-    settings.history_enabled = True
     settings.database_url = "sqlite:///:memory:"
     
     # Updated LLM providers configuration to match EP-0013
@@ -896,7 +895,6 @@ async def alert_service(ensure_integration_test_isolation, mock_settings, mock_r
     # Mock history service for stage execution verification
     from tarsy.services.history_service import HistoryService
     mock_history_service = Mock(spec=HistoryService)
-    mock_history_service.is_enabled = True
     mock_history_service.create_session.return_value = "test-session-id"
     mock_history_service.update_session_status = Mock()
     mock_history_service.complete_session = Mock()
@@ -994,7 +992,6 @@ def alert_service_with_mocks(
     
     # Create mock history service for proper testing
     mock_history_service = Mock(spec=HistoryService)
-    mock_history_service.is_enabled = True
     mock_history_service.create_session.return_value = "test-session-id"
     mock_history_service.update_session_status = Mock()
     mock_history_service.complete_session = Mock()
@@ -1212,7 +1209,6 @@ def history_service_with_test_db(history_test_database_engine):
     
     # Mock settings for history service
     mock_settings = Mock()
-    mock_settings.history_enabled = True
     mock_settings.database_url = "sqlite:///:memory:"
     mock_settings.history_retention_days = 90
     
