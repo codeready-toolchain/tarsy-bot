@@ -151,12 +151,6 @@ async def mark_active_tasks_as_interrupted(reason: str) -> None:
     Args:
         reason: Reason for marking tasks as interrupted (e.g., "after timeout", "after error")
     """
-    settings = get_settings()
-    
-    # Only mark tasks if history is enabled
-    if not settings.history_enabled:
-        return
-    
     try:
         from tarsy.services.history_service import get_history_service
         history_service = get_history_service()
@@ -209,15 +203,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Clean up any orphaned sessions from previous pod crashes
     # Timeout-based detection: sessions with no interaction for configured timeout are marked as failed
     # This should happen after database initialization but before processing new alerts
-    if db_init_success:
-        try:
-            from tarsy.services.history_service import get_history_service
-            history_service = get_history_service()
-            cleaned_sessions = history_service.cleanup_orphaned_sessions(settings.orphaned_session_timeout_minutes)
-            if cleaned_sessions > 0:
-                logger.info(f"Startup cleanup: marked {cleaned_sessions} orphaned sessions as failed")
-        except Exception as e:
-            logger.error(f"Failed to cleanup orphaned sessions during startup: {str(e)}")
+    try:
+        from tarsy.services.history_service import get_history_service
+        history_service = get_history_service()
+        cleaned_sessions = history_service.cleanup_orphaned_sessions(settings.orphaned_session_timeout_minutes)
+        if cleaned_sessions > 0:
+            logger.info(f"Startup cleanup: marked {cleaned_sessions} orphaned sessions as failed")
+    except Exception as e:
+        logger.error(f"Failed to cleanup orphaned sessions during startup: {str(e)}")
     
     # Initialize AlertService - fail fast on critical configuration errors
     try:
@@ -251,19 +244,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         
         logger.info("MCP health monitoring started")
     except Exception as e:
-        logger.error(f"Failed to start MCP health monitor: {e}", exc_info=True)
-        logger.warning("Application will continue without MCP health monitoring")
+        logger.critical(
+            f"Failed to start MCP health monitor: {e}. "
+            "This is a critical dependency - exiting to allow restart."
+        )
+        import sys
+        sys.exit(1)
     
     # Initialize typed hook system
     from tarsy.hooks.hook_registry import get_hook_registry
     from tarsy.services.history_service import get_history_service
     hook_registry = get_hook_registry()
-    if db_init_success:
-        history_service = get_history_service()
-        await hook_registry.initialize_hooks(history_service=history_service)
-        logger.info("Typed hook system initialized successfully")
-    else:
-        logger.warning("Typed hook system skipped - database initialization failed")
+    history_service = get_history_service()
+    await hook_registry.initialize_hooks(history_service=history_service)
+    logger.info("Typed hook system initialized successfully")
     
     # Initialize event system (async database engine and event manager)
     try:
@@ -291,38 +285,41 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         )
         logger.info("Registered cancellation handler for cross-pod coordination")
     except Exception as e:
-        logger.error(f"Failed to initialize event system: {e}", exc_info=True)
-        logger.warning("Application will continue without event system")
+        logger.critical(
+            f"Failed to initialize event system: {e}. "
+            "This is a critical dependency - exiting to allow restart."
+        )
+        import sys
+        sys.exit(1)
     
     # Initialize history cleanup service
-    if db_init_success:
-        try:
-            from tarsy.repositories.base_repository import DatabaseManager
-            from tarsy.services.history_cleanup_service import HistoryCleanupService
-            
-            # Create and initialize database manager for sync operations
-            # Stored at module level to allow cleanup during shutdown
-            db_manager = DatabaseManager(settings.database_url)
-            db_manager.initialize()
-            
-            # Create and start history cleanup service
-            # Handles both orphaned sessions (every 10m) and old history retention (every 12h)
-            history_cleanup_service = HistoryCleanupService(
-                db_session_factory=db_manager.get_session,
-                retention_days=settings.history_retention_days,
-                retention_cleanup_interval_hours=settings.history_cleanup_interval_hours,
-                orphaned_timeout_minutes=settings.orphaned_session_timeout_minutes,
-                orphaned_check_interval_minutes=settings.orphaned_session_check_interval_minutes,
-            )
-            await history_cleanup_service.start()
-            logger.info("History cleanup service started successfully (handles orphaned sessions + retention)")
-        except Exception as e:
-            logger.critical(
-                f"Failed to initialize history cleanup service: {e}. "
-                "This is a critical dependency - exiting to allow restart."
-            )
-            import sys
-            sys.exit(1)
+    try:
+        from tarsy.repositories.base_repository import DatabaseManager
+        from tarsy.services.history_cleanup_service import HistoryCleanupService
+        
+        # Create and initialize database manager for sync operations
+        # Stored at module level to allow cleanup during shutdown
+        db_manager = DatabaseManager(settings.database_url)
+        db_manager.initialize()
+        
+        # Create and start history cleanup service
+        # Handles both orphaned sessions (every 10m) and old history retention (every 12h)
+        history_cleanup_service = HistoryCleanupService(
+            db_session_factory=db_manager.get_session,
+            retention_days=settings.history_retention_days,
+            retention_cleanup_interval_hours=settings.history_cleanup_interval_hours,
+            orphaned_timeout_minutes=settings.orphaned_session_timeout_minutes,
+            orphaned_check_interval_minutes=settings.orphaned_session_check_interval_minutes,
+        )
+        await history_cleanup_service.start()
+        logger.info("History cleanup service started successfully (handles orphaned sessions + retention)")
+    except Exception as e:
+        logger.critical(
+            f"Failed to initialize history cleanup service: {e}. "
+            "This is a critical dependency - exiting to allow restart."
+        )
+        import sys
+        sys.exit(1)
     
     # Set up app state with callbacks to avoid circular imports
     # The controllers will access these callbacks instead of importing the functions directly
@@ -336,22 +333,23 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info(f"History service: Database: {db_info.get('database_name', 'unknown')}")
     
     # Initialize ChatService (requires AlertService components)
-    if db_init_success:
-        try:
-            from tarsy.services.chat_service import initialize_chat_service
-            
-            # Initialize chat service (stored in module-level global for dependency injection)
-            _ = initialize_chat_service(
-                history_service=history_service,
-                agent_factory=alert_service.agent_factory,
-                mcp_client_factory=alert_service.mcp_client_factory,
-            )
-            logger.info("Chat service initialized successfully")
-        except Exception as e:
-            logger.error(f"Failed to initialize chat service: {e}", exc_info=True)
-            logger.warning("Application will continue without chat service")
-    else:
-        logger.info("Chat service skipped - history service disabled")
+    try:
+        from tarsy.services.chat_service import initialize_chat_service
+        
+        # Initialize chat service (stored in module-level global for dependency injection)
+        _ = initialize_chat_service(
+            history_service=history_service,
+            agent_factory=alert_service.agent_factory,
+            mcp_client_factory=alert_service.mcp_client_factory,
+        )
+        logger.info("Chat service initialized successfully")
+    except Exception as e:
+        logger.critical(
+            f"Failed to initialize chat service: {e}. "
+            "This is a critical dependency - exiting to allow restart."
+        )
+        import sys
+        sys.exit(1)
     
     yield
     

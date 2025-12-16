@@ -902,7 +902,7 @@ class AlertService:
                         await self.stage_manager.update_session_current_stage(chain_context.session_id, i, parent_execution_id)
                         
                         # Record stage transition as interaction (non-blocking)
-                        if self.history_service and hasattr(self.history_service, "record_session_interaction"):
+                        if hasattr(self.history_service, "record_session_interaction"):
                             rec = self.history_service.record_session_interaction
                             if asyncio.iscoroutinefunction(rec):
                                 await rec(chain_context.session_id)
@@ -985,7 +985,7 @@ class AlertService:
                         # Single-agent execution (existing logic)
                         
                         # Record stage transition as interaction (non-blocking)
-                        if self.history_service and hasattr(self.history_service, "record_session_interaction"):
+                        if hasattr(self.history_service, "record_session_interaction"):
                             rec = self.history_service.record_session_interaction
                             if asyncio.iscoroutinefunction(rec):
                                 await rec(chain_context.session_id)
