@@ -82,7 +82,8 @@ class ParallelTestBase:
         expected_chain_id: str,
         expected_stages_spec: dict,
         conversation_map: Optional[dict] = None,
-        max_wait_seconds: int = 20
+        max_wait_seconds: int = 20,
+        expected_session_tokens: Optional[dict] = None
     ):
         """
         Execute the standard test flow: submit alert, wait, verify.
@@ -94,6 +95,7 @@ class ParallelTestBase:
             expected_stages_spec: Expected stage structure specification
             conversation_map: Optional conversation map for verification
             max_wait_seconds: Maximum time to wait for completion
+            expected_session_tokens: Optional dict with 'input', 'output', 'total' keys for token verification
             
         Returns:
             Session detail data
@@ -128,6 +130,15 @@ class ParallelTestBase:
         # Verify session metadata
         self._verify_session_metadata(detail_data, expected_chain_id)
         
+        # Verify session-level token aggregation if expected tokens provided
+        if expected_session_tokens:
+            self._verify_session_token_aggregation(
+                detail_data,
+                expected_session_tokens["input"],
+                expected_session_tokens["output"],
+                expected_session_tokens["total"]
+            )
+        
         # Get stages
         stages = detail_data.get("stages", [])
         
@@ -144,6 +155,43 @@ class ParallelTestBase:
         assert detail_data["chain_id"] == expected_chain_id
         assert detail_data["started_at_us"] is not None
         assert detail_data["completed_at_us"] is not None
+    
+    def _verify_session_token_aggregation(
+        self,
+        detail_data: dict,
+        expected_input_tokens: int,
+        expected_output_tokens: int,
+        expected_total_tokens: int
+    ):
+        """
+        Verify session-level token aggregation.
+        
+        This ensures that tokens from all stages (including parallel child executions)
+        are properly aggregated at the session level.
+        
+        Args:
+            detail_data: Session detail data from API
+            expected_input_tokens: Expected total input tokens across all stages
+            expected_output_tokens: Expected total output tokens across all stages
+            expected_total_tokens: Expected total tokens across all stages
+        """
+        print("  🔍 Verifying session-level token aggregation...")
+        
+        actual_input = detail_data.get("session_input_tokens")
+        actual_output = detail_data.get("session_output_tokens")
+        actual_total = detail_data.get("session_total_tokens")
+        
+        assert actual_input == expected_input_tokens, (
+            f"Session input_tokens mismatch: expected {expected_input_tokens}, got {actual_input}"
+        )
+        assert actual_output == expected_output_tokens, (
+            f"Session output_tokens mismatch: expected {expected_output_tokens}, got {actual_output}"
+        )
+        assert actual_total == expected_total_tokens, (
+            f"Session total_tokens mismatch: expected {expected_total_tokens}, got {actual_total}"
+        )
+        
+        print(f"    ✅ Session tokens verified: {actual_input} input + {actual_output} output = {actual_total} total")
 
     def _verify_stage_structure(self, stages, expected_stages_spec):
         """Verify the structure of stages matches expectations."""

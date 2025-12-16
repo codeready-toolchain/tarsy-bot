@@ -336,13 +336,27 @@ All three replicas converged on consistent findings with increasing detail. Repl
                 "synthesis": EXPECTED_REPLICA_SYNTHESIS_CONVERSATION
             }
             
+            # Calculate expected session tokens:
+            # Investigation stage (3 replicas):
+            #   - Replica 1: 2 LLM calls: (240+85=325) + (180+65=245) = 570 total
+            #   - Replica 2: 2 LLM calls: (240+80=320) + (185+70=255) = 575 total
+            #   - Replica 3: 2 LLM calls: (240+82=322) + (188+72=260) = 582 total
+            # Synthesis stage + runbook context adds additional tokens
+            # NOTE: Actual values determined from test execution
+            expected_session_tokens = {
+                "input": 1823,   # Includes replicas + synthesis + runbook context
+                "output": 694,   # Includes replicas + synthesis + runbook context  
+                "total": 2517    # Includes replicas + synthesis + runbook context
+            }
+            
             # Execute standard test flow
             detail_data = await self._execute_test_flow(
                 test_client, alert_data,
                 expected_chain_id="replica-parallel-chain",
                 expected_stages_spec=EXPECTED_REPLICA_STAGES,
                 conversation_map=conversation_map,
-                max_wait_seconds=20
+                max_wait_seconds=20,
+                expected_session_tokens=expected_session_tokens
             )
             
             print("✅ Replica parallel test passed!")

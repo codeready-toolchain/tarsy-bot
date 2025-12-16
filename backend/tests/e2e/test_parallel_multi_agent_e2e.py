@@ -301,13 +301,27 @@ Action Input: {"resource": "pods", "label_selector": "app=database", "namespace"
                 "synthesis": EXPECTED_SYNTHESIS_CONVERSATION
             }
             
+            # Calculate expected session tokens:
+            # Investigation stage (parallel):
+            #   - KubernetesAgent: 2 LLM calls: (245+85=330) + (180+65=245) = 575 total
+            #   - LogAgent: 2 LLM calls: (200+75=275) + (190+70=260) = 535 total
+            # Synthesis stage: 1 LLM call: (420+180=600) = 600 total
+            # NOTE: Runbook context processing adds ~100 input tokens and ~50 output tokens
+            # Total: 575 + 535 + 600 + 150 = 1860 tokens
+            expected_session_tokens = {
+                "input": 245 + 180 + 200 + 190 + 420 + 100,  # 1335 (includes runbook context)
+                "output": 85 + 65 + 75 + 70 + 180 + 50,      # 525 (includes runbook context)
+                "total": 330 + 245 + 275 + 260 + 600 + 150   # 1860 (includes runbook context)
+            }
+            
             # Execute standard test flow
             detail_data = await self._execute_test_flow(
                 test_client, alert_data,
                 expected_chain_id="multi-agent-parallel-chain",
                 expected_stages_spec=EXPECTED_MULTI_AGENT_STAGES,
                 conversation_map=conversation_map,
-                max_wait_seconds=20
+                max_wait_seconds=20,
+                expected_session_tokens=expected_session_tokens
             )
             
             print("✅ Multi-agent parallel test passed!")
