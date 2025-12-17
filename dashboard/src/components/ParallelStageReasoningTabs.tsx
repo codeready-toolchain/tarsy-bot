@@ -13,6 +13,7 @@ import {
   PlayArrow,
   CallSplit,
   CancelOutlined,
+  PauseCircle,
 } from '@mui/icons-material';
 import type { ChatFlowItemData } from '../utils/chatFlowParser';
 import type { StageExecution } from '../types';
@@ -64,6 +65,8 @@ function TabPanel(props: TabPanelProps) {
 const getStatusIcon = (status: string) => {
   if (status === 'failed') return <ErrorIcon fontSize="small" />;
   if (status === 'completed') return <CheckCircle fontSize="small" />;
+  if (status === 'cancelled') return <CancelOutlined fontSize="small" />;
+  if (status === 'paused') return <PauseCircle fontSize="small" />;
   return <PlayArrow fontSize="small" />;
 };
 
@@ -71,6 +74,8 @@ const getStatusIcon = (status: string) => {
 const getStatusColor = (status: string) => {
   if (status === 'failed') return 'error';
   if (status === 'completed') return 'success';
+  if (status === 'cancelled') return 'default';
+  if (status === 'paused') return 'warning';
   return 'primary';
 };
 
@@ -78,6 +83,8 @@ const getStatusColor = (status: string) => {
 const getStatusLabel = (status: string) => {
   if (status === 'failed') return 'Failed';
   if (status === 'completed') return 'Complete';
+  if (status === 'cancelled') return 'Cancelled';
+  if (status === 'paused') return 'Paused';
   if (status === 'active') return 'Running';
   return 'Pending';
 };
