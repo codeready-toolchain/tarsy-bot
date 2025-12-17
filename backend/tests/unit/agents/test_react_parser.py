@@ -1711,3 +1711,168 @@ class TestGetFormatErrorFeedback:
 # NOTE: Mid-line action detection tests have been moved to test_react_parser_matrix.py
 # for better documentation and explicit INPUT → OUTPUT mapping.
 # See PARSER_TEST_MATRIX.md for the complete test matrix.
+
+
+@pytest.mark.unit
+class TestActionRecovery:
+    """Test action recovery when Action Input exists but Action doesn't."""
+    
+    def test_recover_action_missing_colon_midline(self):
+        """Test recovery: ...pods.Action\nserver.tool\nAction Input:
+        
+        This is the exact case reported by the user where LLM wrote:
+        - "Action" without colon at end of thought line
+        - Tool name on next line
+        - "Action Input:" on following line (value on separate line or same line)
+        """
+        response = """Thought
+The user wants me to investigate a Security Investigation alert related to the user f15d853fe0.
+
+I will start by listing the user's pods.Action
+my-mcp-server.user-pods
+Action Input:
+userSignup: johnr"""
+        
+        result = ReActParser.parse_response(response)
+        
+        assert result.response_type == ResponseType.THOUGHT_ACTION
+        assert result.has_action is True
+        assert result.action == "my-mcp-server.user-pods"
+        assert result.action_input == "userSignup: johnr"
+        assert result.tool_call.server == "my-mcp-server"
+        assert result.tool_call.tool == "user-pods"
+        assert result.tool_call.parameters["userSignup"] == "johnr"
+    
+    def test_recover_action_without_colon_own_line(self):
+        """Test recovery: Action\nserver.tool\nAction Input:"""
+        response = """Thought: I need to check.
+Action
+kubernetes-server.get_namespace
+Action Input: name: test"""
+        
+        result = ReActParser.parse_response(response)
+        
+        assert result.response_type == ResponseType.THOUGHT_ACTION
+        assert result.has_action is True
+        assert result.action == "kubernetes-server.get_namespace"
+        assert result.tool_call.server == "kubernetes-server"
+        assert result.tool_call.tool == "get_namespace"
+        assert result.tool_call.parameters["name"] == "test"
+    
+    def test_recover_action_with_colon_same_line(self):
+        """Test recovery: Action:server.tool (no space after colon)"""
+        response = """Thought: Check it
+Action:kubernetes-server.get_pods
+Action Input: namespace: default"""
+        
+        result = ReActParser.parse_response(response)
+        
+        assert result.has_action is True
+        assert result.action == "kubernetes-server.get_pods"
+        assert result.tool_call.server == "kubernetes-server"
+        assert result.tool_call.tool == "get_pods"
+    
+    def test_recover_action_with_colon_next_line(self):
+        """Test recovery: Action:\nserver.tool\nAction Input:"""
+        response = """Thought: I will check
+Action:
+kubernetes-server.list_namespaces
+Action Input:"""
+        
+        result = ReActParser.parse_response(response)
+        
+        assert result.has_action is True
+        assert result.action == "kubernetes-server.list_namespaces"
+        assert result.tool_call.server == "kubernetes-server"
+        assert result.tool_call.tool == "list_namespaces"
+    
+    def test_recover_action_colon_end_of_line_tool_next_line(self):
+        """Test recovery: ...pods.Action:\nserver.tool\nAction Input:
+        
+        Similar to missing colon case but with colon at end of thought line.
+        """
+        response = """Thought
+The user wants me to investigate a Security Investigation alert related to the user f15d853fe0.
+
+I will start by listing the user's pods.Action:
+my-mcp-server.user-pods
+Action Input:
+userSignup: johnr"""
+        
+        result = ReActParser.parse_response(response)
+        
+        assert result.response_type == ResponseType.THOUGHT_ACTION
+        assert result.has_action is True
+        assert result.action == "my-mcp-server.user-pods"
+        assert result.action_input == "userSignup: johnr"
+        assert result.tool_call.server == "my-mcp-server"
+        assert result.tool_call.tool == "user-pods"
+        assert result.tool_call.parameters["userSignup"] == "johnr"
+    
+    def test_recover_action_colon_midline_same_line(self):
+        """Test recovery: ...pods.Action: server.tool (all on same line)
+        
+        Tests the case where Action: and tool name are on the same line
+        after some thought text.
+        """
+        response = """Thought
+The user wants me to investigate a Security Investigation alert related to the user f15d853fe0.
+
+I will start by listing the user's pods.Action: my-mcp-server.user-pods
+Action Input:
+userSignup: johnr"""
+        
+        result = ReActParser.parse_response(response)
+        
+        assert result.response_type == ResponseType.THOUGHT_ACTION
+        assert result.has_action is True
+        assert result.action == "my-mcp-server.user-pods"
+        assert result.action_input == "userSignup: johnr"
+        assert result.tool_call.server == "my-mcp-server"
+        assert result.tool_call.tool == "user-pods"
+        assert result.tool_call.parameters["userSignup"] == "johnr"
+    
+    def test_no_recovery_when_action_exists(self):
+        """Test that recovery doesn't run when action already parsed correctly."""
+        response = """Thought: Check
+Action: kubectl.get_pods
+Action Input: namespace: default"""
+        
+        result = ReActParser.parse_response(response)
+        
+        # Should parse normally without recovery
+        assert result.has_action is True
+        assert result.action == "kubectl.get_pods"
+        assert result.tool_call.server == "kubectl"
+        assert result.tool_call.tool == "get_pods"
+    
+    def test_no_recovery_invalid_tool_name(self):
+        """Test recovery fails when text between Action and Action Input is invalid."""
+        response = """Thought: Check
+Action
+this is not a valid tool name
+Action Input: param: value"""
+        
+        result = ReActParser.parse_response(response)
+        
+        # Should remain malformed - recovery should reject invalid tool names
+        assert result.response_type == ResponseType.MALFORMED
+        assert result.has_action is False
+    
+    def test_validate_tool_name_valid_formats(self):
+        """Test _validate_tool_name with various valid inputs."""
+        assert ReActParser._validate_tool_name("server.tool") == "server.tool"
+        assert ReActParser._validate_tool_name("  server.tool  ") == "server.tool"
+        assert ReActParser._validate_tool_name("server.tool\nextra line") == "server.tool"
+        assert ReActParser._validate_tool_name("my-server.my_tool") == "my-server.my_tool"
+        assert ReActParser._validate_tool_name("server123.tool456") == "server123.tool456"
+    
+    def test_validate_tool_name_invalid_formats(self):
+        """Test _validate_tool_name rejects invalid inputs."""
+        assert ReActParser._validate_tool_name("") is None
+        assert ReActParser._validate_tool_name("notool") is None
+        assert ReActParser._validate_tool_name("multiple words here") is None
+        assert ReActParser._validate_tool_name("server.") is None
+        assert ReActParser._validate_tool_name(".tool") is None
+        assert ReActParser._validate_tool_name("server..tool") is None
+        assert ReActParser._validate_tool_name("server.tool.extra") is None
