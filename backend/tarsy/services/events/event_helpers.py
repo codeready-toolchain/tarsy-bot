@@ -494,7 +494,7 @@ async def publish_agent_cancelled(
                 parent_stage_execution_id=parent_stage_execution_id
             )
             # Publish to session-specific channel for real-time UI updates
-            await publish_event(session, f"session:{session_id}", event)
+            await publish_event(session, EventChannel.session_details(session_id), event)
             logger.info(f"[EVENT] Published agent.cancelled for {agent_name} (execution_id={execution_id})")
     except Exception as e:
         logger.warning(f"Failed to publish agent.cancelled event: {e}")

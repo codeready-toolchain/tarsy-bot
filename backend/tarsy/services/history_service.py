@@ -608,15 +608,27 @@ class HistoryService:
         return result or []
     
     async def get_paused_stages(self, session_id: str) -> List[StageExecution]:
-        """Get all paused stage executions for a session."""
+        """Get all paused stage executions for a session, including parallel children.
+        
+        Flattens parent stages and their parallel_executions before filtering
+        to ensure paused parallel child stages are included.
+        """
         def _get_paused_stages_operation():
             with self.get_repository() as repo:
                 if not repo:
                     raise RuntimeError("History repository unavailable - cannot retrieve paused stages")
-                # Get all stages for session
+                # Get all stages for session (parents with parallel_executions attached)
                 stages = repo.get_stage_executions_for_session(session_id)
-                # Filter for paused stages
-                return [s for s in stages if s.status == StageStatus.PAUSED.value]
+                # Build combined list: each parent + its parallel children
+                all_stages: List[StageExecution] = []
+                for stage in stages:
+                    all_stages.append(stage)
+                    # Include parallel child stages if present
+                    parallel_children = getattr(stage, 'parallel_executions', None)
+                    if parallel_children:
+                        all_stages.extend(parallel_children)
+                # Filter for paused stages (both parents and children)
+                return [s for s in all_stages if s.status == StageStatus.PAUSED.value]
         
         result = await self._retry_database_operation_async(
             "get_paused_stages",

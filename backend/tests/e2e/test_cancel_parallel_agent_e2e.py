@@ -27,6 +27,56 @@ from .parallel_test_base import ParallelTestBase
 logger = logging.getLogger(__name__)
 
 
+def _create_mcp_session_mock(
+    include_kubectl_describe: bool = True,
+    get_logs_response: str = '{"logs": "Error: Database connection timeout to db.example.com:5432"}'
+) -> AsyncMock:
+    """
+    Create a mock MCP session with common tool responses.
+
+    Args:
+        include_kubectl_describe: Whether to include kubectl_describe tool
+        get_logs_response: Custom response text for get_logs tool
+
+    Returns:
+        Configured AsyncMock session
+    """
+    mock_session = AsyncMock()
+
+    async def mock_call_tool(tool_name, _parameters):
+        mock_result = Mock()
+        mock_content = Mock()
+
+        if "kubectl_get" in tool_name:
+            mock_content.text = '{"result": "Pod pod-1 is in CrashLoopBackOff state"}'
+        elif "kubectl_describe" in tool_name:
+            mock_content.text = '{"result": "Pod pod-1 details: exit code 1, restart count 5"}'
+        elif "get_logs" in tool_name or "log" in tool_name.lower():
+            mock_content.text = get_logs_response
+        else:
+            mock_content.text = '{"result": "Mock response"}'
+
+        mock_result.content = [mock_content]
+        return mock_result
+
+    async def mock_list_tools():
+        tools = [
+            Tool(name="kubectl_get", description="Get Kubernetes resources", inputSchema={"type": "object", "properties": {}}),
+            Tool(name="get_logs", description="Get pod logs", inputSchema={"type": "object", "properties": {}}),
+        ]
+        if include_kubectl_describe:
+            tools.insert(1, Tool(name="kubectl_describe", description="Describe Kubernetes resources", inputSchema={"type": "object", "properties": {}}))
+
+        mock_result = Mock()
+        mock_result.tools = tools
+        return mock_result
+
+    mock_session.call_tool.side_effect = mock_call_tool
+    mock_session.list_tools.side_effect = mock_list_tools
+
+    return mock_session
+
+
 @pytest.mark.asyncio
 @pytest.mark.e2e
 class TestCancelParallelAgentE2E(ParallelTestBase):
@@ -41,7 +91,6 @@ class TestCancelParallelAgentE2E(ParallelTestBase):
     5. If session continues, verify synthesis runs with available results
     """
 
-    @pytest.mark.e2e
     async def test_cancel_paused_agent_with_policy_any_triggers_continuation(
         self, e2e_parallel_test_client, e2e_cancel_agent_alert
     ):
@@ -71,7 +120,6 @@ class TestCancelParallelAgentE2E(ParallelTestBase):
             timeout_seconds=120
         )
 
-    @pytest.mark.e2e
     async def test_cancel_one_paused_agent_keeps_session_paused(
         self, e2e_parallel_test_client, e2e_cancel_agent_alert
     ):
@@ -198,42 +246,8 @@ Root cause identified from logs.""",
                 agent_counters, agent_responses, agent_identifiers
             )
 
-            # Create MCP session mock
-            def create_mcp_session_mock():
-                mock_session = AsyncMock()
-
-                async def mock_call_tool(tool_name, _parameters):
-                    mock_result = Mock()
-                    mock_content = Mock()
-
-                    if "kubectl_get" in tool_name:
-                        mock_content.text = '{"result": "Pod pod-1 is in CrashLoopBackOff state"}'
-                    elif "kubectl_describe" in tool_name:
-                        mock_content.text = '{"result": "Pod pod-1 details: exit code 1, restart count 5"}'
-                    elif "get_logs" in tool_name or "log" in tool_name.lower():
-                        mock_content.text = '{"logs": "Error: Database connection timeout to db.example.com:5432"}'
-                    else:
-                        mock_content.text = '{"result": "Mock response"}'
-
-                    mock_result.content = [mock_content]
-                    return mock_result
-
-                async def mock_list_tools():
-                    tools = [
-                        Tool(name="kubectl_get", description="Get Kubernetes resources", inputSchema={"type": "object", "properties": {}}),
-                        Tool(name="kubectl_describe", description="Describe Kubernetes resources", inputSchema={"type": "object", "properties": {}}),
-                        Tool(name="get_logs", description="Get pod logs", inputSchema={"type": "object", "properties": {}}),
-                    ]
-                    mock_result = Mock()
-                    mock_result.tools = tools
-                    return mock_result
-
-                mock_session.call_tool.side_effect = mock_call_tool
-                mock_session.list_tools.side_effect = mock_list_tools
-
-                return mock_session
-
-            mock_k8s_session = create_mcp_session_mock()
+            # Create MCP session mock (with kubectl_describe for this test)
+            mock_k8s_session = _create_mcp_session_mock(include_kubectl_describe=True)
             mock_sessions = {"kubernetes-server": mock_k8s_session}
             mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
 
@@ -268,9 +282,6 @@ Root cause identified from logs.""",
                     max_wait_seconds=5.0,
                     poll_interval=0.1
                 )
-
-                # Get full session details
-                _ = await E2ETestUtils.get_session_details_async(test_client, session_id)
 
                 # Get the paused agent's execution_id for cancellation
                 parallel_executions = parallel_stage.get("parallel_executions", [])
@@ -448,39 +459,11 @@ Action Input: {"namespace": "test-namespace", "pod": "pod-1"}""",
                 agent_counters, agent_responses, agent_identifiers
             )
 
-            # Create MCP session mock
-            def create_mcp_session_mock():
-                mock_session = AsyncMock()
-
-                async def mock_call_tool(tool_name, _parameters):
-                    mock_result = Mock()
-                    mock_content = Mock()
-
-                    if "kubectl_get" in tool_name:
-                        mock_content.text = '{"result": "Pod pod-1 is in CrashLoopBackOff state"}'
-                    elif "get_logs" in tool_name or "log" in tool_name.lower():
-                        mock_content.text = '{"logs": "Error: Connection timeout"}'
-                    else:
-                        mock_content.text = '{"result": "Mock response"}'
-
-                    mock_result.content = [mock_content]
-                    return mock_result
-
-                async def mock_list_tools():
-                    tools = [
-                        Tool(name="kubectl_get", description="Get Kubernetes resources", inputSchema={"type": "object", "properties": {}}),
-                        Tool(name="get_logs", description="Get pod logs", inputSchema={"type": "object", "properties": {}}),
-                    ]
-                    mock_result = Mock()
-                    mock_result.tools = tools
-                    return mock_result
-
-                mock_session.call_tool.side_effect = mock_call_tool
-                mock_session.list_tools.side_effect = mock_list_tools
-
-                return mock_session
-
-            mock_k8s_session = create_mcp_session_mock()
+            # Create MCP session mock (without kubectl_describe for this test)
+            mock_k8s_session = _create_mcp_session_mock(
+                include_kubectl_describe=False,
+                get_logs_response='{"logs": "Error: Connection timeout"}'
+            )
             mock_sessions = {"kubernetes-server": mock_k8s_session}
             mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
 

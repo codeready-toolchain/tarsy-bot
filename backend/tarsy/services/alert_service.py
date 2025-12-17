@@ -780,7 +780,10 @@ class AlertService:
             await publish_session_failed(session_id)
         finally:
             if session_mcp_client:
-                await session_mcp_client.cleanup()
+                try:
+                    await session_mcp_client.close()
+                except Exception as cleanup_error:
+                    logger.warning(f"Error closing session MCP client: {cleanup_error}")
     
     async def _reconstruct_session_context(
         self,
@@ -890,20 +893,20 @@ class AlertService:
             result = await self._execute_chain_stages(
                 chain_definition,
                 chain_context,
-                session_mcp_client
+                session_mcp_client,
             )
-            
-            # Extract final analysis from result
-            if result.success:
-                final_result = result.result if isinstance(result.result, str) else result.result.result_summary
-                
+
+            # Determine success from status and use final_analysis as the chain output
+            if result.status == ChainStatus.COMPLETED:
+                final_result = result.final_analysis or "No analysis provided"
+
                 # Generate executive summary
                 summary = await self.final_analysis_summarizer.generate_executive_summary(
                     content=final_result,
                     session_id=session_id,
                     provider=chain_definition.llm_provider
                 )
-                
+
                 self.session_manager.update_session_status(
                     session_id,
                     AlertSessionStatus.COMPLETED.value,
@@ -916,7 +919,7 @@ class AlertService:
                 self.session_manager.update_session_status(
                     session_id,
                     AlertSessionStatus.FAILED.value,
-                    error_message=result.error or "Chain execution failed"
+                    error_message=result.error or "Chain execution failed",
                 )
                 from tarsy.services.events.event_helpers import publish_session_failed
                 await publish_session_failed(session_id)

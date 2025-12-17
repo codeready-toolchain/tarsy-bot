@@ -156,6 +156,105 @@ class TestGetPausedStages:
         assert len(result) == 2
         assert all(s.status == StageStatus.PAUSED.value for s in result)
 
+    @pytest.mark.asyncio
+    async def test_get_paused_stages_includes_paused_parallel_children(
+        self, history_service: HistoryService
+    ) -> None:
+        """Test that get_paused_stages includes paused parallel child stages."""
+        session_id = "test-session-123"
+        
+        # Parent stage (parallel type, active)
+        parent_stage = create_mock_stage_execution(
+            execution_id="parent-1",
+            session_id=session_id,
+            status=StageStatus.ACTIVE.value
+        )
+        
+        # Parallel child stages - one paused, one completed
+        paused_child = create_mock_stage_execution(
+            execution_id="child-paused-1",
+            session_id=session_id,
+            status=StageStatus.PAUSED.value
+        )
+        completed_child = create_mock_stage_execution(
+            execution_id="child-completed-1",
+            session_id=session_id,
+            status=StageStatus.COMPLETED.value
+        )
+        
+        # Attach parallel_executions to parent
+        object.__setattr__(parent_stage, 'parallel_executions', [paused_child, completed_child])
+        
+        # Another top-level paused stage
+        top_level_paused = create_mock_stage_execution(
+            execution_id="top-paused-1",
+            session_id=session_id,
+            status=StageStatus.PAUSED.value
+        )
+        
+        mock_repo = Mock()
+        mock_repo.get_stage_executions_for_session.return_value = [
+            parent_stage, top_level_paused
+        ]
+        
+        with patch.object(history_service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = mock_repo
+            
+            result = await history_service.get_paused_stages(session_id)
+        
+        # Should include both the top-level paused stage AND the paused child
+        assert len(result) == 2
+        result_ids = {s.execution_id for s in result}
+        assert "top-paused-1" in result_ids
+        assert "child-paused-1" in result_ids
+        # Should NOT include the active parent or completed child
+        assert "parent-1" not in result_ids
+        assert "child-completed-1" not in result_ids
+
+    @pytest.mark.asyncio
+    async def test_get_paused_stages_with_all_parallel_children_paused(
+        self, history_service: HistoryService
+    ) -> None:
+        """Test that get_paused_stages returns all paused parallel children."""
+        session_id = "test-session-123"
+        
+        # Parent stage (parallel type, paused)
+        parent_stage = create_mock_stage_execution(
+            execution_id="parent-1",
+            session_id=session_id,
+            status=StageStatus.PAUSED.value
+        )
+        
+        # Multiple paused children
+        paused_child1 = create_mock_stage_execution(
+            execution_id="child-paused-1",
+            session_id=session_id,
+            status=StageStatus.PAUSED.value
+        )
+        paused_child2 = create_mock_stage_execution(
+            execution_id="child-paused-2",
+            session_id=session_id,
+            status=StageStatus.PAUSED.value
+        )
+        
+        # Attach parallel_executions to parent
+        object.__setattr__(parent_stage, 'parallel_executions', [paused_child1, paused_child2])
+        
+        mock_repo = Mock()
+        mock_repo.get_stage_executions_for_session.return_value = [parent_stage]
+        
+        with patch.object(history_service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = mock_repo
+            
+            result = await history_service.get_paused_stages(session_id)
+        
+        # Should include parent AND both children (all paused)
+        assert len(result) == 3
+        result_ids = {s.execution_id for s in result}
+        assert "parent-1" in result_ids
+        assert "child-paused-1" in result_ids
+        assert "child-paused-2" in result_ids
+
 
 @pytest.mark.unit
 class TestCancelAllPausedStages:
