@@ -1057,6 +1057,10 @@ class MockFactory:
         )
         service.get_filter_options.return_value = default_filter_options
         
+        # Mock async methods for cancellation
+        service.cancel_all_paused_stages = AsyncMock(return_value=0)
+        service.update_session_status = AsyncMock()
+        
         # Apply any overrides
         for key, value in overrides.items():
             if hasattr(service, key):
