@@ -327,7 +327,7 @@ class TestParallelAgentExecutionIntegration:
         self,
         base_chain_context: ChainContext
     ) -> None:
-        """Test that ALL failure policy requires all agents to succeed."""
+        """Test that ALL success policy requires all agents to succeed."""
         from tarsy.models.agent_execution_result import (
             AgentExecutionMetadata,
             ParallelStageMetadata,
@@ -395,7 +395,7 @@ class TestParallelAgentExecutionIntegration:
         self,
         base_chain_context: ChainContext
     ) -> None:
-        """Test that ANY failure policy allows partial success."""
+        """Test that ANY success policy allows partial success."""
         from tarsy.models.agent_execution_result import (
             AgentExecutionMetadata,
             ParallelStageMetadata,
