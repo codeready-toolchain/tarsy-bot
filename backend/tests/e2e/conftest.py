@@ -923,3 +923,17 @@ def e2e_replica_alert():
             "deployment": "web-app"
         }
     }
+
+
+@pytest.fixture
+def e2e_cancel_agent_alert():
+    """Alert for per-agent cancellation testing (uses success_policy: any)."""
+    return {
+        "alert_type": "test-cancel-agent-execution",
+        "runbook": "https://runbooks.example.com/cancel-test",
+        "severity": "warning",
+        "data": {
+            "description": "Test per-agent cancellation scenario",
+            "namespace": "test-namespace"
+        }
+    }
