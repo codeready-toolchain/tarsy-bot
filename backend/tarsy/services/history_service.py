@@ -607,6 +607,26 @@ class HistoryService:
         )
         return result or []
     
+    async def get_paused_stages(self, session_id: str) -> List[StageExecution]:
+        """Get all paused stage executions for a session."""
+        from tarsy.models.constants import StageStatus
+        
+        def _get_paused_stages_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    raise RuntimeError("History repository unavailable - cannot retrieve paused stages")
+                # Get all stages for session
+                stages = repo.get_stage_executions_for_session(session_id)
+                # Filter for paused stages
+                return [s for s in stages if s.status == StageStatus.PAUSED.value]
+        
+        result = await self._retry_database_operation_async(
+            "get_paused_stages",
+            _get_paused_stages_operation,
+            treat_none_as_success=True,
+        )
+        return result or []
+    
     # LLM Interaction Logging
     def store_llm_interaction(self, interaction: LLMInteraction) -> bool:
         """
