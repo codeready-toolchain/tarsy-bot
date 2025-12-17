@@ -794,6 +794,9 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
                                 stage.error_message = "Cancelled by user"
                                 # Use paused_at_us if available, otherwise current time
                                 stage.completed_at_us = stage.paused_at_us or current_time
+                                # Recalculate duration using paused_at_us (not current time!)
+                                if stage.started_at_us and stage.completed_at_us:
+                                    stage.duration_ms = int((stage.completed_at_us - stage.started_at_us) / 1000)
                             await history_service.session.commit()
                             logger.info(f"Updated {len(paused_stages)} paused stages to CANCELLED")
                         
