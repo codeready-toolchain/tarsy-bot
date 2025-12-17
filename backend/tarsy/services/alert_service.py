@@ -636,6 +636,10 @@ class AlertService:
             # Change session status to IN_PROGRESS to allow continuation
             self.session_manager.update_session_status(session_id, AlertSessionStatus.IN_PROGRESS.value)
             
+            # Publish session resumed event to update UI
+            from tarsy.services.events.event_helpers import publish_session_resumed
+            await publish_session_resumed(session_id)
+            
             # Trigger background task to continue chain execution (synthesis + remaining stages)
             import asyncio
             asyncio.create_task(self._continue_after_parallel_completion(session_id, parent_stage.execution_id))
