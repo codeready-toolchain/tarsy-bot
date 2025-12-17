@@ -671,10 +671,10 @@ async def cancel_agent(
         return result
     except ValueError as e:
         # Validation errors (not found, wrong state, etc.)
-        raise HTTPException(status_code=400, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e)) from e
     except Exception as e:
         logger.error(f"Failed to cancel agent {execution_id}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to cancel agent")
+        raise HTTPException(status_code=500, detail="Failed to cancel agent") from e
 
 
 @router.post(

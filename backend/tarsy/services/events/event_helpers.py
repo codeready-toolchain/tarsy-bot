@@ -6,6 +6,8 @@ from typing import Optional, Union
 from tarsy.database.init_db import get_async_session_factory
 from tarsy.models.constants import AlertSessionStatus, ProgressPhase
 from tarsy.models.event_models import (
+    AgentCancelledEvent,
+    ChatCancelRequestedEvent,
     ChatCreatedEvent,
     ChatUserMessageEvent,
     LLMInteractionEvent,
@@ -432,8 +434,6 @@ async def publish_chat_cancel_request(stage_execution_id: str) -> None:
         stage_execution_id: Stage execution identifier for the chat response
     """
     try:
-        from tarsy.models.event_models import ChatCancelRequestedEvent
-        
         async_session_factory = get_async_session_factory()
         async with async_session_factory() as session:
             event = ChatCancelRequestedEvent(stage_execution_id=stage_execution_id)
@@ -487,7 +487,6 @@ async def publish_agent_cancelled(
     try:
         async_session_factory = get_async_session_factory()
         async with async_session_factory() as session:
-            from tarsy.models.event_models import AgentCancelledEvent
             event = AgentCancelledEvent(
                 session_id=session_id,
                 execution_id=execution_id,

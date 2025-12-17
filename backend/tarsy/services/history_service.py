@@ -15,7 +15,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from tarsy.config.settings import get_settings
 from tarsy.models.agent_config import ChainConfigModel
-from tarsy.models.constants import AlertSessionStatus
+from tarsy.models.constants import AlertSessionStatus, StageStatus
 from tarsy.models.db_models import AlertSession, Chat, ChatUserMessage, StageExecution
 from tarsy.models.history_models import (
     ConversationMessage,
@@ -609,8 +609,6 @@ class HistoryService:
     
     async def get_paused_stages(self, session_id: str) -> List[StageExecution]:
         """Get all paused stage executions for a session."""
-        from tarsy.models.constants import StageStatus
-        
         def _get_paused_stages_operation():
             with self.get_repository() as repo:
                 if not repo:
@@ -640,9 +638,6 @@ class HistoryService:
         Returns:
             Number of stages cancelled
         """
-        from tarsy.models.constants import StageStatus
-        from tarsy.utils.timestamp import now_us
-        
         paused_stages = await self.get_paused_stages(session_id)
         if not paused_stages:
             return 0
@@ -860,9 +855,6 @@ class HistoryService:
             Number of stages marked as failed
         """
         from sqlmodel import select
-
-        from tarsy.models.constants import StageStatus
-        from tarsy.models.db_models import StageExecution
         
         try:
             # Get all stages for this session that are not already in terminal states

@@ -216,7 +216,7 @@ class TestCancelAgentStatusUpdate:
         alert_service.history_service.update_stage_execution = AsyncMock()
 
         # Mock aggregation to return FAILED (all cancelled = failed with ANY policy)
-        alert_service.parallel_executor._aggregate_status.return_value = StageStatus.FAILED
+        alert_service.parallel_executor.aggregate_status.return_value = StageStatus.FAILED
 
         with patch('tarsy.hooks.hook_context.stage_execution_context', mock_stage_execution_context), \
              patch('tarsy.services.events.event_helpers.publish_session_cancelled', new=AsyncMock()), \
@@ -250,7 +250,7 @@ class TestCancelAgentStatusUpdate:
             return_value=[child_stage]
         )
         alert_service.history_service.update_stage_execution = AsyncMock()
-        alert_service.parallel_executor._aggregate_status.return_value = StageStatus.FAILED
+        alert_service.parallel_executor.aggregate_status.return_value = StageStatus.FAILED
 
         with patch('tarsy.hooks.hook_context.stage_execution_context', mock_stage_execution_context), \
              patch('tarsy.services.events.event_helpers.publish_session_cancelled', new=AsyncMock()), \
@@ -282,7 +282,7 @@ class TestCancelAgentStatusUpdate:
             return_value=[child_stage]
         )
         alert_service.history_service.update_stage_execution = AsyncMock()
-        alert_service.parallel_executor._aggregate_status.return_value = StageStatus.FAILED
+        alert_service.parallel_executor.aggregate_status.return_value = StageStatus.FAILED
 
         with patch('tarsy.hooks.hook_context.stage_execution_context', mock_stage_execution_context), \
              patch('tarsy.services.events.event_helpers.publish_session_cancelled', new=AsyncMock()), \
@@ -324,7 +324,7 @@ class TestCancelAgentStatusUpdate:
             return_value=[child_stage]
         )
         alert_service.history_service.update_stage_execution = AsyncMock()
-        alert_service.parallel_executor._aggregate_status.return_value = StageStatus.FAILED
+        alert_service.parallel_executor.aggregate_status.return_value = StageStatus.FAILED
 
         with patch('tarsy.hooks.hook_context.stage_execution_context', mock_stage_execution_context), \
              patch('tarsy.services.events.event_helpers.publish_session_cancelled', new=AsyncMock()), \
@@ -384,7 +384,7 @@ class TestCancelAgentPolicyEvaluation:
         alert_service.history_service.update_stage_execution = AsyncMock()
 
         # With one completed and one cancelled, ANY policy = COMPLETED
-        alert_service.parallel_executor._aggregate_status.return_value = StageStatus.COMPLETED
+        alert_service.parallel_executor.aggregate_status.return_value = StageStatus.COMPLETED
 
         with patch('tarsy.hooks.hook_context.stage_execution_context', mock_stage_execution_context), \
              patch('tarsy.services.events.event_helpers.publish_session_resumed', new=AsyncMock()) as mock_resumed, \
@@ -435,7 +435,7 @@ class TestCancelAgentPolicyEvaluation:
         alert_service.history_service.update_stage_execution = AsyncMock()
 
         # All cancelled = FAILED
-        alert_service.parallel_executor._aggregate_status.return_value = StageStatus.FAILED
+        alert_service.parallel_executor.aggregate_status.return_value = StageStatus.FAILED
 
         with patch('tarsy.hooks.hook_context.stage_execution_context', mock_stage_execution_context), \
              patch('tarsy.services.events.event_helpers.publish_session_cancelled', new=AsyncMock()) as mock_cancelled, \
@@ -479,7 +479,7 @@ class TestCancelAgentPolicyEvaluation:
 
         # With ALL policy and one cancelled = FAILED (aggregated status)
         # But session status is CANCELLED since no actual failures, only cancellations
-        alert_service.parallel_executor._aggregate_status.return_value = StageStatus.FAILED
+        alert_service.parallel_executor.aggregate_status.return_value = StageStatus.FAILED
 
         with patch('tarsy.hooks.hook_context.stage_execution_context', mock_stage_execution_context), \
              patch('tarsy.services.events.event_helpers.publish_session_cancelled', new=AsyncMock()) as mock_cancelled, \
@@ -522,7 +522,7 @@ class TestCancelAgentPolicyEvaluation:
         alert_service.history_service.update_stage_execution = AsyncMock()
 
         # One cancelled, one still paused = PAUSED
-        alert_service.parallel_executor._aggregate_status.return_value = StageStatus.PAUSED
+        alert_service.parallel_executor.aggregate_status.return_value = StageStatus.PAUSED
 
         with patch('tarsy.hooks.hook_context.stage_execution_context', mock_stage_execution_context), \
              patch('tarsy.services.events.event_helpers.publish_agent_cancelled', new=AsyncMock()) as mock_agent_cancelled:
@@ -585,7 +585,7 @@ class TestCancelAgentMixedStatuses:
         alert_service.history_service.update_stage_execution = AsyncMock()
 
         # All failed/cancelled = FAILED
-        alert_service.parallel_executor._aggregate_status.return_value = StageStatus.FAILED
+        alert_service.parallel_executor.aggregate_status.return_value = StageStatus.FAILED
 
         with patch('tarsy.hooks.hook_context.stage_execution_context', mock_stage_execution_context), \
              patch('tarsy.services.events.event_helpers.publish_session_failed', new=AsyncMock()) as mock_failed, \

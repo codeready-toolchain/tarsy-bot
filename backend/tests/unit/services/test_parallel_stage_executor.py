@@ -486,7 +486,7 @@ class TestStatusAggregation:
             settings=MockFactory.create_mock_settings(),
             stage_manager=Mock()
         )
-        actual_status = executor._aggregate_status(metadatas, policy)
+        actual_status = executor.aggregate_status(metadatas, policy)
         
         assert actual_status == expected_status
     
@@ -584,7 +584,7 @@ class TestStatusAggregation:
             settings=MockFactory.create_mock_settings(),
             stage_manager=Mock()
         )
-        actual_status = executor._aggregate_status(metadatas, policy)
+        actual_status = executor.aggregate_status(metadatas, policy)
         
         assert actual_status == expected_status
 

@@ -133,7 +133,7 @@ class ParallelStageExecutor:
             parallel_type=ParallelType.REPLICA.value
         )
     
-    def _aggregate_status(
+    def aggregate_status(
         self,
         metadatas: list[AgentExecutionMetadata],
         success_policy: SuccessPolicy
@@ -439,7 +439,7 @@ class ParallelStageExecutor:
         )
         
         # Determine overall stage status using aggregation logic
-        overall_status = self._aggregate_status(metadatas, stage.success_policy)
+        overall_status = self.aggregate_status(metadatas, stage.success_policy)
         
         # Log aggregation results
         completed_count = sum(1 for m in metadatas if m.status == StageStatus.COMPLETED)

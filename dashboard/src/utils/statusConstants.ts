@@ -216,6 +216,8 @@ export function getStageStatusDisplayName(status: string): string {
       return 'Completed';
     case STAGE_STATUS.FAILED:
       return 'Failed';
+    case STAGE_STATUS.CANCELLED:
+      return 'Cancelled';
     case STAGE_STATUS.ACTIVE:
       return 'Active';
     case STAGE_STATUS.PENDING:
@@ -316,6 +318,8 @@ export function getStageStatusChipColor(
       return 'success';
     case STAGE_STATUS.FAILED:
       return 'error';
+    case STAGE_STATUS.CANCELLED:
+      return 'warning';
     case STAGE_STATUS.ACTIVE:
       return 'primary';
     case STAGE_STATUS.PENDING:
@@ -338,6 +342,8 @@ export function getStageStatusProgressColor(
       return 'success';
     case STAGE_STATUS.FAILED:
       return 'error';
+    case STAGE_STATUS.CANCELLED:
+      return 'warning';
     case STAGE_STATUS.ACTIVE:
       return 'primary';
     case STAGE_STATUS.PENDING:

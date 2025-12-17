@@ -488,7 +488,7 @@ class AlertService:
         1. Validate inputs and load child stage execution
         2. Update child stage to CANCELLED status with paused_at_us as completed_at_us
         3. Load all sibling stages (same parent_stage_execution_id)
-        4. Run _aggregate_status() logic on all children
+        4. Run aggregate_status() logic on all children
         5. Update parent stage status based on aggregation
         6. Update session status if applicable
         7. Publish events for real-time UI updates
@@ -554,7 +554,7 @@ class AlertService:
         # Trigger hooks for child stage update
         from tarsy.hooks.hook_context import stage_execution_context
         async with stage_execution_context(child_stage):
-            pass
+            pass  # Hooks are triggered on context enter/exit
         
         # Step 4: Load all sibling stages for aggregation
         all_children = await self.history_service.get_parallel_stage_children(
@@ -562,7 +562,7 @@ class AlertService:
         )
         
         # Step 5: Create metadata list for aggregation
-        # Transform StageExecution DB models → AgentExecutionMetadata for _aggregate_status()
+        # Transform StageExecution DB models → AgentExecutionMetadata for aggregate_status()
         # Only the 'status' field is critical for aggregation; other fields are informational
         from tarsy.models.agent_execution_result import AgentExecutionMetadata
         metadatas = []
@@ -598,7 +598,7 @@ class AlertService:
                     success_policy = SuccessPolicy.ANY
         
         # Run aggregation logic
-        aggregated_status = self.parallel_executor._aggregate_status(metadatas, success_policy)
+        aggregated_status = self.parallel_executor.aggregate_status(metadatas, success_policy)
         
         logger.info(f"Aggregated status after cancel: {aggregated_status.value}")
         
@@ -631,7 +631,7 @@ class AlertService:
         if aggregated_status == StageStatus.COMPLETED:
             # Parallel stage completed - need to run synthesis and continue chain
             # Don't mark session as completed yet; trigger chain continuation
-            logger.info(f"Parallel stage completed after agent cancellation - triggering chain continuation")
+            logger.info("Parallel stage completed after agent cancellation - triggering chain continuation")
             
             # Change session status to IN_PROGRESS to allow continuation
             self.session_manager.update_session_status(session_id, AlertSessionStatus.IN_PROGRESS.value)
@@ -1048,7 +1048,7 @@ class AlertService:
                 # Check if we need to continue to next stages
                 if parallel_result.status == StageStatus.COMPLETED:
                     # Use helper method to handle synthesis + continuation
-                    logger.info(f"Parallel stage completed after resume - continuing with synthesis")
+                    logger.info("Parallel stage completed after resume - continuing with synthesis")
                     
                     # Get fresh stage executions for synthesis index calculation
                     existing_stages = await self.history_service.get_stage_executions(session_id)

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Box, LinearProgress, CircularProgress, Typography } from '@mui/material';
 import { formatDurationMs } from '../utils/timestamp';
 import { SESSION_STATUS } from '../utils/statusConstants';
@@ -21,7 +21,7 @@ function ProgressIndicator({
   const [liveDuration, setLiveDuration] = useState<number | null>(null);
 
   // Calculate live duration for active sessions or as fallback for completed sessions
-  const getLiveDuration = () => {
+  const getLiveDuration = useCallback(() => {
     if (duration !== undefined && duration !== null) return duration; // Use final duration if available
     if (startedAt !== undefined && startedAt !== null) {
       // For paused sessions, calculate duration up to pause point (frozen)
@@ -33,7 +33,7 @@ function ProgressIndicator({
       return Math.max(0, (now - startedAt) / 1000); // Convert to milliseconds
     }
     return null;
-  };
+  }, [duration, startedAt, status, pausedAt]);
 
   // Live ticking timer for active sessions
   useEffect(() => {
@@ -52,7 +52,7 @@ function ProgressIndicator({
       // For completed/paused sessions, calculate and display duration (frozen for paused)
       setLiveDuration(getLiveDuration());
     }
-  }, [status, startedAt, duration, pausedAt]);
+  }, [status, startedAt, duration, pausedAt, getLiveDuration]);
 
   // Use live duration for display, fallback to calculated duration
   const currentDuration = liveDuration ?? getLiveDuration();
@@ -87,7 +87,7 @@ function ProgressIndicator({
             color={progressColor}
           />
         )}
-        {showDuration && currentDuration && (
+        {showDuration && currentDuration != null && (
           <Typography variant="caption" color="text.secondary">
             {formatDurationMs(currentDuration)}
           </Typography>
@@ -120,7 +120,7 @@ function ProgressIndicator({
             color="warning"
           />
         )}
-        {showDuration && currentDuration && (
+        {showDuration && currentDuration != null && (
           <Typography variant="caption" color="text.secondary">
             {formatDurationMs(currentDuration)}
           </Typography>
@@ -155,7 +155,7 @@ function ProgressIndicator({
             color="warning"
           />
         )}
-        {showDuration && currentDuration !== null && (
+        {showDuration && currentDuration != null && (
           <Typography variant="caption" color="text.secondary">
             {formatDurationMs(currentDuration)}
           </Typography>
@@ -168,7 +168,7 @@ function ProgressIndicator({
   }
 
   // For completed/failed/cancelled sessions, show duration if available
-  if (showDuration && currentDuration) {
+  if (showDuration && currentDuration != null) {
     const color = 
       status === SESSION_STATUS.COMPLETED ? 'success.main' : 
       status === SESSION_STATUS.FAILED ? 'error.main' : 
