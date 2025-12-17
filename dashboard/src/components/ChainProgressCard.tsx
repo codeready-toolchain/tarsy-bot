@@ -334,6 +334,7 @@ const ChainProgressCard: React.FC<ChainProgressCardProps> = ({
             <ProgressIndicator 
               status={session.status}
               startedAt={session.started_at_us}
+              pausedAt={session.pause_metadata?.paused_at_us ?? null}
               variant="circular"
               size="small"
             />

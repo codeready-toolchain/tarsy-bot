@@ -547,6 +547,7 @@ export interface ProgressIndicatorProps {
   status: Session['status'];
   startedAt?: number; // Unix timestamp in microseconds
   duration?: number | null; // Duration in milliseconds
+  pausedAt?: number | null; // Unix timestamp in microseconds when session was paused
   variant?: 'linear' | 'circular';
   showDuration?: boolean;
   size?: 'small' | 'medium' | 'large';

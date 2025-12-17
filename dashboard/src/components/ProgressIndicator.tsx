@@ -12,6 +12,7 @@ function ProgressIndicator({
   status, 
   startedAt, 
   duration, 
+  pausedAt,
   variant = 'linear',
   showDuration = true,
   size = 'medium'
@@ -23,6 +24,11 @@ function ProgressIndicator({
   const getLiveDuration = () => {
     if (duration !== undefined && duration !== null) return duration; // Use final duration if available
     if (startedAt !== undefined && startedAt !== null) {
+      // For paused sessions, calculate duration up to pause point (frozen)
+      if (status === SESSION_STATUS.PAUSED && pausedAt !== undefined && pausedAt !== null) {
+        return Math.max(0, (pausedAt - startedAt) / 1000); // Convert to milliseconds
+      }
+      // For other sessions, calculate live duration
       const now = Date.now() * 1000; // Convert to microseconds
       return Math.max(0, (now - startedAt) / 1000); // Convert to milliseconds
     }
@@ -31,7 +37,7 @@ function ProgressIndicator({
 
   // Live ticking timer for active sessions
   useEffect(() => {
-    // Only start timer for active sessions without final duration
+    // Only start timer for active sessions without final duration (exclude PAUSED)
     if ((status === SESSION_STATUS.IN_PROGRESS || status === SESSION_STATUS.PENDING || status === SESSION_STATUS.CANCELING) && startedAt !== undefined && startedAt !== null && !duration) {
       // Update immediately
       setLiveDuration(getLiveDuration());
@@ -43,10 +49,10 @@ function ProgressIndicator({
 
       return () => clearInterval(timer);
     } else {
-      // For completed sessions, always calculate and display duration
+      // For completed/paused sessions, calculate and display duration (frozen for paused)
       setLiveDuration(getLiveDuration());
     }
-  }, [status, startedAt, duration]);
+  }, [status, startedAt, duration, pausedAt]);
 
   // Use live duration for display, fallback to calculated duration
   const currentDuration = liveDuration ?? getLiveDuration();

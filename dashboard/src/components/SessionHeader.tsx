@@ -761,6 +761,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                 status={session.status}
                 startedAt={session.started_at_us}
                 duration={session.duration_ms}
+                pausedAt={session.pause_metadata?.paused_at_us ?? null}
                 variant="linear"
                 showDuration={true}
                 size="large"
