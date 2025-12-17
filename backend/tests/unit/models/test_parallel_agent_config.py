@@ -7,7 +7,7 @@ from tarsy.models.agent_config import (
     ChainStageConfigModel,
     ParallelAgentConfig,
 )
-from tarsy.models.constants import FailurePolicy
+from tarsy.models.constants import SuccessPolicy
 
 
 @pytest.mark.unit
@@ -87,7 +87,7 @@ class TestChainStageConfigModelParallelValidation:
         assert stage.agent == "KubernetesAgent"
         assert stage.agents is None
         assert stage.replicas == 1
-        assert stage.failure_policy == FailurePolicy.ALL
+        assert stage.success_policy == SuccessPolicy.ANY
 
     def test_stage_with_multi_agent_parallel(self) -> None:
         """Test stage configuration with multiple agents (parallel)."""
@@ -119,7 +119,7 @@ class TestChainStageConfigModelParallelValidation:
         assert stage.replicas == 3
         assert stage.llm_provider == "openai"
 
-    def test_stage_with_failure_policy_any(self) -> None:
+    def test_stage_with_success_policy_any(self) -> None:
         """Test stage with 'any' failure policy (partial success allowed)."""
         stage = ChainStageConfigModel(
             name="investigation",
@@ -127,10 +127,10 @@ class TestChainStageConfigModelParallelValidation:
                 ParallelAgentConfig(name="KubernetesAgent"),
                 ParallelAgentConfig(name="VMAgent")
             ],
-            failure_policy=FailurePolicy.ANY
+            success_policy=SuccessPolicy.ANY
         )
         
-        assert stage.failure_policy == FailurePolicy.ANY
+        assert stage.success_policy == SuccessPolicy.ANY
 
     def test_stage_missing_agent_and_agents_fails(self) -> None:
         """Test that stage without agent or agents field fails validation."""
@@ -283,8 +283,8 @@ class TestChainStageConfigModelParallelValidation:
         assert stage.llm_provider == "openai"
         assert stage.iteration_strategy == "react"
 
-    @pytest.mark.parametrize("policy", [FailurePolicy.ALL, FailurePolicy.ANY])
-    def test_stage_failure_policies(self, policy: FailurePolicy) -> None:
+    @pytest.mark.parametrize("policy", [SuccessPolicy.ANY, SuccessPolicy.ANY])
+    def test_stage_failure_policies(self, policy: SuccessPolicy) -> None:
         """Test stage with different failure policies."""
         stage = ChainStageConfigModel(
             name="policy-test",
@@ -292,8 +292,8 @@ class TestChainStageConfigModelParallelValidation:
                 ParallelAgentConfig(name="Agent1"),
                 ParallelAgentConfig(name="Agent2")
             ],
-            failure_policy=policy
+            success_policy=policy
         )
         
-        assert stage.failure_policy == policy
+        assert stage.success_policy == policy
 

@@ -13,7 +13,7 @@ from tarsy.models.agent_execution_result import (
     AgentExecutionMetadata,
     ParallelStageMetadata,
 )
-from tarsy.models.constants import FailurePolicy, StageStatus
+from tarsy.models.constants import SuccessPolicy, StageStatus
 
 
 @pytest.mark.unit
@@ -58,7 +58,7 @@ class TestParallelStageMetadata:
         stage_metadata = ParallelStageMetadata(
             parent_stage_execution_id="parent-123",
             parallel_type="multi_agent",
-            failure_policy=FailurePolicy.ALL,
+            success_policy=SuccessPolicy.ANY,
             started_at_us=1000,
             completed_at_us=3000,
             agent_metadatas=metadatas
@@ -97,7 +97,7 @@ class TestParallelStageMetadata:
         stage_metadata = ParallelStageMetadata(
             parent_stage_execution_id="parent-123",
             parallel_type="replica",
-            failure_policy=FailurePolicy.ANY,
+            success_policy=SuccessPolicy.ANY,
             started_at_us=1000,
             completed_at_us=3000,
             agent_metadatas=metadatas
@@ -145,7 +145,7 @@ class TestParallelStageMetadata:
         stage_metadata = ParallelStageMetadata(
             parent_stage_execution_id="parent-123",
             parallel_type="multi_agent",
-            failure_policy=FailurePolicy.ALL,
+            success_policy=SuccessPolicy.ANY,
             started_at_us=1000,
             completed_at_us=3000,
             agent_metadatas=metadatas
@@ -167,14 +167,14 @@ class TestStatusAggregationLogic:
         completed_count = 2
         failed_count = 0
         paused_count = 1
-        failure_policy = FailurePolicy.ALL
+        success_policy = SuccessPolicy.ANY
         
         # Logic from _execute_parallel_stage
         if paused_count > 0:
             overall_status = StageStatus.PAUSED
-        elif failure_policy == FailurePolicy.ALL:
+        elif success_policy == SuccessPolicy.ALL:
             overall_status = StageStatus.COMPLETED if failed_count == 0 else StageStatus.FAILED
-        else:  # FailurePolicy.ANY
+        else:  # SuccessPolicy.ANY
             overall_status = StageStatus.COMPLETED if completed_count > 0 else StageStatus.FAILED
         
         assert overall_status == StageStatus.PAUSED
@@ -185,14 +185,14 @@ class TestStatusAggregationLogic:
         completed_count = 1
         failed_count = 1
         paused_count = 1
-        failure_policy = FailurePolicy.ALL
+        success_policy = SuccessPolicy.ANY
         
         # Logic from _execute_parallel_stage
         if paused_count > 0:
             overall_status = StageStatus.PAUSED
-        elif failure_policy == FailurePolicy.ALL:
+        elif success_policy == SuccessPolicy.ALL:
             overall_status = StageStatus.COMPLETED if failed_count == 0 else StageStatus.FAILED
-        else:  # FailurePolicy.ANY
+        else:  # SuccessPolicy.ANY
             overall_status = StageStatus.COMPLETED if completed_count > 0 else StageStatus.FAILED
         
         assert overall_status == StageStatus.PAUSED
@@ -202,13 +202,13 @@ class TestStatusAggregationLogic:
         completed_count = 3
         failed_count = 0
         paused_count = 0
-        failure_policy = FailurePolicy.ALL
+        success_policy = SuccessPolicy.ANY
         
         if paused_count > 0:
             overall_status = StageStatus.PAUSED
-        elif failure_policy == FailurePolicy.ALL:
+        elif success_policy == SuccessPolicy.ALL:
             overall_status = StageStatus.COMPLETED if failed_count == 0 else StageStatus.FAILED
-        else:  # FailurePolicy.ANY
+        else:  # SuccessPolicy.ANY
             overall_status = StageStatus.COMPLETED if completed_count > 0 else StageStatus.FAILED
         
         assert overall_status == StageStatus.COMPLETED
@@ -218,13 +218,13 @@ class TestStatusAggregationLogic:
         completed_count = 2
         failed_count = 1
         paused_count = 0
-        failure_policy = FailurePolicy.ALL
+        success_policy = SuccessPolicy.ALL
         
         if paused_count > 0:
             overall_status = StageStatus.PAUSED
-        elif failure_policy == FailurePolicy.ALL:
+        elif success_policy == SuccessPolicy.ALL:
             overall_status = StageStatus.COMPLETED if failed_count == 0 else StageStatus.FAILED
-        else:  # FailurePolicy.ANY
+        else:  # SuccessPolicy.ANY
             overall_status = StageStatus.COMPLETED if completed_count > 0 else StageStatus.FAILED
         
         assert overall_status == StageStatus.FAILED
@@ -234,13 +234,13 @@ class TestStatusAggregationLogic:
         completed_count = 1
         failed_count = 2
         paused_count = 0
-        failure_policy = FailurePolicy.ANY
+        success_policy = SuccessPolicy.ANY
         
         if paused_count > 0:
             overall_status = StageStatus.PAUSED
-        elif failure_policy == FailurePolicy.ALL:
+        elif success_policy == SuccessPolicy.ALL:
             overall_status = StageStatus.COMPLETED if failed_count == 0 else StageStatus.FAILED
-        else:  # FailurePolicy.ANY
+        else:  # SuccessPolicy.ANY
             overall_status = StageStatus.COMPLETED if completed_count > 0 else StageStatus.FAILED
         
         assert overall_status == StageStatus.COMPLETED
@@ -250,13 +250,13 @@ class TestStatusAggregationLogic:
         completed_count = 0
         failed_count = 3
         paused_count = 0
-        failure_policy = FailurePolicy.ANY
+        success_policy = SuccessPolicy.ANY
         
         if paused_count > 0:
             overall_status = StageStatus.PAUSED
-        elif failure_policy == FailurePolicy.ALL:
+        elif success_policy == SuccessPolicy.ALL:
             overall_status = StageStatus.COMPLETED if failed_count == 0 else StageStatus.FAILED
-        else:  # FailurePolicy.ANY
+        else:  # SuccessPolicy.ANY
             overall_status = StageStatus.COMPLETED if completed_count > 0 else StageStatus.FAILED
         
         assert overall_status == StageStatus.FAILED

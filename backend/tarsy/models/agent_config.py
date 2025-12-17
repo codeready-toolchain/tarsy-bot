@@ -14,7 +14,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from .constants import FailurePolicy, IterationStrategy
+from .constants import SuccessPolicy, IterationStrategy  # FailurePolicy is backward compat alias
 from .mcp_transport_config import TransportConfig
 
 # =============================================================================
@@ -292,7 +292,7 @@ class ChatConfig(BaseModel):
 class ChainStageConfigModel(BaseModel):
     """Configuration model for a single stage in a chain."""
 
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True, populate_by_name=True)
 
     name: str = Field(..., description="Human-readable stage name", min_length=1)
     # Optional but when provided must be non-empty (min_length=1 applies only to non-None values)
@@ -310,9 +310,10 @@ class ChainStageConfigModel(BaseModel):
         ge=1,
         description="Number of replicas for simple redundancy (default: 1)",
     )
-    failure_policy: FailurePolicy = Field(
-        default=FailurePolicy.ALL,
-        description="Failure policy: 'all' requires all agents to succeed, 'any' requires at least one",
+    success_policy: SuccessPolicy = Field(
+        default=SuccessPolicy.ANY,
+        description="Success policy: 'all' requires all agents to succeed, 'any' requires at least one (default)",
+        alias="failure_policy",  # Backward compatibility
     )
     iteration_strategy: Optional[IterationStrategy] = Field(
         None,

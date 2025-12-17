@@ -43,7 +43,7 @@ agent_chains:
           - name: "LogAgent"
             llm_provider: "anthropic-default"
             iteration_strategy: "react"
-        failure_policy: "all"  # Both must succeed
+        success_policy: "all"  # Both must succeed
         # Synthesis configuration (test uses ReAct mocks)
         synthesis:
           agent: "SynthesisAgent"
@@ -61,7 +61,7 @@ agent_chains:
         replicas: 3
         llm_provider: "google-default"
         iteration_strategy: "native-thinking"
-        failure_policy: "any"  # At least one must succeed
+        success_policy: "any"  # At least one must succeed
         # Synthesis configuration (test uses simple synthesis strategy)
         synthesis:
           agent: "SynthesisAgent"
@@ -82,7 +82,7 @@ agent_chains:
           - name: "LogAgent"
             llm_provider: "anthropic-default"
             iteration_strategy: "react"
-        failure_policy: "all"
+        success_policy: "all"
         # Note: synthesis config is optional and omitted here to test defaults
         # Automatic synthesis will use: SynthesisAgent with 'synthesis' strategy
       - name: "command"

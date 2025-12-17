@@ -6,7 +6,7 @@ This test verifies:
 - Same agent runs N times with identical config
 - Replica naming is correct
 - Automatic synthesis aggregates results
-- failure_policy="any" allows partial success
+- success_policy="any" allows partial success
 
 Architecture:
 - REAL: FastAPI app, AlertService, HistoryService, hook system, database
@@ -52,14 +52,14 @@ class TestParallelReplicaE2E(ParallelTestBase):
         4. Verify parallel stage structure with 3 replicas
         5. Verify automatic synthesis stage was created
         6. Verify replica naming (Agent-1, Agent-2, Agent-3)
-        7. Test failure_policy="any" (at least one must succeed)
+        7. Test success_policy="any" (at least one must succeed)
 
         This test verifies:
         - Replica parallel execution works
         - Same agent runs N times with identical config
         - Replica naming is correct
         - Automatic synthesis aggregates results
-        - failure_policy="any" allows partial success
+        - success_policy="any" allows partial success
         """
         return await self._run_with_timeout(
             lambda: self._execute_replica_test(e2e_parallel_test_client, e2e_replica_alert),

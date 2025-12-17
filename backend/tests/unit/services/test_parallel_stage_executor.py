@@ -16,7 +16,7 @@ from tarsy.models.agent_execution_result import (
     AgentExecutionResult,
     ParallelStageResult,
 )
-from tarsy.models.constants import FailurePolicy, StageStatus
+from tarsy.models.constants import SuccessPolicy, StageStatus
 from tarsy.models.processing_context import ChainContext
 from tarsy.services.parallel_stage_executor import ParallelStageExecutor
 from tarsy.utils.timestamp import now_us
@@ -142,7 +142,7 @@ class TestOptionalFieldGuards:
             name="test-stage",
             agents=None,
             agent="some-agent",
-            failure_policy=FailurePolicy.ANY
+            success_policy=SuccessPolicy.ANY
         )
         
         from tarsy.models.alert import ProcessingAlert
@@ -192,7 +192,7 @@ class TestOptionalFieldGuards:
             agent=None,
             agents=[SimpleNamespace(name="agent1")],
             replicas=3,
-            failure_policy=FailurePolicy.ALL
+            success_policy=SuccessPolicy.ALL
         )
         
         from tarsy.models.alert import ProcessingAlert
@@ -251,7 +251,7 @@ class TestExecutionConfigGeneration:
             captured_configs.append(kwargs.get('execution_configs'))
             # Return a valid parallel result
             from tarsy.models.agent_execution_result import ParallelStageMetadata
-            from tarsy.models.constants import FailurePolicy
+            from tarsy.models.constants import SuccessPolicy
             
             return ParallelStageResult(
                 stage_name="investigation",
@@ -259,7 +259,7 @@ class TestExecutionConfigGeneration:
                 metadata=ParallelStageMetadata(
                     parent_stage_execution_id="stage-exec-1",
                     parallel_type="multi_agent",
-                    failure_policy=FailurePolicy.ANY,
+                    success_policy=SuccessPolicy.ANY,
                     started_at_us=now_us(),
                     completed_at_us=now_us(),
                     agent_metadatas=[]
@@ -277,7 +277,7 @@ class TestExecutionConfigGeneration:
                 SimpleNamespace(name="agent1", llm_provider="openai", iteration_strategy="react"),
                 SimpleNamespace(name="agent2", llm_provider="anthropic", iteration_strategy="native")
             ],
-            failure_policy=FailurePolicy.ANY
+            success_policy=SuccessPolicy.ANY
         )
         
         # Create ProcessingAlert from Alert
@@ -340,7 +340,7 @@ class TestExecutionConfigGeneration:
         async def capture_configs(*args, **kwargs):
             captured_configs.append(kwargs.get('execution_configs'))
             from tarsy.models.agent_execution_result import ParallelStageMetadata
-            from tarsy.models.constants import FailurePolicy
+            from tarsy.models.constants import SuccessPolicy
             
             return ParallelStageResult(
                 stage_name="investigation",
@@ -348,7 +348,7 @@ class TestExecutionConfigGeneration:
                 metadata=ParallelStageMetadata(
                     parent_stage_execution_id="stage-exec-1",
                     parallel_type="replica",
-                    failure_policy=FailurePolicy.ALL,
+                    success_policy=SuccessPolicy.ALL,
                     started_at_us=now_us(),
                     completed_at_us=now_us(),
                     agent_metadatas=[]
@@ -367,7 +367,7 @@ class TestExecutionConfigGeneration:
             replicas=3,
             llm_provider="openai",
             iteration_strategy="react",
-            failure_policy=FailurePolicy.ALL
+            success_policy=SuccessPolicy.ALL
         )
         
         # Create ProcessingAlert from Alert
@@ -416,23 +416,23 @@ class TestStatusAggregation:
         "completed,failed,paused,policy,expected_status",
         [
             # PAUSED takes priority
-            (2, 0, 1, FailurePolicy.ALL, StageStatus.PAUSED),
-            (2, 0, 1, FailurePolicy.ANY, StageStatus.PAUSED),
-            (0, 2, 1, FailurePolicy.ALL, StageStatus.PAUSED),
+            (2, 0, 1, SuccessPolicy.ALL, StageStatus.PAUSED),
+            (2, 0, 1, SuccessPolicy.ANY, StageStatus.PAUSED),
+            (0, 2, 1, SuccessPolicy.ALL, StageStatus.PAUSED),
             
             # ALL policy: all must succeed
-            (3, 0, 0, FailurePolicy.ALL, StageStatus.COMPLETED),
-            (2, 1, 0, FailurePolicy.ALL, StageStatus.FAILED),
-            (0, 3, 0, FailurePolicy.ALL, StageStatus.FAILED),
+            (3, 0, 0, SuccessPolicy.ALL, StageStatus.COMPLETED),
+            (2, 1, 0, SuccessPolicy.ALL, StageStatus.FAILED),
+            (0, 3, 0, SuccessPolicy.ALL, StageStatus.FAILED),
             
             # ANY policy: at least one must succeed
-            (1, 2, 0, FailurePolicy.ANY, StageStatus.COMPLETED),
-            (0, 3, 0, FailurePolicy.ANY, StageStatus.FAILED),
-            (3, 0, 0, FailurePolicy.ANY, StageStatus.COMPLETED),
+            (1, 2, 0, SuccessPolicy.ANY, StageStatus.COMPLETED),
+            (0, 3, 0, SuccessPolicy.ANY, StageStatus.FAILED),
+            (3, 0, 0, SuccessPolicy.ANY, StageStatus.COMPLETED),
         ],
     )
     def test_status_aggregation_logic(
-        self, completed: int, failed: int, paused: int, policy: FailurePolicy, expected_status: StageStatus
+        self, completed: int, failed: int, paused: int, policy: SuccessPolicy, expected_status: StageStatus
     ):
         """Test that status aggregation follows correct precedence rules."""
         # Create metadatas based on counts
@@ -542,7 +542,7 @@ class TestParallelAgentTimeouts:
             replicas=1,
             llm_provider=None,
             iteration_strategy=None,
-            failure_policy=FailurePolicy.ALL
+            success_policy=SuccessPolicy.ALL
         )
         
         from tarsy.models.alert import ProcessingAlert
@@ -651,7 +651,7 @@ class TestParallelAgentTimeouts:
             replicas=1,
             llm_provider=None,
             iteration_strategy=None,
-            failure_policy=FailurePolicy.ANY  # Continue if one succeeds
+            success_policy=SuccessPolicy.ANY  # Continue if one succeeds
         )
         
         from tarsy.models.alert import ProcessingAlert

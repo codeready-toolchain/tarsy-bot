@@ -178,7 +178,7 @@ class ConfigurationLoader:
                                 for agent in stage.agents
                             ] if stage.agents else None,
                             "replicas": stage.replicas,
-                            "failure_policy": stage.failure_policy,
+                            "success_policy": stage.success_policy,
                             "iteration_strategy": stage.iteration_strategy,
                             "llm_provider": stage.llm_provider,
                             "synthesis": {

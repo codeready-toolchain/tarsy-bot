@@ -18,7 +18,7 @@ from tarsy.models.agent_execution_result import (
     ParallelStageMetadata,
     ParallelStageResult,
 )
-from tarsy.models.constants import FailurePolicy, ParallelType, StageStatus
+from tarsy.models.constants import SuccessPolicy, ParallelType, StageStatus  # FailurePolicy is backward compat alias
 from tarsy.models.processing_context import ChainContext
 from tarsy.utils.logger import get_module_logger
 from tarsy.utils.timestamp import now_us
@@ -136,19 +136,19 @@ class ParallelStageExecutor:
     def _aggregate_status(
         self,
         metadatas: list[AgentExecutionMetadata],
-        failure_policy: FailurePolicy
+        success_policy: SuccessPolicy
     ) -> StageStatus:
         """
         Aggregate individual agent statuses into overall stage status.
         
         Priority order:
         1. PAUSED: If any agent paused, whole stage is paused (enables resume)
-        2. FailurePolicy.ALL: All must succeed (any failure = stage failure)
-        3. FailurePolicy.ANY: At least one must succeed (all failures = stage failure)
+        2. SuccessPolicy.ALL: All must succeed (any failure = stage failure)
+        3. SuccessPolicy.ANY: At least one must succeed (all failures = stage failure)
         
         Args:
             metadatas: List of agent execution metadata
-            failure_policy: Policy for handling failures (ALL or ANY)
+            success_policy: Policy for success criteria (ALL or ANY)
             
         Returns:
             Aggregated stage status (COMPLETED, FAILED, or PAUSED)
@@ -162,11 +162,11 @@ class ParallelStageExecutor:
         if paused_count > 0:
             return StageStatus.PAUSED
         
-        # Apply failure policy
-        if failure_policy == FailurePolicy.ALL:
+        # Apply success policy
+        if success_policy == SuccessPolicy.ALL:
             # ALL policy: all must succeed (any failure = stage failure)
             return StageStatus.COMPLETED if failed_count == 0 else StageStatus.FAILED
-        else:  # FailurePolicy.ANY
+        else:  # SuccessPolicy.ANY
             # ANY policy: at least one must succeed (all failures = stage failure)
             return StageStatus.COMPLETED if completed_count > 0 else StageStatus.FAILED
     
@@ -428,14 +428,14 @@ class ParallelStageExecutor:
         stage_metadata = ParallelStageMetadata(
             parent_stage_execution_id=parent_stage_execution_id,
             parallel_type=parallel_type,
-            failure_policy=stage.failure_policy,
+            success_policy=stage.success_policy,
             started_at_us=stage_started_at_us,
             completed_at_us=stage_completed_at_us,
             agent_metadatas=metadatas
         )
         
         # Determine overall stage status using aggregation logic
-        overall_status = self._aggregate_status(metadatas, stage.failure_policy)
+        overall_status = self._aggregate_status(metadatas, stage.success_policy)
         
         # Log aggregation results
         completed_count = sum(1 for m in metadatas if m.status == StageStatus.COMPLETED)
@@ -451,7 +451,7 @@ class ParallelStageExecutor:
         else:
             logger.info(
                 f"{parallel_type.capitalize()} stage '{stage.name}' completed: {completed_count}/{len(metadatas)} succeeded, "
-                f"policy={stage.failure_policy}, status={overall_status.value}"
+                f"policy={stage.success_policy}, status={overall_status.value}"
             )
         
         # Create parallel stage result
@@ -486,7 +486,7 @@ class ParallelStageExecutor:
                 f"{paused_count} agents paused, {completed_count} completed, {failed_count} failed"
             )
         else:  # FAILED
-            error_msg = f"{parallel_type.capitalize()} stage failed: {failed_count}/{len(metadatas)} executions failed (policy: {stage.failure_policy})"
+            error_msg = f"{parallel_type.capitalize()} stage failed: {failed_count}/{len(metadatas)} executions failed (policy: {stage.success_policy})"
             await self.stage_manager.update_stage_execution_failed(parent_stage_execution_id, error_msg)
         
         return parallel_result
@@ -832,7 +832,7 @@ class ParallelStageExecutor:
         merged_metadata = ParallelStageMetadata(
             parent_stage_execution_id=paused_parent_stage.execution_id,
             parallel_type=paused_parent_stage.parallel_type,
-            failure_policy=stage_config.failure_policy,
+            success_policy=stage_config.success_policy,
             started_at_us=paused_parent_stage.started_at_us or now_us(),
             completed_at_us=now_us(),
             agent_metadatas=all_metadatas
@@ -847,9 +847,9 @@ class ParallelStageExecutor:
             # Still has paused agents (hit max_iterations again on resume)
             final_status = StageStatus.PAUSED
             logger.warning(f"Parallel stage paused again: {paused_count} agents still paused")
-        elif stage_config.failure_policy == FailurePolicy.ALL:
+        elif stage_config.success_policy == SuccessPolicy.ALL:
             final_status = StageStatus.COMPLETED if failed_count == 0 else StageStatus.FAILED
-        else:  # FailurePolicy.ANY
+        else:  # SuccessPolicy.ANY
             final_status = StageStatus.COMPLETED if completed_count > 0 else StageStatus.FAILED
         
         # 12. Create final merged result

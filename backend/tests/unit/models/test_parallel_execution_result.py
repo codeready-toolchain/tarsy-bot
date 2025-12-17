@@ -8,7 +8,7 @@ from tarsy.models.agent_execution_result import (
     ParallelStageMetadata,
     ParallelStageResult,
 )
-from tarsy.models.constants import FailurePolicy, StageStatus
+from tarsy.models.constants import SuccessPolicy, StageStatus
 from tarsy.utils.timestamp import now_us
 
 
@@ -147,7 +147,7 @@ class TestParallelStageMetadata:
         metadata = ParallelStageMetadata(
             parent_stage_execution_id="exec-123",
             parallel_type="multi_agent",
-            failure_policy=FailurePolicy.ALL,
+            success_policy=SuccessPolicy.ANY,
             started_at_us=start_time,
             completed_at_us=end_time,
             agent_metadatas=agent_metas
@@ -155,7 +155,7 @@ class TestParallelStageMetadata:
         
         assert metadata.parent_stage_execution_id == "exec-123"
         assert metadata.parallel_type == "multi_agent"
-        assert metadata.failure_policy == FailurePolicy.ALL
+        assert metadata.success_policy == SuccessPolicy.ANY
         assert len(metadata.agent_metadatas) == 2
 
     def test_parallel_stage_metadata_duration_calculation(self) -> None:
@@ -166,7 +166,7 @@ class TestParallelStageMetadata:
         metadata = ParallelStageMetadata(
             parent_stage_execution_id="exec-456",
             parallel_type="replica",
-            failure_policy=FailurePolicy.ANY,
+            success_policy=SuccessPolicy.ANY,
             started_at_us=start_time,
             completed_at_us=end_time,
             agent_metadatas=[]
@@ -207,7 +207,7 @@ class TestParallelStageMetadata:
         metadata = ParallelStageMetadata(
             parent_stage_execution_id="exec-789",
             parallel_type="multi_agent",
-            failure_policy=FailurePolicy.ANY,
+            success_policy=SuccessPolicy.ANY,
             started_at_us=now_us(),
             completed_at_us=now_us() + 5_000_000,
             agent_metadatas=agent_metas
@@ -218,29 +218,29 @@ class TestParallelStageMetadata:
         assert metadata.failed_count == 1
 
     @pytest.mark.parametrize(
-        "parallel_type,failure_policy",
+        "parallel_type,success_policy",
         [
-            ("multi_agent", FailurePolicy.ALL),
-            ("multi_agent", FailurePolicy.ANY),
-            ("replica", FailurePolicy.ALL),
-            ("replica", FailurePolicy.ANY),
+            ("multi_agent", SuccessPolicy.ANY),
+            ("multi_agent", SuccessPolicy.ANY),
+            ("replica", SuccessPolicy.ANY),
+            ("replica", SuccessPolicy.ANY),
         ],
     )
     def test_parallel_stage_metadata_type_combinations(
-        self, parallel_type: str, failure_policy: FailurePolicy
+        self, parallel_type: str, success_policy: SuccessPolicy
     ) -> None:
         """Test parallel stage metadata with different type and policy combinations."""
         metadata = ParallelStageMetadata(
             parent_stage_execution_id="exec-combo",
             parallel_type=parallel_type,
-            failure_policy=failure_policy,
+            success_policy=success_policy,
             started_at_us=now_us(),
             completed_at_us=now_us() + 5_000_000,
             agent_metadatas=[]
         )
         
         assert metadata.parallel_type == parallel_type
-        assert metadata.failure_policy == failure_policy
+        assert metadata.success_policy == success_policy
 
 
 @pytest.mark.unit
@@ -269,7 +269,7 @@ class TestParallelStageResult:
         metadata = ParallelStageMetadata(
             parent_stage_execution_id="exec-result-1",
             parallel_type="multi_agent",
-            failure_policy=FailurePolicy.ALL,
+            success_policy=SuccessPolicy.ANY,
             started_at_us=timestamp - 5_000_000,
             completed_at_us=timestamp,
             agent_metadatas=[
@@ -328,7 +328,7 @@ class TestParallelStageResult:
         metadata = ParallelStageMetadata(
             parent_stage_execution_id="exec-partial",
             parallel_type="multi_agent",
-            failure_policy=FailurePolicy.ANY,
+            success_policy=SuccessPolicy.ANY,
             started_at_us=timestamp - 5_000_000,
             completed_at_us=timestamp,
             agent_metadatas=[
@@ -392,7 +392,7 @@ class TestParallelStageResult:
         metadata = ParallelStageMetadata(
             parent_stage_execution_id="exec-replicas",
             parallel_type="replica",
-            failure_policy=FailurePolicy.ALL,
+            success_policy=SuccessPolicy.ANY,
             started_at_us=timestamp - 10_000_000,
             completed_at_us=timestamp,
             agent_metadatas=[
@@ -445,7 +445,7 @@ class TestParallelStageResult:
         metadata = ParallelStageMetadata(
             parent_stage_execution_id="exec-all-fail",
             parallel_type="multi_agent",
-            failure_policy=FailurePolicy.ALL,
+            success_policy=SuccessPolicy.ANY,
             started_at_us=timestamp - 5_000_000,
             completed_at_us=timestamp,
             agent_metadatas=[
@@ -498,7 +498,7 @@ class TestParallelStageResult:
         metadata = ParallelStageMetadata(
             parent_stage_execution_id="exec-tokens",
             parallel_type="replica",
-            failure_policy=FailurePolicy.ALL,
+            success_policy=SuccessPolicy.ANY,
             started_at_us=timestamp - 5_000_000,
             completed_at_us=timestamp,
             agent_metadatas=[

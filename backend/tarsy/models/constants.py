@@ -81,15 +81,21 @@ class ParallelType(str, Enum):
         return [cls.MULTI_AGENT.value, cls.REPLICA.value]
 
 
-class FailurePolicy(str, Enum):
-    """Failure policy for parallel stage execution (EP-0030).
+class SuccessPolicy(str, Enum):
+    """Success policy for parallel stage execution (EP-0030).
     
-    Determines how to handle failures when multiple agents run in parallel:
+    Determines success criteria when multiple agents run in parallel:
     - ALL: All agents must succeed for the stage to succeed (strict)
-    - ANY: At least one agent must succeed for the stage to succeed (resilient)
+    - ANY: At least one agent must succeed for the stage to succeed (resilient, default)
+    
+    Note: Renamed from FailurePolicy for clarity. Old name still supported for backward compatibility.
     """
     ALL = "all"
     ANY = "any"
+
+
+# Backward compatibility alias
+FailurePolicy = SuccessPolicy
 
 
 class ProgressPhase(str, Enum):

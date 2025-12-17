@@ -408,7 +408,7 @@ stages:
       - name: "vm"
         llm_provider: "anthropic"
         iteration_strategy: "native-thinking"
-    failure_policy: "any"  # Continue if at least one succeeds
+    success_policy: "any"  # Continue if at least one succeeds
     synthesis:  # Optional synthesis configuration
       agent: "SynthesisAgent"  # Optional, defaults to SynthesisAgent
       iteration_strategy: "synthesis"  # or "synthesis-native-thinking"
