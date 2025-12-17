@@ -489,6 +489,104 @@ class TestStatusAggregation:
         actual_status = executor._aggregate_status(metadatas, policy)
         
         assert actual_status == expected_status
+    
+    @pytest.mark.parametrize(
+        "completed,failed,cancelled,paused,policy,expected_status",
+        [
+            # CANCELLED treated like FAILED for success_policy evaluation
+            # ANY policy with some CANCELLED
+            (1, 0, 1, 0, SuccessPolicy.ANY, StageStatus.COMPLETED),  # 1 success is enough
+            (0, 0, 3, 0, SuccessPolicy.ANY, StageStatus.FAILED),     # All cancelled = failed
+            (1, 1, 1, 0, SuccessPolicy.ANY, StageStatus.COMPLETED),  # Mixed but has success
+            
+            # ALL policy with CANCELLED
+            (2, 0, 1, 0, SuccessPolicy.ALL, StageStatus.FAILED),     # Any cancel = failed
+            (0, 1, 2, 0, SuccessPolicy.ALL, StageStatus.FAILED),     # Mixed failed+cancelled
+            
+            # PAUSED still takes priority over CANCELLED
+            (1, 0, 1, 1, SuccessPolicy.ANY, StageStatus.PAUSED),
+            (0, 1, 1, 1, SuccessPolicy.ALL, StageStatus.PAUSED),
+            
+            # Edge case: all types present
+            (1, 1, 1, 1, SuccessPolicy.ANY, StageStatus.PAUSED),  # Paused takes priority
+        ],
+    )
+    def test_status_aggregation_with_cancelled(
+        self, 
+        completed: int, 
+        failed: int, 
+        cancelled: int,
+        paused: int, 
+        policy: SuccessPolicy, 
+        expected_status: StageStatus
+    ):
+        """Test status aggregation with CANCELLED status included."""
+        metadatas = []
+        
+        for i in range(completed):
+            metadatas.append(
+                AgentExecutionMetadata(
+                    agent_name=f"agent-completed-{i}",
+                    llm_provider="openai",
+                    iteration_strategy="react",
+                    started_at_us=1000,
+                    completed_at_us=2000,
+                    status=StageStatus.COMPLETED,
+                    error_message=None,
+                    token_usage=None
+                )
+            )
+        
+        for i in range(failed):
+            metadatas.append(
+                AgentExecutionMetadata(
+                    agent_name=f"agent-failed-{i}",
+                    llm_provider="openai",
+                    iteration_strategy="react",
+                    started_at_us=1000,
+                    completed_at_us=2000,
+                    status=StageStatus.FAILED,
+                    error_message="Test error",
+                    token_usage=None
+                )
+            )
+        
+        for i in range(cancelled):
+            metadatas.append(
+                AgentExecutionMetadata(
+                    agent_name=f"agent-cancelled-{i}",
+                    llm_provider="openai",
+                    iteration_strategy="react",
+                    started_at_us=1000,
+                    completed_at_us=2000,
+                    status=StageStatus.CANCELLED,
+                    error_message="Cancelled by user",
+                    token_usage=None
+                )
+            )
+        
+        for i in range(paused):
+            metadatas.append(
+                AgentExecutionMetadata(
+                    agent_name=f"agent-paused-{i}",
+                    llm_provider="openai",
+                    iteration_strategy="react",
+                    started_at_us=1000,
+                    completed_at_us=2000,
+                    status=StageStatus.PAUSED,
+                    error_message=None,
+                    token_usage=None
+                )
+            )
+        
+        executor = ParallelStageExecutor(
+            agent_factory=Mock(),
+            settings=MockFactory.create_mock_settings(),
+            stage_manager=Mock()
+        )
+        actual_status = executor._aggregate_status(metadatas, policy)
+        
+        assert actual_status == expected_status
 
 
 @pytest.mark.unit

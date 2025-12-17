@@ -174,6 +174,100 @@ class TestCancelSessionEndpoint:
         assert data["success"] is True
         assert data["status"] == "canceling"
 
+    @pytest.mark.unit
+    def test_cancel_session_paused_cancels_immediately(
+        self, app, client, mock_history_service
+    ) -> None:
+        """Test that paused sessions are cancelled immediately without orphan detection."""
+        session_id = "paused-session"
+        
+        # Mock session in PAUSED state
+        mock_session = AlertSession(
+            session_id=session_id,
+            alert_type="kubernetes",
+            agent_type="KubernetesAgent",
+            status=AlertSessionStatus.PAUSED.value,
+            started_at_us=now_us(),
+            chain_id="chain-1"
+        )
+        mock_history_service.get_session.return_value = mock_session
+        mock_history_service.cancel_all_paused_stages = AsyncMock(return_value=2)
+        
+        app.dependency_overrides[get_history_service] = lambda: mock_history_service
+        
+        with patch('tarsy.services.events.event_helpers.publish_session_cancelled', new_callable=AsyncMock) as mock_cancelled:
+            response = client.post(f"/api/v1/history/sessions/{session_id}/cancel")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert "immediately" in data["message"].lower()
+        
+        # Verify session status was updated to CANCELLED
+        mock_history_service.update_session_status.assert_called_once()
+        call_kwargs = mock_history_service.update_session_status.call_args.kwargs
+        assert call_kwargs["status"] == AlertSessionStatus.CANCELLED.value
+        
+        # Verify paused stages were cancelled
+        mock_history_service.cancel_all_paused_stages.assert_called_once_with(session_id)
+        
+        # Verify cancellation event was published
+        mock_cancelled.assert_called_once_with(session_id)
+
+    @pytest.mark.unit
+    def test_cancel_session_paused_updates_all_paused_stages(
+        self, app, client, mock_history_service
+    ) -> None:
+        """Test that cancel_all_paused_stages is called for paused sessions."""
+        session_id = "paused-session-with-stages"
+        
+        mock_session = AlertSession(
+            session_id=session_id,
+            alert_type="kubernetes",
+            agent_type="KubernetesAgent",
+            status=AlertSessionStatus.PAUSED.value,
+            started_at_us=now_us(),
+            chain_id="chain-1"
+        )
+        mock_history_service.get_session.return_value = mock_session
+        mock_history_service.cancel_all_paused_stages = AsyncMock(return_value=3)  # 3 stages cancelled
+        
+        app.dependency_overrides[get_history_service] = lambda: mock_history_service
+        
+        with patch('tarsy.services.events.event_helpers.publish_session_cancelled', new_callable=AsyncMock):
+            response = client.post(f"/api/v1/history/sessions/{session_id}/cancel")
+        
+        assert response.status_code == 200
+        
+        # Verify cancel_all_paused_stages was called with correct session_id
+        mock_history_service.cancel_all_paused_stages.assert_called_once_with(session_id)
+
+    @pytest.mark.unit
+    def test_cancel_session_paused_publishes_cancelled_event(
+        self, app, client, mock_history_service
+    ) -> None:
+        """Test that publish_session_cancelled is called for paused session cancellation."""
+        session_id = "paused-session-event"
+        
+        mock_session = AlertSession(
+            session_id=session_id,
+            alert_type="kubernetes",
+            agent_type="KubernetesAgent",
+            status=AlertSessionStatus.PAUSED.value,
+            started_at_us=now_us(),
+            chain_id="chain-1"
+        )
+        mock_history_service.get_session.return_value = mock_session
+        mock_history_service.cancel_all_paused_stages = AsyncMock(return_value=1)
+        
+        app.dependency_overrides[get_history_service] = lambda: mock_history_service
+        
+        with patch('tarsy.services.events.event_helpers.publish_session_cancelled', new_callable=AsyncMock) as mock_event:
+            response = client.post(f"/api/v1/history/sessions/{session_id}/cancel")
+        
+        assert response.status_code == 200
+        mock_event.assert_called_once_with(session_id)
+
 
 class TestOrphanDetectionBackgroundTask:
     """Test suite for check_cancellation_completion background task."""

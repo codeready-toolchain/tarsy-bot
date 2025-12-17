@@ -409,7 +409,8 @@ class TestUpdateStageExecutionPaused:
             status=StageStatus.ACTIVE.value,
             started_at_us=1000000,
             completed_at_us=None,
-            current_iteration=None
+            current_iteration=None,
+            paused_at_us=None
         )
         
         history_service = Mock()
@@ -438,6 +439,49 @@ class TestUpdateStageExecutionPaused:
             assert stage_exec.current_iteration == 5
             assert stage_exec.stage_output is not None
             assert stage_exec.completed_at_us is None  # Not completed yet
+
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_paused_sets_paused_at_us(self):
+        """Test that paused_at_us is set when stage is paused."""
+        stage_exec = SimpleNamespace(
+            session_id="session-1",
+            stage_index=0,
+            stage_id="stage-id",
+            stage_name="test-stage",
+            status=StageStatus.ACTIVE.value,
+            started_at_us=1000000,
+            completed_at_us=None,
+            current_iteration=None,
+            paused_at_us=None
+        )
+        
+        history_service = Mock()
+        history_service.get_stage_execution = AsyncMock(return_value=stage_exec)
+        
+        manager = StageExecutionManager(history_service=history_service)
+        
+        before_pause = now_us()
+        paused_result = AgentExecutionResult(
+            status=StageStatus.PAUSED,
+            agent_name="TestAgent",
+            stage_name="test-stage",
+            timestamp_us=before_pause,
+            result_summary="Paused at iteration 3",
+            paused_conversation_state={"messages": []},
+            error_message=None
+        )
+        
+        with patch('tarsy.hooks.hook_context.stage_execution_context') as mock_context:
+            mock_context.return_value.__aenter__ = AsyncMock()
+            mock_context.return_value.__aexit__ = AsyncMock()
+            
+            await manager.update_stage_execution_paused("exec-123", 3, paused_result)
+        
+        after_pause = now_us()
+        
+        # Verify paused_at_us was set to a recent timestamp (within 1 second)
+        assert stage_exec.paused_at_us is not None
+        assert before_pause <= stage_exec.paused_at_us <= after_pause
     
     @pytest.mark.asyncio
     async def test_update_stage_execution_paused_fails_when_history_disabled(self):
