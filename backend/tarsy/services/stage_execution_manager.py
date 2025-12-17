@@ -311,6 +311,7 @@ class StageExecutionManager:
             # Update to paused status with iteration count
             existing_stage.status = StageStatus.PAUSED.value
             existing_stage.current_iteration = iteration
+            existing_stage.paused_at_us = now_us()  # Track when paused for accurate duration calculation
             # Don't set completed_at_us - stage is not complete
             # IMPORTANT: Save conversation state so resume can continue from where it left off
             if paused_result:

@@ -29,6 +29,7 @@ export const STAGE_STATUS = {
   PAUSED: 'paused',
   COMPLETED: 'completed',
   FAILED: 'failed',
+  CANCELLED: 'cancelled',
 } as const;
 
 export type StageStatus = typeof STAGE_STATUS[keyof typeof STAGE_STATUS];
@@ -98,6 +99,7 @@ export const ALL_SESSION_STATUSES: SessionStatus[] = [
 export const TERMINAL_STAGE_STATUSES: StageStatus[] = [
   STAGE_STATUS.COMPLETED,
   STAGE_STATUS.FAILED,
+  STAGE_STATUS.CANCELLED,
 ];
 
 export const ACTIVE_STAGE_STATUSES: StageStatus[] = [

@@ -789,39 +789,47 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                     {session.pause_metadata?.message || 'Session is paused and awaiting action.'}
                   </Alert>
                   
-                  <Button
-                    variant="contained"
-                    size="large"
-                    onClick={handleResumeClick}
-                    disabled={isResuming || isCanceling || sessionIsCanceling}
-                    aria-label={isResuming ? "Resuming session" : "Resume paused session"}
-                    sx={{
-                      minWidth: 180,
-                      textTransform: 'none',
-                      fontWeight: 600,
-                      fontSize: '0.95rem',
-                      py: 1,
-                      px: 2.5,
-                      backgroundColor: 'success.main',
-                      color: 'white',
-                      '&:hover': {
-                        backgroundColor: 'success.dark',
-                      },
-                      transition: 'all 0.2s ease-in-out',
-                    }}
+                  <Tooltip 
+                    title="Resumes all paused agents in this session"
+                    placement="top"
+                    arrow
                   >
-                    {isResuming ? (
-                      <CircularProgress size={18} color="inherit" sx={{ mr: 1 }} />
-                    ) : (
-                      <PlayArrow 
-                        sx={{ 
-                          mr: 1,
-                          fontSize: '1.2rem',
-                        }} 
-                      />
-                    )}
-                    {isResuming ? 'RESUMING...' : 'RESUME SESSION'}
-                  </Button>
+                    <span>
+                      <Button
+                        variant="contained"
+                        size="large"
+                        onClick={handleResumeClick}
+                        disabled={isResuming || isCanceling || sessionIsCanceling}
+                        aria-label={isResuming ? "Resuming session" : "Resume paused session"}
+                        sx={{
+                          minWidth: 180,
+                          textTransform: 'none',
+                          fontWeight: 600,
+                          fontSize: '0.95rem',
+                          py: 1,
+                          px: 2.5,
+                          backgroundColor: 'success.main',
+                          color: 'white',
+                          '&:hover': {
+                            backgroundColor: 'success.dark',
+                          },
+                          transition: 'all 0.2s ease-in-out',
+                        }}
+                      >
+                        {isResuming ? (
+                          <CircularProgress size={18} color="inherit" sx={{ mr: 1 }} />
+                        ) : (
+                          <PlayArrow 
+                            sx={{ 
+                              mr: 1,
+                              fontSize: '1.2rem',
+                            }} 
+                          />
+                        )}
+                        {isResuming ? 'RESUMING...' : 'RESUME SESSION'}
+                      </Button>
+                    </span>
+                  </Tooltip>
                   
                   {/* Resume Error Display */}
                   <ErrorAlert error={resumeError} />
@@ -830,43 +838,51 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
               
               {/* Cancel Button - Only for active sessions */}
               {canCancel && (
-                <Button
-                  variant="outlined"
-                  size="large"
-                  onClick={handleCancelClick}
-                  disabled={isCanceling || sessionIsCanceling || isResuming}
-                  aria-label={isCanceling || sessionIsCanceling ? "Canceling session" : "Cancel session"}
-                  sx={{
-                    minWidth: 180,
-                    textTransform: 'none',
-                    fontWeight: 600,
-                    fontSize: '0.95rem',
-                    py: 1,
-                    px: 2.5,
-                    backgroundColor: 'white',
-                    color: 'error.main',
-                    borderColor: 'error.main',
-                    borderWidth: 1.5,
-                    '&:hover': {
-                      backgroundColor: 'error.main',
-                      borderColor: 'error.main',
-                      color: 'white',
-                    },
-                    transition: 'all 0.2s ease-in-out',
-                  }}
+                <Tooltip
+                  title="Cancels entire session including all agents"
+                  placement="top"
+                  arrow
                 >
-                  {isCanceling || sessionIsCanceling ? (
-                    <CircularProgress size={18} color="inherit" sx={{ mr: 1 }} />
-                  ) : (
-                    <CancelOutlined 
-                      sx={{ 
-                        mr: 1,
-                        fontSize: '1.2rem',
-                      }} 
-                    />
-                  )}
-                  {isCanceling || sessionIsCanceling ? 'CANCELING...' : 'CANCEL SESSION'}
-                </Button>
+                  <span>
+                    <Button
+                      variant="outlined"
+                      size="large"
+                      onClick={handleCancelClick}
+                      disabled={isCanceling || sessionIsCanceling || isResuming}
+                      aria-label={isCanceling || sessionIsCanceling ? "Canceling session" : "Cancel session"}
+                      sx={{
+                        minWidth: 180,
+                        textTransform: 'none',
+                        fontWeight: 600,
+                        fontSize: '0.95rem',
+                        py: 1,
+                        px: 2.5,
+                        backgroundColor: 'white',
+                        color: 'error.main',
+                        borderColor: 'error.main',
+                        borderWidth: 1.5,
+                        '&:hover': {
+                          backgroundColor: 'error.main',
+                          borderColor: 'error.main',
+                          color: 'white',
+                        },
+                        transition: 'all 0.2s ease-in-out',
+                      }}
+                    >
+                      {isCanceling || sessionIsCanceling ? (
+                        <CircularProgress size={18} color="inherit" sx={{ mr: 1 }} />
+                      ) : (
+                        <CancelOutlined 
+                          sx={{ 
+                            mr: 1,
+                            fontSize: '1.2rem',
+                          }} 
+                        />
+                      )}
+                      {isCanceling || sessionIsCanceling ? 'CANCELING...' : 'CANCEL SESSION'}
+                    </Button>
+                  </span>
+                </Tooltip>
               )}
               
               {/* Re-submit Button - Only for terminal sessions */}

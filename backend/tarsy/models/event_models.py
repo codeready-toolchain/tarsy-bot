@@ -104,6 +104,16 @@ class SessionCancelledEvent(BaseEvent):
     status: Literal["cancelled"] = "cancelled"  # For instant client update
 
 
+class AgentCancelledEvent(BaseEvent):
+    """Individual parallel agent cancelled by user."""
+
+    type: Literal["agent.cancelled"] = "agent.cancelled"
+    session_id: str = Field(description="Session identifier")
+    execution_id: str = Field(description="Child stage execution ID that was cancelled")
+    agent_name: str = Field(description="Name of the agent that was cancelled")
+    parent_stage_execution_id: str = Field(description="Parent stage execution ID")
+
+
 # ===== Per-Session Detail Events (channel: 'session:{session_id}') =====
 
 

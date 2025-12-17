@@ -143,6 +143,7 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
             agent: stage.agent,
             status: stage.status,
             started_at_us: stage.started_at_us,
+            paused_at_us: stage.paused_at_us,
             completed_at_us: stage.completed_at_us,
             duration_ms: stage.duration_ms,
             stage_output: stage.stage_output,

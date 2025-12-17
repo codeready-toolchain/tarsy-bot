@@ -200,8 +200,9 @@ class StageExecution(SQLModel, table=True):
     agent: str = Field(description="Agent used for this stage")
     
     # Execution tracking
-    status: str = Field(description="Stage execution status (pending|active|completed|failed)")
+    status: str = Field(description="Stage execution status (pending|active|completed|failed|cancelled)")
     started_at_us: Optional[int] = Field(default=None, sa_column=Column(BIGINT), description="Stage start timestamp")
+    paused_at_us: Optional[int] = Field(default=None, sa_column=Column(BIGINT), description="Timestamp when stage was paused")
     completed_at_us: Optional[int] = Field(default=None, sa_column=Column(BIGINT), description="Stage completion timestamp")
     duration_ms: Optional[int] = Field(default=None, description="Stage execution duration")
     stage_output: Optional[dict] = Field(

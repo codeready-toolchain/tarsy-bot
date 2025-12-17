@@ -467,6 +467,40 @@ async def publish_session_cancelled(session_id: str) -> None:
         logger.warning(f"Failed to publish session.cancelled event: {e}")
 
 
+async def publish_agent_cancelled(
+    session_id: str,
+    execution_id: str,
+    agent_name: str,
+    parent_stage_execution_id: str
+) -> None:
+    """
+    Publish agent cancellation event to session-specific channel.
+
+    This notifies the UI that an individual parallel agent was cancelled.
+
+    Args:
+        session_id: Session identifier
+        execution_id: Child stage execution ID that was cancelled
+        agent_name: Name of the agent that was cancelled
+        parent_stage_execution_id: Parent stage execution ID
+    """
+    try:
+        async_session_factory = get_async_session_factory()
+        async with async_session_factory() as session:
+            from tarsy.models.event_models import AgentCancelledEvent
+            event = AgentCancelledEvent(
+                session_id=session_id,
+                execution_id=execution_id,
+                agent_name=agent_name,
+                parent_stage_execution_id=parent_stage_execution_id
+            )
+            # Publish to session-specific channel for real-time UI updates
+            await publish_event(session, f"session:{session_id}", event)
+            logger.info(f"[EVENT] Published agent.cancelled for {agent_name} (execution_id={execution_id})")
+    except Exception as e:
+        logger.warning(f"Failed to publish agent.cancelled event: {e}")
+
+
 async def publish_chat_created(
     session_id: str,
     chat_id: str,

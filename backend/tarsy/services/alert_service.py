@@ -21,13 +21,14 @@ from tarsy.integrations.mcp.client import MCPClient
 from tarsy.integrations.notifications.summarizer import ExecutiveSummaryAgent
 from tarsy.models.agent_config import ChainConfigModel
 from tarsy.models.agent_execution_result import AgentExecutionResult
-from tarsy.models.api_models import ChainExecutionResult
+from tarsy.models.api_models import CancelAgentResponse, ChainExecutionResult
 from tarsy.models.constants import (
     AlertSessionStatus,
     ChainStatus,
     ParallelType,
     ProgressPhase,
     StageStatus,
+    SuccessPolicy,
 )
 from tarsy.models.pause_metadata import PauseMetadata, PauseReason
 from tarsy.models.processing_context import ChainContext
@@ -388,7 +389,9 @@ class AlertService:
                 )
                 
                 # Publish progress update event for executive summary generation
-                from tarsy.services.events.event_helpers import publish_session_progress_update
+                from tarsy.services.events.event_helpers import (
+                    publish_session_progress_update,
+                )
                 await publish_session_progress_update(
                     chain_context.session_id,
                     phase=ProgressPhase.SUMMARIZING,
@@ -467,6 +470,202 @@ class AlertService:
                 except Exception as cleanup_error:
                     # Log but don't raise - cleanup errors shouldn't fail the session
                     logger.warning(f"Error closing session MCP client: {cleanup_error}")
+    
+    async def cancel_agent(
+        self,
+        session_id: str,
+        execution_id: str
+    ) -> CancelAgentResponse:
+        """
+        Cancel individual parallel agent and re-evaluate stage status.
+        
+        Steps:
+        1. Validate inputs and load child stage execution
+        2. Update child stage to CANCELLED status with paused_at_us as completed_at_us
+        3. Load all sibling stages (same parent_stage_execution_id)
+        4. Run _aggregate_status() logic on all children
+        5. Update parent stage status based on aggregation
+        6. Update session status if applicable
+        7. Publish events for real-time UI updates
+        
+        Args:
+            session_id: Session ID
+            execution_id: Child stage execution ID to cancel
+            
+        Returns:
+            CancelAgentResponse with success status and updated statuses
+            
+        Raises:
+            ValueError: If validation fails (not found, not paused, etc.)
+            Exception: If cancellation fails
+        """
+        if not self.history_service:
+            raise ValueError("History service not available")
+        
+        # Step 1: Validate session exists and is paused
+        session = self.history_service.get_session(session_id)
+        if not session:
+            raise ValueError(f"Session {session_id} not found")
+        
+        if session.status != AlertSessionStatus.PAUSED.value:
+            raise ValueError(f"Session {session_id} is not paused (status: {session.status})")
+        
+        # Step 2: Load child stage execution
+        child_stage = await self.history_service.get_stage_execution(execution_id)
+        if not child_stage:
+            raise ValueError(f"Stage execution {execution_id} not found")
+        
+        if child_stage.session_id != session_id:
+            raise ValueError(f"Stage execution {execution_id} does not belong to session {session_id}")
+        
+        if not child_stage.parent_stage_execution_id:
+            raise ValueError(f"Stage execution {execution_id} is not a child stage (no parent)")
+        
+        if child_stage.status != StageStatus.PAUSED.value:
+            raise ValueError(f"Stage execution {execution_id} is not paused (status: {child_stage.status})")
+        
+        logger.info(f"Canceling paused agent {child_stage.agent} (execution_id: {execution_id})")
+        
+        # Step 3: Update child stage to CANCELLED
+        child_stage.status = StageStatus.CANCELLED.value
+        child_stage.error_message = "Cancelled by user"
+        
+        # Use paused_at_us as completed_at_us for accurate duration
+        if child_stage.paused_at_us:
+            child_stage.completed_at_us = child_stage.paused_at_us
+        else:
+            # Fallback if paused_at_us is somehow None (shouldn't happen)
+            logger.warning(f"paused_at_us is None for {execution_id}, using now_us()")
+            child_stage.completed_at_us = now_us()
+        
+        # Calculate duration in milliseconds
+        if child_stage.started_at_us and child_stage.completed_at_us:
+            duration_us = child_stage.completed_at_us - child_stage.started_at_us
+            child_stage.duration_ms = int(duration_us / 1000)
+        
+        # Trigger hooks for child stage update
+        from tarsy.hooks.hook_context import stage_execution_context
+        async with stage_execution_context(child_stage):
+            pass
+        
+        # Step 4: Load all sibling stages for aggregation
+        all_children = await self.history_service.get_parallel_stage_children(
+            child_stage.parent_stage_execution_id
+        )
+        
+        # Step 5: Create metadata list for aggregation
+        # Transform StageExecution DB models → AgentExecutionMetadata for _aggregate_status()
+        # Only the 'status' field is critical for aggregation; other fields are informational
+        from tarsy.models.agent_execution_result import AgentExecutionMetadata
+        metadatas = []
+        for sibling in all_children:
+            metadata = AgentExecutionMetadata(
+                agent_name=sibling.agent,
+                llm_provider="unknown",  # Not used in aggregation logic
+                iteration_strategy="unknown",  # Not used in aggregation logic
+                started_at_us=sibling.started_at_us or 0,
+                completed_at_us=sibling.completed_at_us or 0,
+                status=StageStatus(sibling.status),  # ← Key field for aggregation
+                error_message=sibling.error_message,
+                token_usage=None
+            )
+            metadatas.append(metadata)
+        
+        # Step 6: Load parent stage to get success_policy
+        parent_stage = await self.history_service.get_stage_execution(
+            child_stage.parent_stage_execution_id
+        )
+        if not parent_stage:
+            raise Exception(f"Parent stage {child_stage.parent_stage_execution_id} not found")
+        
+        # Get success_policy from stage_output metadata if available
+        success_policy = SuccessPolicy.ANY  # Default
+        if parent_stage.stage_output and isinstance(parent_stage.stage_output, dict):
+            metadata_dict = parent_stage.stage_output.get("metadata", {})
+            if isinstance(metadata_dict, dict):
+                policy_str = metadata_dict.get("success_policy", "any")
+                try:
+                    success_policy = SuccessPolicy(policy_str)
+                except ValueError:
+                    success_policy = SuccessPolicy.ANY
+        
+        # Run aggregation logic
+        aggregated_status = self.parallel_executor._aggregate_status(metadatas, success_policy)
+        
+        logger.info(f"Aggregated status after cancel: {aggregated_status.value}")
+        
+        # Step 7: Update parent stage if status changed
+        if aggregated_status != StageStatus.PAUSED:
+            parent_stage.status = aggregated_status.value
+            if aggregated_status == StageStatus.COMPLETED:
+                parent_stage.completed_at_us = now_us()
+                # Calculate parent duration
+                if parent_stage.started_at_us:
+                    duration_us = parent_stage.completed_at_us - parent_stage.started_at_us
+                    parent_stage.duration_ms = int(duration_us / 1000)
+            elif aggregated_status == StageStatus.FAILED:
+                parent_stage.completed_at_us = now_us()
+                parent_stage.error_message = "Parallel stage failed after agent cancellation"
+                # Calculate parent duration
+                if parent_stage.started_at_us:
+                    duration_us = parent_stage.completed_at_us - parent_stage.started_at_us
+                    parent_stage.duration_ms = int(duration_us / 1000)
+            
+            # Trigger hooks for parent stage update
+            async with stage_execution_context(parent_stage):
+                pass
+        
+        # Step 8: Update session if stage completed
+        new_session_status = session.status
+        if aggregated_status == StageStatus.COMPLETED:
+            # Session can complete
+            new_session_status = AlertSessionStatus.COMPLETED.value
+            session.status = new_session_status
+            session.completed_at_us = now_us()
+            # Calculate session duration
+            if session.started_at_us:
+                duration_us = session.completed_at_us - session.started_at_us
+                session.duration_ms = int(duration_us / 1000)
+            
+            # Update session
+            self.history_service.update_alert_session(session)
+            
+            # Publish session completed event
+            from tarsy.services.events.event_helpers import publish_session_completed
+            await publish_session_completed(session_id)
+            
+        elif aggregated_status == StageStatus.FAILED:
+            # Session fails
+            new_session_status = AlertSessionStatus.FAILED.value
+            session.status = new_session_status
+            session.completed_at_us = now_us()
+            session.error_message = "Stage failed after agent cancellation"
+            # Calculate session duration
+            if session.started_at_us:
+                duration_us = session.completed_at_us - session.started_at_us
+                session.duration_ms = int(duration_us / 1000)
+            
+            # Update session
+            self.history_service.update_alert_session(session)
+            
+            # Publish session failed event
+            from tarsy.services.events.event_helpers import publish_session_failed
+            await publish_session_failed(session_id)
+        
+        # Step 9: Publish agent cancelled event
+        from tarsy.services.events.event_helpers import publish_agent_cancelled
+        await publish_agent_cancelled(
+            session_id=session_id,
+            execution_id=execution_id,
+            agent_name=child_stage.agent,
+            parent_stage_execution_id=child_stage.parent_stage_execution_id
+        )
+        
+        return CancelAgentResponse(
+            success=True,
+            session_status=new_session_status,
+            stage_status=aggregated_status.value
+        )
     
     async def resume_paused_session(self, session_id: str) -> str:
         """
@@ -549,7 +748,9 @@ class AlertService:
                     # Only parent parallel executions have ParallelStageResult; child executions have AgentExecutionResult
                     if stage_exec.parallel_type in ParallelType.parallel_values() and not stage_exec.parent_stage_execution_id:
                         # Reconstruct ParallelStageResult from stage_output
-                        from tarsy.models.agent_execution_result import ParallelStageResult
+                        from tarsy.models.agent_execution_result import (
+                            ParallelStageResult,
+                        )
                         result = ParallelStageResult.model_validate(stage_exec.stage_output)
                     else:
                         # Reconstruct AgentExecutionResult from stage_output
@@ -667,7 +868,10 @@ class AlertService:
                     for agent_result in parallel_result.results:
                         if agent_result.status == StageStatus.PAUSED:
                             # Found a paused agent - create pause metadata
-                            from tarsy.models.pause_metadata import PauseMetadata, PauseReason
+                            from tarsy.models.pause_metadata import (
+                                PauseMetadata,
+                                PauseReason,
+                            )
                             pause_meta = PauseMetadata(
                                 reason=PauseReason.MAX_ITERATIONS_REACHED,
                                 current_iteration=0,  # Not meaningful for parallel stages
@@ -685,7 +889,9 @@ class AlertService:
                     )
                     
                     # Publish pause event for dashboard updates
-                    from tarsy.services.events.event_helpers import publish_session_paused
+                    from tarsy.services.events.event_helpers import (
+                        publish_session_paused,
+                    )
                     await publish_session_paused(session_id)
                     
                     result = ChainExecutionResult(
@@ -720,7 +926,9 @@ class AlertService:
                 )
                 
                 # Publish progress update event for executive summary generation
-                from tarsy.services.events.event_helpers import publish_session_progress_update
+                from tarsy.services.events.event_helpers import (
+                    publish_session_progress_update,
+                )
                 await publish_session_progress_update(
                     session_id,
                     phase=ProgressPhase.SUMMARIZING,

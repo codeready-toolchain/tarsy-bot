@@ -60,6 +60,7 @@ class StageStatus(Enum):
     PAUSED = "paused"  # Waiting for user resume
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"  # User-initiated cancellation
     PARTIAL = "partial"  # Some results but with warnings/issues
 
 

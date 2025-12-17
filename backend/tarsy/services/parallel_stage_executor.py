@@ -143,8 +143,8 @@ class ParallelStageExecutor:
         
         Priority order:
         1. PAUSED: If any agent paused, whole stage is paused (enables resume)
-        2. SuccessPolicy.ALL: All must succeed (any failure = stage failure)
-        3. SuccessPolicy.ANY: At least one must succeed (all failures = stage failure)
+        2. SuccessPolicy.ALL: All must succeed (any failure/cancellation = stage failure)
+        3. SuccessPolicy.ANY: At least one must succeed (all failures/cancellations = stage failure)
         
         Args:
             metadatas: List of agent execution metadata
@@ -156,18 +156,22 @@ class ParallelStageExecutor:
         # Count by status
         completed_count = sum(1 for m in metadatas if m.status == StageStatus.COMPLETED)
         failed_count = sum(1 for m in metadatas if m.status == StageStatus.FAILED)
+        cancelled_count = sum(1 for m in metadatas if m.status == StageStatus.CANCELLED)
         paused_count = sum(1 for m in metadatas if m.status == StageStatus.PAUSED)
         
         # PAUSED takes priority over everything - if any agent paused, whole stage is paused
         if paused_count > 0:
             return StageStatus.PAUSED
         
+        # Treat CANCELLED same as FAILED for success_policy evaluation
+        non_success_count = failed_count + cancelled_count
+        
         # Apply success policy
         if success_policy == SuccessPolicy.ALL:
-            # ALL policy: all must succeed (any failure = stage failure)
-            return StageStatus.COMPLETED if failed_count == 0 else StageStatus.FAILED
+            # ALL policy: all must succeed (any failure/cancellation = stage failure)
+            return StageStatus.COMPLETED if non_success_count == 0 else StageStatus.FAILED
         else:  # SuccessPolicy.ANY
-            # ANY policy: at least one must succeed (all failures = stage failure)
+            # ANY policy: at least one must succeed (all failures/cancellations = stage failure)
             return StageStatus.COMPLETED if completed_count > 0 else StageStatus.FAILED
     
     async def _execute_parallel_stage(

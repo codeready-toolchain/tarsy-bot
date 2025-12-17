@@ -68,6 +68,7 @@ export interface StageExecution {
   agent: string;
   status: StageStatus;
   started_at_us: number | null;
+  paused_at_us: number | null;
   completed_at_us: number | null;
   duration_ms: number | null;
   stage_output: any | null;

@@ -14,7 +14,7 @@ from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query
 
-from tarsy.models.api_models import ErrorResponse
+from tarsy.models.api_models import CancelAgentResponse, ErrorResponse
 from tarsy.models.history_models import (
     DetailedSession,
     FilterOptions,
@@ -598,6 +598,54 @@ async def cancel_session(
         "message": "Cancellation request sent",
         "status": "canceling"
     }
+
+
+@router.post(
+    "/sessions/{session_id}/stages/{execution_id}/cancel",
+    summary="Cancel Individual Parallel Agent",
+    description="Cancel a specific paused agent in a parallel stage",
+    response_model=CancelAgentResponse
+)
+async def cancel_agent(
+    *,
+    session_id: str = Path(..., description="Session ID"),
+    execution_id: str = Path(..., description="Child stage execution ID to cancel")
+) -> CancelAgentResponse:
+    """
+    Cancel an individual parallel agent.
+    
+    Validates:
+    - Session exists and is PAUSED
+    - execution_id belongs to this session
+    - Stage is a child stage (has parent_stage_execution_id)
+    - Child stage status is PAUSED
+    
+    Updates:
+    - Child stage status → CANCELLED with "Cancelled by user"
+    - Re-evaluates parent stage based on success_policy
+    - Updates session if success_policy satisfied
+    
+    Returns:
+        CancelAgentResponse with success status and updated statuses
+        
+    Raises:
+        HTTPException: 404 if not found, 400 if invalid state, 500 on error
+    """
+    from tarsy.services.alert_service import get_alert_service
+    
+    alert_service = get_alert_service()
+    if not alert_service:
+        raise HTTPException(status_code=500, detail="Alert service not available")
+    
+    try:
+        result = await alert_service.cancel_agent(session_id, execution_id)
+        return result
+    except ValueError as e:
+        # Validation errors (not found, wrong state, etc.)
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.error(f"Failed to cancel agent {execution_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to cancel agent")
 
 
 @router.post(
