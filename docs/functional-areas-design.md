@@ -448,7 +448,7 @@ stages:
 
 **Key Parallel Execution Features**:
 - **Automatic synthesis**: SynthesisAgent automatically synthesizes parallel results
-- **Failure policies**: `all` (strict) or `any` (resilient) success requirements
+- **Success policies (success_policy)**: `all` (strict) or `any` (resilient) success requirements
 - **Per-agent configuration**: Each agent can specify its own LLM provider and iteration strategy
 - **Pause/Resume support**: Individual agents can pause; resume re-executes only paused agents
 - **Rich investigation history**: Full conversation history (thoughts, tool observations) for synthesis

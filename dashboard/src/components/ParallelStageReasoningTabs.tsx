@@ -307,7 +307,7 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
         const hasDbItems = execution.items.length > 0;
         const hasStreamingItems = executionStreamingItems.length > 0;
         const isFailed = execution.stageExecution.status === 'failed';
-        const hasError = isFailed && execution.stageExecution.error_message;
+        const hasError = isFailed && Boolean(execution.stageExecution.error_message);
         
         return (
           <TabPanel key={execution.executionId} value={selectedTab} index={index}>

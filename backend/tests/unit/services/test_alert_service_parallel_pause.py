@@ -202,7 +202,7 @@ class TestStatusAggregationLogic:
         completed_count = 3
         failed_count = 0
         paused_count = 0
-        success_policy = SuccessPolicy.ANY
+        success_policy = SuccessPolicy.ALL
         
         if paused_count > 0:
             overall_status = StageStatus.PAUSED

@@ -120,7 +120,7 @@ class TestChainStageConfigModelParallelValidation:
         assert stage.llm_provider == "openai"
 
     def test_stage_with_success_policy_any(self) -> None:
-        """Test stage with 'any' failure policy (partial success allowed)."""
+        """Test stage with 'any' success policy (partial success allowed)."""
         stage = ChainStageConfigModel(
             name="investigation",
             agents=[
@@ -283,9 +283,9 @@ class TestChainStageConfigModelParallelValidation:
         assert stage.llm_provider == "openai"
         assert stage.iteration_strategy == "react"
 
-    @pytest.mark.parametrize("policy", [SuccessPolicy.ANY, SuccessPolicy.ANY])
-    def test_stage_failure_policies(self, policy: SuccessPolicy) -> None:
-        """Test stage with different failure policies."""
+    @pytest.mark.parametrize("policy", [SuccessPolicy.ANY, SuccessPolicy.ALL])
+    def test_stage_success_policies(self, policy: SuccessPolicy) -> None:
+        """Test stage with different success policies."""
         stage = ChainStageConfigModel(
             name="policy-test",
             agents=[

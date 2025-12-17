@@ -201,14 +201,14 @@ class TestParallelPartialLLMFailureE2E(ParallelTestBase):
         Test parallel stage with partial failure (one agent fails, one succeeds).
 
         This tests the behavior when only one agent in a parallel stage fails.
-        Based on success_policy, the overall stage should still fail since
-        the default policy requires all agents to succeed.
+        For this test chain, success_policy is set to "all" in the YAML configuration,
+        so the overall stage should fail even with partial success.
 
         Flow:
         1. POST alert to /api/v1/alerts -> queued
         2. KubernetesAgent (Gemini) fails
         3. LogAgent (LangChain) succeeds
-        4. Overall parallel stage fails (default success_policy = all_must_succeed)
+        4. Overall parallel stage fails (this chain's success_policy="all" requires all agents to succeed)
         5. Session should be marked as FAILED
 
         This test verifies:
@@ -326,7 +326,7 @@ Final Answer: Log analysis shows database connection timeout errors."""
                         print("🔍 Step 3: Verifying results...")
                         assert final_session_id == session_id, "Session ID mismatch"
                         
-                        # With default success_policy (all_must_succeed), partial failure = overall failure
+                        # With this chain's success_policy="all", partial failure = overall failure
                         assert final_status == "failed", f"Expected 'failed' status, got '{final_status}'"
                         print(f"✅ Session correctly marked as FAILED: {session_id}")
 

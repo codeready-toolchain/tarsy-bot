@@ -221,9 +221,9 @@ class TestParallelStageMetadata:
         "parallel_type,success_policy",
         [
             ("multi_agent", SuccessPolicy.ANY),
-            ("multi_agent", SuccessPolicy.ANY),
+            ("multi_agent", SuccessPolicy.ALL),
             ("replica", SuccessPolicy.ANY),
-            ("replica", SuccessPolicy.ANY),
+            ("replica", SuccessPolicy.ALL),
         ],
     )
     def test_parallel_stage_metadata_type_combinations(

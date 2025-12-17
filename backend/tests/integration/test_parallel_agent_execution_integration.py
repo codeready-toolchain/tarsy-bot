@@ -355,7 +355,7 @@ class TestParallelAgentExecutionIntegration:
         metadata = ParallelStageMetadata(
             parent_stage_execution_id="exec-456",
             parallel_type="multi_agent",
-            success_policy=SuccessPolicy.ANY,
+            success_policy=SuccessPolicy.ALL,
             started_at_us=timestamp - 5_000_000,
             completed_at_us=timestamp,
             agent_metadatas=[
