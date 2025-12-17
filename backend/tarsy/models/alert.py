@@ -86,8 +86,8 @@ class ProcessingAlert(BaseModel):
         description="Alert type (always set)"
     )
     severity: str = Field(
-        ..., 
-        description="Normalized severity (always set, default: 'warning')"
+        default="warning",
+        description="DEPRECATED: Legacy field, will be removed in future version. Default: 'warning'"
     )
     timestamp: int = Field(
         ..., 
@@ -95,7 +95,7 @@ class ProcessingAlert(BaseModel):
     )
     environment: str = Field(
         default="production",
-        description="Environment (from client data or default)"
+        description="DEPRECATED: Legacy field, will be removed in future version. Default: 'production'"
     )
     runbook_url: Optional[str] = Field(
         None, 

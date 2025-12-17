@@ -9,9 +9,14 @@ performance and consistency with the rest of the system.
 """
 
 import asyncio
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import httpx
+
+if TYPE_CHECKING:
+    from tarsy.models.agent_config import ChainStageConfigModel
+    from tarsy.models.agent_execution_result import ParallelStageResult
+    from tarsy.models.db_models import AlertSession, StageExecution
 
 from tarsy.agents.exceptions import SessionPaused
 from tarsy.config.agent_config import ConfigurationError, ConfigurationLoader
@@ -621,20 +626,26 @@ class AlertService:
             async with stage_execution_context(parent_stage):
                 pass
         
-        # Step 8: Update session if stage completed
+        # Step 8: Update session if stage completed or failed
         new_session_status = session.status
         if aggregated_status == StageStatus.COMPLETED:
-            # Session can complete
-            new_session_status = AlertSessionStatus.COMPLETED.value
-            session.status = new_session_status
-            session.completed_at_us = now_us()
+            # Parallel stage completed - need to run synthesis and continue chain
+            # Don't mark session as completed yet; trigger chain continuation
+            logger.info(f"Parallel stage completed after agent cancellation - triggering chain continuation")
             
-            # Update session
-            self.session_manager.update_session_status(session_id, new_session_status)
+            # Change session status to IN_PROGRESS to allow continuation
+            self.session_manager.update_session_status(session_id, AlertSessionStatus.IN_PROGRESS.value)
             
-            # Publish session completed event
-            from tarsy.services.events.event_helpers import publish_session_completed
-            await publish_session_completed(session_id)
+            # Trigger background task to continue chain execution (synthesis + remaining stages)
+            import asyncio
+            asyncio.create_task(self._continue_after_parallel_completion(session_id, parent_stage.execution_id))
+            
+            # Return early - chain continuation will handle final session status
+            return CancelAgentResponse(
+                success=True,
+                session_status=AlertSessionStatus.IN_PROGRESS.value,
+                stage_status=aggregated_status.value
+            )
             
         elif aggregated_status == StageStatus.FAILED:
             # Check if all non-completed agents were cancelled
@@ -688,6 +699,244 @@ class AlertService:
             stage_status=aggregated_status.value
         )
     
+    async def _continue_after_parallel_completion(
+        self,
+        session_id: str,
+        parent_stage_execution_id: str
+    ) -> None:
+        """
+        Continue chain execution after parallel stage completes via agent cancellation.
+        
+        This runs synthesis on the completed parallel stage and continues to any remaining stages.
+        Reuses the same continuation logic as resume_paused_session by treating the completed
+        parallel stage similarly to a resumed parallel stage.
+        
+        Args:
+            session_id: Session ID
+            parent_stage_execution_id: Parent parallel stage execution ID that just completed
+        """
+        session_mcp_client = None
+        
+        try:
+            logger.info(f"Starting chain continuation after parallel stage completion: {session_id}")
+            
+            # Get session and find the completed parallel stage
+            session = self.history_service.get_session(session_id)
+            if not session:
+                raise Exception(f"Session {session_id} not found")
+            
+            stage_executions = await self.history_service.get_stage_executions(session_id)
+            
+            completed_parent_stage = None
+            for stage_exec in stage_executions:
+                if stage_exec.execution_id == parent_stage_execution_id:
+                    completed_parent_stage = stage_exec
+                    break
+            
+            if not completed_parent_stage:
+                raise Exception(f"Parent stage {parent_stage_execution_id} not found")
+            
+            # Reconstruct context and chain definition
+            chain_context, chain_definition = await self._reconstruct_session_context(
+                session, stage_executions, completed_parent_stage.stage_name
+            )
+            
+            # Initialize MCP client
+            session_mcp_client = await self.mcp_client_factory.create_client()
+            
+            # Find stage index
+            stage_index = completed_parent_stage.stage_index
+            stage_config = chain_definition.stages[stage_index]
+            
+            # Reconstruct ParallelStageResult from completed parent stage
+            from tarsy.models.agent_execution_result import ParallelStageResult
+            parallel_result = ParallelStageResult.model_validate(completed_parent_stage.stage_output)
+            
+            # Continue from parallel completion (synthesis + remaining stages)
+            await self._continue_from_parallel_completion(
+                session_id=session_id,
+                parallel_result=parallel_result,
+                completed_parent_stage=completed_parent_stage,
+                stage_config=stage_config,
+                stage_index=stage_index,
+                stage_executions=stage_executions,
+                chain_context=chain_context,
+                chain_definition=chain_definition,
+                session_mcp_client=session_mcp_client
+            )
+                
+        except Exception as e:
+            logger.error(f"Failed to continue chain after parallel completion: {e}", exc_info=True)
+            self.session_manager.update_session_status(
+                session_id,
+                AlertSessionStatus.FAILED.value,
+                error_message=f"Failed to continue after parallel completion: {str(e)}"
+            )
+            from tarsy.services.events.event_helpers import publish_session_failed
+            await publish_session_failed(session_id)
+        finally:
+            if session_mcp_client:
+                await session_mcp_client.cleanup()
+    
+    async def _reconstruct_session_context(
+        self,
+        session: "AlertSession",
+        stage_executions: list["StageExecution"],
+        current_stage_name: str
+    ) -> tuple[ChainContext, ChainConfigModel]:
+        """
+        Reconstruct ChainContext and ChainDefinition from session data.
+        
+        Args:
+            session: AlertSession object
+            stage_executions: List of stage executions for this session
+            current_stage_name: Name of the current stage
+            
+        Returns:
+            Tuple of (ChainContext, ChainConfigModel)
+        """
+        from tarsy.models.alert import ProcessingAlert
+        
+        # Reconstruct ProcessingAlert
+        processing_alert = ProcessingAlert(
+            alert_type=session.alert_type or "unknown",
+            timestamp=session.started_at_us,
+            runbook_url=session.runbook_url,
+            alert_data=session.alert_data
+        )
+        
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id=session.session_id,
+            current_stage_name=current_stage_name,
+            author=session.author
+        )
+        
+        # Restore MCP selection if present
+        if session.mcp_selection:
+            from tarsy.models.mcp_selection_models import MCPSelectionConfig
+            chain_context.mcp = MCPSelectionConfig.model_validate(session.mcp_selection)
+        
+        # Reconstruct stage results from completed stages (and paused for resume scenarios)
+        for stage_exec in stage_executions:
+            if stage_exec.stage_output and stage_exec.status in [StageStatus.COMPLETED.value, StageStatus.PAUSED.value]:
+                if stage_exec.parallel_type in ParallelType.parallel_values() and not stage_exec.parent_stage_execution_id:
+                    from tarsy.models.agent_execution_result import ParallelStageResult
+                    result = ParallelStageResult.model_validate(stage_exec.stage_output)
+                else:
+                    result = AgentExecutionResult.model_validate(stage_exec.stage_output)
+                chain_context.add_stage_result(stage_exec.execution_id, result)
+                
+                if stage_exec.status == StageStatus.PAUSED.value:
+                    logger.info(f"Restored paused stage '{stage_exec.stage_name}' with execution_id {stage_exec.execution_id}")
+        
+        # Get chain definition
+        chain_definition = session.chain_config
+        if not chain_definition:
+            raise Exception("Chain definition not found in session")
+        
+        return chain_context, chain_definition
+    
+    async def _continue_from_parallel_completion(
+        self,
+        session_id: str,
+        parallel_result: "ParallelStageResult",
+        completed_parent_stage: "StageExecution",
+        stage_config: "ChainStageConfigModel",
+        stage_index: int,
+        stage_executions: list["StageExecution"],
+        chain_context: ChainContext,
+        chain_definition: ChainConfigModel,
+        session_mcp_client: MCPClient
+    ) -> None:
+        """
+        Continue chain execution after a parallel stage completes.
+        
+        Runs synthesis on the completed parallel stage and continues to any remaining stages.
+        
+        Args:
+            session_id: Session ID
+            parallel_result: Result from the completed parallel stage
+            completed_parent_stage: The completed parallel parent stage execution
+            stage_config: Stage configuration
+            stage_index: Index of the stage in chain definition
+            stage_executions: All stage executions for this session
+            chain_context: Reconstructed chain context
+            chain_definition: Chain definition
+            session_mcp_client: Session-scoped MCP client
+        """
+        logger.info(f"Running synthesis for completed parallel stage: {completed_parent_stage.stage_name}")
+        
+        # Get count of non-child stages for synthesis index
+        non_child_stages = [s for s in stage_executions if s.parent_stage_execution_id is None]
+        synthesis_index = len(non_child_stages)
+        
+        synthesis_execution_id, synthesis_result = await self.parallel_executor.synthesize_parallel_results(
+            parallel_result, chain_context, session_mcp_client, stage_config, chain_definition, synthesis_index
+        )
+        chain_context.add_stage_result(synthesis_execution_id, synthesis_result)
+        
+        # Check if there are more stages after this
+        next_stage_idx = stage_index + 1
+        if next_stage_idx < len(chain_definition.stages):
+            # More stages to execute
+            logger.info(f"Continuing to next stage: {chain_definition.stages[next_stage_idx].name}")
+            chain_context.current_stage_name = chain_definition.stages[next_stage_idx].name
+            
+            result = await self._execute_chain_stages(
+                chain_definition,
+                chain_context,
+                session_mcp_client
+            )
+            
+            # Extract final analysis from result
+            if result.success:
+                final_result = result.result if isinstance(result.result, str) else result.result.result_summary
+                
+                # Generate executive summary
+                summary = await self.final_analysis_summarizer.generate_executive_summary(
+                    content=final_result,
+                    session_id=session_id,
+                    provider=chain_definition.llm_provider
+                )
+                
+                self.session_manager.update_session_status(
+                    session_id,
+                    AlertSessionStatus.COMPLETED.value,
+                    final_analysis=final_result,
+                    final_analysis_summary=summary
+                )
+                from tarsy.services.events.event_helpers import publish_session_completed
+                await publish_session_completed(session_id)
+            else:
+                self.session_manager.update_session_status(
+                    session_id,
+                    AlertSessionStatus.FAILED.value,
+                    error_message=result.error or "Chain execution failed"
+                )
+                from tarsy.services.events.event_helpers import publish_session_failed
+                await publish_session_failed(session_id)
+        else:
+            # No more stages - this was the last one, extract final analysis
+            logger.info("No more stages after synthesis - session complete")
+            final_result = synthesis_result.result_summary
+            
+            # Generate executive summary
+            summary = await self.final_analysis_summarizer.generate_executive_summary(
+                content=final_result,
+                session_id=session_id,
+                provider=chain_definition.llm_provider
+            )
+            
+            self.session_manager.update_session_status(
+                session_id,
+                AlertSessionStatus.COMPLETED.value,
+                final_analysis=final_result,
+                final_analysis_summary=summary
+            )
+            from tarsy.services.events.event_helpers import publish_session_completed
+            await publish_session_completed(session_id)
+    
     async def resume_paused_session(self, session_id: str) -> str:
         """
         Resume a paused session from where it left off.
@@ -734,59 +983,19 @@ class AlertService:
             
             logger.info(f"Found paused stage: {paused_stage.stage_name} at iteration {paused_stage.current_iteration}")
             
-            # Step 3: Reconstruct ChainContext from session data
-            from tarsy.models.alert import ProcessingAlert
+            # Step 3: Reconstruct ChainContext from session data (using helper)
+            chain_context, chain_definition = await self._reconstruct_session_context(
+                session, stage_executions, paused_stage.stage_name
+            )
             
-            # Reconstruct ProcessingAlert from session fields
-            # Note: session.alert_data only contains the nested alert dict, not the full ProcessingAlert
+            # Get ProcessingAlert for runbook handling
+            from tarsy.models.alert import ProcessingAlert
             processing_alert = ProcessingAlert(
                 alert_type=session.alert_type or "unknown",
-                severity=session.alert_data.get("severity", "warning"),  # Extract from alert_data or use default
                 timestamp=session.started_at_us,
-                environment=session.alert_data.get("environment", "production"),
                 runbook_url=session.runbook_url,
                 alert_data=session.alert_data
             )
-            
-            chain_context = ChainContext.from_processing_alert(
-                processing_alert=processing_alert,
-                session_id=session_id,
-                current_stage_name=paused_stage.stage_name,
-                author=session.author
-            )
-            
-            # Restore MCP selection if it was present
-            if session.mcp_selection:
-                from tarsy.models.mcp_selection_models import MCPSelectionConfig
-                chain_context.mcp = MCPSelectionConfig.model_validate(session.mcp_selection)
-            
-            # Reconstruct stage outputs from completed AND paused stages
-            # UNIVERSAL APPROACH: Always use execution_id as key (consistent lookup for all scenarios)
-            # NOTE: Parallel stages have ParallelStageResult, not AgentExecutionResult
-            for stage_exec in stage_executions:
-                if stage_exec.stage_output and stage_exec.status in [StageStatus.COMPLETED.value, StageStatus.PAUSED.value]:
-                    # Check if this is a parallel stage (parent execution)
-                    # Only parent parallel executions have ParallelStageResult; child executions have AgentExecutionResult
-                    if stage_exec.parallel_type in ParallelType.parallel_values() and not stage_exec.parent_stage_execution_id:
-                        # Reconstruct ParallelStageResult from stage_output
-                        from tarsy.models.agent_execution_result import (
-                            ParallelStageResult,
-                        )
-                        result = ParallelStageResult.model_validate(stage_exec.stage_output)
-                    else:
-                        # Reconstruct AgentExecutionResult from stage_output
-                        result = AgentExecutionResult.model_validate(stage_exec.stage_output)
-                    
-                    # UNIVERSAL: Always use execution_id as key (works for all cases)
-                    chain_context.add_stage_result(stage_exec.execution_id, result)
-                    
-                    if stage_exec.status == StageStatus.PAUSED.value:
-                        logger.info(f"Restored paused stage '{stage_exec.stage_name}' with execution_id {stage_exec.execution_id}")
-            
-            # Step 4: Get chain definition
-            chain_definition = session.chain_config
-            if not chain_definition:
-                raise Exception("Chain definition not found in session")
             
             chain_context.set_chain_context(chain_definition.chain_id, paused_stage.stage_name)
             
@@ -834,50 +1043,30 @@ class AlertService:
                 
                 # Check if we need to continue to next stages
                 if parallel_result.status == StageStatus.COMPLETED:
-                    # ALWAYS invoke synthesis after parallel stage completion
-                    logger.info(f"Invoking automatic synthesis for resumed parallel stage '{paused_stage.stage_name}'")
+                    # Use helper method to handle synthesis + continuation
+                    logger.info(f"Parallel stage completed after resume - continuing with synthesis")
                     
-                    # Count existing stage executions to determine correct synthesis index
-                    # This accounts for all stages executed so far (including any previous synthesis stages)
+                    # Get fresh stage executions for synthesis index calculation
                     existing_stages = await self.history_service.get_stage_executions(session_id)
-                    # Filter to non-parallel-child stages (parents and single stages only)
-                    non_child_stages = [s for s in existing_stages if s.parent_stage_execution_id is None]
-                    synthesis_index = len(non_child_stages)
+                    stage_config = chain_definition.stages[stage_index]
                     
-                    try:
-                        stage_config = chain_definition.stages[stage_index]
-                        synthesis_execution_id, synthesis_result = await self.parallel_executor.synthesize_parallel_results(
-                            parallel_result, chain_context, session_mcp_client, stage_config, chain_definition, synthesis_index
-                        )
-                        # Add synthesis result using execution_id as key
-                        chain_context.add_stage_result(synthesis_execution_id, synthesis_result)
-                    except Exception as e:
-                        logger.error(f"Automatic synthesis failed for resumed parallel stage: {e}", exc_info=True)
+                    # Note: This is called in async context, not returned
+                    # We still need to capture the result for the rest of the resume flow
+                    # So we'll inline the continuation logic but keep it consistent
+                    await self._continue_from_parallel_completion(
+                        session_id=session_id,
+                        parallel_result=parallel_result,
+                        completed_parent_stage=paused_stage,
+                        stage_config=stage_config,
+                        stage_index=stage_index,
+                        stage_executions=existing_stages,
+                        chain_context=chain_context,
+                        chain_definition=chain_definition,
+                        session_mcp_client=session_mcp_client
+                    )
                     
-                    # Check if there are more stages after the resumed parallel stage
-                    next_stage_idx = stage_index + 1
-                    if next_stage_idx < len(chain_definition.stages):
-                        # There are more stages - update current_stage_name and continue
-                        chain_context.current_stage_name = chain_definition.stages[next_stage_idx].name
-                        
-                        result = await self._execute_chain_stages(
-                            chain_definition,
-                            chain_context,
-                            session_mcp_client
-                        )
-                    else:
-                        # No more stages - extract final analysis
-                        logger.info("Parallel stage was last stage, extracting final analysis from synthesis")
-                        
-                        # Extract final analysis from stages (includes synthesis result)
-                        final_analysis = self._extract_final_analysis_from_stages(chain_context)
-                        
-                        result = ChainExecutionResult(
-                            status=ChainStatus.COMPLETED,
-                            stage_results=[],
-                            final_analysis=final_analysis,
-                            timestamp_us=now_us()
-                        )
+                    # Return early - continuation helper handles everything
+                    return "Session completed after parallel stage continuation"
                 elif parallel_result.status == StageStatus.PAUSED:
                     # Paused again - need to update session status and publish event
                     # (unlike normal _execute_chain_stages path, parallel resume doesn't do this automatically)
