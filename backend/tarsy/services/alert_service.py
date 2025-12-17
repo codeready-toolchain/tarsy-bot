@@ -543,6 +543,9 @@ class AlertService:
             duration_us = child_stage.completed_at_us - child_stage.started_at_us
             child_stage.duration_ms = int(duration_us / 1000)
         
+        # Persist the updated child stage
+        await self.history_service.update_stage_execution(child_stage)
+        
         # Trigger hooks for child stage update
         from tarsy.hooks.hook_context import stage_execution_context
         async with stage_execution_context(child_stage):
@@ -610,6 +613,9 @@ class AlertService:
                 if parent_stage.started_at_us:
                     duration_us = parent_stage.completed_at_us - parent_stage.started_at_us
                     parent_stage.duration_ms = int(duration_us / 1000)
+            
+            # Persist the updated parent stage
+            await self.history_service.update_stage_execution(parent_stage)
             
             # Trigger hooks for parent stage update
             async with stage_execution_context(parent_stage):

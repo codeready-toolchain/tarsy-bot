@@ -627,6 +627,42 @@ class HistoryService:
         )
         return result or []
     
+    async def cancel_all_paused_stages(self, session_id: str) -> int:
+        """
+        Cancel all paused stages for a session.
+        
+        Updates all paused stages to CANCELLED status with proper timestamps
+        and duration calculations. Used during session cancellation.
+        
+        Args:
+            session_id: Session identifier
+            
+        Returns:
+            Number of stages cancelled
+        """
+        from tarsy.models.constants import StageStatus
+        from tarsy.utils.timestamp import now_us
+        
+        paused_stages = await self.get_paused_stages(session_id)
+        if not paused_stages:
+            return 0
+        
+        current_time = now_us()
+        for stage in paused_stages:
+            stage.status = StageStatus.CANCELLED.value
+            stage.error_message = "Cancelled by user"
+            # Use paused_at_us if available, otherwise current time
+            stage.completed_at_us = stage.paused_at_us or current_time
+            # Calculate duration if we have start time
+            if stage.started_at_us and stage.completed_at_us:
+                duration_us = stage.completed_at_us - stage.started_at_us
+                stage.duration_ms = int(duration_us / 1000)
+            # Persist the updated stage
+            await self.update_stage_execution(stage)
+        
+        logger.info(f"Cancelled {len(paused_stages)} paused stages for session {session_id}")
+        return len(paused_stages)
+    
     # LLM Interaction Logging
     def store_llm_interaction(self, interaction: LLMInteraction) -> bool:
         """

@@ -775,9 +775,6 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
                     
                     if is_user_cancellation:
                         # User-requested cancellation
-                        from tarsy.models.constants import StageStatus
-                        from tarsy.utils.timestamp import now_us
-                        
                         # Update session status
                         history_service.update_session_status(
                             session_id=session_id,
@@ -786,19 +783,7 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
                         )
                         
                         # Update all paused stages to CANCELLED for consistency
-                        paused_stages = await history_service.get_paused_stages(session_id)
-                        if paused_stages:
-                            current_time = now_us()
-                            for stage in paused_stages:
-                                stage.status = StageStatus.CANCELLED.value
-                                stage.error_message = "Cancelled by user"
-                                # Use paused_at_us if available, otherwise current time
-                                stage.completed_at_us = stage.paused_at_us or current_time
-                                # Recalculate duration using paused_at_us (not current time!)
-                                if stage.started_at_us and stage.completed_at_us:
-                                    stage.duration_ms = int((stage.completed_at_us - stage.started_at_us) / 1000)
-                            await history_service.session.commit()
-                            logger.info(f"Updated {len(paused_stages)} paused stages to CANCELLED")
+                        await history_service.cancel_all_paused_stages(session_id)
                         
                         # Publish cancellation event
                         await publish_session_cancelled(session_id)

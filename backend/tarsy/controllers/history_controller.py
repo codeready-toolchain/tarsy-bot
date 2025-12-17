@@ -510,6 +510,9 @@ async def check_cancellation_completion(
             error_message="Session cancelled (no response from processing pod - likely orphaned)"
         )
         
+        # Update all paused stages to CANCELLED for consistency
+        await history_service.cancel_all_paused_stages(session_id)
+        
         # Publish cancellation event for UI
         await publish_session_cancelled(session_id)
         logger.info(f"Orphaned session {session_id} marked as cancelled")
@@ -553,14 +556,40 @@ async def cancel_session(
     """
     from tarsy.config.settings import get_settings
     from tarsy.models.constants import AlertSessionStatus
-    from tarsy.services.events.event_helpers import publish_cancel_request
+    from tarsy.services.events.event_helpers import publish_cancel_request, publish_session_cancelled
     
     # Step 1: Validate session exists
     session = history_service.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
     
-    # Step 2: Atomically update status to CANCELING
+    was_paused = session.status == AlertSessionStatus.PAUSED.value
+    
+    # Step 2: Check if session is paused (no active task)
+    if was_paused:
+        # Paused sessions have no active task, so cancel immediately
+        logger.info(f"Session {session_id} is paused - cancelling immediately")
+        
+        # Update session status
+        history_service.update_session_status(
+            session_id=session_id,
+            status=AlertSessionStatus.CANCELLED.value,
+            error_message="Session cancelled by user"
+        )
+        
+        # Update all paused stages to CANCELLED for consistency
+        await history_service.cancel_all_paused_stages(session_id)
+        
+        # Publish cancellation event for UI
+        await publish_session_cancelled(session_id)
+        
+        return {
+            "success": True,
+            "message": "Paused session cancelled immediately",
+            "session_id": session_id
+        }
+    
+    # Step 3: For active sessions, update status to CANCELING
     success, current_status = history_service.update_session_to_canceling(session_id)
     
     if not success:
@@ -574,11 +603,11 @@ async def cancel_session(
     
     # If already CANCELING, this is idempotent - continue normally
     
-    # Step 3: Publish cancellation request
+    # Step 4: Publish cancellation request
     await publish_cancel_request(session_id)
     logger.info(f"Published cancellation request for session {session_id}")
     
-    # Step 4: Start orphan detection background task
+    # Step 5: Start orphan detection background task
     settings = get_settings()
     # Use LLM iteration timeout + buffer for orphan detection
     # This is the maximum time a single iteration can take, which is what
