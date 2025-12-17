@@ -326,32 +326,6 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
                     </Typography>
                   </Box>
                 )}
-
-                {/* Cancel Button for Paused Agents */}
-                {execution.stageExecution.status === 'paused' && (
-                  <Box mt={1.5}>
-                    <Button
-                      size="small"
-                      color="error"
-                      variant="outlined"
-                      startIcon={<CancelOutlined />}
-                      onClick={(e) => {
-                        e.stopPropagation(); // Prevent tab selection
-                        handleCancelAgent(execution.stageExecution.execution_id);
-                      }}
-                      disabled={cancelingAgents.has(execution.stageExecution.execution_id)}
-                      fullWidth
-                      sx={{ fontSize: '0.75rem', py: 0.5 }}
-                    >
-                      {cancelingAgents.has(execution.stageExecution.execution_id) 
-                        ? 'Canceling...' 
-                        : 'Cancel This Agent'}
-                    </Button>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, textAlign: 'center' }}>
-                      Other agents will continue
-                    </Typography>
-                  </Box>
-                )}
               </Box>
             );
           })}
@@ -399,6 +373,69 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
                 <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
                   No reasoning steps available for this agent
                 </Typography>
+              )}
+
+              {/* Agent-Level Cancel Button - Only for paused agents */}
+              {execution.stageExecution.status === 'paused' && (
+                <Box 
+                  sx={{ 
+                    mt: 3, 
+                    pt: 2.5,
+                    borderTop: 1,
+                    borderColor: 'divider',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 1,
+                  }}
+                >
+                  <Typography 
+                    variant="caption" 
+                    color="text.secondary" 
+                    sx={{ 
+                      textAlign: 'center',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Agent-Level Action for <strong>{getParallelStageLabel(execution.stageExecution, execution.index, stage.parallel_type)}</strong>
+                  </Typography>
+                  
+                  <Button
+                    size="medium"
+                    color="error"
+                    variant="outlined"
+                    startIcon={<CancelOutlined />}
+                    onClick={() => handleCancelAgent(execution.stageExecution.execution_id)}
+                    disabled={cancelingAgents.has(execution.stageExecution.execution_id)}
+                    sx={{ 
+                      minWidth: 200,
+                      fontWeight: 600,
+                      borderWidth: 1.5,
+                      '&:hover': {
+                        backgroundColor: 'error.main',
+                        borderColor: 'error.main',
+                        color: 'white',
+                        borderWidth: 1.5,
+                      }
+                    }}
+                  >
+                    {cancelingAgents.has(execution.stageExecution.execution_id) 
+                      ? 'Canceling Agent...' 
+                      : 'Cancel This Agent'}
+                  </Button>
+                  
+                  <Typography 
+                    variant="caption" 
+                    color="text.secondary" 
+                    sx={{ 
+                      textAlign: 'center',
+                      maxWidth: 450,
+                      fontSize: '0.7rem',
+                    }}
+                  >
+                    This will cancel only this specific agent. Other parallel agents will continue running.
+                  </Typography>
+                </Box>
               )}
             </Box>
           </TabPanel>

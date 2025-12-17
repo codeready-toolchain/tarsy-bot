@@ -768,7 +768,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
               />
             </Box>
             
-            {/* Action Buttons Section - More Prominent */}
+            {/* Action Buttons Section - Compact Design */}
             <Box sx={{ 
               display: 'flex', 
               flexDirection: 'column', 
@@ -776,38 +776,46 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
               width: '100%',
               mt: 1
             }}>
-              {/* Resume Button - Only for paused sessions */}
+              {/* Pause Alert - Only for paused sessions */}
               {sessionIsPaused && (
-                <>
-                  {/* Pause Alert - Show with metadata message or fallback */}
-                  <Alert 
-                    severity="warning" 
-                    icon={<PauseCircle />}
-                    sx={{ mb: 1.5, width: '100%' }}
-                  >
-                    <AlertTitle sx={{ fontWeight: 600 }}>Session Paused</AlertTitle>
-                    {session.pause_metadata?.message || 'Session is paused and awaiting action.'}
-                  </Alert>
-                  
+                <Alert 
+                  severity="warning" 
+                  icon={<PauseCircle />}
+                  sx={{ width: '100%' }}
+                >
+                  <AlertTitle sx={{ fontWeight: 600 }}>Session Paused</AlertTitle>
+                  {session.pause_metadata?.message || 'Session is paused and awaiting action.'}
+                </Alert>
+              )}
+              
+              {/* Session Control Buttons - Full Width Horizontal Layout */}
+              <Box sx={{ 
+                display: 'flex', 
+                gap: 1.5,
+                width: '100%',
+              }}>
+                {/* Resume Button - Only for paused sessions */}
+                {sessionIsPaused && (
                   <Tooltip 
                     title="Resumes all paused agents in this session"
                     placement="top"
                     arrow
                   >
-                    <span>
+                    <span style={{ flex: 1 }}>
                       <Button
                         variant="contained"
-                        size="large"
+                        size="medium"
                         onClick={handleResumeClick}
                         disabled={isResuming || isCanceling || sessionIsCanceling}
                         aria-label={isResuming ? "Resuming session" : "Resume paused session"}
+                        startIcon={isResuming ? <CircularProgress size={16} color="inherit" /> : <PlayArrow />}
+                        fullWidth
                         sx={{
-                          minWidth: 180,
-                          textTransform: 'none',
+                          textTransform: 'uppercase',
                           fontWeight: 600,
-                          fontSize: '0.95rem',
+                          fontSize: '0.875rem',
                           py: 1,
-                          px: 2.5,
+                          px: 2,
                           backgroundColor: 'success.main',
                           color: 'white',
                           '&:hover': {
@@ -816,74 +824,56 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                           transition: 'all 0.2s ease-in-out',
                         }}
                       >
-                        {isResuming ? (
-                          <CircularProgress size={18} color="inherit" sx={{ mr: 1 }} />
-                        ) : (
-                          <PlayArrow 
-                            sx={{ 
-                              mr: 1,
-                              fontSize: '1.2rem',
-                            }} 
-                          />
-                        )}
-                        {isResuming ? 'RESUMING...' : 'RESUME SESSION'}
+                        {isResuming ? 'Resuming...' : 'Resume Session'}
                       </Button>
                     </span>
                   </Tooltip>
-                  
-                  {/* Resume Error Display */}
-                  <ErrorAlert error={resumeError} />
-                </>
-              )}
-              
-              {/* Cancel Button - Only for active sessions */}
-              {canCancel && (
-                <Tooltip
-                  title="Cancels entire session including all agents"
-                  placement="top"
-                  arrow
-                >
-                  <span>
-                    <Button
-                      variant="outlined"
-                      size="large"
-                      onClick={handleCancelClick}
-                      disabled={isCanceling || sessionIsCanceling || isResuming}
-                      aria-label={isCanceling || sessionIsCanceling ? "Canceling session" : "Cancel session"}
-                      sx={{
-                        minWidth: 180,
-                        textTransform: 'none',
-                        fontWeight: 600,
-                        fontSize: '0.95rem',
-                        py: 1,
-                        px: 2.5,
-                        backgroundColor: 'white',
-                        color: 'error.main',
-                        borderColor: 'error.main',
-                        borderWidth: 1.5,
-                        '&:hover': {
-                          backgroundColor: 'error.main',
+                )}
+                
+                {/* Cancel Button - Only for active/paused sessions */}
+                {canCancel && (
+                  <Tooltip
+                    title="Cancels entire session including all agents"
+                    placement="top"
+                    arrow
+                  >
+                    <span style={{ flex: 1 }}>
+                      <Button
+                        variant="outlined"
+                        size="medium"
+                        onClick={handleCancelClick}
+                        disabled={isCanceling || sessionIsCanceling || isResuming}
+                        aria-label={isCanceling || sessionIsCanceling ? "Canceling session" : "Cancel session"}
+                        startIcon={isCanceling || sessionIsCanceling ? <CircularProgress size={16} color="inherit" /> : <CancelOutlined />}
+                        fullWidth
+                        sx={{
+                          textTransform: 'uppercase',
+                          fontWeight: 600,
+                          fontSize: '0.875rem',
+                          py: 1,
+                          px: 2,
+                          backgroundColor: 'white',
+                          color: 'error.main',
                           borderColor: 'error.main',
-                          color: 'white',
-                        },
-                        transition: 'all 0.2s ease-in-out',
-                      }}
-                    >
-                      {isCanceling || sessionIsCanceling ? (
-                        <CircularProgress size={18} color="inherit" sx={{ mr: 1 }} />
-                      ) : (
-                        <CancelOutlined 
-                          sx={{ 
-                            mr: 1,
-                            fontSize: '1.2rem',
-                          }} 
-                        />
-                      )}
-                      {isCanceling || sessionIsCanceling ? 'CANCELING...' : 'CANCEL SESSION'}
-                    </Button>
-                  </span>
-                </Tooltip>
-              )}
+                          borderWidth: 1.5,
+                          '&:hover': {
+                            backgroundColor: 'error.main',
+                            borderColor: 'error.main',
+                            color: 'white',
+                            borderWidth: 1.5,
+                          },
+                          transition: 'all 0.2s ease-in-out',
+                        }}
+                      >
+                        {isCanceling || sessionIsCanceling ? 'Canceling...' : 'Cancel Session'}
+                      </Button>
+                    </span>
+                  </Tooltip>
+                )}
+              </Box>
+              
+              {/* Error Display */}
+              {sessionIsPaused && <ErrorAlert error={resumeError} />}
               
               {/* Re-submit Button - Only for terminal sessions */}
               {isTerminalStatus && (

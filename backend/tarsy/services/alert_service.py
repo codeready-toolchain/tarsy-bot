@@ -628,35 +628,50 @@ class AlertService:
             new_session_status = AlertSessionStatus.COMPLETED.value
             session.status = new_session_status
             session.completed_at_us = now_us()
-            # Calculate session duration
-            if session.started_at_us:
-                duration_us = session.completed_at_us - session.started_at_us
-                session.duration_ms = int(duration_us / 1000)
             
             # Update session
-            self.history_service.update_alert_session(session)
+            self.session_manager.update_session_status(session_id, new_session_status)
             
             # Publish session completed event
             from tarsy.services.events.event_helpers import publish_session_completed
             await publish_session_completed(session_id)
             
         elif aggregated_status == StageStatus.FAILED:
-            # Session fails
-            new_session_status = AlertSessionStatus.FAILED.value
-            session.status = new_session_status
-            session.completed_at_us = now_us()
-            session.error_message = "Stage failed after agent cancellation"
-            # Calculate session duration
-            if session.started_at_us:
-                duration_us = session.completed_at_us - session.started_at_us
-                session.duration_ms = int(duration_us / 1000)
+            # Check if all non-completed agents were cancelled
+            # If so, treat the session as cancelled rather than failed
+            cancelled_count = sum(1 for m in metadatas if m.status == StageStatus.CANCELLED)
+            failed_count = sum(1 for m in metadatas if m.status == StageStatus.FAILED)
             
-            # Update session
-            self.history_service.update_alert_session(session)
-            
-            # Publish session failed event
-            from tarsy.services.events.event_helpers import publish_session_failed
-            await publish_session_failed(session_id)
+            if cancelled_count > 0 and failed_count == 0:
+                # All non-completed agents were cancelled - treat as session cancellation
+                new_session_status = AlertSessionStatus.CANCELLED.value
+                session.status = new_session_status
+                session.completed_at_us = now_us()
+                session.error_message = None  # Clear error message for cancellation
+                
+                # Update session
+                self.session_manager.update_session_status(session_id, new_session_status)
+                
+                # Publish session cancelled event
+                from tarsy.services.events.event_helpers import publish_session_cancelled
+                await publish_session_cancelled(session_id)
+            else:
+                # Session fails (some agents failed, not just cancelled)
+                new_session_status = AlertSessionStatus.FAILED.value
+                session.status = new_session_status
+                session.completed_at_us = now_us()
+                session.error_message = "Stage failed after agent cancellation"
+                
+                # Update session
+                self.session_manager.update_session_status(
+                    session_id, 
+                    new_session_status, 
+                    error_message="Stage failed after agent cancellation"
+                )
+                
+                # Publish session failed event
+                from tarsy.services.events.event_helpers import publish_session_failed
+                await publish_session_failed(session_id)
         
         # Step 9: Publish agent cancelled event
         from tarsy.services.events.event_helpers import publish_agent_cancelled

@@ -492,6 +492,22 @@ function SessionDetailPageBase({
           }
         }, 250);
       }
+      else if (eventType.startsWith('agent.')) {
+        // Agent events (agent.cancelled)
+        console.log('🔄 Agent event, refreshing stages');
+        
+        // Update summary immediately
+        if (sessionId) {
+          refreshSessionSummary(sessionId);
+        }
+        
+        // Refresh stages to show updated agent status
+        throttledUpdate(() => {
+          if (sessionId) {
+            refreshSessionStages(sessionId);
+          }
+        }, 250);
+      }
       else if (eventType.startsWith('llm.') || eventType.startsWith('mcp.')) {
         // LLM/MCP interaction events (llm.interaction, mcp.tool_call, mcp.list_tools)
         // Update if session is active OR if there's an active chat on a terminal session
