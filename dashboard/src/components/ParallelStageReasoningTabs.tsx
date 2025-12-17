@@ -306,10 +306,21 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
         const executionStreamingItems = streamingByExecution.get(execution.executionId) || [];
         const hasDbItems = execution.items.length > 0;
         const hasStreamingItems = executionStreamingItems.length > 0;
+        const isFailed = execution.stageExecution.status === 'failed';
+        const hasError = isFailed && execution.stageExecution.error_message;
         
         return (
           <TabPanel key={execution.executionId} value={selectedTab} index={index}>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+              {/* Show error message for failed executions */}
+              {hasError && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                  <Typography variant="body2">
+                    <strong>Execution Failed:</strong> {execution.stageExecution.error_message}
+                  </Typography>
+                </Alert>
+              )}
+              
               {/* Render DB items */}
               {execution.items.map((item) => (
                 <ChatFlowItem

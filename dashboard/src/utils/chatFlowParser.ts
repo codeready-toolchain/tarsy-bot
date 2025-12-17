@@ -17,6 +17,8 @@ export interface ChatFlowItemData {
   content?: string; // For thought/final_answer/summarization/user_message
   stageName?: string; // For stage_start
   stageAgent?: string; // For stage_start
+  stageStatus?: string; // For stage_start - stage status ('pending'|'active'|'completed'|'failed')
+  stageErrorMessage?: string; // For stage_start - error message if stage failed
   toolName?: string; // For tool_call
   toolArguments?: any; // For tool_call
   toolResult?: any; // For tool_call
@@ -46,13 +48,15 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
     const stageStartTimestamp = stage.started_at_us || Date.now() * 1000;
     const stageId = stage.execution_id;
     
-    // Add stage start marker
+    // Add stage start marker (with status and error message for failed stages)
     chatItems.push({
       type: 'stage_start',
       timestamp_us: stageStartTimestamp,
       stageId,
       stageName: stage.stage_name,
-      stageAgent: stage.agent
+      stageAgent: stage.agent,
+      stageStatus: stage.status,
+      stageErrorMessage: stage.error_message || undefined
     });
 
     // Add user message if this is a chat stage (Option 4: separate item with badge)
