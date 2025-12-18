@@ -98,7 +98,9 @@ async def handle_cancel_request(event: dict) -> None:
             task = active_tasks.get(session_id)
             if task:
                 logger.info(f"Cancelling session {session_id} on this pod")
-                task.cancel()
+                from tarsy.models.constants import CancellationReason
+
+                task.cancel(CancellationReason.USER_CANCEL.value)
                 # The task cleanup in process_alert_background will handle:
                 # - Removing from active_tasks
                 # - Updating status to CANCELLED
@@ -135,7 +137,9 @@ async def handle_cancel_request(event: dict) -> None:
             task = active_chat_tasks.get(stage_execution_id)
             if task:
                 logger.info(f"Cancelling chat execution {stage_execution_id} on this pod")
-                task.cancel()
+                from tarsy.models.constants import CancellationReason
+
+                task.cancel(CancellationReason.USER_CANCEL.value)
                 # The task cleanup in process_chat_message_background will handle:
                 # - Removing from active_chat_tasks
                 # - Updating stage execution status to failed
@@ -748,7 +752,9 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
                 except asyncio.TimeoutError:
                     # Timeout occurred - try to cancel the task
                     logger.warning(f"Session {session_id} exceeded {timeout_seconds}s timeout, attempting to cancel task")
-                    task.cancel()
+                    from tarsy.models.constants import CancellationReason
+
+                    task.cancel(CancellationReason.TIMEOUT.value)
                     try:
                         await task  # Wait for cancellation to complete
                     except asyncio.CancelledError:
@@ -918,7 +924,9 @@ async def process_chat_message_background(
             except asyncio.TimeoutError:
                 # Timeout occurred - try to cancel the task
                 logger.warning(f"Chat message {stage_execution_id} exceeded {timeout_seconds}s timeout, attempting to cancel task")
-                task.cancel()
+                from tarsy.models.constants import CancellationReason
+
+                task.cancel(CancellationReason.TIMEOUT.value)
                 try:
                     await task  # Wait for cancellation to complete
                 except asyncio.CancelledError:

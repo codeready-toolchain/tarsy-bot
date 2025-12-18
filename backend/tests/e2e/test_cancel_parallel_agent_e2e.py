@@ -150,6 +150,26 @@ class TestCancelParallelAgentE2E(ParallelTestBase):
             timeout_seconds=120
         )
 
+    async def test_cancel_only_paused_agent_among_three_agents_session_completes(
+        self, e2e_parallel_test_client, e2e_cancel_agent_three_agents_alert
+    ):
+        """
+        Test with 3 parallel agents where only one pauses, then we cancel that paused agent.
+
+        Flow:
+        - max_iterations=1 so KubernetesAgent pauses quickly
+        - LogAgent and CommandAgent complete in a single iteration
+        - Cancel KubernetesAgent
+        - Session should continue and complete with synthesis (success_policy: any)
+        """
+        return await self._run_with_timeout(
+            lambda: self._execute_cancel_with_three_agents_test(
+                e2e_parallel_test_client, e2e_cancel_agent_three_agents_alert
+            ),
+            test_name="cancel paused agent among three agents test",
+            timeout_seconds=120,
+        )
+
     async def _execute_cancel_with_policy_any_test(self, test_client, alert_data):
         """Execute the cancel test with success_policy: any."""
         print("🔧 Starting cancel with policy:any test")
@@ -609,6 +629,206 @@ Action Input: {"namespace": "test-namespace", "pod": "pod-1"}""",
                 print("   - Session completed with synthesis")
 
                 return final_detail
+
+        finally:
+            settings.max_llm_mcp_iterations = original_max_iterations
+            print(f"🔧 Restored max_llm_mcp_iterations to {original_max_iterations}")
+
+    async def _execute_cancel_with_three_agents_test(self, test_client, alert_data):
+        """Execute cancel flow where only one of three parallel agents pauses, then is cancelled."""
+        print("🔧 Starting cancel paused agent among three agents test")
+
+        from tarsy.config.settings import get_settings
+
+        settings = get_settings()
+        original_max_iterations = settings.max_llm_mcp_iterations
+
+        try:
+            settings.max_llm_mcp_iterations = 1
+            print("🔧 Set max_llm_mcp_iterations to 1 (only KubernetesAgent will pause)")
+
+            # ============================================================================
+            # NATIVE THINKING MOCK (KubernetesAgent pauses at iteration 1)
+            # SynthesisAgent runs after cancellation
+            # ============================================================================
+            gemini_response_map = {
+                1: {  # KubernetesAgent - tool call only -> pauses
+                    "text_content": "",
+                    "thinking_content": "I should check the pod status.",
+                    "function_calls": [
+                        {
+                            "name": "kubernetes-server__kubectl_get",
+                            "args": {"resource": "pods", "namespace": "test-namespace"},
+                        }
+                    ],
+                    "input_tokens": 200,
+                    "output_tokens": 60,
+                    "total_tokens": 260,
+                },
+                2: {  # SynthesisAgent - combines available completed agents
+                    "text_content": """**Synthesis Report**
+
+Available results:
+
+**From Log Agent:**
+- Logs show a database connection timeout
+
+**From Command Agent:**
+- Recommended remediation steps provided
+
+**Note:** KubernetesAgent investigation was cancelled by user.""",
+                    "thinking_content": "Synthesize the completed agent results and note the cancellation.",
+                    "function_calls": None,
+                    "input_tokens": 320,
+                    "output_tokens": 110,
+                    "total_tokens": 430,
+                },
+            }
+
+            from .conftest import create_gemini_client_mock
+
+            gemini_mock_factory = create_gemini_client_mock(gemini_response_map)
+
+            # ============================================================================
+            # LANGCHAIN MOCK (LogAgent + CommandAgent complete in 1 iteration)
+            # ============================================================================
+            agent_counters = {"LogAgent": 0, "CommandAgent": 0}
+
+            agent_responses = {
+                "LogAgent": [
+                    {
+                        "response_content": """Thought: I have enough info.
+
+Final Answer: **Log Analysis Complete**
+
+Logs indicate a database connection timeout to db.example.com:5432.""",
+                        "input_tokens": 180,
+                        "output_tokens": 70,
+                        "total_tokens": 250,
+                    }
+                ],
+                "CommandAgent": [
+                    {
+                        "response_content": """Thought: I can propose remediation steps without more tool calls.
+
+Final Answer: **Remediation Plan**
+
+1. Verify database is reachable from the cluster network.
+2. Check service DNS and firewall rules.
+3. Validate credentials and connection parameters.""",
+                        "input_tokens": 160,
+                        "output_tokens": 85,
+                        "total_tokens": 245,
+                    }
+                ],
+            }
+
+            agent_identifiers = {
+                "LogAgent": "log analysis specialist",
+                "CommandAgent": "command execution specialist",
+            }
+
+            streaming_mock = E2ETestUtils.create_agent_aware_streaming_mock(
+                agent_counters, agent_responses, agent_identifiers
+            )
+
+            # MCP mock: only KubernetesAgent uses tools in this test
+            mock_k8s_session = _create_mcp_session_mock(
+                include_kubectl_describe=False,
+                get_logs_response='{"logs": "Error: Database connection timeout"}',
+            )
+            mock_sessions = {"kubernetes-server": mock_k8s_session}
+            mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(
+                mock_sessions
+            )
+
+            with (
+                self._create_llm_patch_context(gemini_mock_factory, streaming_mock),
+                patch.object(MCPClient, "list_tools", mock_list_tools),
+                patch.object(MCPClient, "call_tool", mock_call_tool),
+                E2ETestUtils.setup_runbook_service_patching(
+                    "# Cancel 3-Agent Test Runbook"
+                ),
+            ):
+                # ===== Phase 1: Initial execution - one paused, two completed =====
+                print("\n⏳ Phase 1: Submit alert (max_iterations=1)")
+                session_id = E2ETestUtils.submit_alert(test_client, alert_data)
+
+                print("⏳ Wait for session to pause...")
+                paused_session_id, paused_status = await E2ETestUtils.wait_for_session_completion(
+                    test_client, max_wait_seconds=20, debug_logging=True
+                )
+                assert paused_session_id == session_id
+                assert paused_status == "paused", f"Expected 'paused', got '{paused_status}'"
+
+                parallel_stage = await E2ETestUtils.wait_for_parallel_execution_statuses(
+                    test_client,
+                    session_id,
+                    stage_name="investigation",
+                    expected_statuses={
+                        "KubernetesAgent": "paused",
+                        "LogAgent": "completed",
+                        "CommandAgent": "completed",
+                    },
+                    max_wait_seconds=5.0,
+                    poll_interval=0.1,
+                )
+
+                parallel_executions = parallel_stage.get("parallel_executions", [])
+                k8s_exec = next((e for e in parallel_executions if e["agent"] == "KubernetesAgent"), None)
+                assert k8s_exec is not None
+                k8s_execution_id = k8s_exec["execution_id"]
+
+                # ===== Phase 2: Cancel the paused KubernetesAgent =====
+                print(f"\n⏳ Phase 2: Cancel KubernetesAgent (execution_id: {k8s_execution_id})")
+                cancel_response = test_client.post(
+                    f"/api/v1/history/sessions/{session_id}/stages/{k8s_execution_id}/cancel"
+                )
+                assert cancel_response.status_code == 200, f"Cancel failed: {cancel_response.text}"
+                cancel_data = cancel_response.json()
+                assert cancel_data.get("success") is True
+                assert cancel_data.get("session_status") == "in_progress"
+                assert cancel_data.get("stage_status") == "completed"
+
+                # ===== Phase 3: Session should complete with synthesis =====
+                print("\n⏳ Phase 3: Wait for session to complete (synthesis runs)")
+                final_session_id, final_status = await E2ETestUtils.wait_for_session_completion(
+                    test_client, max_wait_seconds=20, debug_logging=True
+                )
+                assert final_session_id == session_id
+                assert final_status == "completed"
+
+                final_detail = await E2ETestUtils.get_session_details_async(test_client, session_id)
+                final_stages = final_detail.get("stages", [])
+                assert len(final_stages) == 2, f"Expected 2 stages, got {len(final_stages)}"
+
+                investigation_stage = final_stages[0]
+                synthesis_stage = final_stages[1]
+                assert investigation_stage["stage_name"] == "investigation"
+                assert investigation_stage["status"] == "completed"
+                assert synthesis_stage["stage_name"] == "synthesis"
+                assert synthesis_stage["status"] == "completed"
+
+                inv_parallel_execs = investigation_stage.get("parallel_executions", [])
+                assert len(inv_parallel_execs) == 3
+
+                final_k8s = next((e for e in inv_parallel_execs if e["agent"] == "KubernetesAgent"), None)
+                final_log = next((e for e in inv_parallel_execs if e["agent"] == "LogAgent"), None)
+                final_cmd = next((e for e in inv_parallel_execs if e["agent"] == "CommandAgent"), None)
+                assert final_k8s is not None and final_log is not None and final_cmd is not None
+
+                assert final_k8s["status"] == "cancelled"
+                assert final_log["status"] == "completed"
+                assert final_cmd["status"] == "completed"
+
+                assert final_detail.get("final_analysis_summary") is not None
+                assert len(final_detail.get("final_analysis_summary", "")) > 0
+
+                print("✅ ALL VALIDATIONS PASSED!")
+                print("   - KubernetesAgent: CANCELLED")
+                print("   - LogAgent: COMPLETED")
+                print("   - CommandAgent: COMPLETED")
+                print("   - Session completed with synthesis")
 
         finally:
             settings.max_llm_mcp_iterations = original_max_iterations

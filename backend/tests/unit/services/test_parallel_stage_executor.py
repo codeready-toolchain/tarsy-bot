@@ -409,6 +409,92 @@ class TestExecutionConfigGeneration:
 
 
 @pytest.mark.unit
+class TestParallelStageExecutorCancellationHandling:
+    """Test CancelledError handling during parallel execution."""
+
+    @pytest.mark.asyncio
+    async def test_parallel_stage_handles_cancelled_error_from_gather(self) -> None:
+        """Cancelled agents should not crash the stage; they should be marked CANCELLED and not stay running."""
+        stage_manager = Mock()
+        stage_manager.create_stage_execution = AsyncMock(side_effect=["parent-exec", "child-exec-1", "child-exec-2"])
+        stage_manager.update_stage_execution_started = AsyncMock()
+        stage_manager.update_stage_execution_completed = AsyncMock()
+        stage_manager.update_stage_execution_failed = AsyncMock()
+        stage_manager.update_stage_execution_cancelled = AsyncMock()
+        stage_manager.update_stage_execution_paused = AsyncMock()
+
+        settings = MockFactory.create_mock_settings()
+
+        # One agent will be cancelled, the other will complete successfully.
+        completed_result = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="agent-2",
+            stage_name="test-stage",
+            timestamp_us=now_us(),
+            result_summary="ok",
+            error_message=None,
+        )
+
+        agent_ok = Mock()
+        agent_ok.process_alert = AsyncMock(return_value=completed_result)
+        agent_ok.set_current_stage_execution_id = Mock()
+        agent_ok.set_parallel_execution_metadata = Mock()
+        agent_ok.iteration_strategy = SimpleNamespace(value="react")
+
+        agent_cancel = Mock()
+        agent_cancel.process_alert = AsyncMock(side_effect=asyncio.CancelledError())
+        agent_cancel.set_current_stage_execution_id = Mock()
+        agent_cancel.set_parallel_execution_metadata = Mock()
+        agent_cancel.iteration_strategy = SimpleNamespace(value="react")
+
+        agent_factory = Mock()
+        def _get_agent(*, agent_identifier, **_kwargs):  # noqa: ANN001
+            return agent_cancel if agent_identifier == "agent-1" else agent_ok
+
+        agent_factory.get_agent = Mock(side_effect=_get_agent)
+
+        executor = ParallelStageExecutor(
+            agent_factory=agent_factory,
+            settings=settings,
+            stage_manager=stage_manager,
+        )
+
+        # Build a minimal chain context
+        from tarsy.models.alert import ProcessingAlert
+        alert = AlertFactory.create_kubernetes_alert()
+        processing_alert = ProcessingAlert(
+            alert_type=alert.alert_type or "kubernetes",
+            severity=alert.data.get("severity", "critical"),
+            timestamp=alert.timestamp,
+            environment=alert.data.get("environment", "production"),
+            runbook_url=alert.runbook,
+            alert_data=alert.data,
+        )
+        chain_context = ChainContext.from_processing_alert(processing_alert=processing_alert, session_id="test-session")
+
+        stage = SimpleNamespace(name="test-stage", success_policy=SuccessPolicy.ANY)
+
+        execution_configs = [
+            {"agent_name": "agent-1", "llm_provider": "openai", "iteration_strategy": "react"},
+            {"agent_name": "agent-2", "llm_provider": "openai", "iteration_strategy": "react"},
+        ]
+
+        result = await executor._execute_parallel_stage(
+            stage=stage,
+            chain_context=chain_context,
+            session_mcp_client=Mock(),
+            stage_index=0,
+            execution_configs=execution_configs,
+            parallel_type="multi_agent",
+        )
+
+        assert isinstance(result, ParallelStageResult)
+        assert any(r.status == StageStatus.CANCELLED for r in result.results)
+        assert any(r.status == StageStatus.COMPLETED for r in result.results)
+        stage_manager.update_stage_execution_cancelled.assert_any_call("child-exec-1", "unknown")
+
+
+@pytest.mark.unit
 class TestStatusAggregation:
     """Test status aggregation logic for parallel stages."""
     
