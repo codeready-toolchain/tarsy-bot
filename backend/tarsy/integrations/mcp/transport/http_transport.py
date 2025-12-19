@@ -41,7 +41,7 @@ def _is_safe_teardown_error(exc: BaseException) -> bool:
     if isinstance(exc, BaseExceptionGroup):
         return all(_is_safe_teardown_error(e) for e in exc.exceptions)
 
-    return isinstance(exc, (httpx.ConnectError, httpx.TransportError, GeneratorExit))
+    return isinstance(exc, (httpx.TransportError, GeneratorExit))
 
 
 class HTTPTransport(MCPTransport):
@@ -137,9 +137,19 @@ class HTTPTransport(MCPTransport):
                 except BaseExceptionGroup as eg:
                     if not _is_safe_teardown_error(eg):
                         raise
+                    logger.debug(
+                        "HTTP context cleanup error for %s (suppressed): %s",
+                        self.server_id,
+                        type(eg).__name__,
+                    )
                 except BaseException as exit_err:
                     if not _is_safe_teardown_error(exit_err):
                         raise
+                    logger.debug(
+                        "HTTP context cleanup error for %s (suppressed): %s",
+                        self.server_id,
+                        type(exit_err).__name__,
+                    )
                 raise
             self.exit_stack.push_async_exit(http_context)
             read_stream, write_stream, get_session_id_callback = streams

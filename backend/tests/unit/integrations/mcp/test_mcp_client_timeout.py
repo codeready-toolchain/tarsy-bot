@@ -88,7 +88,7 @@ class TestMCPClientCallToolTimeout:
             assert mock_session.call_tool.call_count == 1
     
     @pytest.mark.asyncio
-    async def test_call_tool_timeout_triggers_recovery(self, client_with_session, mock_session):
+    async def test_call_tool_timeout_does_not_trigger_recovery(self, client_with_session, mock_session):
         """Test that timeout does not trigger recovery."""
         mock_session.call_tool.side_effect = asyncio.TimeoutError()
 
@@ -190,7 +190,7 @@ class TestMCPClientListToolsTimeout:
             assert mock_session.list_tools.call_count == 1
     
     @pytest.mark.asyncio
-    async def test_list_tools_timeout_triggers_recovery(self, client_with_session, mock_session):
+    async def test_list_tools_timeout_does_not_trigger_recovery(self, client_with_session, mock_session):
         """Test that list_tools timeout does not trigger recovery."""
         mock_session.list_tools.side_effect = asyncio.TimeoutError()
         
@@ -299,7 +299,7 @@ class TestMCPClientTimeoutLogging:
         with patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_context:
             mock_context.return_value = _DummyAsyncCM(_DummyCtx("log-timeout-call-tool"))
             
-            with pytest.raises(TimeoutError):
+            with pytest.raises(TimeoutError, match="MCP tool call timed out after 60s"):
                 await client.call_tool("test-server", "tool", {}, "session")
         
         # Verify timeout was logged
