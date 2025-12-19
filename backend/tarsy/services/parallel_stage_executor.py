@@ -398,27 +398,30 @@ class ParallelStageExecutor:
         metadatas = []
         
         for idx, item in enumerate(results_and_metadata):
-            if isinstance(item, Exception):
+            # NOTE: asyncio.CancelledError inherits from BaseException (not Exception) on Python 3.13.
+            if isinstance(item, BaseException):
                 logger.error(f"Unexpected exception in {parallel_type} {idx+1}: {item}")
-                agent_name = execution_configs[idx]["agent_name"]
+                agent_name = execution_configs[idx].get("agent_name") or f"{parallel_type}-{idx+1}"
                 
+                status = StageStatus.CANCELLED if isinstance(item, asyncio.CancelledError) else StageStatus.FAILED
+                error_message = str(item) or type(item).__name__
                 error_result = AgentExecutionResult(
-                    status=StageStatus.FAILED,
+                    status=status,
                     agent_name=agent_name,
                     stage_name=stage.name,
                     timestamp_us=now_us(),
-                    result_summary=f"Unexpected error: {str(item)}",
-                    error_message=str(item)
+                    result_summary=f"Unexpected error: {error_message}",
+                    error_message=error_message,
                 )
                 error_metadata = AgentExecutionMetadata(
                     agent_name=agent_name,
-                    llm_provider=execution_configs[idx]["llm_provider"] or self.settings.llm_provider,
-                    iteration_strategy=execution_configs[idx]["iteration_strategy"] or "unknown",
+                    llm_provider=execution_configs[idx].get("llm_provider") or self.settings.llm_provider,
+                    iteration_strategy=execution_configs[idx].get("iteration_strategy") or "unknown",
                     started_at_us=stage_started_at_us,
                     completed_at_us=now_us(),
-                    status=StageStatus.FAILED,
-                    error_message=str(item),
-                    token_usage=None
+                    status=status,
+                    error_message=error_message,
+                    token_usage=None,
                 )
                 results.append(error_result)
                 metadatas.append(error_metadata)
@@ -799,16 +802,18 @@ class ParallelStageExecutor:
         resumed_results = []
         resumed_metadatas = []
         for item in resumed_results_and_metadata:
-            if isinstance(item, Exception):
+            if isinstance(item, BaseException):
                 logger.error(f"Unexpected exception during resume: {item}")
                 # Create error result
+                status = StageStatus.CANCELLED if isinstance(item, asyncio.CancelledError) else StageStatus.FAILED
+                error_message = str(item) or type(item).__name__
                 error_result = AgentExecutionResult(
-                    status=StageStatus.FAILED,
+                    status=status,
                     agent_name="unknown",
                     stage_name=stage_config.name,
                     timestamp_us=now_us(),
-                    result_summary=f"Unexpected error: {str(item)}",
-                    error_message=str(item)
+                    result_summary=f"Unexpected error: {error_message}",
+                    error_message=error_message,
                 )
                 resumed_results.append(error_result)
                 
@@ -818,8 +823,8 @@ class ParallelStageExecutor:
                     iteration_strategy="unknown",
                     started_at_us=now_us(),
                     completed_at_us=now_us(),
-                    status=StageStatus.FAILED,
-                    error_message=str(item),
+                    status=status,
+                    error_message=error_message,
                     token_usage=None
                 )
                 resumed_metadatas.append(error_metadata)

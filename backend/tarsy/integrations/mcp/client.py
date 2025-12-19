@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+import anyio
 import httpx
 from mcp import ClientSession
 from mcp.shared.exceptions import McpError
@@ -108,6 +109,12 @@ class MCPClient:
         if isinstance(exc, (httpx.TimeoutException, httpx.TransportError)):
             return _RecoveryDecision(_RecoveryAction.RETRY_WITH_NEW_SESSION, type(exc).__name__)
 
+        # The MCP SDK uses AnyIO memory streams internally. When a request is cancelled or
+        # the underlying transport breaks (e.g., MCP pod restarted mid-flight), subsequent
+        # calls may fail with these errors until the session is recreated.
+        if isinstance(exc, (anyio.ClosedResourceError, anyio.BrokenResourceError, anyio.EndOfStream)):
+            return _RecoveryDecision(_RecoveryAction.RETRY_WITH_NEW_SESSION, type(exc).__name__)
+
         # Timeouts from our own asyncio.wait_for wrappers are usually "slow tool" cases.
         # Do NOT auto-retry: surface to the LLM so it can adjust the call, switch tools,
         # or proceed with partial information.
@@ -119,17 +126,30 @@ class MCPClient:
 
     async def _reinitialize_server_session(self, server_id: str) -> ClientSession:
         """
-        Drop the current cached session/transport (without attempting cleanup) and create a new one.
+        Recreate the cached session/transport for a server and return the new session.
 
-        We avoid calling close() on existing HTTP/SSE transports due to MCP SDK cancel-scope issues.
+        We attempt best-effort cleanup of the previous transport, but do not let teardown
+        issues block recovery (see HTTP transport safe teardown handling).
         """
         server_config = self.mcp_registry.get_server_config_safe(server_id)
         if not server_config or not getattr(server_config, "enabled", True):
             raise Exception(f"Cannot reinitialize MCP server '{server_id}': no config or disabled")
 
-        # Drop cached references; old transports may leak but are safer than propagating cancellation.
+        old_transport = self.transports.get(server_id)
         self.sessions.pop(server_id, None)
         self.transports.pop(server_id, None)
+
+        if old_transport is not None:
+            try:
+                await old_transport.close()
+            except Exception as e:
+                # Best-effort close; recovery should continue even if teardown fails.
+                logger.debug(
+                    "Suppressing MCP transport close error for %s during recovery: %s",
+                    server_id,
+                    type(e).__name__,
+                    exc_info=True,
+                )
 
         try:
             session = await asyncio.wait_for(

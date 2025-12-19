@@ -7,6 +7,7 @@ non-retry behavior for JSON-RPC semantic errors.
 
 from unittest.mock import AsyncMock, Mock, patch
 
+import anyio
 import httpx
 import pytest
 from mcp.shared.exceptions import McpError
@@ -124,6 +125,29 @@ class TestMCPClientRecovery:
 
         req = httpx.Request("POST", "http://example.com/mcp")
         err = httpx.ConnectError("connect failed", request=req)
+
+        calls = 0
+
+        async def attempt(_sess):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise err
+            return "ok"
+
+        assert await client._run_with_recovery("test-server", "op", attempt) == "ok"
+        assert calls == 2
+        client._create_session.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_closed_resource_error_retries_with_reinit(self, client: MCPClient) -> None:
+        """If the underlying AnyIO streams are closed, the session must be recreated."""
+        old_session = AsyncMock()
+        new_session = AsyncMock()
+        client.sessions = {"test-server": old_session}
+        client._create_session = AsyncMock(return_value=new_session)
+
+        err = anyio.ClosedResourceError()
 
         calls = 0
 

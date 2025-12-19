@@ -9,6 +9,7 @@ This module tests the HTTP transport functionality including:
 
 from unittest.mock import AsyncMock, Mock
 
+import httpx
 import pytest
 from mcp import ClientSession
 
@@ -65,15 +66,53 @@ class TestHTTPTransport:
         assert http_transport.session is None
 
     async def test_close_transport_handles_errors(self, http_transport):
-        """Test transport closure error handling."""
+        """Test transport closure error handling.
+
+        Only known-safe teardown errors should be suppressed; unexpected errors should surface.
+        """
         http_transport._connected = True
         http_transport.session = Mock()
         http_transport.exit_stack = AsyncMock()
         http_transport.exit_stack.aclose.side_effect = Exception("Close error")
         
-        # Should not raise exception
-        await http_transport.close()
+        with pytest.raises(Exception, match="Close error"):
+            await http_transport.close()
         
+        assert not http_transport._connected
+        assert http_transport.session is None
+
+    async def test_close_transport_suppresses_cancel_scope_mismatch(self, http_transport):
+        """Test that the known AnyIO cancel-scope mismatch error is suppressed on close."""
+        http_transport._connected = True
+        http_transport.session = Mock()
+        http_transport.exit_stack = AsyncMock()
+        http_transport.exit_stack.aclose.side_effect = RuntimeError(
+            "Attempted to exit cancel scope in a different task than it was entered in"
+        )
+
+        await http_transport.close()
+
+        assert not http_transport._connected
+        assert http_transport.session is None
+
+    async def test_close_transport_suppresses_safe_exception_group(self, http_transport):
+        """Test that safe exception groups produced by MCP SDK teardown are suppressed."""
+        http_transport._connected = True
+        http_transport.session = Mock()
+        http_transport.exit_stack = AsyncMock()
+
+        req = httpx.Request("POST", "http://example.com/mcp")
+        eg = BaseExceptionGroup(
+            "teardown",
+            [
+                httpx.ConnectError("All connection attempts failed", request=req),
+                RuntimeError("Attempted to exit cancel scope in a different task than it was entered in"),
+            ],
+        )
+        http_transport.exit_stack.aclose.side_effect = eg
+
+        await http_transport.close()
+
         assert not http_transport._connected
         assert http_transport.session is None
 
