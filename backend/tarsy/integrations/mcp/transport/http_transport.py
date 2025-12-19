@@ -61,6 +61,27 @@ class HTTPTransport(MCPTransport):
         self.session: Optional[ClientSession] = None
         self.exit_stack = AsyncExitStack()
         self._connected = False
+
+    async def _safe_cleanup_exit_stack(self) -> None:
+        """Close the exit stack, suppressing only known-safe teardown errors."""
+        try:
+            await self.exit_stack.aclose()
+        except BaseExceptionGroup as eg:
+            if not _is_safe_teardown_error(eg):
+                raise
+            logger.debug(
+                "HTTP transport cleanup error for %s (suppressed): %s",
+                self.server_id,
+                eg,
+            )
+        except Exception as e:
+            if not _is_safe_teardown_error(e):
+                raise
+            logger.debug(
+                "HTTP transport cleanup error for %s (suppressed): %s",
+                self.server_id,
+                e,
+            )
     
     async def create_session(self) -> ClientSession:
         """Create HTTP session using MCP SDK.
@@ -174,47 +195,13 @@ class HTTPTransport(MCPTransport):
             # Extract error messages from all sub-exceptions
             errors = [f"{type(e).__name__}: {e}" for e in eg.exceptions]
             logger.error(f"HTTP transport creation failed for {self.server_id} with grouped errors: {errors}")
-            try:
-                await self.exit_stack.aclose()
-            except BaseExceptionGroup as close_eg:
-                if not _is_safe_teardown_error(close_eg):
-                    raise
-                logger.debug(
-                    "HTTP transport cleanup error for %s (suppressed): %s",
-                    self.server_id,
-                    close_eg,
-                )
-            except Exception as close_err:
-                if not _is_safe_teardown_error(close_err):
-                    raise
-                logger.debug(
-                    "HTTP transport cleanup error for %s (suppressed): %s",
-                    self.server_id,
-                    close_err,
-                )
+            await self._safe_cleanup_exit_stack()
             raise Exception(f"Failed to create HTTP session - {'; '.join(errors)}") from None
         except Exception as e:
             # Catch all other errors (connection failures, timeouts, etc.)
             # Clean up any partial state before propagating
             logger.error(f"HTTP transport creation failed for {self.server_id}: {type(e).__name__}: {e}")
-            try:
-                await self.exit_stack.aclose()
-            except BaseExceptionGroup as close_eg:
-                if not _is_safe_teardown_error(close_eg):
-                    raise
-                logger.debug(
-                    "HTTP transport cleanup error for %s (suppressed): %s",
-                    self.server_id,
-                    close_eg,
-                )
-            except Exception as close_err:
-                if not _is_safe_teardown_error(close_err):
-                    raise
-                logger.debug(
-                    "HTTP transport cleanup error for %s (suppressed): %s",
-                    self.server_id,
-                    close_err,
-                )
+            await self._safe_cleanup_exit_stack()
             raise Exception(f"Failed to create HTTP session: {type(e).__name__}: {e}") from e
     
     async def close(self):
@@ -226,25 +213,7 @@ class HTTPTransport(MCPTransport):
         if self._connected:
             logger.info(f"Closing HTTP transport for server: {self.server_id}")
             try:
-                await self.exit_stack.aclose()
-            except BaseExceptionGroup as eg:
-                if _is_safe_teardown_error(eg):
-                    logger.debug(
-                        "HTTP transport cleanup error for %s (suppressed): %s",
-                        self.server_id,
-                        eg,
-                    )
-                else:
-                    raise
-            except Exception as e:
-                if _is_safe_teardown_error(e):
-                    logger.debug(
-                        "HTTP transport cleanup error for %s (suppressed): %s",
-                        self.server_id,
-                        e,
-                    )
-                else:
-                    raise
+                await self._safe_cleanup_exit_stack()
             finally:
                 self._connected = False
                 self.session = None
