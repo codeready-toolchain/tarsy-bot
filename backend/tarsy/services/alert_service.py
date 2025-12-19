@@ -1546,8 +1546,26 @@ class AlertService:
                             timestamp_us=now_us()
                         )
                     
-                    # Log the error with full context
-                    error_msg = f"Stage '{stage.name}' failed with agent '{stage.agent}': {str(e)}"
+                    # Log the error with full context.
+                    #
+                    # Note: for multi-agent parallel stages, `stage.agent` is None. Use a stable label
+                    # to avoid secondary failures while constructing error results.
+                    agent_label = stage.agent
+                    if not agent_label and stage.agents:
+                        parts: list[str] = []
+                        for a in stage.agents:
+                            if isinstance(a, str):
+                                parts.append(a)
+                            else:
+                                parts.append(
+                                    getattr(a, "agent", None)
+                                    or getattr(a, "name", None)
+                                    or str(a)
+                                )
+                        agent_label = ",".join(parts)
+                    if not agent_label:
+                        agent_label = "parallel_stage"
+                    error_msg = f"Stage '{stage.name}' failed with agent '{agent_label}': {str(e)}"
                     logger.error(error_msg, exc_info=True)
                     
                     # Update stage execution as failed (only for non-parallel stages with execution_id)
@@ -1558,7 +1576,7 @@ class AlertService:
                     # Add structured error as stage output for next stages
                     error_result = AgentExecutionResult(
                         status=StageStatus.FAILED,
-                        agent_name=stage.agent,
+                        agent_name=agent_label,
                         stage_name=stage.name,
                         timestamp_us=now_us(),
                         result_summary=f"Stage '{stage.name}' failed: {str(e)}",
