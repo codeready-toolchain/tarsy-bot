@@ -937,3 +937,17 @@ def e2e_cancel_agent_alert():
             "namespace": "test-namespace"
         }
     }
+
+
+@pytest.fixture
+def e2e_cancel_agent_three_agents_alert():
+    """Alert for per-agent cancellation testing with 3 parallel agents (uses success_policy: any)."""
+    return {
+        "alert_type": "test-cancel-agent-execution-three-agents",
+        "runbook": "https://runbooks.example.com/cancel-test-three-agents",
+        "severity": "warning",
+        "data": {
+            "description": "Test per-agent cancellation scenario with 3 parallel agents",
+            "namespace": "test-namespace",
+        },
+    }
