@@ -140,7 +140,7 @@ class HTTPTransport(MCPTransport):
                     logger.debug(
                         "HTTP context cleanup error for %s (suppressed): %s",
                         self.server_id,
-                        type(eg).__name__,
+                        eg,
                     )
                 except BaseException as exit_err:
                     if not _is_safe_teardown_error(exit_err):
@@ -148,7 +148,7 @@ class HTTPTransport(MCPTransport):
                     logger.debug(
                         "HTTP context cleanup error for %s (suppressed): %s",
                         self.server_id,
-                        type(exit_err).__name__,
+                        exit_err,
                     )
                 raise
             self.exit_stack.push_async_exit(http_context)
@@ -199,7 +199,7 @@ class HTTPTransport(MCPTransport):
                     logger.debug(
                         "HTTP transport cleanup error for %s (suppressed): %s",
                         self.server_id,
-                        type(eg).__name__,
+                        eg,
                     )
                 else:
                     raise
@@ -208,7 +208,7 @@ class HTTPTransport(MCPTransport):
                     logger.debug(
                         "HTTP transport cleanup error for %s (suppressed): %s",
                         self.server_id,
-                        type(e).__name__,
+                        e,
                     )
                 else:
                     raise
