@@ -42,6 +42,14 @@ mcp_comm_logger = get_module_logger("mcp.communications")
 MCP_OPERATION_TIMEOUT_SECONDS = 60  # Timeout for MCP list_tools and call_tool operations
 
 
+_ANYIO_CANCEL_SCOPE_CANCELLED_PREFIX = "Cancelled via cancel scope"
+
+
+def _is_anyio_cancel_scope_cancelled_error(exc: BaseException) -> bool:
+    """Detect AnyIO cancel-scope cancellations surfaced as asyncio.CancelledError."""
+    return isinstance(exc, asyncio.CancelledError) and _ANYIO_CANCEL_SCOPE_CANCELLED_PREFIX in str(exc)
+
+
 class _RecoveryAction(str, Enum):
     RETRY_WITH_NEW_SESSION = "retry_with_new_session"
     RETRY_SAME_SESSION = "retry_same_session"
@@ -142,6 +150,15 @@ class MCPClient:
         if old_transport is not None:
             try:
                 await old_transport.close()
+            except asyncio.CancelledError as e:
+                if not _is_anyio_cancel_scope_cancelled_error(e):
+                    raise
+                logger.debug(
+                    "Suppressing MCP transport close cancellation for %s during recovery: %s",
+                    server_id,
+                    str(e),
+                    exc_info=True,
+                )
             except Exception as e:
                 # Best-effort close; recovery should continue even if teardown fails.
                 logger.debug(
@@ -188,6 +205,25 @@ class MCPClient:
 
         try:
             return await attempt_fn(session)
+        except asyncio.CancelledError as e:
+            # AnyIO/MCP SDK internal cancellations can surface as CancelledError with a
+            # "Cancelled via cancel scope ..." message. Treat these as transport failures
+            # and apply the same retry-with-new-session behavior.
+            if not _is_anyio_cancel_scope_cancelled_error(e):
+                raise
+
+            decision = _RecoveryDecision(_RecoveryAction.RETRY_WITH_NEW_SESSION, "anyio_cancel_scope_cancelled")
+            rid = f" [ID: {request_id}]" if request_id else ""
+            logger.info(
+                "MCP recovery: %s.%s retrying once (%s)%s",
+                server_id,
+                operation,
+                decision.reason,
+                rid,
+            )
+
+            new_session = await self._reinitialize_server_session(server_id)
+            return await attempt_fn(new_session)
         except Exception as e:
             decision = self._classify_mcp_failure(e)
             if decision.action == _RecoveryAction.NO_RETRY:

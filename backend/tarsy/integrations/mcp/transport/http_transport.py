@@ -18,11 +18,23 @@ logger = get_module_logger(__name__)
 
 
 _CANCEL_SCOPE_MISMATCH_MESSAGE = "Attempted to exit cancel scope in a different task than it was entered in"
+_CANCEL_SCOPE_CANCELLED_PREFIX = "Cancelled via cancel scope"
 
 
 def _is_cancel_scope_mismatch_error(exc: BaseException) -> bool:
     """Detect the known AnyIO cancel-scope cleanup bug (safe to suppress during teardown only)."""
     return isinstance(exc, RuntimeError) and _CANCEL_SCOPE_MISMATCH_MESSAGE in str(exc)
+
+
+def _is_cancel_scope_cancelled_error(exc: BaseException) -> bool:
+    """
+    Detect AnyIO cancellation propagated as asyncio.CancelledError, not initiated by TARSy.
+
+    AnyIO (and MCP SDK internals) may cancel child tasks using cancel scopes, which can surface
+    as asyncio.CancelledError with a message like "Cancelled via cancel scope ...". We treat
+    this as safe-to-suppress during teardown only; user/session cancellations should propagate.
+    """
+    return isinstance(exc, asyncio.CancelledError) and _CANCEL_SCOPE_CANCELLED_PREFIX in str(exc)
 
 
 def _is_safe_teardown_error(exc: BaseException) -> bool:
@@ -36,7 +48,7 @@ def _is_safe_teardown_error(exc: BaseException) -> bool:
 
     Anything else is re-raised to avoid hiding real bugs.
     """
-    if _is_cancel_scope_mismatch_error(exc):
+    if _is_cancel_scope_mismatch_error(exc) or _is_cancel_scope_cancelled_error(exc):
         return True
 
     if isinstance(exc, BaseExceptionGroup):
@@ -73,6 +85,14 @@ class HTTPTransport(MCPTransport):
                 "HTTP transport cleanup error for %s (suppressed): %s",
                 self.server_id,
                 eg,
+            )
+        except asyncio.CancelledError as e:
+            if not _is_safe_teardown_error(e):
+                raise
+            logger.debug(
+                "HTTP transport cleanup error for %s (suppressed): %s",
+                self.server_id,
+                e,
             )
         except Exception as e:
             if not _is_safe_teardown_error(e):
@@ -163,6 +183,14 @@ class HTTPTransport(MCPTransport):
                         "HTTP context cleanup error for %s (suppressed): %s",
                         self.server_id,
                         eg,
+                    )
+                except asyncio.CancelledError as exit_err:
+                    if not _is_safe_teardown_error(exit_err):
+                        raise
+                    logger.debug(
+                        "HTTP context cleanup error for %s (suppressed): %s",
+                        self.server_id,
+                        exit_err,
                     )
                 except Exception as exit_err:
                     if not _is_safe_teardown_error(exit_err):

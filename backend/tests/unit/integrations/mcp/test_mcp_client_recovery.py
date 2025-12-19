@@ -5,6 +5,7 @@ Focuses on retry-once logic for transient HTTP/transport failures and
 non-retry behavior for JSON-RPC semantic errors.
 """
 
+import asyncio
 from unittest.mock import AsyncMock, Mock, patch
 
 import anyio
@@ -148,6 +149,29 @@ class TestMCPClientRecovery:
         client._create_session = AsyncMock(return_value=new_session)
 
         err = anyio.ClosedResourceError()
+
+        calls = 0
+
+        async def attempt(_sess):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise err
+            return "ok"
+
+        assert await client._run_with_recovery("test-server", "op", attempt) == "ok"
+        assert calls == 2
+        client._create_session.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cancel_scope_cancelled_error_retries_with_reinit(self, client: MCPClient) -> None:
+        """AnyIO cancel-scope CancelledError should be treated as a transport failure, not a user cancel."""
+        old_session = AsyncMock()
+        new_session = AsyncMock()
+        client.sessions = {"test-server": old_session}
+        client._create_session = AsyncMock(return_value=new_session)
+
+        err = asyncio.CancelledError("Cancelled via cancel scope abc123")
 
         calls = 0
 

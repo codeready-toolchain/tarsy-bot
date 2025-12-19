@@ -7,6 +7,7 @@ This module tests the HTTP transport functionality including:
 - Error handling scenarios
 """
 
+import asyncio
 from unittest.mock import AsyncMock, Mock
 
 import httpx
@@ -111,6 +112,18 @@ class TestHTTPTransport:
             ],
         )
         http_transport.exit_stack.aclose.side_effect = eg
+
+        await http_transport.close()
+
+        assert not http_transport._connected
+        assert http_transport.session is None
+
+    async def test_close_transport_suppresses_cancel_scope_cancelled_error(self, http_transport) -> None:
+        """AnyIO cancel-scope cancellations during teardown should be suppressed."""
+        http_transport._connected = True
+        http_transport.session = Mock()
+        http_transport.exit_stack = AsyncMock()
+        http_transport.exit_stack.aclose.side_effect = asyncio.CancelledError("Cancelled via cancel scope abc123")
 
         await http_transport.close()
 
