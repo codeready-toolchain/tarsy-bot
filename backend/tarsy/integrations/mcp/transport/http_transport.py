@@ -32,6 +32,7 @@ def _is_safe_teardown_error(exc: BaseException) -> bool:
     We only suppress:
     - The known AnyIO cancel-scope mismatch RuntimeError
     - Expected connection/stream shutdown errors that can be produced by MCP SDK task groups
+      (surfaced as httpx transport-layer errors)
 
     Anything else is re-raised to avoid hiding real bugs.
     """
@@ -41,7 +42,7 @@ def _is_safe_teardown_error(exc: BaseException) -> bool:
     if isinstance(exc, BaseExceptionGroup):
         return all(_is_safe_teardown_error(e) for e in exc.exceptions)
 
-    return isinstance(exc, (httpx.TransportError, GeneratorExit))
+    return isinstance(exc, httpx.TransportError)
 
 
 class HTTPTransport(MCPTransport):
@@ -142,7 +143,7 @@ class HTTPTransport(MCPTransport):
                         self.server_id,
                         eg,
                     )
-                except BaseException as exit_err:
+                except Exception as exit_err:
                     if not _is_safe_teardown_error(exit_err):
                         raise
                     logger.debug(
@@ -173,15 +174,47 @@ class HTTPTransport(MCPTransport):
             # Extract error messages from all sub-exceptions
             errors = [f"{type(e).__name__}: {e}" for e in eg.exceptions]
             logger.error(f"HTTP transport creation failed for {self.server_id} with grouped errors: {errors}")
-            with suppress(BaseException):
+            try:
                 await self.exit_stack.aclose()
+            except BaseExceptionGroup as close_eg:
+                if not _is_safe_teardown_error(close_eg):
+                    raise
+                logger.debug(
+                    "HTTP transport cleanup error for %s (suppressed): %s",
+                    self.server_id,
+                    close_eg,
+                )
+            except Exception as close_err:
+                if not _is_safe_teardown_error(close_err):
+                    raise
+                logger.debug(
+                    "HTTP transport cleanup error for %s (suppressed): %s",
+                    self.server_id,
+                    close_err,
+                )
             raise Exception(f"Failed to create HTTP session - {'; '.join(errors)}") from None
         except Exception as e:
             # Catch all other errors (connection failures, timeouts, etc.)
             # Clean up any partial state before propagating
             logger.error(f"HTTP transport creation failed for {self.server_id}: {type(e).__name__}: {e}")
-            with suppress(BaseException):
+            try:
                 await self.exit_stack.aclose()
+            except BaseExceptionGroup as close_eg:
+                if not _is_safe_teardown_error(close_eg):
+                    raise
+                logger.debug(
+                    "HTTP transport cleanup error for %s (suppressed): %s",
+                    self.server_id,
+                    close_eg,
+                )
+            except Exception as close_err:
+                if not _is_safe_teardown_error(close_err):
+                    raise
+                logger.debug(
+                    "HTTP transport cleanup error for %s (suppressed): %s",
+                    self.server_id,
+                    close_err,
+                )
             raise Exception(f"Failed to create HTTP session: {type(e).__name__}: {e}") from e
     
     async def close(self):
