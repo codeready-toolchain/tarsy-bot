@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, Mock
 import httpx
 import pytest
 from mcp import ClientSession
+from unittest.mock import patch
 
 from tarsy.integrations.mcp.transport.http_transport import HTTPTransport
 from tarsy.models.mcp_transport_config import TRANSPORT_HTTP, HTTPTransportConfig
@@ -115,6 +116,27 @@ class TestHTTPTransport:
 
         assert not http_transport._connected
         assert http_transport.session is None
+
+    async def test_create_session_failed_aenter_calls_aexit_to_avoid_asyncgen_finalizer(
+        self, http_transport
+    ) -> None:
+        """If streamablehttp_client.__aenter__ fails, we should still call __aexit__ best-effort."""
+        http_transport.exit_stack = AsyncMock()
+
+        cm = AsyncMock()
+        cm.__aenter__.side_effect = httpx.ConnectError(
+            "All connection attempts failed",
+            request=httpx.Request("POST", "http://localhost:8081/mcp"),
+        )
+
+        with patch(
+            "tarsy.integrations.mcp.transport.http_transport.streamablehttp_client",
+            return_value=cm,
+        ):
+            with pytest.raises(Exception, match="Failed to create HTTP session"):
+                await http_transport.create_session()
+
+        cm.__aexit__.assert_called_once()
 
     def test_is_connected_property(self, http_transport):
         """Test is_connected property."""

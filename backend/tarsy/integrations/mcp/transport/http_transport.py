@@ -111,7 +111,18 @@ class HTTPTransport(MCPTransport):
                 ) as client:
                     yield client
             
-            # Create HTTP client context using MCP SDK
+            # Create HTTP client context using MCP SDK.
+            #
+            # NOTE: streamablehttp_client() is implemented as an async generator-based
+            # context manager. If __aenter__ fails (e.g. connect error while the server
+            # is down), the context is not registered in our AsyncExitStack, and the
+            # generator would otherwise be finalized by GC. In Python 3.13 + AnyIO,
+            # that can surface as noisy:
+            #   "Task exception was never retrieved" +
+            #   RuntimeError("Attempted to exit cancel scope in a different task...")
+            #
+            # To avoid that, we manually manage __aenter__/__aexit__ and ensure
+            # best-effort cleanup happens in the *same task* as the failed __aenter__.
             http_context = streamablehttp_client(
                 url=str(self.config.url),
                 headers=request_headers if request_headers else None,
@@ -120,7 +131,20 @@ class HTTPTransport(MCPTransport):
             )
             
             # Enter the context to get the streams and session ID callback
-            streams = await self.exit_stack.enter_async_context(http_context)
+            try:
+                streams = await http_context.__aenter__()
+            except BaseException as e:
+                # Best-effort cleanup to prevent leaked async-generator finalizers.
+                try:
+                    await http_context.__aexit__(type(e), e, e.__traceback__)
+                except BaseExceptionGroup as eg:
+                    if not _is_safe_teardown_error(eg):
+                        raise
+                except BaseException as exit_err:
+                    if not _is_safe_teardown_error(exit_err):
+                        raise
+                raise
+            self.exit_stack.push_async_exit(http_context)
             read_stream, write_stream, get_session_id_callback = streams
             
             # Create ClientSession as async context manager
