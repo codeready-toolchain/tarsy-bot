@@ -41,10 +41,7 @@ def _is_safe_teardown_error(exc: BaseException) -> bool:
     if isinstance(exc, BaseExceptionGroup):
         return all(_is_safe_teardown_error(e) for e in exc.exceptions)
 
-    if isinstance(exc, (httpx.ConnectError, httpx.TransportError, GeneratorExit)):
-        return True
-
-    return False
+    return isinstance(exc, (httpx.ConnectError, httpx.TransportError, GeneratorExit))
 
 
 class HTTPTransport(MCPTransport):

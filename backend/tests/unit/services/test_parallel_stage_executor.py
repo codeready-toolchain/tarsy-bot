@@ -16,7 +16,7 @@ from tarsy.models.agent_execution_result import (
     AgentExecutionResult,
     ParallelStageResult,
 )
-from tarsy.models.constants import SuccessPolicy, StageStatus
+from tarsy.models.constants import ParallelType, SuccessPolicy, StageStatus
 from tarsy.models.processing_context import ChainContext
 from tarsy.services.parallel_stage_executor import ParallelStageExecutor
 from tarsy.utils.timestamp import now_us
@@ -880,3 +880,140 @@ class TestParallelAgentTimeouts:
         assert slow_result.status == StageStatus.FAILED
         assert "timeout" in slow_result.error_message.lower()
 
+
+@pytest.mark.unit
+class TestParallelStageExecutorResumeParallelStage:
+    """Test resume logic for paused parallel stages."""
+
+    @pytest.mark.asyncio
+    async def test_resume_parallel_stage_cancelled_child_updates_stage_execution(self) -> None:
+        """Test that a cancelled resumed child updates the DB stage execution to CANCELLED."""
+        agent_factory = Mock()
+        stage_manager = Mock()
+        stage_manager.update_stage_execution_started = AsyncMock()
+        stage_manager.update_stage_execution_completed = AsyncMock()
+        stage_manager.update_stage_execution_failed = AsyncMock()
+        stage_manager.update_stage_execution_paused = AsyncMock()
+        stage_manager.update_stage_execution_cancelled = AsyncMock()
+
+        settings = MockFactory.create_mock_settings()
+        settings.alert_processing_timeout = 30
+        settings.llm_provider = "test-provider"
+
+        cancelling_agent = Mock()
+
+        async def cancel_process_alert(*args, **kwargs):
+            raise asyncio.CancelledError("user_cancel")
+
+        cancelling_agent.process_alert = AsyncMock(side_effect=cancel_process_alert)
+        cancelling_agent.set_current_stage_execution_id = Mock()
+        cancelling_agent.set_parallel_execution_metadata = Mock()
+        cancelling_agent.iteration_strategy = Mock()
+        cancelling_agent.iteration_strategy.value = "react"
+
+        agent_factory.get_agent = Mock(return_value=cancelling_agent)
+
+        executor = ParallelStageExecutor(
+            agent_factory=agent_factory,
+            settings=settings,
+            stage_manager=stage_manager,
+        )
+
+        paused_parent_stage = SimpleNamespace(
+            execution_id="parent-exec-1",
+            stage_name="investigation",
+            parallel_type=ParallelType.MULTI_AGENT.value,
+            started_at_us=now_us(),
+        )
+
+        completed_child = SimpleNamespace(
+            execution_id="child-completed-1",
+            status=StageStatus.COMPLETED.value,
+            agent="AgentA",
+            stage_name="investigation - AgentA",
+            started_at_us=now_us(),
+            completed_at_us=now_us(),
+            parallel_index=0,
+            error_message=None,
+            stage_output={
+                "status": StageStatus.COMPLETED.value,
+                "agent_name": "AgentA",
+                "stage_name": "investigation",
+                "timestamp_us": now_us(),
+                "result_summary": "completed",
+                "error_message": None,
+                "paused_conversation_state": None,
+            },
+        )
+
+        paused_child = SimpleNamespace(
+            execution_id="child-paused-1",
+            status=StageStatus.PAUSED.value,
+            agent="AgentB",
+            stage_name="investigation - AgentB",
+            started_at_us=now_us(),
+            completed_at_us=None,
+            parallel_index=1,
+            error_message=None,
+            stage_output={
+                "status": StageStatus.PAUSED.value,
+                "agent_name": "AgentB",
+                "stage_name": "investigation",
+                "timestamp_us": now_us(),
+                "result_summary": "paused",
+                "error_message": None,
+                "paused_conversation_state": None,
+            },
+        )
+
+        history_service = Mock()
+        history_service.get_parallel_stage_children = AsyncMock(
+            return_value=[completed_child, paused_child]
+        )
+
+        stage_config = SimpleNamespace(
+            name="investigation",
+            agents=[
+                SimpleNamespace(name="AgentA", llm_provider=None, iteration_strategy=None),
+                SimpleNamespace(name="AgentB", llm_provider=None, iteration_strategy=None),
+            ],
+            llm_provider=None,
+            success_policy=SuccessPolicy.ANY,
+        )
+        chain_definition = SimpleNamespace(stages=[stage_config], llm_provider=None)
+
+        from tarsy.models.alert import ProcessingAlert
+
+        alert = AlertFactory.create_kubernetes_alert()
+        processing_alert = ProcessingAlert(
+            alert_type=alert.alert_type or "kubernetes",
+            severity=alert.data.get("severity", "critical"),
+            timestamp=alert.timestamp,
+            environment=alert.data.get("environment", "production"),
+            runbook_url=alert.runbook,
+            alert_data=alert.data,
+        )
+
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session",
+        )
+
+        result = await executor.resume_parallel_stage(
+            paused_parent_stage=paused_parent_stage,
+            chain_context=chain_context,
+            session_mcp_client=Mock(),
+            chain_definition=chain_definition,
+            stage_index=0,
+            history_service=history_service,
+        )
+
+        stage_manager.update_stage_execution_cancelled.assert_awaited_with(
+            "child-paused-1", "user_cancel"
+        )
+
+        assert isinstance(result, ParallelStageResult)
+        assert result.status == StageStatus.COMPLETED
+        cancelled_child_result = next((r for r in result.results if r.agent_name == "AgentB"), None)
+        assert cancelled_child_result is not None
+        assert cancelled_child_result.status == StageStatus.CANCELLED

@@ -775,6 +775,39 @@ class ParallelStageExecutor:
                 )
                 
                 return (result, metadata)
+
+            except asyncio.CancelledError as e:
+                # Python 3.13+: CancelledError is a BaseException, so we must handle it explicitly
+                # to keep the child stage execution DB state consistent during resume.
+                from tarsy.models.constants import CancellationReason
+
+                reason = str(e.args[0]) if e.args and e.args[0] else ""
+                reason = reason or CancellationReason.UNKNOWN.value
+
+                await self.stage_manager.update_stage_execution_cancelled(child_execution_id, reason)
+
+                cancelled_result = AgentExecutionResult(
+                    status=StageStatus.CANCELLED,
+                    agent_name=agent_name,
+                    stage_name=stage_config.name,
+                    timestamp_us=now_us(),
+                    result_summary=f"Execution cancelled: {reason}",
+                    error_message=reason,
+                )
+
+                agent_completed_at_us = now_us()
+                metadata = AgentExecutionMetadata(
+                    agent_name=agent_name,
+                    llm_provider=config["llm_provider"] or self.settings.llm_provider,
+                    iteration_strategy=config["iteration_strategy"] or "unknown",
+                    started_at_us=agent_started_at_us,
+                    completed_at_us=agent_completed_at_us,
+                    status=StageStatus.CANCELLED,
+                    error_message=reason,
+                    token_usage=None,
+                )
+
+                return (cancelled_result, metadata)
             
             except SessionPaused as e:
                 logger.info(f"Agent '{agent_name}' paused again at iteration {e.iteration}")
@@ -834,6 +867,9 @@ class ParallelStageExecutor:
                 
                 return (error_result, metadata)
         
+        # Track child execution IDs for error handling (stable order matches execution_configs)
+        child_execution_ids = [c.execution_id for c in paused_children]
+
         # Execute all paused children concurrently
         tasks = [execute_single_child(config, idx) for idx, config in enumerate(execution_configs)]
         resumed_results_and_metadata = await asyncio.gather(*tasks, return_exceptions=True)
@@ -841,15 +877,33 @@ class ParallelStageExecutor:
         # Extract results and metadata
         resumed_results = []
         resumed_metadatas = []
-        for item in resumed_results_and_metadata:
+        for idx, item in enumerate(resumed_results_and_metadata):
             if isinstance(item, BaseException):
                 logger.error(f"Unexpected exception during resume: {item}")
+                child_execution_id = (
+                    child_execution_ids[idx] if idx < len(child_execution_ids) else None
+                )
+
+                if child_execution_id:
+                    if isinstance(item, asyncio.CancelledError):
+                        from tarsy.models.constants import CancellationReason
+
+                        reason = str(item.args[0]) if item.args and item.args[0] else ""
+                        reason = reason or CancellationReason.UNKNOWN.value
+                        await self.stage_manager.update_stage_execution_cancelled(
+                            child_execution_id, reason
+                        )
+                    else:
+                        await self.stage_manager.update_stage_execution_failed(
+                            child_execution_id, str(item) or type(item).__name__
+                        )
+
                 # Create error result
                 status = StageStatus.CANCELLED if isinstance(item, asyncio.CancelledError) else StageStatus.FAILED
                 error_message = str(item) or type(item).__name__
                 error_result = AgentExecutionResult(
                     status=status,
-                    agent_name="unknown",
+                    agent_name=execution_configs[idx].get("agent_name", "unknown") if idx < len(execution_configs) else "unknown",
                     stage_name=stage_config.name,
                     timestamp_us=now_us(),
                     result_summary=f"Unexpected error: {error_message}",
@@ -858,7 +912,7 @@ class ParallelStageExecutor:
                 resumed_results.append(error_result)
                 
                 error_metadata = AgentExecutionMetadata(
-                    agent_name="unknown",
+                    agent_name=execution_configs[idx].get("agent_name", "unknown") if idx < len(execution_configs) else "unknown",
                     llm_provider=self.settings.llm_provider,
                     iteration_strategy="unknown",
                     started_at_us=now_us(),

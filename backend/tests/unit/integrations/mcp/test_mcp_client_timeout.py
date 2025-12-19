@@ -171,7 +171,7 @@ class TestMCPClientListToolsTimeout:
             
             result = await client_with_session.list_tools("test-session", "test-server")
             
-            # Should return empty list after retrying once
+            # Should return empty list without retry
             assert result["test-server"] == []
             assert mock_session.list_tools.call_count == 1
     
@@ -185,7 +185,7 @@ class TestMCPClientListToolsTimeout:
             
             result = await client_with_session.list_tools("test-session")
             
-            # Should return empty list after retrying once
+            # Should return empty list without retry
             assert result["test-server"] == []
             assert mock_session.list_tools.call_count == 1
     

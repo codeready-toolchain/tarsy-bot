@@ -84,6 +84,8 @@ async def handle_cancel_request(event: dict) -> None:
     Args:
         event: Event dict containing session_id or stage_execution_id
     """
+    from tarsy.models.constants import CancellationReason
+    
     session_id = event.get("session_id")
     stage_execution_id = event.get("stage_execution_id")
     
@@ -98,8 +100,6 @@ async def handle_cancel_request(event: dict) -> None:
             task = active_tasks.get(session_id)
             if task:
                 logger.info(f"Cancelling session {session_id} on this pod")
-                from tarsy.models.constants import CancellationReason
-
                 task.cancel(CancellationReason.USER_CANCEL.value)
                 # The task cleanup in process_alert_background will handle:
                 # - Removing from active_tasks
@@ -137,8 +137,6 @@ async def handle_cancel_request(event: dict) -> None:
             task = active_chat_tasks.get(stage_execution_id)
             if task:
                 logger.info(f"Cancelling chat execution {stage_execution_id} on this pod")
-                from tarsy.models.constants import CancellationReason
-
                 task.cancel(CancellationReason.USER_CANCEL.value)
                 # The task cleanup in process_chat_message_background will handle:
                 # - Removing from active_chat_tasks
@@ -717,6 +715,8 @@ async def mark_session_as_failed(alert: Optional[ChainContext], error_msg: str) 
 
 async def process_alert_background(session_id: str, alert: ChainContext) -> None:
     """Background task to process an alert with comprehensive error handling and concurrency control."""
+    from tarsy.models.constants import CancellationReason
+    
     if alert_processing_semaphore is None or alert_service is None:
         logger.error(f"Cannot process session {session_id}: services not initialized")
         return
@@ -752,8 +752,6 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
                 except asyncio.TimeoutError:
                     # Timeout occurred - try to cancel the task
                     logger.warning(f"Session {session_id} exceeded {timeout_seconds}s timeout, attempting to cancel task")
-                    from tarsy.models.constants import CancellationReason
-
                     task.cancel(CancellationReason.TIMEOUT.value)
                     try:
                         await task  # Wait for cancellation to complete
@@ -887,6 +885,8 @@ async def process_chat_message_background(
     Background task wrapper for chat message processing.
     Matches process_alert_background() pattern with timeout handling.
     """
+    from tarsy.models.constants import CancellationReason
+    
     start_time = datetime.now()
     settings = get_settings()
     
@@ -924,8 +924,6 @@ async def process_chat_message_background(
             except asyncio.TimeoutError:
                 # Timeout occurred - try to cancel the task
                 logger.warning(f"Chat message {stage_execution_id} exceeded {timeout_seconds}s timeout, attempting to cancel task")
-                from tarsy.models.constants import CancellationReason
-
                 task.cancel(CancellationReason.TIMEOUT.value)
                 try:
                     await task  # Wait for cancellation to complete
