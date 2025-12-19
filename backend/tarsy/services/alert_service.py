@@ -29,6 +29,7 @@ from tarsy.models.agent_execution_result import AgentExecutionResult
 from tarsy.models.api_models import CancelAgentResponse, ChainExecutionResult
 from tarsy.models.constants import (
     AlertSessionStatus,
+    CancellationReason,
     ChainStatus,
     ParallelType,
     ProgressPhase,
@@ -1468,6 +1469,27 @@ class AlertService:
                             await self.stage_manager.update_stage_execution_failed(stage_execution_id, error_msg)
                             failed_stages += 1
                     
+                except asyncio.CancelledError as e:
+                    # Cancellation is a normal control-flow event (user cancel, timeout, shutdown).
+                    # In Python 3.13+, CancelledError derives from BaseException and will not be
+                    # caught by `except Exception`.
+                    reason = (
+                        e.args[0]
+                        if e.args and isinstance(e.args[0], str)
+                        else CancellationReason.UNKNOWN.value
+                    )
+                    logger.info(
+                        "Stage '%s' cancelled (reason=%s) in session %s",
+                        stage.name,
+                        reason,
+                        chain_context.session_id,
+                    )
+                    if stage_execution_id:
+                        await self.stage_manager.update_stage_execution_cancelled(
+                            stage_execution_id, reason
+                        )
+                    raise
+
                 except Exception as e:
                     # Check if this is a pause signal (SessionPaused)
                     if isinstance(e, SessionPaused):

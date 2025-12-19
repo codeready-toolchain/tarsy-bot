@@ -5,6 +5,7 @@ Tests the complete alert processing workflow including agent selection,
 delegation, error handling, progress tracking, and history management.
 """
 
+import asyncio
 import uuid
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -1352,6 +1353,85 @@ class TestEnhancedChainExecution:
         assert result.error is not None
         assert "Chain processing failed: Stage 'failing-stage' (agent: FailingAgent): Unexpected agent failure" in result.error
         assert result.final_analysis is None
+
+    @pytest.mark.asyncio
+    async def test_execute_chain_stages_cancelled_error_marks_stage_cancelled(
+        self, initialized_service
+    ) -> None:
+        """Test CancelledError in a single-agent stage marks the stage as CANCELLED and re-raises."""
+        from contextlib import asynccontextmanager
+
+        from tarsy.models.constants import CancellationReason, StageStatus
+
+        service, _dependencies = initialized_service
+
+        chain_definition = ChainConfigModel(
+            chain_id="cancelled-chain",
+            alert_types=["test"],
+            stages=[ChainStageConfigModel(name="analysis", agent="TestAgent")],
+            description="Test chain cancellation",
+        )
+
+        from tarsy.models.alert import ProcessingAlert
+
+        processing_alert = ProcessingAlert(
+            alert_type="test_alert",
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"test": "data"},
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test_session",
+        )
+
+        stage_record = Mock()
+        stage_record.stage_id = "stage-id-1"
+        stage_record.execution_id = "exec-1"
+        stage_record.session_id = chain_context.session_id
+        stage_record.stage_name = "analysis"
+        stage_record.stage_index = 0
+        stage_record.status = StageStatus.PENDING.value
+        stage_record.started_at_us = None
+        stage_record.completed_at_us = None
+        stage_record.duration_ms = None
+        stage_record.stage_output = None
+        stage_record.error_message = None
+        stage_record.current_iteration = None
+
+        service.history_service.get_stage_execution = AsyncMock(return_value=stage_record)
+
+        cancelled_agent = AsyncMock()
+
+        async def _raise_cancel(*_args, **_kwargs):
+            raise asyncio.CancelledError(CancellationReason.TIMEOUT.value)
+
+        cancelled_agent.process_alert.side_effect = _raise_cancel
+        cancelled_agent.set_current_stage_execution_id = Mock()
+
+        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None):
+            return cancelled_agent
+
+        service.agent_factory.get_agent.side_effect = mock_get_agent
+
+        session_mcp_client = AsyncMock()
+
+        @asynccontextmanager
+        async def _noop_stage_execution_context(_stage):
+            yield
+
+        with patch(
+            "tarsy.hooks.hook_context.stage_execution_context",
+            new=_noop_stage_execution_context,
+        ):
+            with pytest.raises(asyncio.CancelledError):
+                await service._execute_chain_stages(
+                    chain_definition, chain_context, session_mcp_client
+                )
+
+        assert stage_record.status == StageStatus.CANCELLED.value
+        assert stage_record.error_message == CancellationReason.TIMEOUT.value
 
 
 @pytest.mark.unit

@@ -275,6 +275,55 @@ class StageExecutionManager:
                 f"Cannot update stage execution {stage_execution_id} to failed status. "
                 f"Database persistence is required for audit trail. Error: {str(e)}"
             ) from e
+
+    async def update_stage_execution_cancelled(self, stage_execution_id: str, reason: str) -> None:
+        """
+        Update stage execution as cancelled.
+
+        Args:
+            stage_execution_id: Stage execution ID
+            reason: Cancellation reason (e.g. "user_cancel", "shutdown", "timeout", "unknown")
+
+        Raises:
+            RuntimeError: If stage execution cannot be updated to cancelled status
+        """
+        if not self.history_service:
+            raise RuntimeError(
+                f"Cannot update stage execution {stage_execution_id} as cancelled: History service is unavailable. "
+                "All alert processing must be done with proper stage tracking."
+            )
+
+        try:
+            existing_stage = await self.history_service.get_stage_execution(stage_execution_id)
+            if not existing_stage:
+                raise RuntimeError(
+                    f"Stage execution {stage_execution_id} not found in database for cancellation update. "
+                    "This indicates a critical bug in stage lifecycle management."
+                )
+
+            existing_stage.status = StageStatus.CANCELLED.value
+            existing_stage.completed_at_us = now_us()
+            existing_stage.stage_output = None
+            existing_stage.error_message = reason
+
+            if existing_stage.started_at_us and existing_stage.completed_at_us:
+                existing_stage.duration_ms = int((existing_stage.completed_at_us - existing_stage.started_at_us) / 1000)
+
+            from tarsy.hooks.hook_context import stage_execution_context
+            async with stage_execution_context(existing_stage):
+                pass
+            logger.debug(
+                "Triggered stage hooks for stage cancellation %s: %s",
+                existing_stage.stage_index,
+                existing_stage.stage_id,
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to update stage execution as cancelled: {str(e)}")
+            raise RuntimeError(
+                f"Cannot update stage execution {stage_execution_id} to cancelled status. "
+                f"Database persistence is required for audit trail. Error: {str(e)}"
+            ) from e
     
     async def update_stage_execution_paused(
         self, 

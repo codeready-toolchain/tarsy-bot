@@ -64,6 +64,15 @@ class StageStatus(Enum):
     PARTIAL = "partial"  # Some results but with warnings/issues
 
 
+class CancellationReason(str, Enum):
+    """Standardized reasons for task/stage cancellation."""
+
+    USER_CANCEL = "user_cancel"
+    TIMEOUT = "timeout"
+    SHUTDOWN = "shutdown"
+    UNKNOWN = "unknown"
+
+
 class ParallelType(str, Enum):
     """Types of parallel execution for stage executions (EP-0030)."""
     

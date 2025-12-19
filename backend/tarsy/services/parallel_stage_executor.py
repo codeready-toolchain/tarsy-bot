@@ -323,6 +323,46 @@ class ParallelStageExecutor:
                 
                 return (result, metadata)
                 
+            except asyncio.CancelledError as e:
+                # Cancellation can happen if the agent task is cancelled mid-flight (e.g. shutdown,
+                # upstream cancellation, or nested wait_for interactions). Treat it as a terminal
+                # result so the child stage doesn't stay "running" forever in the UI.
+                from tarsy.models.constants import CancellationReason
+
+                reason = str(e.args[0]) if getattr(e, "args", None) else ""
+                reason = reason or CancellationReason.UNKNOWN.value
+                logger.warning(
+                    "%s '%s' was cancelled (%s)",
+                    parallel_type,
+                    agent_name,
+                    reason,
+                )
+
+                agent_completed_at_us = now_us()
+                await self.stage_manager.update_stage_execution_cancelled(child_execution_id, reason)
+
+                cancelled_result = AgentExecutionResult(
+                    status=StageStatus.CANCELLED,
+                    agent_name=agent_name,
+                    stage_name=stage.name,
+                    timestamp_us=agent_completed_at_us,
+                    result_summary=f"Execution cancelled ({reason})",
+                    error_message=reason,
+                )
+
+                metadata = AgentExecutionMetadata(
+                    agent_name=agent_name,
+                    llm_provider=config["llm_provider"] or self.settings.llm_provider,
+                    iteration_strategy=config["iteration_strategy"] or "unknown",
+                    started_at_us=agent_started_at_us,
+                    completed_at_us=agent_completed_at_us,
+                    status=StageStatus.CANCELLED,
+                    error_message=reason,
+                    token_usage=None,
+                )
+
+                return (cancelled_result, metadata)
+
             except SessionPaused as e:
                 # Special handling for pause signal (not an error!)
                 logger.info(f"{parallel_type} '{agent_name}' paused at iteration {e.iteration}")
