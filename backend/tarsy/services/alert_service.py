@@ -50,7 +50,7 @@ from tarsy.services.response_formatter import (
 from tarsy.services.runbook_service import RunbookService
 from tarsy.services.session_manager import SessionManager
 from tarsy.services.stage_execution_manager import StageExecutionManager
-from tarsy.utils.agent_execution_utils import get_stage_agent_label
+from tarsy.utils.agent_execution_utils import extract_cancellation_reason, get_stage_agent_label
 from tarsy.utils.logger import get_module_logger
 from tarsy.utils.timestamp import now_us
 
@@ -1474,11 +1474,7 @@ class AlertService:
                     # Cancellation is a normal control-flow event (user cancel, timeout, shutdown).
                     # In Python 3.13+, CancelledError derives from BaseException and will not be
                     # caught by `except Exception`.
-                    reason = (
-                        e.args[0]
-                        if e.args and isinstance(e.args[0], str)
-                        else CancellationReason.UNKNOWN.value
-                    )
+                    reason = extract_cancellation_reason(e)
                     logger.info(
                         "Stage '%s' cancelled (reason=%s) in session %s",
                         stage.name,
