@@ -73,6 +73,7 @@ class MCPClient:
         self.exit_stack = AsyncExitStack()
         self._initialized = False
         self.failed_servers: Dict[str, str] = {}  # server_id -> error_message
+        self._reinit_locks: Dict[str, asyncio.Lock] = {}  # Per-server locks for reinitialization
 
     def _classify_mcp_failure(self, exc: BaseException) -> _RecoveryDecision:
         """
@@ -142,8 +143,10 @@ class MCPClient:
         if old_transport is not None:
             try:
                 await old_transport.close()
-            except Exception as e:
+            except BaseException as e:
                 # Best-effort close; recovery should continue even if teardown fails.
+                # We catch BaseException to prevent CancelledError (Python 3.13+) from
+                # propagating during recovery and cancelling the parent agent task.
                 logger.debug(
                     "Suppressing MCP transport close error for %s during recovery: %s",
                     server_id,
@@ -156,6 +159,13 @@ class MCPClient:
                 self._create_session(server_id, server_config),
                 timeout=self._RECOVERY_REINIT_TIMEOUT_SECONDS,
             )
+        except asyncio.CancelledError as e:
+            # CancelledError during session creation (e.g., from AnyIO cancel scope issues)
+            # should be converted to a recoverable exception, not propagate and cancel the agent.
+            raise Exception(
+                f"Session creation for '{server_id}' was cancelled during recovery "
+                f"(likely due to transport cleanup issues): {e}"
+            ) from e
         except asyncio.TimeoutError:
             raise TimeoutError(
                 f"Failed to reinitialize MCP session for '{server_id}' within "
@@ -178,16 +188,30 @@ class MCPClient:
 
         attempt_fn: async callable that accepts (session: ClientSession) and returns result.
         """
+        # Check if we need to wait for ongoing reinitialization
+        if server_id in self._reinit_locks:
+            # Another task might be reinitializing this server, wait for it
+            async with self._reinit_locks[server_id]:
+                pass  # Just wait for the lock to be released
+        
         session = self.sessions.get(server_id)
         if session is None:
             server_config = self.mcp_registry.get_server_config_safe(server_id)
             if not server_config or not getattr(server_config, "enabled", True):
                 raise Exception(f"MCP server not found: {server_id}")
-            session = await self._create_session(server_id, server_config)
-            self.sessions[server_id] = session
+            try:
+                session = await self._create_session(server_id, server_config)
+                self.sessions[server_id] = session
+            except asyncio.CancelledError as cancel_err:
+                # Convert CancelledError to a regular Exception to prevent agent cancellation
+                raise Exception(
+                    f"Failed to create MCP session for '{server_id}': session creation was cancelled"
+                ) from cancel_err
 
         try:
             return await attempt_fn(session)
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             decision = self._classify_mcp_failure(e)
             if decision.action == _RecoveryAction.NO_RETRY:
@@ -211,8 +235,35 @@ class MCPClient:
                 await asyncio.sleep(random.uniform(0.25, 0.75))
                 return await attempt_fn(session)
 
-            # Retry with new session
-            new_session = await self._reinitialize_server_session(server_id)
+            # Retry with new session (use lock to prevent concurrent reinit)
+            # Get or create a lock for this server to serialize reinitialization
+            if server_id not in self._reinit_locks:
+                self._reinit_locks[server_id] = asyncio.Lock()
+            
+            # Store old session to detect if it changed while we waited for lock
+            old_session = session
+            
+            async with self._reinit_locks[server_id]:
+                # Check if another task already reinitialized while we were waiting for the lock
+                current_session = self.sessions.get(server_id)
+                if current_session is not old_session:
+                    # Another task already replaced the session, use the new one
+                    new_session = current_session
+                else:
+                    # We're the first one, need to reinitialize
+                    try:
+                        new_session = await self._reinitialize_server_session(server_id)
+                    except Exception as reinit_error:
+                        logger.warning(
+                            "MCP recovery: Failed to reinitialize %s: %s",
+                            server_id,
+                            reinit_error,
+                        )
+                        # Raise a clear error that won't cancel the agent
+                        raise Exception(
+                            f"MCP recovery failed for '{server_id}': session reinitialization failed"
+                        ) from reinit_error
+            
             return await attempt_fn(new_session)
     
     async def initialize(self) -> None:
