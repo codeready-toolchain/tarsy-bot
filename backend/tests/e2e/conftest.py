@@ -321,7 +321,7 @@ def e2e_test_client(isolated_e2e_settings):
     # Individual tests can override with more specific mocks as needed
     async def mock_mcp_initialize(self):
         """Mock MCP initialization - tests will provide their own mocks."""
-        self._initialized = True
+        self._ready = True
         self.sessions = {}
         logger.info("E2E: Skipping real MCP server initialization (will be mocked in test)")
     
@@ -760,7 +760,7 @@ def e2e_native_thinking_test_client(isolated_native_thinking_settings):
     # Mock MCPClient.initialize() to prevent real server startup
     async def mock_mcp_initialize(self):
         """Mock MCP initialization - tests will provide their own mocks."""
-        self._initialized = True
+        self._ready = True
         self.sessions = {}
         logger.info("E2E Native Thinking: Skipping real MCP server initialization")
     
@@ -849,7 +849,7 @@ def e2e_parallel_test_client(isolated_parallel_settings):
     # Individual tests can override with more specific mocks as needed
     async def mock_mcp_initialize(self):
         """Mock MCP initialization - tests will provide their own mocks."""
-        self._initialized = True
+        self._ready = True
         self.sessions = {}
         logger.info("E2E Parallel: Skipping real MCP server initialization (will be mocked in test)")
     
@@ -936,4 +936,18 @@ def e2e_cancel_agent_alert():
             "description": "Test per-agent cancellation scenario",
             "namespace": "test-namespace"
         }
+    }
+
+
+@pytest.fixture
+def e2e_cancel_agent_three_agents_alert():
+    """Alert for per-agent cancellation testing with 3 parallel agents (uses success_policy: any)."""
+    return {
+        "alert_type": "test-cancel-agent-execution-three-agents",
+        "runbook": "https://runbooks.example.com/cancel-test-three-agents",
+        "severity": "warning",
+        "data": {
+            "description": "Test per-agent cancellation scenario with 3 parallel agents",
+            "namespace": "test-namespace",
+        },
     }

@@ -423,7 +423,7 @@ Root cause identified from logs.""",
                         print("   - Executive summary generated")
                         
                         return final_detail
-        
+
         finally:
             # Restore original setting
             settings.max_llm_mcp_iterations = original_max_iterations

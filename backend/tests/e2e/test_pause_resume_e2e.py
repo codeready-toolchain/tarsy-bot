@@ -494,7 +494,7 @@ Finalizers:   [kubernetes.io/pvc-protection]
                         async def mock_initialize(self):
                             """Mock initialization that sets up mock sessions."""
                             self.sessions = mock_sessions.copy()
-                            self._initialized = True
+                            self._ready = True
 
                         with patch.object(MCPClient, "initialize", mock_initialize), \
                              patch.object(MCPClient, "list_tools", mock_list_tools), \

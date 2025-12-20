@@ -110,4 +110,27 @@ agent_chains:
           iteration_strategy: "synthesis-native-thinking"
           llm_provider: "google-default"
     description: "Multi-agent parallel with success_policy: any for per-agent cancellation tests"
+
+  # Test chain 5: Multi-agent parallel (3 agents) with success_policy: any (for cancel tests)
+  multi-agent-cancel-three-agent-test-chain:
+    alert_types:
+      - "test-cancel-agent-execution-three-agents"
+    stages:
+      - name: "investigation"
+        agents:
+          - name: "KubernetesAgent"
+            llm_provider: "google-default"
+            iteration_strategy: "native-thinking"
+          - name: "LogAgent"
+            llm_provider: "anthropic-default"
+            iteration_strategy: "react"
+          - name: "CommandAgent"
+            llm_provider: "anthropic-default"
+            iteration_strategy: "react"
+        success_policy: "any"
+        synthesis:
+          agent: "SynthesisAgent"
+          iteration_strategy: "synthesis-native-thinking"
+          llm_provider: "google-default"
+    description: "3-agent parallel stage with success_policy: any for per-agent cancellation tests"
   

@@ -110,7 +110,7 @@ class TestSingleAgentLangChainFailureE2E:
                 async def mock_initialize(self):
                     """Mock initialization that bypasses real server startup."""
                     self.sessions = mock_sessions.copy()
-                    self._initialized = True
+                    self._ready = True
 
                 with patch.object(MCPClient, "initialize", mock_initialize), \
                      patch.object(MCPClient, "list_tools", mock_list_tools), \
@@ -280,7 +280,7 @@ class TestSingleAgentGeminiNativeThinkingFailureE2E:
                 async def mock_initialize(self):
                     """Mock initialization that bypasses real server startup."""
                     self.sessions = mock_sessions.copy()
-                    self._initialized = True
+                    self._ready = True
 
                 with patch.object(MCPClient, "initialize", mock_initialize), \
                      patch.object(MCPClient, "list_tools", mock_list_tools), \
@@ -429,7 +429,7 @@ class TestSingleAgentIntermittentFailureE2E:
                 async def mock_initialize(self):
                     """Mock initialization that bypasses real server startup."""
                     self.sessions = mock_sessions.copy()
-                    self._initialized = True
+                    self._ready = True
 
                 with patch.object(MCPClient, "initialize", mock_initialize), \
                      patch.object(MCPClient, "list_tools", mock_list_tools), \
