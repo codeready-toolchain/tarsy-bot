@@ -218,9 +218,16 @@ describe('timestamp utilities', () => {
     });
 
     it('should handle exact boundary', () => {
+      // Use fake timers to avoid race condition between capturing time and checking
+      vi.useFakeTimers();
+      const fixedTime = new Date('2024-01-15T10:30:45.000Z');
+      vi.setSystemTime(fixedTime);
+      
       const now = getCurrentTimestampUs();
       const exactMinuteAgo = now - 60000000; // exactly 60 seconds
       expect(isWithinLastMinutes(exactMinuteAgo, 1)).toBe(true);
+      
+      vi.useRealTimers();
     });
 
     it('should handle multiple minutes', () => {
