@@ -50,6 +50,7 @@ from tarsy.services.response_formatter import (
 from tarsy.services.runbook_service import RunbookService
 from tarsy.services.session_manager import SessionManager
 from tarsy.services.stage_execution_manager import StageExecutionManager
+from tarsy.utils.agent_execution_utils import get_stage_agent_label
 from tarsy.utils.logger import get_module_logger
 from tarsy.utils.timestamp import now_us
 
@@ -1550,21 +1551,7 @@ class AlertService:
                     #
                     # Note: for multi-agent parallel stages, `stage.agent` is None. Use a stable label
                     # to avoid secondary failures while constructing error results.
-                    agent_label = stage.agent
-                    if not agent_label and stage.agents:
-                        parts: list[str] = []
-                        for a in stage.agents:
-                            if isinstance(a, str):
-                                parts.append(a)
-                            else:
-                                parts.append(
-                                    getattr(a, "agent", None)
-                                    or getattr(a, "name", None)
-                                    or str(a)
-                                )
-                        agent_label = ",".join(parts)
-                    if not agent_label:
-                        agent_label = "parallel_stage"
+                    agent_label = get_stage_agent_label(stage)
                     error_msg = f"Stage '{stage.name}' failed with agent '{agent_label}': {str(e)}"
                     logger.error(error_msg, exc_info=True)
                     

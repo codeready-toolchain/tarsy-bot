@@ -7,7 +7,7 @@ and automatic synthesis of parallel results.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from tarsy.agents.exceptions import SessionPaused
 from tarsy.config.settings import Settings
@@ -20,6 +20,7 @@ from tarsy.models.agent_execution_result import (
 )
 from tarsy.models.constants import SuccessPolicy, ParallelType, StageStatus  # FailurePolicy is backward compat alias
 from tarsy.models.processing_context import ChainContext
+from tarsy.utils.agent_execution_utils import build_agent_result_from_exception
 from tarsy.utils.logger import get_module_logger
 from tarsy.utils.timestamp import now_us
 
@@ -327,10 +328,9 @@ class ParallelStageExecutor:
                 # Cancellation can happen if the agent task is cancelled mid-flight (e.g. shutdown,
                 # upstream cancellation, or nested wait_for interactions). Treat it as a terminal
                 # result so the child stage doesn't stay "running" forever in the UI.
-                from tarsy.models.constants import CancellationReason
+                from tarsy.utils.agent_execution_utils import extract_cancellation_reason
 
-                reason = str(e.args[0]) if getattr(e, "args", None) else ""
-                reason = reason or CancellationReason.UNKNOWN.value
+                reason = extract_cancellation_reason(e)
                 logger.warning(
                     "%s '%s' was cancelled (%s)",
                     parallel_type,
@@ -338,30 +338,18 @@ class ParallelStageExecutor:
                     reason,
                 )
 
-                agent_completed_at_us = now_us()
                 await self.stage_manager.update_stage_execution_cancelled(child_execution_id, reason)
 
-                cancelled_result = AgentExecutionResult(
-                    status=StageStatus.CANCELLED,
+                result, metadata = build_agent_result_from_exception(
+                    exception=e,
                     agent_name=agent_name,
                     stage_name=stage.name,
-                    timestamp_us=agent_completed_at_us,
-                    result_summary=f"Execution cancelled ({reason})",
-                    error_message=reason,
-                )
-
-                metadata = AgentExecutionMetadata(
-                    agent_name=agent_name,
                     llm_provider=config["llm_provider"] or self.settings.llm_provider,
                     iteration_strategy=config["iteration_strategy"] or "unknown",
-                    started_at_us=agent_started_at_us,
-                    completed_at_us=agent_completed_at_us,
-                    status=StageStatus.CANCELLED,
-                    error_message=reason,
-                    token_usage=None,
+                    agent_started_at_us=agent_started_at_us,
                 )
 
-                return (cancelled_result, metadata)
+                return (result, metadata)
 
             except SessionPaused as e:
                 # Special handling for pause signal (not an error!)
@@ -443,25 +431,13 @@ class ParallelStageExecutor:
                 logger.error(f"Unexpected exception in {parallel_type} {idx+1}: {item}")
                 agent_name = execution_configs[idx].get("agent_name") or f"{parallel_type}-{idx+1}"
                 
-                status = StageStatus.CANCELLED if isinstance(item, asyncio.CancelledError) else StageStatus.FAILED
-                error_message = str(item) or type(item).__name__
-                error_result = AgentExecutionResult(
-                    status=status,
+                error_result, error_metadata = build_agent_result_from_exception(
+                    exception=item,
                     agent_name=agent_name,
                     stage_name=stage.name,
-                    timestamp_us=now_us(),
-                    result_summary=f"Unexpected error: {error_message}",
-                    error_message=error_message,
-                )
-                error_metadata = AgentExecutionMetadata(
-                    agent_name=agent_name,
                     llm_provider=execution_configs[idx].get("llm_provider") or self.settings.llm_provider,
                     iteration_strategy=execution_configs[idx].get("iteration_strategy") or "unknown",
-                    started_at_us=stage_started_at_us,
-                    completed_at_us=now_us(),
-                    status=status,
-                    error_message=error_message,
-                    token_usage=None,
+                    agent_started_at_us=stage_started_at_us,
                 )
                 results.append(error_result)
                 metadatas.append(error_metadata)
@@ -845,28 +821,15 @@ class ParallelStageExecutor:
             if isinstance(item, BaseException):
                 logger.error(f"Unexpected exception during resume: {item}")
                 # Create error result
-                status = StageStatus.CANCELLED if isinstance(item, asyncio.CancelledError) else StageStatus.FAILED
-                error_message = str(item) or type(item).__name__
-                error_result = AgentExecutionResult(
-                    status=status,
+                error_result, error_metadata = build_agent_result_from_exception(
+                    exception=item,
                     agent_name="unknown",
                     stage_name=stage_config.name,
-                    timestamp_us=now_us(),
-                    result_summary=f"Unexpected error: {error_message}",
-                    error_message=error_message,
-                )
-                resumed_results.append(error_result)
-                
-                error_metadata = AgentExecutionMetadata(
-                    agent_name="unknown",
                     llm_provider=self.settings.llm_provider,
                     iteration_strategy="unknown",
-                    started_at_us=now_us(),
-                    completed_at_us=now_us(),
-                    status=status,
-                    error_message=error_message,
-                    token_usage=None
+                    agent_started_at_us=now_us(),
                 )
+                resumed_results.append(error_result)
                 resumed_metadatas.append(error_metadata)
             else:
                 result, metadata = item

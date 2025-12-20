@@ -12,39 +12,10 @@ from mcp.client.streamable_http import streamablehttp_client
 from tarsy.models.mcp_transport_config import HTTPTransportConfig
 from tarsy.utils.logger import get_module_logger
 
+from .error_handling import is_safe_teardown_error
 from .factory import MCPTransport
 
 logger = get_module_logger(__name__)
-
-
-_CANCEL_SCOPE_MISMATCH_MESSAGE = "Attempted to exit cancel scope in a different task than it was entered in"
-
-
-def _is_cancel_scope_mismatch_error(exc: BaseException) -> bool:
-    """Detect the known AnyIO cancel-scope cleanup bug (safe to suppress during teardown only)."""
-    return isinstance(exc, RuntimeError) and _CANCEL_SCOPE_MISMATCH_MESSAGE in str(exc)
-
-
-def _is_safe_teardown_error(exc: BaseException) -> bool:
-    """
-    Determine if an exception raised during transport teardown is safe to suppress.
-
-    We only suppress:
-    - The known AnyIO cancel-scope mismatch RuntimeError
-    - Expected connection/stream shutdown errors that can be produced by MCP SDK task groups
-
-    Anything else is re-raised to avoid hiding real bugs.
-    """
-    if _is_cancel_scope_mismatch_error(exc):
-        return True
-
-    if isinstance(exc, BaseExceptionGroup):
-        return all(_is_safe_teardown_error(e) for e in exc.exceptions)
-
-    if isinstance(exc, (httpx.ConnectError, httpx.TransportError, GeneratorExit)):
-        return True
-
-    return False
 
 
 class HTTPTransport(MCPTransport):
@@ -138,10 +109,10 @@ class HTTPTransport(MCPTransport):
                 try:
                     await http_context.__aexit__(type(e), e, e.__traceback__)
                 except BaseExceptionGroup as eg:
-                    if not _is_safe_teardown_error(eg):
+                    if not is_safe_teardown_error(eg):
                         raise
                 except BaseException as exit_err:
-                    if not _is_safe_teardown_error(exit_err):
+                    if not is_safe_teardown_error(exit_err):
                         raise
                 raise
             self.exit_stack.push_async_exit(http_context)
@@ -188,7 +159,7 @@ class HTTPTransport(MCPTransport):
             try:
                 await self.exit_stack.aclose()
             except BaseExceptionGroup as eg:
-                if _is_safe_teardown_error(eg):
+                if is_safe_teardown_error(eg):
                     logger.debug(
                         "HTTP transport cleanup error for %s (suppressed): %s",
                         self.server_id,
@@ -197,7 +168,7 @@ class HTTPTransport(MCPTransport):
                 else:
                     raise
             except Exception as e:
-                if _is_safe_teardown_error(e):
+                if is_safe_teardown_error(e):
                     logger.debug(
                         "HTTP transport cleanup error for %s (suppressed): %s",
                         self.server_id,
