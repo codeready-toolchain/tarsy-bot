@@ -493,7 +493,7 @@ class TestNativeThinkingPauseResumeE2E:
                     
                     async def mock_initialize(self):
                         self.sessions = mock_sessions.copy()
-                        self._ready = True
+                        self._initialized = True
                     
                     with patch.object(MCPClient, "initialize", mock_initialize), \
                          patch.object(MCPClient, "list_tools", mock_list_tools), \
