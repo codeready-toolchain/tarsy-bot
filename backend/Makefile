@@ -65,59 +65,62 @@ test-integration: check-test-deps clean-test-db ## Run integration tests only (w
 .PHONY: test-e2e
 test-e2e: check-test-deps clean-test-db ## Run end-to-end tests only (one by one for isolation, with clean database)
 	@echo "$(GREEN)Running end-to-end tests sequentially...$(NC)"
-	@echo "$(YELLOW)Running first E2E test...$(NC)"
+	@echo "$(YELLOW)Running 1st of 19 E2E tests...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_api_e2e.py -v --tb=short -m e2e || exit 1
 	@$(MAKE) clean-test-db
-	@echo "$(YELLOW)Running second E2E test...$(NC)"
+	@echo "$(YELLOW)Running 2nd of 19 E2E tests...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_stage_failure_detection_e2e.py -v --tb=short -m e2e || exit 1
 	@$(MAKE) clean-test-db
-	@echo "$(YELLOW)Running third E2E test...$(NC)"
+	@echo "$(YELLOW)Running 3rd of 19 E2E tests...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_runbooks_e2e.py -v --tb=short -m e2e || exit 1
 	@$(MAKE) clean-test-db
-	@echo "$(YELLOW)Running fourth E2E test (pause/resume)...$(NC)"
+	@echo "$(YELLOW)Running 4th of 19 E2E tests (pause/resume)...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_pause_resume_e2e.py -v --tb=short -m e2e || exit 1
 	@$(MAKE) clean-test-db
-	@echo "$(YELLOW)Running fifth E2E test (native thinking)...$(NC)"
+	@echo "$(YELLOW)Running 5th of 19 E2E tests (native thinking)...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_native_thinking_e2e.py -v --tb=short -m e2e || exit 1
 	@$(MAKE) clean-test-db
-	@echo "$(YELLOW)Running sixth E2E test (native thinking pause/resume)...$(NC)"
+	@echo "$(YELLOW)Running 6th of 19 E2E tests (native thinking pause/resume)...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_native_thinking_pause_resume_e2e.py -v --tb=short -m e2e || exit 1
 	@$(MAKE) clean-test-db
-	@echo "$(YELLOW)Running seventh E2E test (parallel multi-agent)...$(NC)"
+	@echo "$(YELLOW)Running 7th of 19 E2E tests (parallel multi-agent)...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_parallel_multi_agent_e2e.py -v --tb=short -m e2e || exit 1
 	@$(MAKE) clean-test-db
-	@echo "$(YELLOW)Running eighth E2E test (parallel replica)...$(NC)"
+	@echo "$(YELLOW)Running 8th of 19 E2E tests (parallel replica)...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_parallel_replica_e2e.py -v --tb=short -m e2e || exit 1
 	@$(MAKE) clean-test-db
-	@echo "$(YELLOW)Running ninth E2E test (parallel then regular)...$(NC)"
+	@echo "$(YELLOW)Running 9th of 19 E2E tests (parallel then regular)...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_parallel_then_regular_e2e.py -v --tb=short -m e2e || exit 1
 	@$(MAKE) clean-test-db
-	@echo "$(YELLOW)Running tenth E2E test (parallel pause/resume)...$(NC)"
+	@echo "$(YELLOW)Running 10th of 19 E2E tests (parallel pause/resume)...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_pause_resume_parallel_e2e.py -v --tb=short -m e2e || exit 1
 	@$(MAKE) clean-test-db
-	@echo "$(YELLOW)Running eleventh E2E test (cancel paused session during parallel stage)...$(NC)"
+	@echo "$(YELLOW)Running 11th of 19 E2E tests (cancel paused session during parallel stage)...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_cancel_session_parallel_e2e.py -v --tb=short -m e2e || exit 1
 	@$(MAKE) clean-test-db
-	@echo "$(YELLOW)Running twelfth E2E test (parallel LLM failure)...$(NC)"
+	@echo "$(YELLOW)Running 12th of 19 E2E tests (parallel LLM failure)...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_parallel_llm_failure_e2e.py -v --tb=short -m e2e || exit 1
 	@$(MAKE) clean-test-db
-	@echo "$(YELLOW)Running thirteenth E2E test (single-agent LangChain failure)...$(NC)"
+	@echo "$(YELLOW)Running 13th of 19 E2E tests (single-agent LangChain failure)...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_single_agent_llm_failure_e2e.py::TestSingleAgentLangChainFailureE2E -v --tb=short -m e2e || exit 1
 	@$(MAKE) clean-test-db
-	@echo "$(YELLOW)Running fourteenth E2E test (single-agent Gemini failure)...$(NC)"
+	@echo "$(YELLOW)Running 14th of 19 E2E tests (single-agent Gemini failure)...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_single_agent_llm_failure_e2e.py::TestSingleAgentGeminiNativeThinkingFailureE2E -v --tb=short -m e2e || exit 1
 	@$(MAKE) clean-test-db
-	@echo "$(YELLOW)Running fifteenth E2E test (single-agent intermittent failure)...$(NC)"
+	@echo "$(YELLOW)Running 15th of 19 E2E tests (single-agent intermittent failure)...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_single_agent_llm_failure_e2e.py::TestSingleAgentIntermittentFailureE2E -v --tb=short -m e2e || exit 1
 	@$(MAKE) clean-test-db
-	@echo "$(YELLOW)Running sixteenth E2E test (cancel parallel agent with policy any)...$(NC)"
+	@echo "$(YELLOW)Running 16th of 19 E2E tests (cancel parallel agent with policy any)...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_cancel_parallel_agent_e2e.py::TestCancelParallelAgentE2E::test_cancel_paused_agent_with_policy_any_triggers_continuation -v --tb=short -m e2e || exit 1
 	@$(MAKE) clean-test-db
-	@echo "$(YELLOW)Running seventeenth E2E test (cancel one agent, session stays paused)...$(NC)"
+	@echo "$(YELLOW)Running 17th of 19 E2E tests (cancel one agent, session stays paused)...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_cancel_parallel_agent_e2e.py::TestCancelParallelAgentE2E::test_cancel_one_paused_agent_keeps_session_paused -v --tb=short -m e2e || exit 1
 	@$(MAKE) clean-test-db
-	@echo "$(YELLOW)Running eighteenth E2E test (cancel paused agent among three agents)...$(NC)"
+	@echo "$(YELLOW)Running 18th of 19 E2E tests (cancel paused agent among three agents)...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_cancel_parallel_agent_e2e.py::TestCancelParallelAgentE2E::test_cancel_only_paused_agent_among_three_agents_session_completes -v --tb=short -m e2e || exit 1
+	@$(MAKE) clean-test-db
+	@echo "$(YELLOW)Running 19th of 19 E2E tests (concurrent alert sessions)...$(NC)"
+	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_concurrent_alert_sessions.py -v --tb=short -m e2e || exit 1
 	@echo "$(GREEN)All E2E tests completed successfully!$(NC)"
 
 .PHONY: test-coverage
