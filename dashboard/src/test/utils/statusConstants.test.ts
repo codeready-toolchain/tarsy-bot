@@ -6,14 +6,22 @@
 import { describe, it, expect } from 'vitest';
 import {
   SESSION_STATUS,
+  STAGE_STATUS,
   ACTIVE_SESSION_STATUSES,
   TERMINAL_SESSION_STATUSES,
+  TERMINAL_STAGE_STATUSES,
+  ACTIVE_STAGE_STATUSES,
   isActiveSessionStatus,
   isTerminalSessionStatus,
+  isActiveStageStatus,
+  isTerminalStageStatus,
   canCancelSession,
   getSessionStatusDisplayName,
   getSessionStatusChipColor,
   getSessionStatusProgressColor,
+  getStageStatusDisplayName,
+  getStageStatusChipColor,
+  getStageStatusProgressColor,
 } from '../../utils/statusConstants';
 
 describe('Status Constants - Pause/Resume', () => {
@@ -181,6 +189,110 @@ describe('Status Constants - Pause/Resume', () => {
         expect(isTerminalSessionStatus(status)).toBe(true);
         expect(isActiveSessionStatus(status)).toBe(false);
       });
+    });
+  });
+});
+
+describe('Stage Status Constants - Cancelled Support', () => {
+  describe('STAGE_STATUS constant', () => {
+    it('should include CANCELLED status', () => {
+      expect(STAGE_STATUS.CANCELLED).toBe('cancelled');
+    });
+  });
+
+  describe('Status categorization', () => {
+    it('should categorize cancelled as terminal stage status', () => {
+      expect(TERMINAL_STAGE_STATUSES).toContain(STAGE_STATUS.CANCELLED);
+    });
+
+    it('should not categorize cancelled as active stage status', () => {
+      expect(ACTIVE_STAGE_STATUSES).not.toContain(STAGE_STATUS.CANCELLED);
+    });
+  });
+
+  describe('isTerminalStageStatus', () => {
+    it('should return true for cancelled stages', () => {
+      expect(isTerminalStageStatus('cancelled')).toBe(true);
+    });
+
+    it('should return true for completed stages', () => {
+      expect(isTerminalStageStatus('completed')).toBe(true);
+    });
+
+    it('should return true for failed stages', () => {
+      expect(isTerminalStageStatus('failed')).toBe(true);
+    });
+
+    it('should return false for active statuses', () => {
+      expect(isTerminalStageStatus('pending')).toBe(false);
+      expect(isTerminalStageStatus('active')).toBe(false);
+      expect(isTerminalStageStatus('paused')).toBe(false);
+    });
+  });
+
+  describe('isActiveStageStatus', () => {
+    it('should return false for cancelled stages', () => {
+      expect(isActiveStageStatus('cancelled')).toBe(false);
+    });
+
+    it('should return true for active statuses', () => {
+      expect(isActiveStageStatus('pending')).toBe(true);
+      expect(isActiveStageStatus('active')).toBe(true);
+      expect(isActiveStageStatus('paused')).toBe(true);
+    });
+  });
+
+  describe('getStageStatusDisplayName', () => {
+    it('should return "Cancelled" for cancelled status', () => {
+      expect(getStageStatusDisplayName('cancelled')).toBe('Cancelled');
+    });
+
+    it('should return proper display names for all statuses', () => {
+      expect(getStageStatusDisplayName('pending')).toBe('Pending');
+      expect(getStageStatusDisplayName('active')).toBe('Active');
+      expect(getStageStatusDisplayName('paused')).toBe('Paused');
+      expect(getStageStatusDisplayName('completed')).toBe('Completed');
+      expect(getStageStatusDisplayName('failed')).toBe('Failed');
+    });
+
+    it('should return original status for unknown status', () => {
+      expect(getStageStatusDisplayName('unknown')).toBe('unknown');
+    });
+  });
+
+  describe('getStageStatusChipColor', () => {
+    it('should return warning color for cancelled status', () => {
+      expect(getStageStatusChipColor('cancelled')).toBe('warning');
+    });
+
+    it('should return appropriate colors for other statuses', () => {
+      expect(getStageStatusChipColor('completed')).toBe('success');
+      expect(getStageStatusChipColor('failed')).toBe('error');
+      expect(getStageStatusChipColor('active')).toBe('primary');
+      expect(getStageStatusChipColor('pending')).toBe('warning');
+      expect(getStageStatusChipColor('paused')).toBe('warning');
+    });
+
+    it('should return default for unknown status', () => {
+      expect(getStageStatusChipColor('unknown')).toBe('default');
+    });
+  });
+
+  describe('getStageStatusProgressColor', () => {
+    it('should return warning color for cancelled status', () => {
+      expect(getStageStatusProgressColor('cancelled')).toBe('warning');
+    });
+
+    it('should return appropriate colors for other statuses', () => {
+      expect(getStageStatusProgressColor('completed')).toBe('success');
+      expect(getStageStatusProgressColor('failed')).toBe('error');
+      expect(getStageStatusProgressColor('active')).toBe('primary');
+      expect(getStageStatusProgressColor('pending')).toBe('warning');
+      expect(getStageStatusProgressColor('paused')).toBe('warning');
+    });
+
+    it('should return inherit for unknown status', () => {
+      expect(getStageStatusProgressColor('unknown')).toBe('inherit');
     });
   });
 });

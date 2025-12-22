@@ -37,7 +37,6 @@ class TestCreateStageExecution:
     async def test_create_stage_execution_success(self):
         """Test creating a stage execution record successfully."""
         history_service = Mock()
-        history_service.is_enabled = True
         # Mock get_stage_execution to return a stage execution object for verification
         history_service.get_stage_execution = AsyncMock(
             return_value=Mock(execution_id="exec-123")
@@ -76,7 +75,6 @@ class TestCreateStageExecution:
     async def test_create_stage_execution_with_parallel_params(self):
         """Test creating a child stage execution with parallel parameters."""
         history_service = Mock()
-        history_service.is_enabled = True
         # Mock get_stage_execution to return a stage execution object for verification
         history_service.get_stage_execution = AsyncMock(
             return_value=Mock(execution_id="child-exec-1")
@@ -117,22 +115,6 @@ class TestCreateStageExecution:
             
             assert execution_id == "child-exec-1"
     
-    @pytest.mark.asyncio
-    async def test_create_stage_execution_fails_when_history_disabled(self):
-        """Test that creating stage execution fails when history is disabled."""
-        history_service = Mock()
-        history_service.is_enabled = False
-        
-        manager = StageExecutionManager(history_service=history_service)
-        
-        stage = SimpleNamespace(name="test-stage", agent="TestAgent")
-        
-        with pytest.raises(RuntimeError, match="History service is disabled"):
-            await manager.create_stage_execution(
-                session_id="session-1",
-                stage=stage,
-                stage_index=0
-            )
 
 
 @pytest.mark.unit
@@ -257,7 +239,7 @@ class TestUpdateStageExecutionStarted:
         
         manager = StageExecutionManager(history_service=history_service)
         
-        with pytest.raises(RuntimeError, match="History service is disabled"):
+        with pytest.raises(RuntimeError, match="History service is unavailable"):
             await manager.update_stage_execution_started("exec-123")
     
     @pytest.mark.asyncio
@@ -331,7 +313,7 @@ class TestUpdateStageExecutionCompleted:
             error_message=None
         )
         
-        with pytest.raises(RuntimeError, match="History service is disabled"):
+        with pytest.raises(RuntimeError, match="History service is unavailable"):
             await manager.update_stage_execution_completed("exec-123", result)
     
     @pytest.mark.asyncio
@@ -397,7 +379,7 @@ class TestUpdateStageExecutionFailed:
         
         manager = StageExecutionManager(history_service=history_service)
         
-        with pytest.raises(RuntimeError, match="History service is disabled"):
+        with pytest.raises(RuntimeError, match="History service is unavailable"):
             await manager.update_stage_execution_failed("exec-123", "Test error")
     
     @pytest.mark.asyncio
@@ -410,6 +392,66 @@ class TestUpdateStageExecutionFailed:
         
         with pytest.raises(RuntimeError, match="not found in database"):
             await manager.update_stage_execution_failed("exec-123", "Test error")
+
+
+@pytest.mark.unit
+class TestUpdateStageExecutionCancelled:
+    """Test updating stage execution to cancelled status."""
+
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_cancelled(self):
+        """Test marking stage as cancelled with a reason."""
+        stage_exec = SimpleNamespace(
+            session_id="session-1",
+            stage_index=0,
+            stage_id="stage-id",
+            status=StageStatus.ACTIVE.value,
+            started_at_us=1000000,
+            completed_at_us=None,
+            duration_ms=None,
+        )
+
+        history_service = Mock()
+        history_service.get_stage_execution = AsyncMock(return_value=stage_exec)
+
+        manager = StageExecutionManager(history_service=history_service)
+
+        with patch('tarsy.hooks.hook_context.stage_execution_context') as mock_context:
+            mock_context.return_value.__aenter__ = AsyncMock()
+            mock_context.return_value.__aexit__ = AsyncMock()
+
+            from tarsy.models.constants import CancellationReason
+
+            await manager.update_stage_execution_cancelled("exec-123", CancellationReason.USER_CANCEL.value)
+
+            assert stage_exec.status == StageStatus.CANCELLED.value
+            assert stage_exec.error_message == "user_cancel"
+            assert stage_exec.stage_output is None
+            assert stage_exec.completed_at_us is not None
+            assert stage_exec.duration_ms is not None
+
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_cancelled_fails_when_history_disabled(self):
+        """Test that update fails when history service is disabled."""
+        manager = StageExecutionManager(history_service=None)
+
+        with pytest.raises(RuntimeError, match="History service is unavailable"):
+            from tarsy.models.constants import CancellationReason
+
+            await manager.update_stage_execution_cancelled("exec-123", CancellationReason.USER_CANCEL.value)
+
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_cancelled_fails_when_not_found(self):
+        """Test that update fails when stage execution is not found."""
+        history_service = Mock()
+        history_service.get_stage_execution = AsyncMock(return_value=None)
+
+        manager = StageExecutionManager(history_service=history_service)
+
+        with pytest.raises(RuntimeError, match="not found in database"):
+            from tarsy.models.constants import CancellationReason
+
+            await manager.update_stage_execution_cancelled("exec-123", CancellationReason.USER_CANCEL.value)
 
 
 @pytest.mark.unit
@@ -427,7 +469,8 @@ class TestUpdateStageExecutionPaused:
             status=StageStatus.ACTIVE.value,
             started_at_us=1000000,
             completed_at_us=None,
-            current_iteration=None
+            current_iteration=None,
+            paused_at_us=None
         )
         
         history_service = Mock()
@@ -456,6 +499,49 @@ class TestUpdateStageExecutionPaused:
             assert stage_exec.current_iteration == 5
             assert stage_exec.stage_output is not None
             assert stage_exec.completed_at_us is None  # Not completed yet
+
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_paused_sets_paused_at_us(self):
+        """Test that paused_at_us is set when stage is paused."""
+        stage_exec = SimpleNamespace(
+            session_id="session-1",
+            stage_index=0,
+            stage_id="stage-id",
+            stage_name="test-stage",
+            status=StageStatus.ACTIVE.value,
+            started_at_us=1000000,
+            completed_at_us=None,
+            current_iteration=None,
+            paused_at_us=None
+        )
+        
+        history_service = Mock()
+        history_service.get_stage_execution = AsyncMock(return_value=stage_exec)
+        
+        manager = StageExecutionManager(history_service=history_service)
+        
+        before_pause = now_us()
+        paused_result = AgentExecutionResult(
+            status=StageStatus.PAUSED,
+            agent_name="TestAgent",
+            stage_name="test-stage",
+            timestamp_us=before_pause,
+            result_summary="Paused at iteration 3",
+            paused_conversation_state={"messages": []},
+            error_message=None
+        )
+        
+        with patch('tarsy.hooks.hook_context.stage_execution_context') as mock_context:
+            mock_context.return_value.__aenter__ = AsyncMock()
+            mock_context.return_value.__aexit__ = AsyncMock()
+            
+            await manager.update_stage_execution_paused("exec-123", 3, paused_result)
+        
+        after_pause = now_us()
+        
+        # Verify paused_at_us was set to a recent timestamp (within 1 second)
+        assert stage_exec.paused_at_us is not None
+        assert before_pause <= stage_exec.paused_at_us <= after_pause
     
     @pytest.mark.asyncio
     async def test_update_stage_execution_paused_fails_when_history_disabled(self):
@@ -474,7 +560,7 @@ class TestUpdateStageExecutionPaused:
             error_message=None
         )
         
-        with pytest.raises(RuntimeError, match="History service is disabled"):
+        with pytest.raises(RuntimeError, match="History service is unavailable"):
             await manager.update_stage_execution_paused("exec-123", 5, paused_result)
     
     @pytest.mark.asyncio
@@ -507,7 +593,6 @@ class TestUpdateSessionCurrentStage:
     async def test_update_session_current_stage(self):
         """Test updating current stage information for a session."""
         history_service = Mock()
-        history_service.is_enabled = True
         history_service.update_session_current_stage = AsyncMock()
         
         manager = StageExecutionManager(history_service=history_service)
@@ -520,15 +605,3 @@ class TestUpdateSessionCurrentStage:
             current_stage_id="exec-456"
         )
     
-    @pytest.mark.asyncio
-    async def test_update_session_current_stage_disabled_history(self):
-        """Test that update fails when history is disabled."""
-        history_service = Mock()
-        history_service.is_enabled = False
-        
-        manager = StageExecutionManager(history_service=history_service)
-        
-        # Should raise RuntimeError when history is disabled
-        with pytest.raises(RuntimeError, match="History service is disabled"):
-            await manager.update_session_current_stage("session-1", 2, "exec-456")
-

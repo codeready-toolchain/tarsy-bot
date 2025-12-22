@@ -16,7 +16,7 @@ from tarsy.models.agent_config import (
 )
 from tarsy.models.agent_execution_result import AgentExecutionResult
 from tarsy.models.alert import ProcessingAlert
-from tarsy.models.constants import FailurePolicy, StageStatus
+from tarsy.models.constants import SuccessPolicy, StageStatus
 from tarsy.models.processing_context import ChainContext
 from tarsy.utils.timestamp import now_us
 
@@ -39,7 +39,7 @@ class TestParallelAgentExecutionIntegration:
                         ParallelAgentConfig(name="Agent1", llm_provider="openai"),
                         ParallelAgentConfig(name="Agent2", llm_provider="anthropic")
                     ],
-                    failure_policy=FailurePolicy.ALL
+                    success_policy=SuccessPolicy.ANY
                 )
             ]
         )
@@ -285,7 +285,7 @@ class TestParallelAgentExecutionIntegration:
         metadata = ParallelStageMetadata(
             parent_stage_execution_id="exec-123",
             parallel_type="multi_agent",
-            failure_policy=FailurePolicy.ALL,
+            success_policy=SuccessPolicy.ANY,
             started_at_us=timestamp - 5_000_000,
             completed_at_us=timestamp,
             agent_metadatas=[
@@ -323,11 +323,11 @@ class TestParallelAgentExecutionIntegration:
         assert parallel_result.metadata.successful_count == 2
         assert parallel_result.metadata.failed_count == 0
 
-    async def test_failure_policy_all_requires_all_success(
+    async def test_success_policy_all_requires_all_success(
         self,
         base_chain_context: ChainContext
     ) -> None:
-        """Test that ALL failure policy requires all agents to succeed."""
+        """Test that ALL success policy requires all agents to succeed."""
         from tarsy.models.agent_execution_result import (
             AgentExecutionMetadata,
             ParallelStageMetadata,
@@ -355,7 +355,7 @@ class TestParallelAgentExecutionIntegration:
         metadata = ParallelStageMetadata(
             parent_stage_execution_id="exec-456",
             parallel_type="multi_agent",
-            failure_policy=FailurePolicy.ALL,
+            success_policy=SuccessPolicy.ALL,
             started_at_us=timestamp - 5_000_000,
             completed_at_us=timestamp,
             agent_metadatas=[
@@ -391,11 +391,11 @@ class TestParallelAgentExecutionIntegration:
         assert metadata.successful_count == 1
         assert metadata.failed_count == 1
 
-    async def test_failure_policy_any_allows_partial_success(
+    async def test_success_policy_any_allows_partial_success(
         self,
         base_chain_context: ChainContext
     ) -> None:
-        """Test that ANY failure policy allows partial success."""
+        """Test that ANY success policy allows partial success."""
         from tarsy.models.agent_execution_result import (
             AgentExecutionMetadata,
             ParallelStageMetadata,
@@ -423,7 +423,7 @@ class TestParallelAgentExecutionIntegration:
         metadata = ParallelStageMetadata(
             parent_stage_execution_id="exec-789",
             parallel_type="multi_agent",
-            failure_policy=FailurePolicy.ANY,
+            success_policy=SuccessPolicy.ANY,
             started_at_us=timestamp - 5_000_000,
             completed_at_us=timestamp,
             agent_metadatas=[

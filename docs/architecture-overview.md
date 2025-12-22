@@ -268,7 +268,7 @@ The AI combines all four to make intelligent decisions about investigation appro
               llm_provider: "openai"
             - name: "vm"
               llm_provider: "anthropic"
-          failure_policy: "any"  # Continue if at least one succeeds
+          success_policy: "any"  # Continue if at least one succeeds
           synthesis:
             iteration_strategy: "react-synthesis"  # Automatically synthesizes results
         - name: "recommendations"

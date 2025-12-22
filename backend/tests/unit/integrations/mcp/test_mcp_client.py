@@ -144,6 +144,10 @@ class TestMCPClientToolListing:
         client = MCPClient(Mock(), Mock())
         client.sessions = {"test-server": mock_session}
         client._initialized = True
+        # Ensure list_tools(server_name=...) treats only 'test-server' as configured
+        client.mcp_registry.get_server_config_safe.side_effect = (
+            lambda server_id: Mock(enabled=True) if server_id == "test-server" else None
+        )
         return client
     
     @pytest.mark.asyncio
@@ -151,7 +155,7 @@ class TestMCPClientToolListing:
         """Test successful tool listing for specific server."""
         with patch('tarsy.integrations.mcp.client.mcp_list_context') as mock_context:
             mock_ctx = AsyncMock()
-            mock_ctx.get_request_id.return_value = "list-req-123"
+            mock_ctx.get_request_id = Mock(return_value="list-req-123")
             mock_context.return_value.__aenter__.return_value = mock_ctx
             
             result = await client_with_session.list_tools("test-session", "test-server")
@@ -171,7 +175,7 @@ class TestMCPClientToolListing:
         """Test successful tool listing for all servers."""
         with patch('tarsy.integrations.mcp.client.mcp_list_context') as mock_context:
             mock_ctx = AsyncMock()
-            mock_ctx.get_request_id.return_value = "list-all-req-456"
+            mock_ctx.get_request_id = Mock(return_value="list-all-req-456")
             mock_context.return_value.__aenter__.return_value = mock_ctx
             
             result = await client_with_session.list_tools("test-session")
@@ -185,6 +189,7 @@ class TestMCPClientToolListing:
         """Test tool listing for nonexistent server."""
         with patch('tarsy.integrations.mcp.client.mcp_list_context') as mock_context:
             mock_ctx = AsyncMock()
+            mock_ctx.get_request_id = Mock(return_value="list-nonexistent-req")
             mock_context.return_value.__aenter__.return_value = mock_ctx
             
             result = await client_with_session.list_tools("test-session", "nonexistent-server")
@@ -198,6 +203,7 @@ class TestMCPClientToolListing:
         
         with patch('tarsy.integrations.mcp.client.mcp_list_context') as mock_context:
             mock_ctx = AsyncMock()
+            mock_ctx.get_request_id = Mock(return_value="list-error-req")
             mock_context.return_value.__aenter__.return_value = mock_ctx
             
             result = await client_with_session.list_tools("test-session", "test-server")
@@ -214,6 +220,7 @@ class TestMCPClientToolListing:
         with patch.object(client, 'initialize') as mock_init, \
              patch('tarsy.integrations.mcp.client.mcp_list_context') as mock_context:
             mock_ctx = AsyncMock()
+            mock_ctx.get_request_id = Mock(return_value="list-auto-init-req")
             mock_context.return_value.__aenter__.return_value = mock_ctx
             
             await client.list_tools("test-session")
@@ -365,8 +372,10 @@ class TestMCPClientToolCalling:
     def client_with_session(self, mock_session):
         """Create client with mocked session."""
         registry = Mock()
-        registry.get_server_config_safe.return_value = Mock(
-            data_masking=Mock(enabled=False)
+        registry.get_server_config_safe.side_effect = (
+            lambda server_id: Mock(enabled=True, data_masking=Mock(enabled=False))
+            if server_id == "test-server"
+            else None
         )
         
         client = MCPClient(Mock(), registry)
@@ -379,7 +388,7 @@ class TestMCPClientToolCalling:
         """Test successful tool calling."""
         with patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_context:
             mock_ctx = AsyncMock()
-            mock_ctx.get_request_id.return_value = "call-req-789"
+            mock_ctx.get_request_id = Mock(return_value="call-req-789")
             mock_context.return_value.__aenter__.return_value = mock_ctx
             
             result = await client_with_session.call_tool(
@@ -416,6 +425,7 @@ class TestMCPClientToolCalling:
         
         with patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_context:
             mock_ctx = AsyncMock()
+            mock_ctx.get_request_id = Mock(return_value="call-mask-req")
             mock_context.return_value.__aenter__.return_value = mock_ctx
             
             result = await client.call_tool(
@@ -438,6 +448,7 @@ class TestMCPClientToolCalling:
         """Test tool calling with nonexistent server."""
         with patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_context:
             mock_ctx = AsyncMock()
+            mock_ctx.get_request_id = Mock(return_value="call-nonexistent-req")
             mock_context.return_value.__aenter__.return_value = mock_ctx
             
             with pytest.raises(Exception, match="MCP server not found: nonexistent-server"):
@@ -455,6 +466,7 @@ class TestMCPClientToolCalling:
         
         with patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_context:
             mock_ctx = AsyncMock()
+            mock_ctx.get_request_id = Mock(return_value="call-error-req")
             mock_context.return_value.__aenter__.return_value = mock_ctx
             
             with pytest.raises(Exception, match="Tool execution failed"):
@@ -474,6 +486,7 @@ class TestMCPClientToolCalling:
         with patch.object(client, 'initialize') as mock_init, \
              patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_context:
             mock_ctx = AsyncMock()
+            mock_ctx.get_request_id = Mock(return_value="call-auto-init-req")
             mock_context.return_value.__aenter__.return_value = mock_ctx
             
             with pytest.raises(Exception):  # Will fail after init due to no sessions
@@ -552,11 +565,11 @@ class TestMCPClientIntegration:
             
             # Setup contexts
             mock_list_ctx = AsyncMock()
-            mock_list_ctx.get_request_id.return_value = "integration-list-req"
+            mock_list_ctx.get_request_id = Mock(return_value="integration-list-req")
             mock_list_context.return_value.__aenter__.return_value = mock_list_ctx
             
             mock_call_ctx = AsyncMock()
-            mock_call_ctx.get_request_id.return_value = "integration-call-req"
+            mock_call_ctx.get_request_id = Mock(return_value="integration-call-req")
             mock_call_context.return_value.__aenter__.return_value = mock_call_ctx
             
             # Execute complete workflow
@@ -667,7 +680,7 @@ class TestMCPClientSummarization:
             mock_factory.create_transport.return_value = mock_transport
             
             mock_ctx = AsyncMock()
-            mock_ctx.get_request_id.return_value = "test-req-123"
+            mock_ctx.get_request_id = Mock(return_value="test-req-123")
             mock_interaction_context.return_value.__aenter__.return_value = mock_ctx
             
             await client.initialize()
@@ -713,7 +726,7 @@ class TestMCPClientSummarization:
             mock_factory.create_transport.return_value = mock_transport
             
             mock_ctx = AsyncMock()
-            mock_ctx.get_request_id.return_value = "test-req-456"
+            mock_ctx.get_request_id = Mock(return_value="test-req-456")
             mock_interaction_context.return_value.__aenter__.return_value = mock_ctx
             
             await client.initialize()
@@ -758,7 +771,7 @@ class TestMCPClientSummarization:
             mock_factory.create_transport.return_value = mock_transport
             
             mock_ctx = AsyncMock()
-            mock_ctx.get_request_id.return_value = "test-req-789"
+            mock_ctx.get_request_id = Mock(return_value="test-req-789")
             mock_interaction_context.return_value.__aenter__.return_value = mock_ctx
             
             await client.initialize()
@@ -825,7 +838,7 @@ class TestMCPClientSummarization:
             mock_factory.create_transport.return_value = mock_transport
             
             mock_ctx = AsyncMock()
-            mock_ctx.get_request_id.return_value = "test-req-disabled"
+            mock_ctx.get_request_id = Mock(return_value="test-req-disabled")
             mock_interaction_context.return_value.__aenter__.return_value = mock_ctx
             
             await client.initialize()
@@ -874,7 +887,7 @@ class TestMCPClientSummarization:
             mock_factory.create_transport.return_value = mock_transport
             
             mock_ctx = AsyncMock()
-            mock_ctx.get_request_id.return_value = "test-req-error"
+            mock_ctx.get_request_id = Mock(return_value="test-req-error")
             mock_interaction_context.return_value.__aenter__.return_value = mock_ctx
             
             await client.initialize()
@@ -919,7 +932,7 @@ class TestMCPClientSummarization:
             mock_factory.create_transport.return_value = mock_transport
             
             mock_ctx = AsyncMock()
-            mock_ctx.get_request_id.return_value = "test-req-no-config"
+            mock_ctx.get_request_id = Mock(return_value="test-req-no-config")
             mock_interaction_context.return_value.__aenter__.return_value = mock_ctx
             
             await client.initialize()
@@ -991,7 +1004,7 @@ class TestMCPClientSummarization:
             mock_factory.create_transport.return_value = mock_transport
             
             mock_ctx = AsyncMock()
-            mock_ctx.get_request_id.return_value = "test-req-threshold"
+            mock_ctx.get_request_id = Mock(return_value="test-req-threshold")
             mock_interaction_context.return_value.__aenter__.return_value = mock_ctx
             
             await client.initialize()

@@ -340,6 +340,13 @@ class ReActParser:
             # Handle last section
             ReActParser._finalize_current_section(parsed, current_section, content_lines)
             
+            # Recovery mechanism - if we have Action Input but no Action, attempt backtracking
+            if parsed.get('action_input') is not None and parsed.get('action') is None:
+                recovered_action = ReActParser._recover_missing_action(response)
+                if recovered_action:
+                    logger.info(f"Recovered missing action via backtracking: {recovered_action}")
+                    parsed['action'] = recovered_action
+            
         except Exception as e:
             # Log the error for debugging purposes while returning partial parse state
             logger.error(
@@ -531,6 +538,122 @@ class ReActParser:
             # This handles cases where duplicate sections have empty content
             if new_content or parsed.get(current_section) is None:
                 parsed[current_section] = new_content
+    
+    @staticmethod
+    def _recover_missing_action(response: str) -> Optional[str]:
+        """
+        Attempt to recover missing action when Action Input exists but Action doesn't.
+        
+        This handles malformed LLM responses like:
+        - "Thought: text.Action\nserver.tool\nAction Input: params"
+        - "Thought: text\nAction\nserver.tool\nAction Input: params"
+        
+        Strategy:
+        1. Find "Action Input:" position
+        2. Search backwards for "Action:" or "Action" (exact word)
+        3. Extract text between them
+        4. Validate it matches server.tool format
+        5. Return validated action or None
+        
+        Returns:
+            Validated action string (server.tool) or None if recovery fails
+        """
+        if not response:
+            return None
+        
+        try:
+            # Find Action Input position (we know it exists from caller check)
+            action_input_match = re.search(r'\bAction Input:', response, re.IGNORECASE)
+            if not action_input_match:
+                return None
+            
+            action_input_pos = action_input_match.start()
+            
+            # Search backwards from Action Input for "Action:" or "Action" (word boundary)
+            # Look for both formats:
+            # 1. "Action:" (with colon)
+            # 2. "Action" (exact word, followed by whitespace or end of line)
+            text_before_input = response[:action_input_pos]
+            
+            # Try "Action:" first (more specific)
+            action_colon_matches = list(re.finditer(r'\bAction:', text_before_input, re.IGNORECASE))
+            if action_colon_matches:
+                # Use the last match before Action Input
+                last_match = action_colon_matches[-1]
+                start_pos = last_match.end()  # Position after "Action:"
+                
+                # Extract text between "Action:" and "Action Input:"
+                potential_action = text_before_input[start_pos:].strip()
+                
+                # Validate it looks like server.tool
+                validated = ReActParser._validate_tool_name(potential_action)
+                if validated:
+                    return validated
+            
+            # Try "Action" without colon (less specific, more careful)
+            # Match "Action" as whole word followed by newline/whitespace
+            action_word_matches = list(re.finditer(r'\bAction(?=\s|$)', text_before_input, re.IGNORECASE))
+            if action_word_matches:
+                # Use the last match before Action Input
+                last_match = action_word_matches[-1]
+                start_pos = last_match.end()  # Position after "Action"
+                
+                # Extract text between "Action" and "Action Input:"
+                potential_action = text_before_input[start_pos:].strip()
+                
+                # Validate it looks like server.tool
+                validated = ReActParser._validate_tool_name(potential_action)
+                if validated:
+                    return validated
+            
+            return None
+            
+        except Exception as e:
+            logger.debug(f"Action recovery attempt failed: {e}")
+            return None
+    
+    @staticmethod
+    def _validate_tool_name(text: str) -> Optional[str]:
+        """
+        Validate that text looks like a valid tool name (server.tool format).
+        
+        Args:
+            text: Text to validate (may contain extra content)
+            
+        Returns:
+            Cleaned tool name if valid, None otherwise
+            
+        Valid formats:
+        - "server.tool"
+        - "server.tool\nextra content" (extracts first line)
+        - "  server.tool  " (trims whitespace)
+        
+        Invalid formats:
+        - "just-text"
+        - "multiple words here"
+        - "server."
+        - ".tool"
+        """
+        if not text:
+            return None
+        
+        # Take only the first line (handles case where tool name is on its own line)
+        first_line = text.split('\n')[0].strip()
+        
+        # Check if it matches server.tool format
+        # Pattern: word characters, dash, underscore allowed; must have exactly one dot
+        pattern = r'^([\w\-]+)\.([\w\-]+)$'
+        match = re.match(pattern, first_line)
+        
+        if match:
+            server = match.group(1)
+            tool = match.group(2)
+            
+            # Additional validation: both parts should be non-empty after stripping
+            if server and tool:
+                return f"{server}.{tool}"
+        
+        return None
     
     @staticmethod
     def _convert_to_tool_call(action: str, action_input: str) -> ToolCall:

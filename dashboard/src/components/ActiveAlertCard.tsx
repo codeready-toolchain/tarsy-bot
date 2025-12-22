@@ -93,20 +93,29 @@ const animationStyles = {
 const LiveDuration: React.FC<{ 
   startedAt: number; 
   completedAt: number | null; 
+  pausedAt: number | null;
+  duration: number | null; // Backend-provided duration in milliseconds
   status: string;
   variant?: 'body2' | 'caption';
-}> = ({ startedAt, completedAt, status, variant = 'body2' }) => {
+}> = ({ startedAt, completedAt, pausedAt, duration, status, variant = 'body2' }) => {
   const [liveDuration, setLiveDuration] = useState<string>('');
 
   useEffect(() => {
-    // Calculate duration function - same logic as ProgressIndicator
+    // Calculate duration function - prefer backend duration when available
     const calculateDuration = () => {
       let durationMs: number;
       
-      if (completedAt) {
-        // Use completed duration
+      // Prefer backend-provided duration for completed sessions (ensures consistency)
+      if (duration !== undefined && duration !== null) {
+        durationMs = duration;
+      } else if (completedAt) {
+        // Fallback: calculate from completion timestamp
         const durationUs = completedAt - startedAt;
         durationMs = durationUs / 1000; // Convert to milliseconds
+      } else if (status === SESSION_STATUS.PAUSED && pausedAt) {
+        // For paused sessions, calculate duration up to pause point (frozen)
+        const durationUs = pausedAt - startedAt;
+        durationMs = Math.max(0, durationUs / 1000); // Convert to milliseconds
       } else if (
         status === SESSION_STATUS.IN_PROGRESS ||
         status === SESSION_STATUS.PENDING ||
@@ -117,7 +126,7 @@ const LiveDuration: React.FC<{
         const durationUs = now - startedAt;
         durationMs = Math.max(0, durationUs / 1000); // Convert to milliseconds
       } else {
-        // Fallback calculation
+        // Fallback calculation for other statuses
         const now = Date.now() * 1000;
         const durationUs = now - startedAt;
         durationMs = Math.max(0, durationUs / 1000);
@@ -129,7 +138,7 @@ const LiveDuration: React.FC<{
     // Update immediately
     setLiveDuration(calculateDuration());
 
-    // For active sessions, update every second
+    // For active sessions (not paused), update every second
     if (
       (status === SESSION_STATUS.IN_PROGRESS ||
         status === SESSION_STATUS.PENDING ||
@@ -142,7 +151,7 @@ const LiveDuration: React.FC<{
 
       return () => clearInterval(timer);
     }
-  }, [startedAt, completedAt, status]);
+  }, [startedAt, completedAt, pausedAt, duration, status]);
 
   return (
     <Typography 
@@ -291,6 +300,8 @@ const ActiveAlertCard: React.FC<ActiveAlertCardProps> = ({
           <LiveDuration 
             startedAt={session.started_at_us}
             completedAt={session.completed_at_us}
+            pausedAt={session.pause_metadata?.paused_at_us ?? null}
+            duration={session.duration_ms}
             status={session.status}
           />
         </Box>
@@ -313,6 +324,7 @@ const ActiveAlertCard: React.FC<ActiveAlertCardProps> = ({
               status={session.status}
               startedAt={session.started_at_us}
               duration={session.duration_ms}
+              pausedAt={session.pause_metadata?.paused_at_us ?? null}
               variant="linear"
               showDuration={false}
               size="small"

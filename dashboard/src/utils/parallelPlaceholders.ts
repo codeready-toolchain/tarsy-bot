@@ -39,6 +39,7 @@ export function createParallelPlaceholders(
       agent: placeholderName,
       status: STAGE_STATUS.PENDING,
       started_at_us: null,
+      paused_at_us: null,
       completed_at_us: null,
       duration_ms: null,
       stage_output: null,

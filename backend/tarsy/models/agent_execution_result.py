@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
-from tarsy.models.constants import FailurePolicy, StageStatus
+from tarsy.models.constants import SuccessPolicy, StageStatus  # FailurePolicy is backward compat alias
 
 
 class AgentExecutionResult(BaseModel):
@@ -103,7 +103,7 @@ class AgentExecutionMetadata(BaseModel):
 class ParallelStageMetadata(BaseModel):
     """Metadata for parallel stage orchestration."""
     
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
     
     # Stage identification
     parent_stage_execution_id: str = Field(
@@ -116,9 +116,10 @@ class ParallelStageMetadata(BaseModel):
         ...,
         description="Type of parallelism (ParallelType.MULTI_AGENT or ParallelType.REPLICA)"
     )
-    failure_policy: FailurePolicy = Field(
+    success_policy: SuccessPolicy = Field(
         ...,
-        description="Failure policy: 'all' requires all to succeed, 'any' requires at least one"
+        description="Success policy: 'all' requires all to succeed, 'any' requires at least one",
+        alias="failure_policy"  # Backward compatibility
     )
     
     # Timing

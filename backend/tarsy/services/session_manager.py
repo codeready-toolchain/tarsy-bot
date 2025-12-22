@@ -61,7 +61,7 @@ class SessionManager:
             a tuple or result object if differentiated handling becomes necessary.
         """
         try:
-            if not self.history_service or not self.history_service.is_enabled:
+            if not self.history_service:
                 return False
             
             # Store chain information in session using ChainContext and ChainDefinition
@@ -105,8 +105,8 @@ class SessionManager:
             Exception: Re-raises any exception from history service to ensure visibility
                       of critical issues (DB failures, bugs, etc.)
         """
-        # Graceful degradation: skip if history is disabled or no session
-        if not session_id or not self.history_service or not self.history_service.is_enabled:
+        # Graceful degradation: skip if no session or history service unavailable
+        if not session_id or not self.history_service:
             return
             
         # Let exceptions propagate - they indicate serious issues that should be visible
@@ -132,8 +132,8 @@ class SessionManager:
             the original error, exceptions from history service are logged but NOT re-raised.
             This ensures the original error is properly propagated to the caller.
         """
-        # Graceful degradation: skip if history is disabled or no session
-        if not session_id or not self.history_service or not self.history_service.is_enabled:
+        # Graceful degradation: skip if no history service or no session
+        if not session_id or not self.history_service:
             return
             
         try:

@@ -4,14 +4,26 @@ MCP client using the official MCP SDK for integration with MCP servers.
 
 import asyncio
 import json
+import random
 from contextlib import AsyncExitStack
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
+import anyio
+import httpx
 from mcp import ClientSession
+from mcp.shared.exceptions import McpError
 from mcp.types import Tool
 
 from tarsy.config.settings import Settings
 from tarsy.hooks.hook_context import mcp_interaction_context, mcp_list_context
+from tarsy.integrations.mcp.recovery_config import (
+    DEFAULT_RECOVERY_CONFIG,
+    HTTP_STATUS_AUTH_ERROR,
+    HTTP_STATUS_RATE_LIMITED,
+    HTTP_STATUS_SESSION_LOST,
+    HTTP_STATUS_UPSTREAM_ERROR,
+)
+from tarsy.integrations.mcp.recovery_types import RecoveryAction, RecoveryDecision
 from tarsy.integrations.mcp.transport.factory import MCPTransport, MCPTransportFactory
 from tarsy.models.agent_config import MCPServerConfigModel
 from tarsy.models.mcp_transport_config import TRANSPORT_STDIO
@@ -32,13 +44,10 @@ logger = get_module_logger(__name__)
 # Setup separate logger for MCP communications
 mcp_comm_logger = get_module_logger("mcp.communications")
 
-# MCP operation timeout constant (in seconds)
-MCP_OPERATION_TIMEOUT_SECONDS = 60  # Timeout for MCP list_tools and call_tool operations
-
 
 class MCPClient:
     """MCP client using the official MCP SDK."""
-    
+
     def __init__(self, settings: Settings, mcp_registry: Optional[MCPServerRegistry] = None, 
                  summarizer: Optional['MCPResultSummarizer'] = None):
         self.settings = settings
@@ -51,6 +60,241 @@ class MCPClient:
         self.exit_stack = AsyncExitStack()
         self._initialized = False
         self.failed_servers: Dict[str, str] = {}  # server_id -> error_message
+        self._reinit_locks: Dict[str, asyncio.Lock] = {}  # Per-server locks for reinitialization
+
+    def _classify_mcp_failure(self, exc: BaseException) -> RecoveryDecision:
+        """
+        Classify an exception from MCP operations into a recovery action.
+
+        Goals:
+        - Retry-once transparently for transient transport/server issues (pod restart, 502/503/504, timeouts)
+        - Recreate session on explicit session loss (404)
+        - Never retry semantic JSON-RPC errors (let LLM fix tool call)
+        - Fail fast on auth errors (401/403)
+        """
+        # Semantic MCP errors delivered over the protocol (e.g. invalid params, method not found)
+        if isinstance(exc, McpError):
+            return RecoveryDecision(RecoveryAction.NO_RETRY, "jsonrpc_error")
+
+        # HTTP status errors (HTTP+SSE and Streamable HTTP use httpx underneath)
+        if isinstance(exc, httpx.HTTPStatusError):
+            status = exc.response.status_code if exc.response is not None else None
+            if status in HTTP_STATUS_SESSION_LOST:
+                return RecoveryDecision(RecoveryAction.RETRY_WITH_NEW_SESSION, "http_404_session_not_found", status)
+            if status in HTTP_STATUS_UPSTREAM_ERROR:
+                return RecoveryDecision(RecoveryAction.RETRY_WITH_NEW_SESSION, f"http_{status}_upstream", status)
+            if status in HTTP_STATUS_RATE_LIMITED:
+                return RecoveryDecision(RecoveryAction.RETRY_SAME_SESSION, "http_429_rate_limited", status)
+            if status in HTTP_STATUS_AUTH_ERROR:
+                return RecoveryDecision(RecoveryAction.NO_RETRY, f"http_{status}_auth", status)
+            if status is not None and 500 <= status <= 599:
+                return RecoveryDecision(RecoveryAction.RETRY_WITH_NEW_SESSION, f"http_{status}_server_error", status)
+            if status is not None and 400 <= status <= 499:
+                return RecoveryDecision(RecoveryAction.NO_RETRY, f"http_{status}_client_error", status)
+            return RecoveryDecision(RecoveryAction.NO_RETRY, "http_status_error_unknown", status)
+
+        # Transport-level failures (connection reset/refused, DNS, etc.)
+        if isinstance(exc, (httpx.TimeoutException, httpx.TransportError)):
+            return RecoveryDecision(RecoveryAction.RETRY_WITH_NEW_SESSION, type(exc).__name__)
+
+        # The MCP SDK uses AnyIO memory streams internally. When a request is cancelled or
+        # the underlying transport breaks (e.g., MCP pod restarted mid-flight), subsequent
+        # calls may fail with these errors until the session is recreated.
+        if isinstance(exc, (anyio.ClosedResourceError, anyio.BrokenResourceError, anyio.EndOfStream)):
+            return RecoveryDecision(RecoveryAction.RETRY_WITH_NEW_SESSION, type(exc).__name__)
+
+        # Timeouts from our own asyncio.wait_for wrappers are usually "slow tool" cases.
+        # Do NOT auto-retry: surface to the LLM so it can adjust the call, switch tools,
+        # or proceed with partial information.
+        if isinstance(exc, (asyncio.TimeoutError, TimeoutError)):
+            return RecoveryDecision(RecoveryAction.NO_RETRY, "operation_timeout")
+
+        # Fallback: avoid loops on unknown exceptions
+        return RecoveryDecision(RecoveryAction.NO_RETRY, f"unclassified:{type(exc).__name__}")
+
+    async def _reinitialize_server_session(self, server_id: str) -> ClientSession:
+        """
+        Recreate the cached session/transport for a server and return the new session.
+
+        We attempt best-effort cleanup of the previous transport, but do not let teardown
+        issues block recovery (see HTTP transport safe teardown handling).
+        """
+        server_config = self.mcp_registry.get_server_config_safe(server_id)
+        if not server_config or not getattr(server_config, "enabled", True):
+            raise Exception(f"Cannot reinitialize MCP server '{server_id}': no config or disabled")
+
+        old_transport = self.transports.get(server_id)
+        self.sessions.pop(server_id, None)
+        self.transports.pop(server_id, None)
+
+        if old_transport is not None:
+            try:
+                await old_transport.close()
+            except BaseException as e:
+                # Best-effort close; recovery should continue even if teardown fails.
+                # We catch BaseException to prevent CancelledError (Python 3.13+) from
+                # propagating during recovery and cancelling the parent agent task.
+                logger.debug(
+                    "Suppressing MCP transport close error for %s during recovery: %s",
+                    server_id,
+                    type(e).__name__,
+                    exc_info=True,
+                )
+
+        try:
+            session = await asyncio.wait_for(
+                self._create_session(server_id, server_config),
+                timeout=DEFAULT_RECOVERY_CONFIG.REINIT_TIMEOUT_SECONDS,
+            )
+        except asyncio.CancelledError as e:
+            # CancelledError during session creation (e.g., from AnyIO cancel scope issues)
+            # should be converted to a recoverable exception, not propagate and cancel the agent.
+            raise Exception(
+                f"Session creation for '{server_id}' was cancelled during recovery "
+                f"(likely due to transport cleanup issues): {e}"
+            ) from e
+        except asyncio.TimeoutError:
+            raise TimeoutError(
+                f"Failed to reinitialize MCP session for '{server_id}' within "
+                f"{DEFAULT_RECOVERY_CONFIG.REINIT_TIMEOUT_SECONDS:.0f}s"
+            ) from None
+
+        self.sessions[server_id] = session
+        return session
+
+    async def _run_with_recovery(
+        self,
+        server_id: str,
+        operation: str,
+        attempt_fn,
+        *,
+        request_id: Optional[str] = None,
+    ):
+        """
+        Execute an MCP operation with a single transparent retry based on failure classification.
+
+        attempt_fn: async callable that accepts (session: ClientSession) and returns result.
+        """
+        # Check if we need to wait for ongoing reinitialization
+        if server_id in self._reinit_locks:
+            # Another task might be reinitializing this server, wait for it
+            async with self._reinit_locks[server_id]:
+                pass  # Just wait for the lock to be released
+        
+        session = self.sessions.get(server_id)
+        if session is None:
+            server_config = self.mcp_registry.get_server_config_safe(server_id)
+            if not server_config or not getattr(server_config, "enabled", True):
+                raise Exception(f"MCP server not found: {server_id}")
+            try:
+                session = await self._create_session(server_id, server_config)
+                self.sessions[server_id] = session
+            except asyncio.CancelledError as cancel_err:
+                # Convert CancelledError to a regular Exception to prevent agent cancellation
+                raise Exception(
+                    f"Failed to create MCP session for '{server_id}': session creation was cancelled"
+                ) from cancel_err
+
+        try:
+            return await attempt_fn(session)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            decision = self._classify_mcp_failure(e)
+            if decision.action == RecoveryAction.NO_RETRY:
+                raise
+
+            # Only one retry per operation to avoid loops.
+            if DEFAULT_RECOVERY_CONFIG.RETRY_LIMIT <= 0:
+                raise
+
+            rid = f" [ID: {request_id}]" if request_id else ""
+            logger.info(
+                "MCP recovery: %s.%s retrying once (%s)%s",
+                server_id,
+                operation,
+                decision.reason,
+                rid,
+            )
+
+            if decision.action == RecoveryAction.RETRY_SAME_SESSION:
+                # Small jittered backoff to avoid synchronized retries (thundering herd), e.g. after HTTP 429.
+                await asyncio.sleep(
+                    random.uniform(
+                        DEFAULT_RECOVERY_CONFIG.RETRY_BACKOFF_MIN,
+                        DEFAULT_RECOVERY_CONFIG.RETRY_BACKOFF_MAX,
+                    )
+                )
+                return await attempt_fn(session)
+
+            # Retry with new session (use lock to prevent concurrent reinit)
+            # Get or create a lock for this server to serialize reinitialization
+            if server_id not in self._reinit_locks:
+                self._reinit_locks[server_id] = asyncio.Lock()
+            
+            # Store old session to detect if it changed while we waited for lock
+            old_session = session
+            
+            async with self._reinit_locks[server_id]:
+                # Check if another task already reinitialized while we were waiting for the lock
+                current_session = self.sessions.get(server_id)
+                if current_session is not old_session:
+                    # Another task already replaced the session, use the new one
+                    new_session = current_session
+                else:
+                    # We're the first one, need to reinitialize
+                    try:
+                        new_session = await self._reinitialize_server_session(server_id)
+                    except Exception as reinit_error:
+                        logger.warning(
+                            "MCP recovery: Failed to reinitialize %s: %s",
+                            server_id,
+                            reinit_error,
+                        )
+                        # Raise a clear error that won't cancel the agent
+                        raise Exception(
+                            f"MCP recovery failed for '{server_id}': session reinitialization failed"
+                        ) from reinit_error
+            
+            return await attempt_fn(new_session)
+
+    async def _call_with_timeout_and_recovery(
+        self,
+        server_id: str,
+        operation_name: str,
+        operation_fn,
+        timeout_seconds: float,
+        request_id: Optional[str] = None,
+    ):
+        """
+        Execute an MCP operation with timeout and recovery wrapper.
+
+        This is a convenience method that combines asyncio.wait_for with _run_with_recovery
+        to reduce boilerplate at call sites.
+
+        Args:
+            server_id: MCP server identifier
+            operation_name: Operation name for logging/tracing
+            operation_fn: Callable(session: ClientSession) -> result
+            timeout_seconds: Timeout in seconds
+            request_id: Optional request ID for tracing
+
+        Returns:
+            Result from operation_fn
+        """
+
+        async def _attempt(sess: ClientSession):
+            return await asyncio.wait_for(
+                operation_fn(sess),
+                timeout=timeout_seconds,
+            )
+
+        return await self._run_with_recovery(
+            server_id,
+            operation_name,
+            _attempt,
+            request_id=request_id,
+        )
     
     async def initialize(self) -> None:
         """Initialize MCP servers based on registry configuration."""
@@ -208,10 +452,11 @@ class MCPClient:
             # List tools from specific server
             if server_name in self.sessions:
                 try:
-                    session = self.sessions[server_name]
-                    tools_result = await asyncio.wait_for(
-                        session.list_tools(),
-                        timeout=MCP_OPERATION_TIMEOUT_SECONDS
+                    tools_result = await self._call_with_timeout_and_recovery(
+                        server_name,
+                        "list_tools_simple",
+                        lambda sess: sess.list_tools(),
+                        DEFAULT_RECOVERY_CONFIG.OPERATION_TIMEOUT_SECONDS,
                     )
                     all_tools[server_name] = tools_result.tools
                     logger.debug(f"Listed {len(tools_result.tools)} tools from {server_name}")
@@ -226,10 +471,12 @@ class MCPClient:
                     if not session:
                         all_tools[name] = []
                         continue
-                    
-                    tools_result = await asyncio.wait_for(
-                        session.list_tools(),
-                        timeout=MCP_OPERATION_TIMEOUT_SECONDS
+
+                    tools_result = await self._call_with_timeout_and_recovery(
+                        name,
+                        "list_tools_simple",
+                        lambda sess: sess.list_tools(),
+                        DEFAULT_RECOVERY_CONFIG.OPERATION_TIMEOUT_SECONDS,
                     )
                     all_tools[name] = tools_result.tools
                     logger.debug(f"Listed {len(tools_result.tools)} tools from {name}")
@@ -264,51 +511,57 @@ class MCPClient:
             all_tools = {}
             
             if server_name:
-                # List tools from specific server
-                if server_name in self.sessions:
-                    timeout_seconds = MCP_OPERATION_TIMEOUT_SECONDS
-                    try:
-                        session = self.sessions[server_name]
-                        # Wrap list_tools call with timeout
-                        tools_result = await asyncio.wait_for(
-                            session.list_tools(),
-                            timeout=timeout_seconds
-                        )
-                        # Keep the official Tool objects with full schema information
-                        all_tools[server_name] = tools_result.tools
-                        
-                        # Log the successful response
-                        self._log_mcp_list_tools_response(server_name, tools_result.tools, request_id)
-                    
-                    except asyncio.TimeoutError:
-                        # No retry - let LLM handle it
-                        error_msg = f"List tools timed out after {timeout_seconds}s"
-                        logger.error(f"{error_msg} for {server_name}")
-                        self._log_mcp_list_tools_error(server_name, error_msg, request_id)
-                        # Return empty list so processing can continue
-                        all_tools[server_name] = []
-                        
-                    except Exception as e:
-                        # No retry - fail fast
-                        error_details = extract_error_details(e)
-                        logger.error(f"List tools failed for {server_name}: {error_details}")
-                        self._log_mcp_list_tools_error(server_name, error_details, request_id)
-                        # Return empty list so processing can continue
-                        all_tools[server_name] = []
+                # List tools from specific server (attempt recovery if session is dead/missing)
+                server_config = self.mcp_registry.get_server_config_safe(server_name)
+                if (not server_config or not getattr(server_config, "enabled", True)) and server_name not in self.sessions:
+                    # If we have no config and no existing session, treat as unknown server.
+                    return {}
+
+                timeout_seconds = DEFAULT_RECOVERY_CONFIG.OPERATION_TIMEOUT_SECONDS
+                try:
+                    tools_result = await self._call_with_timeout_and_recovery(
+                        server_name,
+                        "list_tools",
+                        lambda sess: sess.list_tools(),
+                        timeout_seconds,
+                        request_id=request_id,
+                    )
+
+                    # Keep the official Tool objects with full schema information
+                    all_tools[server_name] = tools_result.tools
+
+                    # Log the successful response
+                    self._log_mcp_list_tools_response(server_name, tools_result.tools, request_id)
+
+                except asyncio.TimeoutError:
+                    error_msg = f"List tools timed out after {timeout_seconds}s"
+                    logger.error(f"{error_msg} for {server_name}")
+                    self._log_mcp_list_tools_error(server_name, error_msg, request_id)
+                    # Return empty list so processing can continue
+                    all_tools[server_name] = []
+
+                except Exception as e:
+                    error_details = extract_error_details(e)
+                    logger.error(f"List tools failed for {server_name}: {error_details}")
+                    self._log_mcp_list_tools_error(server_name, error_details, request_id)
+                    # Return empty list so processing can continue
+                    all_tools[server_name] = []
             else:
                 # List tools from all servers
                 for name in list(self.sessions.keys()):  # Use list() to avoid dict changed during iteration
-                    timeout_seconds = MCP_OPERATION_TIMEOUT_SECONDS
+                    timeout_seconds = DEFAULT_RECOVERY_CONFIG.OPERATION_TIMEOUT_SECONDS
                     try:
                         session = self.sessions.get(name)
                         if not session:
                             all_tools[name] = []
                             continue
-                        
-                        # Wrap list_tools call with timeout
-                        tools_result = await asyncio.wait_for(
-                            session.list_tools(),
-                            timeout=timeout_seconds
+
+                        tools_result = await self._call_with_timeout_and_recovery(
+                            name,
+                            "list_tools",
+                            lambda sess: sess.list_tools(),
+                            timeout_seconds,
+                            request_id=request_id,
                         )
                         # Keep the official Tool objects with full schema information
                         all_tools[name] = tools_result.tools
@@ -534,9 +787,14 @@ class MCPClient:
         """
         if not self._initialized:
             await self.initialize()
-        
+
+        # Only enforce registry presence if we don't already have a live session.
+        # This preserves behavior for tests/mocks and allows existing sessions to be used even
+        # if configuration lookup fails, while still preventing accidental use of unknown servers.
         if server_name not in self.sessions:
-            raise Exception(f"MCP server not found: {server_name}")
+            server_config = self.mcp_registry.get_server_config_safe(server_name)
+            if not server_config or not getattr(server_config, "enabled", True):
+                raise Exception(f"MCP server not found: {server_name}")
         
         # Variable to store the actual result for later summarization (if needed)
         actual_result: Optional[Dict[str, Any]] = None
@@ -587,17 +845,16 @@ class MCPClient:
             self._log_mcp_request(server_name, tool_name, parameters, request_id)
             
             # Execute tool call with timeout - fail fast on any error
-            timeout_seconds = MCP_OPERATION_TIMEOUT_SECONDS
-            
-            session = self.sessions.get(server_name)
-            if not session:
-                raise Exception(f"MCP server not found: {server_name}")
+            timeout_seconds = DEFAULT_RECOVERY_CONFIG.OPERATION_TIMEOUT_SECONDS
             
             try:
                 # Wrap MCP call with timeout to prevent indefinite hanging
-                result = await asyncio.wait_for(
-                    session.call_tool(tool_name, parameters),
-                    timeout=timeout_seconds
+                result = await self._call_with_timeout_and_recovery(
+                    server_name,
+                    f"call_tool:{tool_name}",
+                    lambda sess: sess.call_tool(tool_name, parameters),
+                    timeout_seconds,
+                    request_id=request_id,
                 )
                 
                 # Convert result to dictionary

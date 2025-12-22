@@ -119,7 +119,6 @@ class TestInitializeDatabase:
              patch('tarsy.database.init_db.logger') as mock_logger:
             
             mock_settings = Mock()
-            mock_settings.history_enabled = True
             mock_settings.database_url = "sqlite:///history.db"
             mock_settings.history_retention_days = 90
             mock_get_settings.return_value = mock_settings
@@ -129,23 +128,11 @@ class TestInitializeDatabase:
             assert result is True
             mock_run_migrations.assert_called_once_with("sqlite:///history.db")
         
-        # Test history disabled
-        with patch('tarsy.database.init_db.get_settings') as mock_get_settings, \
-             patch('tarsy.database.init_db.logger') as mock_logger:
-            
-            mock_settings = Mock()
-            mock_settings.history_enabled = False
-            mock_get_settings.return_value = mock_settings
-            
-            result = initialize_database()
-            assert result is True
-        
         # Test missing URL
         with patch('tarsy.database.init_db.get_settings') as mock_get_settings, \
              patch('tarsy.database.init_db.logger') as mock_logger:
             
             mock_settings = Mock()
-            mock_settings.history_enabled = True
             mock_settings.database_url = None
             mock_get_settings.return_value = mock_settings
             
@@ -159,7 +146,6 @@ class TestInitializeDatabase:
              patch('tarsy.database.init_db.logger') as mock_logger:
             
             mock_settings = Mock()
-            mock_settings.history_enabled = True
             mock_settings.database_url = "sqlite:///history.db"
             mock_settings.history_retention_days = 90
             mock_get_settings.return_value = mock_settings
@@ -196,7 +182,6 @@ class TestDatabaseConnection:
              patch('tarsy.database.init_db.Session') as mock_session:
             
             mock_settings = Mock()
-            mock_settings.history_enabled = True
             mock_settings.database_url = "sqlite:///history.db"
             mock_get_settings.return_value = mock_settings
             
@@ -209,15 +194,6 @@ class TestDatabaseConnection:
             result = test_database_connection()
             assert result is True
             mock_create_db_engine.assert_called_once_with("sqlite:///history.db")
-        
-        # Test history disabled
-        with patch('tarsy.database.init_db.get_settings') as mock_get_settings:
-            mock_settings = Mock()
-            mock_settings.history_enabled = False
-            mock_get_settings.return_value = mock_settings
-            
-            result = test_database_connection()
-            assert result is False
         
         # Test connection failure
         with patch('tarsy.database.init_db.create_engine') as mock_create_engine:
@@ -233,13 +209,12 @@ class TestGetDatabaseInfo:
     
     def test_get_database_info_scenarios(self):
         """Test getting database info with various scenarios."""
-        # Test enabled with successful connection
+        # Test successful connection
         with patch('tarsy.database.init_db.get_settings') as mock_get_settings, \
              patch('tarsy.database.init_db.test_database_connection') as mock_test_connection, \
              patch('tarsy.database.migrations.get_current_version') as mock_get_version:
             
             mock_settings = Mock()
-            mock_settings.history_enabled = True
             mock_settings.database_url = "sqlite:///history.db"
             mock_settings.history_retention_days = 90
             mock_get_settings.return_value = mock_settings
@@ -248,26 +223,10 @@ class TestGetDatabaseInfo:
             
             result = get_database_info()
             expected = {
-                "enabled": True,
                 "database_name": "history.db",
                 "retention_days": 90,
                 "connection_test": True,
                 "migration_version": "3717971cb125"
-            }
-            assert result == expected
-        
-        # Test disabled
-        with patch('tarsy.database.init_db.get_settings') as mock_get_settings:
-            mock_settings = Mock()
-            mock_settings.history_enabled = False
-            mock_get_settings.return_value = mock_settings
-            
-            result = get_database_info()
-            expected = {
-                "enabled": False,
-                "database_name": None,
-                "retention_days": None,
-                "connection_test": False
             }
             assert result == expected
         
@@ -277,7 +236,6 @@ class TestGetDatabaseInfo:
              patch('tarsy.database.migrations.get_current_version') as mock_get_version:
             
             mock_settings = Mock()
-            mock_settings.history_enabled = True
             mock_settings.database_url = "sqlite:///history.db"
             mock_settings.history_retention_days = 90
             mock_get_settings.return_value = mock_settings
@@ -286,7 +244,6 @@ class TestGetDatabaseInfo:
             
             result = get_database_info()
             expected = {
-                "enabled": True,
                 "database_name": "history.db",
                 "retention_days": 90,
                 "connection_test": False,
@@ -320,7 +277,6 @@ class TestDatabaseInitIntegration:
             
             # Mock settings
             mock_settings = Mock()
-            mock_settings.history_enabled = True
             mock_settings.database_url = "sqlite:///test_history.db"
             mock_settings.history_retention_days = 60
             mock_get_settings.return_value = mock_settings

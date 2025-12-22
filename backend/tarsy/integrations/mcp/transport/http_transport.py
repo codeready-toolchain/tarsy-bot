@@ -12,6 +12,7 @@ from mcp.client.streamable_http import streamablehttp_client
 from tarsy.models.mcp_transport_config import HTTPTransportConfig
 from tarsy.utils.logger import get_module_logger
 
+from .error_handling import is_safe_teardown_error
 from .factory import MCPTransport
 
 logger = get_module_logger(__name__)
@@ -81,7 +82,18 @@ class HTTPTransport(MCPTransport):
                 ) as client:
                     yield client
             
-            # Create HTTP client context using MCP SDK
+            # Create HTTP client context using MCP SDK.
+            #
+            # NOTE: streamablehttp_client() is implemented as an async generator-based
+            # context manager. If __aenter__ fails (e.g. connect error while the server
+            # is down), the context is not registered in our AsyncExitStack, and the
+            # generator would otherwise be finalized by GC. In Python 3.13 + AnyIO,
+            # that can surface as noisy:
+            #   "Task exception was never retrieved" +
+            #   RuntimeError("Attempted to exit cancel scope in a different task...")
+            #
+            # To avoid that, we manually manage __aenter__/__aexit__ and ensure
+            # best-effort cleanup happens in the *same task* as the failed __aenter__.
             http_context = streamablehttp_client(
                 url=str(self.config.url),
                 headers=request_headers if request_headers else None,
@@ -90,7 +102,20 @@ class HTTPTransport(MCPTransport):
             )
             
             # Enter the context to get the streams and session ID callback
-            streams = await self.exit_stack.enter_async_context(http_context)
+            try:
+                streams = await http_context.__aenter__()
+            except BaseException as e:
+                # Best-effort cleanup to prevent leaked async-generator finalizers.
+                try:
+                    await http_context.__aexit__(type(e), e, e.__traceback__)
+                except BaseExceptionGroup as eg:
+                    if not is_safe_teardown_error(eg):
+                        raise
+                except BaseException as exit_err:
+                    if not is_safe_teardown_error(exit_err):
+                        raise
+                raise
+            self.exit_stack.push_async_exit(http_context)
             read_stream, write_stream, get_session_id_callback = streams
             
             # Create ClientSession as async context manager
@@ -126,19 +151,31 @@ class HTTPTransport(MCPTransport):
     async def close(self):
         """Close HTTP transport (handled automatically by exit_stack).
         
-        Note: Due to MCP SDK cancel scope issues, cleanup may fail when called
-        from a different async task context. This is acceptable - we suppress
-        all errors to prevent them from cancelling parent tasks.
+        We intentionally only suppress a very narrow set of *known safe* teardown
+        errors (primarily the AnyIO cancel-scope mismatch RuntimeError).
         """
         if self._connected:
             logger.info(f"Closing HTTP transport for server: {self.server_id}")
             try:
                 await self.exit_stack.aclose()
-            except BaseException as e:
-                # Suppress ALL errors including CancelledError, KeyboardInterrupt, etc.
-                # Cancel scope errors from MCP SDK MUST NOT propagate to parent tasks
-                # This is critical for session recovery to work without killing the parent
-                logger.debug(f"HTTP transport cleanup error for {self.server_id} (suppressed): {type(e).__name__}")
+            except BaseExceptionGroup as eg:
+                if is_safe_teardown_error(eg):
+                    logger.debug(
+                        "HTTP transport cleanup error for %s (suppressed): %s",
+                        self.server_id,
+                        type(eg).__name__,
+                    )
+                else:
+                    raise
+            except Exception as e:
+                if is_safe_teardown_error(e):
+                    logger.debug(
+                        "HTTP transport cleanup error for %s (suppressed): %s",
+                        self.server_id,
+                        type(e).__name__,
+                    )
+                else:
+                    raise
             finally:
                 self._connected = False
                 self.session = None

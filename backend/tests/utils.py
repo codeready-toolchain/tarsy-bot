@@ -696,7 +696,6 @@ class MockFactory:
         mock_settings = Mock()
         default_settings = {
             "github_token": "test_token",
-            "history_enabled": True,
             "agent_config_path": None,
             "log_level": "INFO",
             "max_concurrent_alerts": 5,
@@ -1057,6 +1056,10 @@ class MockFactory:
             ]
         )
         service.get_filter_options.return_value = default_filter_options
+        
+        # Mock async methods for cancellation
+        service.cancel_all_paused_stages = AsyncMock(return_value=0)
+        service.update_session_status = AsyncMock()
         
         # Apply any overrides
         for key, value in overrides.items():

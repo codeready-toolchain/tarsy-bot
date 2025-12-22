@@ -35,7 +35,6 @@ services:
     env_file:
       - ../backend/.env                               # Load environment variables from backend/.env file
     environment:
-      - HISTORY_ENABLED=true
       # NOTE: If your password contains special characters (@, #, $, etc.), use separate
       # components instead of DATABASE_URL or encode the password manually.
       # Example with separate components (recommended):

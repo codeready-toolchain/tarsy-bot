@@ -21,6 +21,7 @@ import {
   DialogContent,
   DialogContentText,
   DialogActions,
+  Tooltip,
   alpha,
 } from '@mui/material';
 import { Psychology, BugReport, KeyboardDoubleArrowDown, KeyboardDoubleArrowUp, PauseCircle, PlayArrow } from '@mui/icons-material';
@@ -454,6 +455,7 @@ function SessionDetailPageBase({
             agent: 'parallel', // Placeholder
             status: 'active' as const,
             started_at_us: null,
+            paused_at_us: null,
             completed_at_us: null,
             duration_ms: null,
             stage_output: null,
@@ -484,6 +486,22 @@ function SessionDetailPageBase({
         }
         
         // Use throttled partial update for stage content
+        throttledUpdate(() => {
+          if (sessionId) {
+            refreshSessionStages(sessionId);
+          }
+        }, 250);
+      }
+      else if (eventType.startsWith('agent.')) {
+        // Agent events (agent.cancelled)
+        console.log('🔄 Agent event, refreshing stages');
+        
+        // Update summary immediately
+        if (sessionId) {
+          refreshSessionSummary(sessionId);
+        }
+        
+        // Refresh stages to show updated agent status
         throttledUpdate(() => {
           if (sessionId) {
             refreshSessionStages(sessionId);
@@ -892,64 +910,72 @@ function SessionDetailPageBase({
                   sx={{ mt: 3 }}
                   action={
                     <Box sx={{ display: 'flex', gap: 1 }}>
-                      <Button
-                        color="inherit"
-                        size="small"
-                        variant="contained"
-                        startIcon={isBottomResuming ? <CircularProgress size={14} color="inherit" /> : <PlayArrow />}
-                        disabled={isBottomResuming || isBottomCanceling}
-                        aria-label={isBottomResuming ? "Resuming session" : "Resume paused session"}
-                        onClick={async () => {
-                          setIsBottomResuming(true);
-                          setBottomResumeError(null);
-                          try {
-                            const { apiClient } = await import('../services/api');
-                            await apiClient.resumeSession(session.session_id);
-                            // WebSocket will update the session status
-                          } catch (error) {
-                            const { handleAPIError } = await import('../services/api');
-                            const errorMessage = handleAPIError(error);
-                            setBottomResumeError(errorMessage);
-                          } finally {
-                            setIsBottomResuming(false);
-                          }
-                        }}
-                        sx={{
-                          fontWeight: 600,
-                          backgroundColor: 'warning.main',
-                          color: 'white',
-                          '& .MuiSvgIcon-root': {
-                            color: 'white',
-                          },
-                          '&:hover': {
-                            backgroundColor: 'warning.dark',
-                          },
-                        }}
-                      >
-                        {isBottomResuming ? 'Resuming...' : 'Resume'}
-                      </Button>
-                      <Button
-                        color="error"
-                        size="small"
-                        variant="outlined"
-                        startIcon={isBottomCanceling ? <CircularProgress size={14} color="inherit" /> : undefined}
-                        onClick={() => {
-                          setShowBottomCancelDialog(true);
-                          setBottomCancelError(null);
-                        }}
-                        disabled={isBottomCanceling || isBottomResuming}
-                        aria-label={isBottomCanceling ? "Canceling session" : "Cancel session"}
-                        sx={{
-                          fontWeight: 600,
-                          '&:hover': {
-                            backgroundColor: 'error.main',
-                            borderColor: 'error.main',
-                            color: 'white',
-                          },
-                        }}
-                      >
-                        {isBottomCanceling ? 'Canceling...' : 'Cancel'}
-                      </Button>
+                      <Tooltip title="Resumes all paused agents" arrow>
+                        <span>
+                          <Button
+                            color="inherit"
+                            size="small"
+                            variant="contained"
+                            startIcon={isBottomResuming ? <CircularProgress size={14} color="inherit" /> : <PlayArrow />}
+                            disabled={isBottomResuming || isBottomCanceling}
+                            aria-label={isBottomResuming ? "Resuming session" : "Resume paused session"}
+                            onClick={async () => {
+                              setIsBottomResuming(true);
+                              setBottomResumeError(null);
+                              try {
+                                const { apiClient } = await import('../services/api');
+                                await apiClient.resumeSession(session.session_id);
+                                // WebSocket will update the session status
+                              } catch (error) {
+                                const { handleAPIError } = await import('../services/api');
+                                const errorMessage = handleAPIError(error);
+                                setBottomResumeError(errorMessage);
+                              } finally {
+                                setIsBottomResuming(false);
+                              }
+                            }}
+                            sx={{
+                              fontWeight: 600,
+                              backgroundColor: 'warning.main',
+                              color: 'white',
+                              '& .MuiSvgIcon-root': {
+                                color: 'white',
+                              },
+                              '&:hover': {
+                                backgroundColor: 'warning.dark',
+                              },
+                            }}
+                          >
+                            {isBottomResuming ? 'Resuming...' : 'Resume'}
+                          </Button>
+                        </span>
+                      </Tooltip>
+                      <Tooltip title="Cancels entire session" arrow>
+                        <span>
+                          <Button
+                            color="error"
+                            size="small"
+                            variant="outlined"
+                            startIcon={isBottomCanceling ? <CircularProgress size={14} color="inherit" /> : undefined}
+                            onClick={() => {
+                              setShowBottomCancelDialog(true);
+                              setBottomCancelError(null);
+                            }}
+                            disabled={isBottomCanceling || isBottomResuming}
+                            aria-label={isBottomCanceling ? "Canceling session" : "Cancel session"}
+                            sx={{
+                              fontWeight: 600,
+                              '&:hover': {
+                                backgroundColor: 'error.main',
+                                borderColor: 'error.main',
+                                color: 'white',
+                              },
+                            }}
+                          >
+                            {isBottomCanceling ? 'Canceling...' : 'Cancel'}
+                          </Button>
+                        </span>
+                      </Tooltip>
                     </Box>
                   }
                 >

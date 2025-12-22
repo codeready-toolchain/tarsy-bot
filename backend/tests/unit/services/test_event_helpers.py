@@ -11,6 +11,7 @@ import pytest
 from tarsy.services.events.channels import EventChannel
 from tarsy.models.constants import ProgressPhase
 from tarsy.services.events.event_helpers import (
+    publish_agent_cancelled,
     publish_chat_cancel_request,
     publish_llm_interaction,
     publish_mcp_tool_call,
@@ -758,3 +759,52 @@ class TestPublishSessionProgressUpdate:
             # Should not raise
             await publish_session_progress_update("test-session-123", ProgressPhase.INVESTIGATING)
 
+
+@pytest.mark.unit
+class TestPublishAgentCancelled:
+    """Test publish_agent_cancelled helper."""
+
+    @pytest.mark.asyncio
+    async def test_publishes_agent_cancelled_event(self):
+        """Test that it publishes agent.cancelled event to session-specific channel."""
+        mock_session = AsyncMock()
+        mock_session_factory = Mock(return_value=mock_session)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock()
+
+        with patch("tarsy.services.events.event_helpers.get_async_session_factory", return_value=mock_session_factory), \
+             patch("tarsy.services.events.event_helpers.publish_event", new_callable=AsyncMock) as mock_publish:
+            await publish_agent_cancelled(
+                session_id="test-session-123",
+                execution_id="child-exec-456",
+                agent_name="KubernetesAgent",
+                parent_stage_execution_id="parent-exec-789"
+            )
+
+            mock_publish.assert_called_once()
+            call_args = mock_publish.call_args
+            assert call_args[0][1] == EventChannel.session_details("test-session-123")
+            event = call_args[0][2]
+            assert event.type == "agent.cancelled"
+            assert event.session_id == "test-session-123"
+            assert event.execution_id == "child-exec-456"
+            assert event.agent_name == "KubernetesAgent"
+            assert event.parent_stage_execution_id == "parent-exec-789"
+
+    @pytest.mark.asyncio
+    async def test_handles_publish_error(self):
+        """Test that it handles publish errors gracefully."""
+        mock_session = AsyncMock()
+        mock_session_factory = Mock(return_value=mock_session)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock()
+
+        with patch("tarsy.services.events.event_helpers.get_async_session_factory", return_value=mock_session_factory), \
+             patch("tarsy.services.events.event_helpers.publish_event", side_effect=Exception("DB error")):
+            # Should not raise
+            await publish_agent_cancelled(
+                session_id="test-session-123",
+                execution_id="child-exec-456",
+                agent_name="KubernetesAgent",
+                parent_stage_execution_id="parent-exec-789"
+            )

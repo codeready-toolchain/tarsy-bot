@@ -16,7 +16,7 @@ from tarsy.models.agent_execution_result import (
     AgentExecutionResult,
     ParallelStageResult,
 )
-from tarsy.models.constants import FailurePolicy, StageStatus
+from tarsy.models.constants import SuccessPolicy, StageStatus
 from tarsy.models.processing_context import ChainContext
 from tarsy.services.parallel_stage_executor import ParallelStageExecutor
 from tarsy.utils.timestamp import now_us
@@ -142,7 +142,7 @@ class TestOptionalFieldGuards:
             name="test-stage",
             agents=None,
             agent="some-agent",
-            failure_policy=FailurePolicy.ANY
+            success_policy=SuccessPolicy.ANY
         )
         
         from tarsy.models.alert import ProcessingAlert
@@ -192,7 +192,7 @@ class TestOptionalFieldGuards:
             agent=None,
             agents=[SimpleNamespace(name="agent1")],
             replicas=3,
-            failure_policy=FailurePolicy.ALL
+            success_policy=SuccessPolicy.ALL
         )
         
         from tarsy.models.alert import ProcessingAlert
@@ -251,7 +251,7 @@ class TestExecutionConfigGeneration:
             captured_configs.append(kwargs.get('execution_configs'))
             # Return a valid parallel result
             from tarsy.models.agent_execution_result import ParallelStageMetadata
-            from tarsy.models.constants import FailurePolicy
+            from tarsy.models.constants import SuccessPolicy
             
             return ParallelStageResult(
                 stage_name="investigation",
@@ -259,7 +259,7 @@ class TestExecutionConfigGeneration:
                 metadata=ParallelStageMetadata(
                     parent_stage_execution_id="stage-exec-1",
                     parallel_type="multi_agent",
-                    failure_policy=FailurePolicy.ANY,
+                    success_policy=SuccessPolicy.ANY,
                     started_at_us=now_us(),
                     completed_at_us=now_us(),
                     agent_metadatas=[]
@@ -277,7 +277,7 @@ class TestExecutionConfigGeneration:
                 SimpleNamespace(name="agent1", llm_provider="openai", iteration_strategy="react"),
                 SimpleNamespace(name="agent2", llm_provider="anthropic", iteration_strategy="native")
             ],
-            failure_policy=FailurePolicy.ANY
+            success_policy=SuccessPolicy.ANY
         )
         
         # Create ProcessingAlert from Alert
@@ -340,7 +340,7 @@ class TestExecutionConfigGeneration:
         async def capture_configs(*args, **kwargs):
             captured_configs.append(kwargs.get('execution_configs'))
             from tarsy.models.agent_execution_result import ParallelStageMetadata
-            from tarsy.models.constants import FailurePolicy
+            from tarsy.models.constants import SuccessPolicy
             
             return ParallelStageResult(
                 stage_name="investigation",
@@ -348,7 +348,7 @@ class TestExecutionConfigGeneration:
                 metadata=ParallelStageMetadata(
                     parent_stage_execution_id="stage-exec-1",
                     parallel_type="replica",
-                    failure_policy=FailurePolicy.ALL,
+                    success_policy=SuccessPolicy.ALL,
                     started_at_us=now_us(),
                     completed_at_us=now_us(),
                     agent_metadatas=[]
@@ -367,7 +367,7 @@ class TestExecutionConfigGeneration:
             replicas=3,
             llm_provider="openai",
             iteration_strategy="react",
-            failure_policy=FailurePolicy.ALL
+            success_policy=SuccessPolicy.ALL
         )
         
         # Create ProcessingAlert from Alert
@@ -409,6 +409,92 @@ class TestExecutionConfigGeneration:
 
 
 @pytest.mark.unit
+class TestParallelStageExecutorCancellationHandling:
+    """Test CancelledError handling during parallel execution."""
+
+    @pytest.mark.asyncio
+    async def test_parallel_stage_handles_cancelled_error_from_gather(self) -> None:
+        """Cancelled agents should not crash the stage; they should be marked CANCELLED and not stay running."""
+        stage_manager = Mock()
+        stage_manager.create_stage_execution = AsyncMock(side_effect=["parent-exec", "child-exec-1", "child-exec-2"])
+        stage_manager.update_stage_execution_started = AsyncMock()
+        stage_manager.update_stage_execution_completed = AsyncMock()
+        stage_manager.update_stage_execution_failed = AsyncMock()
+        stage_manager.update_stage_execution_cancelled = AsyncMock()
+        stage_manager.update_stage_execution_paused = AsyncMock()
+
+        settings = MockFactory.create_mock_settings()
+
+        # One agent will be cancelled, the other will complete successfully.
+        completed_result = AgentExecutionResult(
+            status=StageStatus.COMPLETED,
+            agent_name="agent-2",
+            stage_name="test-stage",
+            timestamp_us=now_us(),
+            result_summary="ok",
+            error_message=None,
+        )
+
+        agent_ok = Mock()
+        agent_ok.process_alert = AsyncMock(return_value=completed_result)
+        agent_ok.set_current_stage_execution_id = Mock()
+        agent_ok.set_parallel_execution_metadata = Mock()
+        agent_ok.iteration_strategy = SimpleNamespace(value="react")
+
+        agent_cancel = Mock()
+        agent_cancel.process_alert = AsyncMock(side_effect=asyncio.CancelledError())
+        agent_cancel.set_current_stage_execution_id = Mock()
+        agent_cancel.set_parallel_execution_metadata = Mock()
+        agent_cancel.iteration_strategy = SimpleNamespace(value="react")
+
+        agent_factory = Mock()
+        def _get_agent(*, agent_identifier, **_kwargs):  # noqa: ANN001
+            return agent_cancel if agent_identifier == "agent-1" else agent_ok
+
+        agent_factory.get_agent = Mock(side_effect=_get_agent)
+
+        executor = ParallelStageExecutor(
+            agent_factory=agent_factory,
+            settings=settings,
+            stage_manager=stage_manager,
+        )
+
+        # Build a minimal chain context
+        from tarsy.models.alert import ProcessingAlert
+        alert = AlertFactory.create_kubernetes_alert()
+        processing_alert = ProcessingAlert(
+            alert_type=alert.alert_type or "kubernetes",
+            severity=alert.data.get("severity", "critical"),
+            timestamp=alert.timestamp,
+            environment=alert.data.get("environment", "production"),
+            runbook_url=alert.runbook,
+            alert_data=alert.data,
+        )
+        chain_context = ChainContext.from_processing_alert(processing_alert=processing_alert, session_id="test-session")
+
+        stage = SimpleNamespace(name="test-stage", success_policy=SuccessPolicy.ANY)
+
+        execution_configs = [
+            {"agent_name": "agent-1", "llm_provider": "openai", "iteration_strategy": "react"},
+            {"agent_name": "agent-2", "llm_provider": "openai", "iteration_strategy": "react"},
+        ]
+
+        result = await executor._execute_parallel_stage(
+            stage=stage,
+            chain_context=chain_context,
+            session_mcp_client=Mock(),
+            stage_index=0,
+            execution_configs=execution_configs,
+            parallel_type="multi_agent",
+        )
+
+        assert isinstance(result, ParallelStageResult)
+        assert any(r.status == StageStatus.CANCELLED for r in result.results)
+        assert any(r.status == StageStatus.COMPLETED for r in result.results)
+        stage_manager.update_stage_execution_cancelled.assert_any_call("child-exec-1", "unknown")
+
+
+@pytest.mark.unit
 class TestStatusAggregation:
     """Test status aggregation logic for parallel stages."""
     
@@ -416,23 +502,23 @@ class TestStatusAggregation:
         "completed,failed,paused,policy,expected_status",
         [
             # PAUSED takes priority
-            (2, 0, 1, FailurePolicy.ALL, StageStatus.PAUSED),
-            (2, 0, 1, FailurePolicy.ANY, StageStatus.PAUSED),
-            (0, 2, 1, FailurePolicy.ALL, StageStatus.PAUSED),
+            (2, 0, 1, SuccessPolicy.ALL, StageStatus.PAUSED),
+            (2, 0, 1, SuccessPolicy.ANY, StageStatus.PAUSED),
+            (0, 2, 1, SuccessPolicy.ALL, StageStatus.PAUSED),
             
             # ALL policy: all must succeed
-            (3, 0, 0, FailurePolicy.ALL, StageStatus.COMPLETED),
-            (2, 1, 0, FailurePolicy.ALL, StageStatus.FAILED),
-            (0, 3, 0, FailurePolicy.ALL, StageStatus.FAILED),
+            (3, 0, 0, SuccessPolicy.ALL, StageStatus.COMPLETED),
+            (2, 1, 0, SuccessPolicy.ALL, StageStatus.FAILED),
+            (0, 3, 0, SuccessPolicy.ALL, StageStatus.FAILED),
             
             # ANY policy: at least one must succeed
-            (1, 2, 0, FailurePolicy.ANY, StageStatus.COMPLETED),
-            (0, 3, 0, FailurePolicy.ANY, StageStatus.FAILED),
-            (3, 0, 0, FailurePolicy.ANY, StageStatus.COMPLETED),
+            (1, 2, 0, SuccessPolicy.ANY, StageStatus.COMPLETED),
+            (0, 3, 0, SuccessPolicy.ANY, StageStatus.FAILED),
+            (3, 0, 0, SuccessPolicy.ANY, StageStatus.COMPLETED),
         ],
     )
     def test_status_aggregation_logic(
-        self, completed: int, failed: int, paused: int, policy: FailurePolicy, expected_status: StageStatus
+        self, completed: int, failed: int, paused: int, policy: SuccessPolicy, expected_status: StageStatus
     ):
         """Test that status aggregation follows correct precedence rules."""
         # Create metadatas based on counts
@@ -486,7 +572,105 @@ class TestStatusAggregation:
             settings=MockFactory.create_mock_settings(),
             stage_manager=Mock()
         )
-        actual_status = executor._aggregate_status(metadatas, policy)
+        actual_status = executor.aggregate_status(metadatas, policy)
+        
+        assert actual_status == expected_status
+    
+    @pytest.mark.parametrize(
+        "completed,failed,cancelled,paused,policy,expected_status",
+        [
+            # CANCELLED treated like FAILED for success_policy evaluation
+            # ANY policy with some CANCELLED
+            (1, 0, 1, 0, SuccessPolicy.ANY, StageStatus.COMPLETED),  # 1 success is enough
+            (0, 0, 3, 0, SuccessPolicy.ANY, StageStatus.FAILED),     # All cancelled = failed
+            (1, 1, 1, 0, SuccessPolicy.ANY, StageStatus.COMPLETED),  # Mixed but has success
+            
+            # ALL policy with CANCELLED
+            (2, 0, 1, 0, SuccessPolicy.ALL, StageStatus.FAILED),     # Any cancel = failed
+            (0, 1, 2, 0, SuccessPolicy.ALL, StageStatus.FAILED),     # Mixed failed+cancelled
+            
+            # PAUSED still takes priority over CANCELLED
+            (1, 0, 1, 1, SuccessPolicy.ANY, StageStatus.PAUSED),
+            (0, 1, 1, 1, SuccessPolicy.ALL, StageStatus.PAUSED),
+            
+            # Edge case: all types present
+            (1, 1, 1, 1, SuccessPolicy.ANY, StageStatus.PAUSED),  # Paused takes priority
+        ],
+    )
+    def test_status_aggregation_with_cancelled(
+        self, 
+        completed: int, 
+        failed: int, 
+        cancelled: int,
+        paused: int, 
+        policy: SuccessPolicy, 
+        expected_status: StageStatus
+    ):
+        """Test status aggregation with CANCELLED status included."""
+        metadatas = []
+        
+        for i in range(completed):
+            metadatas.append(
+                AgentExecutionMetadata(
+                    agent_name=f"agent-completed-{i}",
+                    llm_provider="openai",
+                    iteration_strategy="react",
+                    started_at_us=1000,
+                    completed_at_us=2000,
+                    status=StageStatus.COMPLETED,
+                    error_message=None,
+                    token_usage=None
+                )
+            )
+        
+        for i in range(failed):
+            metadatas.append(
+                AgentExecutionMetadata(
+                    agent_name=f"agent-failed-{i}",
+                    llm_provider="openai",
+                    iteration_strategy="react",
+                    started_at_us=1000,
+                    completed_at_us=2000,
+                    status=StageStatus.FAILED,
+                    error_message="Test error",
+                    token_usage=None
+                )
+            )
+        
+        for i in range(cancelled):
+            metadatas.append(
+                AgentExecutionMetadata(
+                    agent_name=f"agent-cancelled-{i}",
+                    llm_provider="openai",
+                    iteration_strategy="react",
+                    started_at_us=1000,
+                    completed_at_us=2000,
+                    status=StageStatus.CANCELLED,
+                    error_message="Cancelled by user",
+                    token_usage=None
+                )
+            )
+        
+        for i in range(paused):
+            metadatas.append(
+                AgentExecutionMetadata(
+                    agent_name=f"agent-paused-{i}",
+                    llm_provider="openai",
+                    iteration_strategy="react",
+                    started_at_us=1000,
+                    completed_at_us=2000,
+                    status=StageStatus.PAUSED,
+                    error_message=None,
+                    token_usage=None
+                )
+            )
+        
+        executor = ParallelStageExecutor(
+            agent_factory=Mock(),
+            settings=MockFactory.create_mock_settings(),
+            stage_manager=Mock()
+        )
+        actual_status = executor.aggregate_status(metadatas, policy)
         
         assert actual_status == expected_status
 
@@ -542,7 +726,7 @@ class TestParallelAgentTimeouts:
             replicas=1,
             llm_provider=None,
             iteration_strategy=None,
-            failure_policy=FailurePolicy.ALL
+            success_policy=SuccessPolicy.ALL
         )
         
         from tarsy.models.alert import ProcessingAlert
@@ -651,7 +835,7 @@ class TestParallelAgentTimeouts:
             replicas=1,
             llm_provider=None,
             iteration_strategy=None,
-            failure_policy=FailurePolicy.ANY  # Continue if one succeeds
+            success_policy=SuccessPolicy.ANY  # Continue if one succeeds
         )
         
         from tarsy.models.alert import ProcessingAlert

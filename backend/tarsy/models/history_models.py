@@ -288,31 +288,49 @@ class DetailedStage(BaseModel):
     @computed_field
     @property  
     def stage_input_tokens(self) -> Optional[int]:
-        """Sum of input tokens from all LLM interactions in this stage"""
+        """Sum of input tokens from all LLM interactions in this stage, including parallel child executions"""
+        # Sum tokens from this stage's own interactions
         total = sum(
             interaction.details.input_tokens or 0 
             for interaction in self.llm_interactions
         )
+        # Recursively add tokens from parallel child executions
+        if self.parallel_executions:
+            for child in self.parallel_executions:
+                if child.stage_input_tokens:
+                    total += child.stage_input_tokens
         return total if total > 0 else None
 
     @computed_field
     @property
     def stage_output_tokens(self) -> Optional[int]:
-        """Sum of output tokens from all LLM interactions in this stage"""
+        """Sum of output tokens from all LLM interactions in this stage, including parallel child executions"""
+        # Sum tokens from this stage's own interactions
         total = sum(
             interaction.details.output_tokens or 0 
             for interaction in self.llm_interactions
         )
+        # Recursively add tokens from parallel child executions
+        if self.parallel_executions:
+            for child in self.parallel_executions:
+                if child.stage_output_tokens:
+                    total += child.stage_output_tokens
         return total if total > 0 else None
 
     @computed_field
     @property
     def stage_total_tokens(self) -> Optional[int]:
-        """Sum of total tokens from all LLM interactions in this stage"""
+        """Sum of total tokens from all LLM interactions in this stage, including parallel child executions"""
+        # Sum tokens from this stage's own interactions
         total = sum(
             interaction.details.total_tokens or 0 
             for interaction in self.llm_interactions
         )
+        # Recursively add tokens from parallel child executions
+        if self.parallel_executions:
+            for child in self.parallel_executions:
+                if child.stage_total_tokens:
+                    total += child.stage_total_tokens
         return total if total > 0 else None
     
     @computed_field

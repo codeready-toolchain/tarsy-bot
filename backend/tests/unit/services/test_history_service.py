@@ -35,31 +35,22 @@ class TestHistoryService:
             service._is_healthy = True
             return service
     
-    @pytest.mark.parametrize("history_enabled,expected_enabled,expected_url", [
-        (True, True, "sqlite:///:memory:"),  # History enabled
-        (False, False, None),  # History disabled
-    ])
     @pytest.mark.unit
-    def test_initialization_scenarios(self, history_enabled, expected_enabled, expected_url):
+    def test_initialization_scenarios(self):
         """Test service initialization for various scenarios."""
+        expected_url = "sqlite:///:memory:"
         mock_settings = MockFactory.create_mock_settings(
-            history_enabled=history_enabled,
             database_url=expected_url
         )
         
         with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
             service = HistoryService()
-            assert service.is_enabled == expected_enabled
-            assert service.enabled == expected_enabled  # Test enabled property
-            if history_enabled:
-                assert service.settings.history_enabled == True
-                assert service.settings.database_url == expected_url
+            assert service.settings.database_url == expected_url
     
     @pytest.mark.parametrize("failure_type,expected_result,expected_attempted,expected_healthy", [
         ("success", True, True, True),  # Successful initialization
         ("database_failure", False, True, False),  # Database connection failure
         ("schema_failure", False, True, False),  # Schema creation failure
-        ("disabled", False, False, False),  # Service disabled
     ])
     @pytest.mark.unit
     @patch('tarsy.services.history_service.DatabaseManager')
@@ -67,8 +58,7 @@ class TestHistoryService:
         """Test service initialization for various failure scenarios."""
         # Create mock settings based on scenario
         mock_settings = MockFactory.create_mock_settings(
-            history_enabled=failure_type != "disabled",
-            database_url="sqlite:///test.db" if failure_type != "disabled" else None
+            database_url="sqlite:///test.db"
         )
         
         # Set up database manager based on scenario
@@ -105,7 +95,6 @@ class TestHistoryService:
         """Test repository access for various scenarios."""
         dependencies = MockFactory.create_mock_history_service_dependencies()
         
-        history_service.is_enabled = service_enabled
         if service_enabled:
             history_service.db_manager = dependencies['db_manager']
             mock_repo_class.return_value = dependencies['repository']
@@ -118,7 +107,6 @@ class TestHistoryService:
     
     @pytest.mark.parametrize("scenario,service_enabled,repo_side_effect,expected_result", [
         ("success", True, None, True),  # Successful creation
-        ("disabled", False, None, False),  # Service disabled
         ("exception", True, Exception("Database error"), False),  # Database error
     ])
     @pytest.mark.unit
@@ -126,7 +114,6 @@ class TestHistoryService:
         """Test session creation for various scenarios."""
         dependencies = MockFactory.create_mock_history_service_dependencies()
         
-        history_service.is_enabled = service_enabled
         
         with patch.object(history_service, 'get_repository') as mock_get_repo:
             if repo_side_effect:
@@ -219,7 +206,6 @@ class TestHistoryService:
         from tarsy.models.processing_context import ChainContext
         
         dependencies = MockFactory.create_mock_history_service_dependencies()
-        history_service.is_enabled = True
         
         # Create alert with optional MCP selection
         api_alert = Alert(
@@ -357,7 +343,6 @@ class TestHistoryService:
             # When service is disabled, get_repository returns None
             dependencies = None
         
-        history_service.is_enabled = service_enabled
         
         with patch.object(history_service, 'get_repository') as mock_get_repo:
             if service_enabled:
@@ -942,7 +927,6 @@ class TestHistoryServiceErrorHandling:
     def history_service_with_errors(self):
         """Create HistoryService that simulates various error conditions."""
         mock_settings = Mock(spec=Settings)
-        mock_settings.history_enabled = True
         mock_settings.database_url = "sqlite:///test_history.db"
         mock_settings.history_retention_days = 90
         
@@ -1102,7 +1086,6 @@ class TestDashboardMethods:
     def test_get_filter_options_scenarios(self, scenario, expected_agent_types, expected_alert_types):
         """Test filter options retrieval for various scenarios."""
         service = HistoryService()
-        service.is_enabled = True
         
         if scenario == "success":
             service._is_healthy = True
@@ -1124,7 +1107,6 @@ class TestDashboardMethods:
     def test_get_filter_options_no_repository_raises_runtime_error(self):
         """Test that RuntimeError is raised when repository is unavailable."""
         service = HistoryService()
-        service.is_enabled = True
         service._is_healthy = False
         
         with patch.object(service, 'get_repository') as mock_get_repo:
@@ -1142,7 +1124,6 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
     def history_service(self):
         """Create HistoryService instance for testing."""
         with patch('tarsy.services.history_service.get_settings') as mock_settings:
-            mock_settings.return_value.history_enabled = True
             mock_settings.return_value.database_url = "sqlite:///test.db"
             mock_settings.return_value.history_retention_days = 90
             
@@ -1429,7 +1410,6 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
 async def test_cleanup_orphaned_sessions():
     """Test cleanup of orphaned sessions based on timeout."""
     history_service = HistoryService()
-    history_service.is_enabled = True
     
     from tarsy.models.constants import AlertSessionStatus
     
@@ -1493,22 +1473,9 @@ async def test_cleanup_orphaned_sessions():
 
 @pytest.mark.asyncio
 @pytest.mark.unit
-async def test_cleanup_orphaned_sessions_disabled_service():
-    """Test that cleanup does nothing when history service is disabled."""
-    history_service = HistoryService()
-    history_service.is_enabled = False
-    
-    cleaned_count = history_service.cleanup_orphaned_sessions()
-    
-    assert cleaned_count == 0
-
-
-@pytest.mark.asyncio
-@pytest.mark.unit
 async def test_cleanup_orphaned_sessions_no_repository():
     """Test cleanup handles gracefully when repository is unavailable."""
     history_service = HistoryService()
-    history_service.is_enabled = True
     history_service.get_repository = Mock(return_value=Mock(__enter__=Mock(return_value=None), __exit__=Mock(return_value=None)))
     
     cleaned_count = history_service.cleanup_orphaned_sessions()
@@ -1521,7 +1488,6 @@ async def test_cleanup_orphaned_sessions_no_repository():
 async def test_cleanup_orphaned_sessions_no_active_sessions():
     """Test cleanup when there are no orphaned sessions."""
     history_service = HistoryService()
-    history_service.is_enabled = True
     
     mock_repo = Mock()
     mock_repo.find_orphaned_sessions.return_value = []  # No orphaned sessions found
@@ -1550,7 +1516,6 @@ async def test_cleanup_never_touches_failed_sessions():
     cleaned up by the orphan detection mechanism.
     """
     history_service = HistoryService()
-    history_service.is_enabled = True
     
     from tarsy.models.constants import AlertSessionStatus
     
@@ -1594,7 +1559,6 @@ async def test_cleanup_never_touches_completed_sessions():
     Completed sessions should never be touched by orphan detection.
     """
     history_service = HistoryService()
-    history_service.is_enabled = True
     
     from tarsy.models.constants import AlertSessionStatus
     
@@ -1637,7 +1601,6 @@ async def test_cleanup_never_touches_null_last_interaction():
     considered orphaned, even if they're IN_PROGRESS.
     """
     history_service = HistoryService()
-    history_service.is_enabled = True
     
     from tarsy.models.constants import AlertSessionStatus
     
@@ -1678,7 +1641,6 @@ async def test_cleanup_only_touches_in_progress_with_old_interaction():
     This is the positive test case for the orphan detection mechanism.
     """
     history_service = HistoryService()
-    history_service.is_enabled = True
     
     from tarsy.models.constants import AlertSessionStatus
     from tarsy.utils.timestamp import now_us
@@ -1722,7 +1684,6 @@ async def test_cleanup_only_touches_in_progress_with_old_interaction():
 async def test_cleanup_orphaned_sessions_session_not_found():
     """Test cleanup handles gracefully when update fails."""
     history_service = HistoryService()
-    history_service.is_enabled = True
     
     
     # Create an orphaned session
@@ -2161,7 +2122,6 @@ class TestConversationHistory:
             service = HistoryService()
             service._initialization_attempted = True
             service._is_healthy = True
-            service.is_enabled = True
             return service
     
     @pytest.mark.unit
@@ -2352,19 +2312,6 @@ class TestConversationHistory:
         
         # Assert
         assert session_conv is not None
-        assert chat_conv is None
-    
-    @pytest.mark.unit
-    def test_get_session_conversation_history_disabled_service(self, history_service):
-        """Test get_session_conversation_history when service is disabled."""
-        history_service.is_enabled = False
-        
-        session_conv, chat_conv = history_service.get_session_conversation_history(
-            session_id="test-session",
-            include_chat=True
-        )
-        
-        assert session_conv is None
         assert chat_conv is None
     
     @pytest.mark.unit

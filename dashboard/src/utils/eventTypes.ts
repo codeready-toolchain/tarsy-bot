@@ -45,6 +45,11 @@ export const CHAIN_EVENTS = {
   PROGRESS: 'chain.progress',
 } as const;
 
+// Agent lifecycle events (for parallel agents)
+export const AGENT_EVENTS = {
+  CANCELLED: 'agent.cancelled',
+} as const;
+
 // LLM streaming content types (stream_type field in llm.stream.chunk events)
 export const STREAMING_CONTENT_TYPES = {
   THOUGHT: 'thought',

@@ -9,7 +9,7 @@ from tarsy.models.agent_execution_result import (
     ParallelStageResult,
 )
 from tarsy.models.alert import ProcessingAlert
-from tarsy.models.constants import FailurePolicy, StageStatus
+from tarsy.models.constants import SuccessPolicy, StageStatus
 from tarsy.models.processing_context import ChainContext
 from tarsy.utils.timestamp import now_us
 
@@ -69,7 +69,7 @@ class TestChainContextParallelHelpers:
         metadata = ParallelStageMetadata(
             parent_stage_execution_id="exec-123",
             parallel_type="multi_agent",
-            failure_policy=FailurePolicy.ALL,
+            success_policy=SuccessPolicy.ALL,
             started_at_us=timestamp - 5_000_000,
             completed_at_us=timestamp,
             agent_metadatas=[
@@ -319,7 +319,7 @@ class TestChainContextParallelHelpers:
             metadata=ParallelStageMetadata(
                 parent_stage_execution_id="exec-partial",
                 parallel_type="multi_agent",
-                failure_policy=FailurePolicy.ANY,
+                success_policy=SuccessPolicy.ANY,
                 started_at_us=timestamp - 5_000_000,
                 completed_at_us=timestamp,
                 agent_metadatas=[
@@ -464,7 +464,7 @@ class TestChainContextFormattingParallel:
             metadata=ParallelStageMetadata(
                 parent_stage_execution_id="exec-123",
                 parallel_type="multi_agent",
-                failure_policy=FailurePolicy.ALL,
+                success_policy=SuccessPolicy.ALL,
                 started_at_us=timestamp - 5_000_000,
                 completed_at_us=timestamp,
                 agent_metadatas=[
@@ -545,7 +545,7 @@ class TestChainContextFormattingParallel:
             metadata=ParallelStageMetadata(
                 parent_stage_execution_id="exec-456",
                 parallel_type="multi_agent",
-                failure_policy=FailurePolicy.ANY,
+                success_policy=SuccessPolicy.ANY,
                 started_at_us=timestamp - 3_000_000,
                 completed_at_us=timestamp,
                 agent_metadatas=[
@@ -633,7 +633,7 @@ class TestChainContextFormattingParallel:
             metadata=ParallelStageMetadata(
                 parent_stage_execution_id="exec-789",
                 parallel_type="multi_agent",
-                failure_policy=FailurePolicy.ALL,
+                success_policy=SuccessPolicy.ALL,
                 started_at_us=timestamp,
                 completed_at_us=timestamp + 1000,
                 agent_metadatas=[

@@ -18,7 +18,7 @@ from tarsy.models.agent_execution_result import (
     ParallelStageResult,
 )
 from tarsy.models.alert import ProcessingAlert
-from tarsy.models.constants import FailurePolicy, StageStatus
+from tarsy.models.constants import SuccessPolicy, StageStatus
 from tarsy.models.processing_context import (
     AvailableTools,
     ChainContext,
@@ -947,7 +947,7 @@ class TestNativeThinkingPromptBuilding:
             metadata=ParallelStageMetadata(
                 parent_stage_execution_id="exec-p1",
                 parallel_type="multi_agent",
-                failure_policy=FailurePolicy.ALL,
+                success_policy=SuccessPolicy.ALL,
                 started_at_us=timestamp - 5000,
                 completed_at_us=timestamp,
                 agent_metadatas=[

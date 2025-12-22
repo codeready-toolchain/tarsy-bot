@@ -68,6 +68,7 @@ export interface StageExecution {
   agent: string;
   status: StageStatus;
   started_at_us: number | null;
+  paused_at_us: number | null;
   completed_at_us: number | null;
   duration_ms: number | null;
   stage_output: any | null;
@@ -547,6 +548,7 @@ export interface ProgressIndicatorProps {
   status: Session['status'];
   startedAt?: number; // Unix timestamp in microseconds
   duration?: number | null; // Duration in milliseconds
+  pausedAt?: number | null; // Unix timestamp in microseconds when session was paused
   variant?: 'linear' | 'circular';
   showDuration?: boolean;
   size?: 'small' | 'medium' | 'large';

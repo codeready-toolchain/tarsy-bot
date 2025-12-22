@@ -73,9 +73,9 @@ class StageExecutionManager:
         Raises:
             RuntimeError: If stage execution record cannot be created
         """
-        if not self.history_service or not self.history_service.is_enabled:
+        if not self.history_service:
             raise RuntimeError(
-                f"Cannot create stage execution for '{stage.name}': History service is disabled. "
+                f"Cannot create stage execution for '{stage.name}': History service is unavailable. "
                 "All alert processing must be done as chains with proper stage tracking."
             )
         
@@ -118,25 +118,24 @@ class StageExecutionManager:
         # CRITICAL: Verify the stage execution was actually created in the database
         # The hooks use safe_execute which catches exceptions and returns False instead of propagating
         # We need to explicitly verify the record exists in the database
-        if self.history_service:
-            try:
-                # Use the history service's proper method to verify the record exists
-                verified_stage = await self.history_service.get_stage_execution(stage_execution.execution_id)
-                
-                if not verified_stage:
-                    raise RuntimeError(
-                        f"Stage execution {stage_execution.execution_id} for '{stage.name}' was not found in database after creation. "
-                        "The history hook may have failed silently. Check history service logs for errors."
-                    )
-                    
-                logger.debug(f"Verified stage execution {stage_execution.execution_id} exists in database")
-                
-            except Exception as e:
-                logger.error(f"Failed to verify stage execution in database: {e}")
+        try:
+            # Use the history service's proper method to verify the record exists
+            verified_stage = await self.history_service.get_stage_execution(stage_execution.execution_id)
+            
+            if not verified_stage:
                 raise RuntimeError(
-                    f"Cannot verify stage execution {stage_execution.execution_id} was created in database. "
-                    f"Chain processing cannot continue without confirmation. Error: {str(e)}"
-                ) from e
+                    f"Stage execution {stage_execution.execution_id} for '{stage.name}' was not found in database after creation. "
+                    "The history hook may have failed silently. Check history service logs for errors."
+                )
+                
+            logger.debug(f"Verified stage execution {stage_execution.execution_id} exists in database")
+            
+        except Exception as e:
+            logger.error(f"Failed to verify stage execution in database: {e}")
+            raise RuntimeError(
+                f"Cannot verify stage execution {stage_execution.execution_id} was created in database. "
+                f"Chain processing cannot continue without confirmation. Error: {str(e)}"
+            ) from e
         
         return stage_execution.execution_id
     
@@ -152,9 +151,9 @@ class StageExecutionManager:
         Raises:
             RuntimeError: If session current stage cannot be updated
         """
-        if not self.history_service or not self.history_service.is_enabled:
+        if not self.history_service:
             raise RuntimeError(
-                f"Cannot update session current stage for '{session_id}': History service is disabled. "
+                f"Cannot update session current stage for '{session_id}': History service is unavailable. "
                 "All alert processing must be done with proper stage tracking."
             )
         
@@ -189,7 +188,7 @@ class StageExecutionManager:
         """
         if not self.history_service:
             raise RuntimeError(
-                f"Cannot update stage execution {stage_execution_id} as completed: History service is disabled. "
+                f"Cannot update stage execution {stage_execution_id} as completed: History service is unavailable. "
                 "All alert processing must be done with proper stage tracking."
             )
         
@@ -227,55 +226,96 @@ class StageExecutionManager:
                 f"Database persistence is required for audit trail. Error: {str(e)}"
             ) from e
     
-    async def update_stage_execution_failed(self, stage_execution_id: str, error_message: str) -> None:
+    async def _update_stage_execution_terminal(
+        self,
+        stage_execution_id: str,
+        status: StageStatus,
+        error_message: str,
+        operation_name: str,
+    ) -> None:
         """
-        Update stage execution as failed.
-        
+        Common logic for updating stage execution to terminal status (failed/cancelled).
+
         Args:
             stage_execution_id: Stage execution ID
-            error_message: Error message
-            
+            status: Terminal status (FAILED or CANCELLED)
+            error_message: Error message or cancellation reason
+            operation_name: Operation name for logging ("failed" or "cancelled")
+
         Raises:
-            RuntimeError: If stage execution cannot be updated to failed status
+            RuntimeError: If stage execution cannot be updated to terminal status
         """
         if not self.history_service:
             raise RuntimeError(
-                f"Cannot update stage execution {stage_execution_id} as failed: History service is disabled. "
+                f"Cannot update stage execution {stage_execution_id} as {operation_name}: History service is unavailable. "
                 "All alert processing must be done with proper stage tracking."
             )
-        
+
         try:
-            # Get the existing stage execution record
             existing_stage = await self.history_service.get_stage_execution(stage_execution_id)
             if not existing_stage:
                 raise RuntimeError(
-                    f"Stage execution {stage_execution_id} not found in database for failure update. "
+                    f"Stage execution {stage_execution_id} not found in database for {operation_name} update. "
                     "This indicates a critical bug in stage lifecycle management."
                 )
-            
-            # Update only the failure-related fields
-            existing_stage.status = StageStatus.FAILED.value
+
+            existing_stage.status = status.value
             existing_stage.completed_at_us = now_us()
             existing_stage.stage_output = None
             existing_stage.error_message = error_message
-            
-            # Calculate duration if we have started_at_us
+
             if existing_stage.started_at_us and existing_stage.completed_at_us:
-                existing_stage.duration_ms = int((existing_stage.completed_at_us - existing_stage.started_at_us) / 1000)
-            
-            # Trigger stage execution hooks (history + dashboard) via context manager
+                existing_stage.duration_ms = int(
+                    (existing_stage.completed_at_us - existing_stage.started_at_us) / 1000
+                )
+
             from tarsy.hooks.hook_context import stage_execution_context
+
             async with stage_execution_context(existing_stage):
-                # Context automatically triggers hooks when exiting
                 pass
-            logger.debug(f"Triggered stage hooks for stage failure {existing_stage.stage_index}: {existing_stage.stage_id}")
-            
+            logger.debug(
+                "Triggered stage hooks for stage %s %s: %s",
+                operation_name,
+                existing_stage.stage_index,
+                existing_stage.stage_id,
+            )
+
         except Exception as e:
-            logger.error(f"Failed to update stage execution as failed: {str(e)}")
+            logger.error(f"Failed to update stage execution as {operation_name}: {str(e)}")
             raise RuntimeError(
-                f"Cannot update stage execution {stage_execution_id} to failed status. "
+                f"Cannot update stage execution {stage_execution_id} to {operation_name} status. "
                 f"Database persistence is required for audit trail. Error: {str(e)}"
             ) from e
+
+    async def update_stage_execution_failed(self, stage_execution_id: str, error_message: str) -> None:
+        """
+        Update stage execution as failed.
+
+        Args:
+            stage_execution_id: Stage execution ID
+            error_message: Error message
+
+        Raises:
+            RuntimeError: If stage execution cannot be updated to failed status
+        """
+        await self._update_stage_execution_terminal(
+            stage_execution_id, StageStatus.FAILED, error_message, "failed"
+        )
+
+    async def update_stage_execution_cancelled(self, stage_execution_id: str, reason: str) -> None:
+        """
+        Update stage execution as cancelled.
+
+        Args:
+            stage_execution_id: Stage execution ID
+            reason: Cancellation reason (e.g. "user_cancel", "shutdown", "timeout", "unknown")
+
+        Raises:
+            RuntimeError: If stage execution cannot be updated to cancelled status
+        """
+        await self._update_stage_execution_terminal(
+            stage_execution_id, StageStatus.CANCELLED, reason, "cancelled"
+        )
     
     async def update_stage_execution_paused(
         self, 
@@ -296,7 +336,7 @@ class StageExecutionManager:
         """
         if not self.history_service:
             raise RuntimeError(
-                f"Cannot update stage execution {stage_execution_id} as paused: History service is disabled. "
+                f"Cannot update stage execution {stage_execution_id} as paused: History service is unavailable. "
                 "All alert processing must be done with proper stage tracking."
             )
         
@@ -312,6 +352,7 @@ class StageExecutionManager:
             # Update to paused status with iteration count
             existing_stage.status = StageStatus.PAUSED.value
             existing_stage.current_iteration = iteration
+            existing_stage.paused_at_us = now_us()  # Track when paused for accurate duration calculation
             # Don't set completed_at_us - stage is not complete
             # IMPORTANT: Save conversation state so resume can continue from where it left off
             if paused_result:
@@ -351,7 +392,7 @@ class StageExecutionManager:
         """
         if not self.history_service:
             raise RuntimeError(
-                f"Cannot update stage execution {stage_execution_id} as started: History service is disabled. "
+                f"Cannot update stage execution {stage_execution_id} as started: History service is unavailable. "
                 "All alert processing must be done with proper stage tracking."
             )
         

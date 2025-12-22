@@ -393,7 +393,7 @@ class TestParallelStageChainExecution:
             ParallelStageResult,
         )
         from tarsy.models.alert import ProcessingAlert
-        from tarsy.models.constants import FailurePolicy, StageStatus
+        from tarsy.models.constants import SuccessPolicy, StageStatus
         from tarsy.utils.timestamp import now_us
         
         # Validate chain structure from fixture
@@ -442,7 +442,7 @@ class TestParallelStageChainExecution:
             metadata=ParallelStageMetadata(
                 parent_stage_execution_id="exec-parallel",
                 parallel_type="multi_agent",
-                failure_policy=FailurePolicy.ALL,
+                success_policy=SuccessPolicy.ALL,
                 started_at_us=timestamp - 5_000_000,
                 completed_at_us=timestamp,
                 agent_metadatas=[
@@ -508,7 +508,7 @@ class TestParallelStageChainExecution:
             ParallelStageResult,
         )
         from tarsy.models.alert import ProcessingAlert
-        from tarsy.models.constants import FailurePolicy, StageStatus
+        from tarsy.models.constants import SuccessPolicy, StageStatus
         from tarsy.utils.timestamp import now_us
         
         # Validate chain structure from fixture
@@ -555,7 +555,7 @@ class TestParallelStageChainExecution:
             metadata=ParallelStageMetadata(
                 parent_stage_execution_id="exec-final",
                 parallel_type="multi_agent",
-                failure_policy=FailurePolicy.ALL,
+                success_policy=SuccessPolicy.ALL,
                 started_at_us=timestamp - 5_000_000,
                 completed_at_us=timestamp,
                 agent_metadatas=[
@@ -601,7 +601,7 @@ class TestParallelStageChainExecution:
             ParallelStageResult,
         )
         from tarsy.models.alert import ProcessingAlert
-        from tarsy.models.constants import FailurePolicy, StageStatus
+        from tarsy.models.constants import SuccessPolicy, StageStatus
         from tarsy.utils.timestamp import now_us
         
         # Validate chain structure from fixture
@@ -662,7 +662,7 @@ class TestParallelStageChainExecution:
             metadata=ParallelStageMetadata(
                 parent_stage_execution_id="exec-parallel-analysis",
                 parallel_type="multi_agent",
-                failure_policy=FailurePolicy.ALL,
+                success_policy=SuccessPolicy.ALL,
                 started_at_us=timestamp - 5_000_000,
                 completed_at_us=timestamp,
                 agent_metadatas=[

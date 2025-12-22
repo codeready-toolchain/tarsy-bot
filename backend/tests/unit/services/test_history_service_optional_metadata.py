@@ -245,33 +245,3 @@ class TestHistoryServiceOptionalMetadata:
             assert result is True
             assert len(captured_session) == 1
 
-    def test_create_session_disabled_service_ignores_metadata(
-        self, sample_chain_definition
-    ):
-        """Test that disabled service gracefully handles optional metadata fields."""
-        alert = Alert(
-            alert_type="test",
-            runbook="https://example.com/runbook.md",
-            data={"message": "Test"}
-        )
-        processing_alert = ProcessingAlert.from_api_alert(alert, default_alert_type="kubernetes")
-        
-        context = ChainContext.from_processing_alert(
-            processing_alert=processing_alert,
-            session_id="test-session-disabled",
-            current_stage_name="initial",
-            author="test-user"
-        )
-        
-        mock_settings = Mock()
-        mock_settings.history_enabled = False
-
-        with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
-            service = HistoryService()
-            
-            # Should return False without attempting to save
-            result = service.create_session(context, sample_chain_definition)
-            
-            assert result is False
-            # No database operations should occur
-

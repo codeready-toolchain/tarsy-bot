@@ -408,7 +408,7 @@ stages:
       - name: "vm"
         llm_provider: "anthropic"
         iteration_strategy: "native-thinking"
-    failure_policy: "any"  # Continue if at least one succeeds
+    success_policy: "any"  # Continue if at least one succeeds
     synthesis:  # Optional synthesis configuration
       agent: "SynthesisAgent"  # Optional, defaults to SynthesisAgent
       iteration_strategy: "synthesis"  # or "synthesis-native-thinking"
@@ -448,7 +448,7 @@ stages:
 
 **Key Parallel Execution Features**:
 - **Automatic synthesis**: SynthesisAgent automatically synthesizes parallel results
-- **Failure policies**: `all` (strict) or `any` (resilient) success requirements
+- **Success policies (success_policy)**: `all` (strict) or `any` (resilient) success requirements
 - **Per-agent configuration**: Each agent can specify its own LLM provider and iteration strategy
 - **Pause/Resume support**: Individual agents can pause; resume re-executes only paused agents
 - **Rich investigation history**: Full conversation history (thoughts, tool observations) for synthesis

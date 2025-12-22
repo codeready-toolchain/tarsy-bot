@@ -98,3 +98,12 @@ class ChatUserMessageListResponse(BaseModel):
     messages: List[ChatMessageResponse] = Field(description="List of user messages")
     total_count: int = Field(description="Total message count")
     chat_id: str = Field(description="Chat identifier")
+
+
+# ===== Session Control API Models =====
+
+class CancelAgentResponse(BaseModel):
+    """Response for individual parallel agent cancellation endpoint."""
+    success: bool = Field(description="Whether the cancellation was successful")
+    session_status: str = Field(description="Updated session status after cancellation")
+    stage_status: str = Field(description="Updated parent stage status after re-evaluation")

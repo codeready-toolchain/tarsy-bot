@@ -21,7 +21,7 @@ from tarsy.models.agent_config import (
     CombinedConfigModel,
     MCPServerConfigModel,
 )
-from tarsy.models.constants import FailurePolicy
+from tarsy.models.constants import SuccessPolicy
 
 
 @pytest.mark.unit
@@ -643,7 +643,7 @@ class TestGetChainConfigs:
             # Verify EP-0030 parallel agent fields are included with defaults
             assert chain_config["stages"][0]["agents"] is None
             assert chain_config["stages"][0]["replicas"] == 1
-            assert chain_config["stages"][0]["failure_policy"] == FailurePolicy.ALL
+            assert chain_config["stages"][0]["success_policy"] == SuccessPolicy.ANY
         finally:
             os.unlink(temp_path)
     
@@ -694,10 +694,10 @@ class TestGetChainConfigs:
             assert chain_config["stages"][1]["llm_provider"] is None
             assert chain_config["stages"][0]["agents"] is None
             assert chain_config["stages"][0]["replicas"] == 1
-            assert chain_config["stages"][0]["failure_policy"] == FailurePolicy.ALL
+            assert chain_config["stages"][0]["success_policy"] == SuccessPolicy.ANY
             assert chain_config["stages"][1]["agents"] is None
             assert chain_config["stages"][1]["replicas"] == 1
-            assert chain_config["stages"][1]["failure_policy"] == FailurePolicy.ALL
+            assert chain_config["stages"][1]["success_policy"] == SuccessPolicy.ANY
         finally:
             os.unlink(temp_path)
     

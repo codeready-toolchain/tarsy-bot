@@ -13,6 +13,7 @@ describe('conversationParser - MCP Error Handling', () => {
       agent: 'TestAgent',
       status: 'failed',
       started_at_us: 1000000,
+      paused_at_us: null,
       completed_at_us: 2000000,
       duration_ms: 1000,
       llm_interactions: [{
@@ -101,6 +102,7 @@ describe('conversationParser - MCP Error Handling', () => {
       agent: 'TestAgent',
       status: 'completed',
       started_at_us: 1000000,
+      paused_at_us: null,
       completed_at_us: 2000000,
       duration_ms: 1000,
       llm_interactions: [{
@@ -327,6 +329,7 @@ describe('conversationParser - MCP Error Handling', () => {
       agent: 'TestAgent',
       status: 'completed',
       started_at_us: 1000000,
+      paused_at_us: null,
       completed_at_us: 2000000,
       duration_ms: 1000,
       llm_interactions: [{

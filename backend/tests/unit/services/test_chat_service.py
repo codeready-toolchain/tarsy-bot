@@ -273,7 +273,7 @@ class TestChatService:
                         {"name": "KubernetesAgent"},
                         {"name": "LogAgent"}
                     ],
-                    "failure_policy": "all"
+                    "success_policy": "all"
                 }
             ]
         }
@@ -312,7 +312,7 @@ class TestChatService:
                         {"name": "KubernetesAgent"},
                         {"name": "LogAgent"}
                     ],
-                    "failure_policy": "all"
+                    "success_policy": "all"
                 },
                 {
                     "name": "sequential-action",

@@ -11,7 +11,7 @@ import pytest
 
 from tarsy.config.agent_config import ConfigurationLoader
 from tarsy.models.agent_config import ParallelAgentConfig
-from tarsy.models.constants import FailurePolicy
+from tarsy.models.constants import SuccessPolicy
 from tarsy.services.chain_registry import ChainRegistry
 
 
@@ -152,8 +152,8 @@ class TestChainRegistryParallelStages:
         assert chain.stages[0].agents[2].llm_provider == 'gemini'
         assert chain.stages[0].agents[2].iteration_strategy == 'native-thinking'
     
-    def test_stage_level_failure_policy_propagation(self) -> None:
-        """Test that failure_policy is correctly propagated from YAML."""
+    def test_stage_level_success_policy_propagation(self) -> None:
+        """Test that success_policy is correctly propagated from YAML."""
         yaml_chains = {
             'policy-chain': {
                 'chain_id': 'policy-chain',
@@ -166,7 +166,7 @@ class TestChainRegistryParallelStages:
                             {'name': 'Agent1'},
                             {'name': 'Agent2'}
                         ],
-                        'failure_policy': 'all'
+                        'success_policy': 'all'
                     },
                     {
                         'name': 'stage2',
@@ -175,7 +175,7 @@ class TestChainRegistryParallelStages:
                             {'name': 'Agent3'},
                             {'name': 'Agent4'}
                         ],
-                        'failure_policy': 'any'
+                        'success_policy': 'any'
                     }
                 ]
             }
@@ -193,8 +193,8 @@ class TestChainRegistryParallelStages:
         
         chain = registry.get_chain_for_alert_type('policy-test')
         assert chain is not None
-        assert chain.stages[0].failure_policy == FailurePolicy.ALL
-        assert chain.stages[1].failure_policy == FailurePolicy.ANY
+        assert chain.stages[0].success_policy == SuccessPolicy.ALL
+        assert chain.stages[1].success_policy == SuccessPolicy.ANY
     
     def test_loading_yaml_chain_with_synthesis_config(self) -> None:
         """Test loading YAML chain with synthesis configuration for parallel stages."""

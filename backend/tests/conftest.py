@@ -94,7 +94,6 @@ def isolated_test_settings():
     # Create a mock settings object that behaves like Settings but allows modification
     settings = Mock(spec=Settings)
     settings.database_url = "sqlite:///:memory:"
-    settings.history_enabled = True
     settings.history_retention_days = 90
     settings.google_api_key = "test-google-key"
     settings.openai_api_key = "test-openai-key"

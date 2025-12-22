@@ -35,7 +35,6 @@ class TestCreateChainHistorySession:
     def test_create_chain_history_session_success(self):
         """Test creating a history session successfully."""
         history_service = Mock()
-        history_service.is_enabled = True
         history_service.create_session = Mock(return_value=True)
         
         manager = SessionManager(history_service=history_service)
@@ -73,41 +72,9 @@ class TestCreateChainHistorySession:
             chain_definition=chain_definition
         )
     
-    def test_create_chain_history_session_history_disabled(self):
-        """Test that session creation returns False when history is disabled."""
-        history_service = Mock()
-        history_service.is_enabled = False
-        
-        manager = SessionManager(history_service=history_service)
-        
-        from tarsy.models.alert import ProcessingAlert
-        from tarsy.models.processing_context import ChainContext
-        
-        alert = AlertFactory.create_kubernetes_alert()
-        processing_alert = ProcessingAlert(
-            alert_type=alert.alert_type or "kubernetes",
-            severity=alert.data.get("severity", "critical"),
-            timestamp=alert.timestamp,
-            environment=alert.data.get("environment", "production"),
-            runbook_url=alert.runbook,
-            alert_data=alert.data
-        )
-        
-        chain_context = ChainContext.from_processing_alert(
-            processing_alert=processing_alert,
-            session_id="session-1"
-        )
-        
-        chain_definition = SimpleNamespace(chain_id="test-chain", stages=[])
-        
-        result = manager.create_chain_history_session(chain_context, chain_definition)
-        
-        assert result is False
-    
     def test_create_chain_history_session_creation_failed(self):
         """Test handling when session creation fails."""
         history_service = Mock()
-        history_service.is_enabled = True
         history_service.create_session = Mock(return_value=False)
         
         manager = SessionManager(history_service=history_service)
@@ -144,7 +111,6 @@ class TestUpdateSessionStatus:
     def test_update_session_status_to_in_progress(self):
         """Test updating session status to IN_PROGRESS."""
         history_service = Mock()
-        history_service.is_enabled = True
         history_service.update_session_status = Mock()
         
         manager = SessionManager(history_service=history_service)
@@ -166,7 +132,6 @@ class TestUpdateSessionStatus:
     def test_update_session_status_to_completed(self):
         """Test updating session status to COMPLETED with analysis."""
         history_service = Mock()
-        history_service.is_enabled = True
         history_service.update_session_status = Mock()
         
         manager = SessionManager(history_service=history_service)
@@ -190,7 +155,6 @@ class TestUpdateSessionStatus:
     def test_update_session_status_to_paused(self):
         """Test updating session status to PAUSED with metadata."""
         history_service = Mock()
-        history_service.is_enabled = True
         history_service.update_session_status = Mock()
         
         manager = SessionManager(history_service=history_service)
@@ -219,7 +183,6 @@ class TestUpdateSessionStatus:
     def test_update_session_status_no_session_id(self):
         """Test that update is skipped when session_id is None."""
         history_service = Mock()
-        history_service.is_enabled = True
         
         manager = SessionManager(history_service=history_service)
         
@@ -231,25 +194,9 @@ class TestUpdateSessionStatus:
         
         history_service.update_session_status.assert_not_called()
     
-    def test_update_session_status_history_disabled(self):
-        """Test that update is skipped when history is disabled."""
-        history_service = Mock()
-        history_service.is_enabled = False
-        
-        manager = SessionManager(history_service=history_service)
-        
-        manager.update_session_status(
-            session_id="session-1",
-            status=AlertSessionStatus.IN_PROGRESS.value
-        )
-        
-        # Should not call update_session_status when disabled
-        history_service.update_session_status.assert_not_called()
-    
     def test_update_session_status_raises_on_exception(self):
         """Test that exceptions from history service are propagated."""
         history_service = Mock()
-        history_service.is_enabled = True
         history_service.update_session_status = Mock(side_effect=RuntimeError("Database connection failed"))
         
         manager = SessionManager(history_service=history_service)
@@ -269,7 +216,6 @@ class TestUpdateSessionError:
     def test_update_session_error(self):
         """Test marking session as failed with error message."""
         history_service = Mock()
-        history_service.is_enabled = True
         history_service.update_session_status = Mock()
         
         manager = SessionManager(history_service=history_service)
@@ -285,22 +231,10 @@ class TestUpdateSessionError:
     def test_update_session_error_no_session_id(self):
         """Test that error update is skipped when session_id is None."""
         history_service = Mock()
-        history_service.is_enabled = True
         
         manager = SessionManager(history_service=history_service)
         
         manager.update_session_error(None, "Test error")
-        
-        history_service.update_session_status.assert_not_called()
-    
-    def test_update_session_error_history_disabled(self):
-        """Test that error update is skipped when history is disabled."""
-        history_service = Mock()
-        history_service.is_enabled = False
-        
-        manager = SessionManager(history_service=history_service)
-        
-        manager.update_session_error("session-1", "Test error")
         
         history_service.update_session_status.assert_not_called()
     
@@ -311,7 +245,6 @@ class TestUpdateSessionError:
         exception handlers and we don't want to mask the original error.
         """
         history_service = Mock()
-        history_service.is_enabled = True
         history_service.update_session_status = Mock(side_effect=RuntimeError("Database connection failed"))
         
         manager = SessionManager(history_service=history_service)

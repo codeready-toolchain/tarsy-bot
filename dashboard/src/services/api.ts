@@ -467,6 +467,19 @@ class APIClient {
   }
 
   /**
+   * Cancel an individual paused agent in a parallel stage
+   */
+  async cancelAgent(sessionId: string, executionId: string): Promise<{ success: boolean; session_status: string; stage_status: string }> {
+    try {
+      const response = await this.client.post(`/api/v1/history/sessions/${sessionId}/stages/${executionId}/cancel`);
+      return response.data;
+    } catch (error) {
+      console.error('Error cancelling agent:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Resume a paused session
    */
   async resumeSession(sessionId: string): Promise<{ success: boolean; message: string; status: string }> {

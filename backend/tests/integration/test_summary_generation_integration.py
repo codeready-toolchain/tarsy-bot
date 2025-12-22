@@ -70,14 +70,9 @@ Added the missing environment variable and restarted the pod."""
         assert "CRITICAL RULES" in conversation.messages[1].content
     
     @pytest.mark.asyncio
-    async def test_summary_persisted_to_database(self, test_database_session, summary_agent, mock_llm_manager):
+    async def test_summary_persisted_to_database(self, history_service_with_test_db, summary_agent, mock_llm_manager):
         """Test that generated summary is persisted to database."""
-        from tarsy.services.history_service import get_history_service
-        
-        history_service = get_history_service()
-        
-        if not history_service.is_enabled:
-            pytest.skip("History service disabled")
+        history_service = history_service_with_test_db
         
         session_id = f"test-summary-persist-{now_us()}"
         
@@ -243,14 +238,9 @@ class TestSummaryInAlertProcessingFlow:
     """Integration tests for summary generation within complete alert processing."""
     
     @pytest.mark.asyncio
-    async def test_summary_generated_after_successful_processing(self, test_database_session):
+    async def test_summary_generated_after_successful_processing(self, history_service_with_test_db):
         """Test that summary is generated after successful alert processing."""
-        from tarsy.services.history_service import get_history_service
-        
-        history_service = get_history_service()
-        
-        if not history_service.is_enabled:
-            pytest.skip("History service disabled")
+        history_service = history_service_with_test_db
         
         session_id = f"test-processing-{now_us()}"
         
@@ -288,14 +278,9 @@ class TestSummaryInAlertProcessingFlow:
                 assert retrieved.final_analysis_summary == final_summary
     
     @pytest.mark.asyncio
-    async def test_summary_not_generated_on_failure(self, test_database_session):
+    async def test_summary_not_generated_on_failure(self, history_service_with_test_db):
         """Test that summary is not generated when processing fails."""
-        from tarsy.services.history_service import get_history_service
-        
-        history_service = get_history_service()
-        
-        if not history_service.is_enabled:
-            pytest.skip("History service disabled")
+        history_service = history_service_with_test_db
         
         session_id = f"test-failure-{now_us()}"
         
@@ -329,14 +314,9 @@ class TestSummaryInAlertProcessingFlow:
                 assert retrieved.final_analysis_summary is None
     
     @pytest.mark.asyncio
-    async def test_summary_optional_field_in_database(self, test_database_session):
+    async def test_summary_optional_field_in_database(self, history_service_with_test_db):
         """Test that final_analysis_summary field is optional in database."""
-        from tarsy.services.history_service import get_history_service
-        
-        history_service = get_history_service()
-        
-        if not history_service.is_enabled:
-            pytest.skip("History service disabled")
+        history_service = history_service_with_test_db
         
         session_id = f"test-optional-{now_us()}"
         

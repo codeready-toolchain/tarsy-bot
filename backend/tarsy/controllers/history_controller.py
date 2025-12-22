@@ -14,7 +14,7 @@ from typing import Annotated, List, Optional
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Path, Query
 
-from tarsy.models.api_models import ErrorResponse
+from tarsy.models.api_models import CancelAgentResponse, ErrorResponse
 from tarsy.models.history_models import (
     DetailedSession,
     FilterOptions,
@@ -510,6 +510,9 @@ async def check_cancellation_completion(
             error_message="Session cancelled (no response from processing pod - likely orphaned)"
         )
         
+        # Update all paused stages to CANCELLED for consistency
+        await history_service.cancel_all_paused_stages(session_id)
+        
         # Publish cancellation event for UI
         await publish_session_cancelled(session_id)
         logger.info(f"Orphaned session {session_id} marked as cancelled")
@@ -553,14 +556,40 @@ async def cancel_session(
     """
     from tarsy.config.settings import get_settings
     from tarsy.models.constants import AlertSessionStatus
-    from tarsy.services.events.event_helpers import publish_cancel_request
+    from tarsy.services.events.event_helpers import publish_cancel_request, publish_session_cancelled
     
     # Step 1: Validate session exists
     session = history_service.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
     
-    # Step 2: Atomically update status to CANCELING
+    was_paused = session.status == AlertSessionStatus.PAUSED.value
+    
+    # Step 2: Check if session is paused (no active task)
+    if was_paused:
+        # Paused sessions have no active task, so cancel immediately
+        logger.info(f"Session {session_id} is paused - cancelling immediately")
+        
+        # Update session status
+        history_service.update_session_status(
+            session_id=session_id,
+            status=AlertSessionStatus.CANCELLED.value,
+            error_message="Session cancelled by user"
+        )
+        
+        # Update all paused stages to CANCELLED for consistency
+        await history_service.cancel_all_paused_stages(session_id)
+        
+        # Publish cancellation event for UI
+        await publish_session_cancelled(session_id)
+        
+        return {
+            "success": True,
+            "message": "Paused session cancelled immediately",
+            "session_id": session_id
+        }
+    
+    # Step 3: For active sessions, update status to CANCELING
     success, current_status = history_service.update_session_to_canceling(session_id)
     
     if not success:
@@ -574,11 +603,11 @@ async def cancel_session(
     
     # If already CANCELING, this is idempotent - continue normally
     
-    # Step 3: Publish cancellation request
+    # Step 4: Publish cancellation request
     await publish_cancel_request(session_id)
     logger.info(f"Published cancellation request for session {session_id}")
     
-    # Step 4: Start orphan detection background task
+    # Step 5: Start orphan detection background task
     settings = get_settings()
     # Use LLM iteration timeout + buffer for orphan detection
     # This is the maximum time a single iteration can take, which is what
@@ -598,6 +627,54 @@ async def cancel_session(
         "message": "Cancellation request sent",
         "status": "canceling"
     }
+
+
+@router.post(
+    "/sessions/{session_id}/stages/{execution_id}/cancel",
+    summary="Cancel Individual Parallel Agent",
+    description="Cancel a specific paused agent in a parallel stage",
+    response_model=CancelAgentResponse
+)
+async def cancel_agent(
+    *,
+    session_id: str = Path(..., description="Session ID"),
+    execution_id: str = Path(..., description="Child stage execution ID to cancel")
+) -> CancelAgentResponse:
+    """
+    Cancel an individual parallel agent.
+    
+    Validates:
+    - Session exists and is PAUSED
+    - execution_id belongs to this session
+    - Stage is a child stage (has parent_stage_execution_id)
+    - Child stage status is PAUSED
+    
+    Updates:
+    - Child stage status → CANCELLED with "Cancelled by user"
+    - Re-evaluates parent stage based on success_policy
+    - Updates session if success_policy satisfied
+    
+    Returns:
+        CancelAgentResponse with success status and updated statuses
+        
+    Raises:
+        HTTPException: 404 if not found, 400 if invalid state, 500 on error
+    """
+    from tarsy.services.alert_service import get_alert_service
+    
+    alert_service = get_alert_service()
+    if not alert_service:
+        raise HTTPException(status_code=500, detail="Alert service not available")
+    
+    try:
+        result = await alert_service.cancel_agent(session_id, execution_id)
+        return result
+    except ValueError as e:
+        # Validation errors (not found, wrong state, etc.)
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except Exception as e:
+        logger.error(f"Failed to cancel agent {execution_id}: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to cancel agent") from e
 
 
 @router.post(

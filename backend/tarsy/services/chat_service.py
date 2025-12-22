@@ -179,22 +179,21 @@ class ChatService:
                 try:
                     await asyncio.sleep(5)  # Record every 5 seconds
                     # Record both session and chat interactions
-                    if self.history_service:
-                        # Update parent session timestamp (existing behavior)
-                        if hasattr(self.history_service, "record_session_interaction"):
-                            rec = self.history_service.record_session_interaction
-                            if asyncio.iscoroutinefunction(rec):
-                                await rec(session_id)
-                            else:
-                                await asyncio.to_thread(rec, session_id)
-                        
-                        # Update chat timestamp (keeps processing marker fresh)
-                        if hasattr(self.history_service, "record_chat_interaction"):
-                            rec_chat = self.history_service.record_chat_interaction
-                            if asyncio.iscoroutinefunction(rec_chat):
-                                await rec_chat(chat_id)
-                            else:
-                                await asyncio.to_thread(rec_chat, chat_id)
+                    # Update parent session timestamp (existing behavior)
+                    if hasattr(self.history_service, "record_session_interaction"):
+                        rec = self.history_service.record_session_interaction
+                        if asyncio.iscoroutinefunction(rec):
+                            await rec(session_id)
+                        else:
+                            await asyncio.to_thread(rec, session_id)
+                    
+                    # Update chat timestamp (keeps processing marker fresh)
+                    if hasattr(self.history_service, "record_chat_interaction"):
+                        rec_chat = self.history_service.record_chat_interaction
+                        if asyncio.iscoroutinefunction(rec_chat):
+                            await rec_chat(chat_id)
+                        else:
+                            await asyncio.to_thread(rec_chat, chat_id)
                 except asyncio.CancelledError:
                     logger.debug(f"Interaction recording task cancelled for chat {chat_id}")
                     break
@@ -356,29 +355,27 @@ class ChatService:
                 )
             
             # Start chat message processing tracking (sets pod_id and last_interaction_at)
-            if self.history_service:
-                await self.history_service.start_chat_message_processing(chat_id, pod_id)
+            await self.history_service.start_chat_message_processing(chat_id, pod_id)
             
             logger.debug(f"Chat message {execution_id} being processed by pod {pod_id}")
             
             # 7. Record interaction timestamps for orphan detection
             # Both session (parent) and chat need their timestamps updated
-            if self.history_service:
-                # Update parent session timestamp
-                if hasattr(self.history_service, "record_session_interaction"):
-                    rec = self.history_service.record_session_interaction
-                    if asyncio.iscoroutinefunction(rec):
-                        await rec(chat.session_id)
-                    else:
-                        await asyncio.to_thread(rec, chat.session_id)
-                
-                # Update chat timestamp (keeps processing marker fresh)
-                if hasattr(self.history_service, "record_chat_interaction"):
-                    rec_chat = self.history_service.record_chat_interaction
-                    if asyncio.iscoroutinefunction(rec_chat):
-                        await rec_chat(chat_id)
-                    else:
-                        await asyncio.to_thread(rec_chat, chat_id)
+            # Update parent session timestamp
+            if hasattr(self.history_service, "record_session_interaction"):
+                rec = self.history_service.record_session_interaction
+                if asyncio.iscoroutinefunction(rec):
+                    await rec(chat.session_id)
+                else:
+                    await asyncio.to_thread(rec, chat.session_id)
+            
+            # Update chat timestamp (keeps processing marker fresh)
+            if hasattr(self.history_service, "record_chat_interaction"):
+                rec_chat = self.history_service.record_chat_interaction
+                if asyncio.iscoroutinefunction(rec_chat):
+                    await rec_chat(chat_id)
+                else:
+                    await asyncio.to_thread(rec_chat, chat_id)
             
             # Start background task to keep interaction timestamps fresh during processing
             interaction_recording_task = await self._start_interaction_recording_task(

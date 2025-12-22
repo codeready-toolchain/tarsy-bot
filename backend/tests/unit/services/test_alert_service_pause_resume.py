@@ -24,8 +24,8 @@ class TestAlertServiceResumePausedSession:
         """Test successfully resuming a paused session."""
         session_id = "test-session-123"
         
-        # Create mock session
-        mock_session = MagicMock(spec=AlertSession)
+        # Create mock session (use Mock without spec to allow attribute assignment)
+        mock_session = MagicMock()
         mock_session.session_id = session_id
         mock_session.status = AlertSessionStatus.PAUSED.value
         mock_session.alert_type = "kubernetes"
@@ -34,11 +34,12 @@ class TestAlertServiceResumePausedSession:
         mock_session.runbook_url = None
         mock_session.mcp_selection = None
         mock_session.author = None
-        mock_session.chain_config = MagicMock()
-        mock_session.chain_config.chain_id = "test-chain"
+        mock_chain_config = MagicMock()
+        mock_chain_config.chain_id = "test-chain"
+        mock_session.chain_config = mock_chain_config
         
         # Create mock paused stage
-        mock_paused_stage = MagicMock(spec=StageExecution)
+        mock_paused_stage = MagicMock()
         mock_paused_stage.status = StageStatus.PAUSED.value
         mock_paused_stage.stage_name = "initial-analysis"
         mock_paused_stage.current_iteration = 30
@@ -159,7 +160,7 @@ class TestAlertServiceResumePausedSession:
         """Test resuming a non-paused session raises error."""
         session_id = "test-session"
         
-        mock_session = MagicMock(spec=AlertSession)
+        mock_session = MagicMock()
         mock_session.status = AlertSessionStatus.COMPLETED.value
         
         mock_history_service = MagicMock()
@@ -181,11 +182,11 @@ class TestAlertServiceResumePausedSession:
         """Test resuming when no paused stage exists raises error."""
         session_id = "test-session"
         
-        mock_session = MagicMock(spec=AlertSession)
+        mock_session = MagicMock()
         mock_session.status = AlertSessionStatus.PAUSED.value
         
         # No paused stages
-        mock_completed_stage = MagicMock(spec=StageExecution)
+        mock_completed_stage = MagicMock()
         mock_completed_stage.status = StageStatus.COMPLETED.value
         
         mock_history_service = MagicMock()
@@ -217,7 +218,7 @@ class TestAlertServiceResumePausedSession:
             ]
         }
         
-        mock_paused_stage = MagicMock(spec=StageExecution)
+        mock_paused_stage = MagicMock()
         mock_paused_stage.status = StageStatus.PAUSED.value
         mock_paused_stage.stage_name = "analysis"
         mock_paused_stage.execution_id = execution_id
@@ -232,7 +233,8 @@ class TestAlertServiceResumePausedSession:
             "paused_conversation_state": conversation_state
         }
         
-        mock_session = MagicMock(spec=AlertSession)
+        mock_session = MagicMock()
+        mock_session.session_id = session_id
         mock_session.status = AlertSessionStatus.PAUSED.value
         mock_session.alert_type = "kubernetes"
         mock_session.alert_data = {}
@@ -240,8 +242,9 @@ class TestAlertServiceResumePausedSession:
         mock_session.runbook_url = None
         mock_session.mcp_selection = None
         mock_session.author = None
-        mock_session.chain_config = MagicMock()
-        mock_session.chain_config.chain_id = "test-chain"
+        mock_chain_config = MagicMock()
+        mock_chain_config.chain_id = "test-chain"
+        mock_session.chain_config = mock_chain_config
         
         mock_history_service = MagicMock()
         mock_history_service.get_session.return_value = mock_session
@@ -297,7 +300,8 @@ class TestAlertServiceResumePausedSession:
         """Test that resume handles session pausing again correctly."""
         session_id = "test-session"
         
-        mock_session = MagicMock(spec=AlertSession)
+        mock_session = MagicMock()
+        mock_session.session_id = session_id
         mock_session.status = AlertSessionStatus.PAUSED.value
         mock_session.alert_type = "kubernetes"
         mock_session.alert_data = {}
@@ -305,10 +309,11 @@ class TestAlertServiceResumePausedSession:
         mock_session.runbook_url = None
         mock_session.mcp_selection = None
         mock_session.author = None
-        mock_session.chain_config = MagicMock()
-        mock_session.chain_config.chain_id = "test-chain"
+        mock_chain_config = MagicMock()
+        mock_chain_config.chain_id = "test-chain"
+        mock_session.chain_config = mock_chain_config
         
-        mock_paused_stage = MagicMock(spec=StageExecution)
+        mock_paused_stage = MagicMock()
         mock_paused_stage.status = StageStatus.PAUSED.value
         mock_paused_stage.stage_name = "analysis"
         mock_paused_stage.current_iteration = 30
@@ -366,7 +371,8 @@ class TestAlertServiceResumePausedSession:
         """Test that resume handles None final_analysis gracefully when session pauses again."""
         session_id = "test-session"
         
-        mock_session = MagicMock(spec=AlertSession)
+        mock_session = MagicMock()
+        mock_session.session_id = session_id
         mock_session.status = AlertSessionStatus.PAUSED.value
         mock_session.alert_type = "kubernetes"
         mock_session.alert_data = {}
@@ -374,10 +380,11 @@ class TestAlertServiceResumePausedSession:
         mock_session.runbook_url = None
         mock_session.mcp_selection = None
         mock_session.author = None
-        mock_session.chain_config = MagicMock()
-        mock_session.chain_config.chain_id = "test-chain"
+        mock_chain_config = MagicMock()
+        mock_chain_config.chain_id = "test-chain"
+        mock_session.chain_config = mock_chain_config
         
-        mock_paused_stage = MagicMock(spec=StageExecution)
+        mock_paused_stage = MagicMock()
         mock_paused_stage.status = StageStatus.PAUSED.value
         mock_paused_stage.stage_name = "analysis"
         mock_paused_stage.current_iteration = 30
@@ -448,7 +455,8 @@ class TestAlertServiceResumePausedSession:
         """Test that resume returns formatted error response when chain execution fails."""
         session_id = "test-session"
         
-        mock_session = MagicMock(spec=AlertSession)
+        mock_session = MagicMock()
+        mock_session.session_id = session_id
         mock_session.status = AlertSessionStatus.PAUSED.value
         mock_session.alert_type = "kubernetes"
         mock_session.alert_data = {"severity": "critical", "environment": "production"}
@@ -456,11 +464,12 @@ class TestAlertServiceResumePausedSession:
         mock_session.runbook_url = None
         mock_session.mcp_selection = None
         mock_session.author = None
-        mock_session.chain_config = MagicMock()
-        mock_session.chain_config.chain_id = "test-chain"
-        mock_session.chain_config.stages = []
+        mock_chain_config = MagicMock()
+        mock_chain_config.chain_id = "test-chain"
+        mock_chain_config.stages = []
+        mock_session.chain_config = mock_chain_config
         
-        mock_paused_stage = MagicMock(spec=StageExecution)
+        mock_paused_stage = MagicMock()
         mock_paused_stage.status = StageStatus.PAUSED.value
         mock_paused_stage.stage_name = "analysis"
         mock_paused_stage.current_iteration = 30

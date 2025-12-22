@@ -20,7 +20,7 @@ config = context.config
 # When run via migrations.py, the URL is already set in config
 if not config.get_main_option("sqlalchemy.url"):
     settings = get_settings()
-    if settings.history_enabled and settings.database_url:
+    if settings.database_url:
         config.set_main_option("sqlalchemy.url", settings.database_url)
 
 # Interpret the config file for Python logging.
