@@ -181,8 +181,18 @@ class MCPHealthMonitor:
                 return False
             
             # Ping by loading tools with timeout (5s for fast failure detection)
+            # 
+            # NOTE: The MCP SDK uses anyio internally for HTTP/SSE transports. When asyncio.wait_for()
+            # times out or cancels the operation, it can conflict with anyio's cancel scopes, causing:
+            # "RuntimeError: Attempted to exit cancel scope in a different task"
+            # 
+            # Wrapping session.list_tools() in create_task() creates an independent asyncio task boundary
+            # that isolates anyio's cancel scopes. When wait_for() times out, it cancels the task cleanly
+            # without interfering with anyio's internal async context management.
+            # 
+            # This is the same isolation pattern used in http_transport.py for session creation (line 51).
             tools_result = await asyncio.wait_for(
-                session.list_tools(),
+                asyncio.create_task(session.list_tools()),
                 timeout=5.0
             )
             
