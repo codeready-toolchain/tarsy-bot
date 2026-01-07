@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Box, TextField, IconButton, CircularProgress, Tooltip, Typography, alpha, Snackbar, Alert } from '@mui/material';
-import { Send, Stop } from '@mui/icons-material';
+import { Send, Stop, Warning } from '@mui/icons-material';
 
 interface ChatInputProps {
   onSendMessage: (content: string) => Promise<void>;
@@ -10,6 +10,10 @@ interface ChatInputProps {
   canCancel?: boolean;
   canceling?: boolean;
 }
+
+// Backend API limit for chat messages
+const MAX_MESSAGE_LENGTH = 100000;
+const WARNING_THRESHOLD = 90000; // Show warning at 90%
 
 export default function ChatInput({ 
   onSendMessage, 
@@ -24,7 +28,7 @@ export default function ChatInput({
   const [cancelError, setCancelError] = useState<string | null>(null);
 
   const handleSend = async () => {
-    if (!content.trim() || sending) return;
+    if (!content.trim() || sending || content.length > MAX_MESSAGE_LENGTH) return;
 
     setSending(true);
     try {
@@ -55,7 +59,9 @@ export default function ChatInput({
   };
 
   const isDisabled = disabled || sending || sendingMessage;
-  const canSend = content.trim() && !isDisabled;
+  const isOverLimit = content.length > MAX_MESSAGE_LENGTH;
+  const isNearLimit = content.length >= WARNING_THRESHOLD && content.length <= MAX_MESSAGE_LENGTH;
+  const canSend = content.trim() && !isDisabled && !isOverLimit;
 
   return (
     <Box>
@@ -76,6 +82,12 @@ export default function ChatInput({
           onChange={(e) => setContent(e.target.value)}
           disabled={isDisabled}
           size="small"
+          error={isOverLimit}
+          helperText={
+            isOverLimit 
+              ? `Message exceeds ${MAX_MESSAGE_LENGTH.toLocaleString()} character limit`
+              : undefined
+          }
           sx={{
             '& .MuiOutlinedInput-root': {
               fontSize: { xs: '0.875rem', sm: '1rem' },
@@ -84,6 +96,9 @@ export default function ChatInput({
                 opacity: 0.6,
                 backgroundColor: (theme) => alpha(theme.palette.grey[300], 0.2),
                 pointerEvents: 'none',
+              }),
+              ...(isOverLimit && {
+                borderColor: 'error.main',
               })
             }
           }}
@@ -138,6 +153,39 @@ export default function ChatInput({
           </Tooltip>
         )}
       </Box>
+      
+      {/* Character counter */}
+      {content.length > 0 && (
+        <Box sx={{ 
+          px: { xs: 1, sm: 2 }, 
+          pt: 0.5,
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            {isNearLimit && !isOverLimit && (
+              <Warning 
+                sx={{ 
+                  fontSize: '0.875rem', 
+                  color: 'warning.main' 
+                }} 
+              />
+            )}
+            <Typography 
+              variant="caption" 
+              sx={{ 
+                color: isOverLimit ? 'error.main' : isNearLimit ? 'warning.main' : 'text.secondary',
+                fontSize: '0.75rem',
+                fontWeight: isOverLimit || isNearLimit ? 500 : 400,
+              }}
+            >
+              {content.length.toLocaleString()} / {MAX_MESSAGE_LENGTH.toLocaleString()} characters
+              {isNearLimit && !isOverLimit && ' (approaching limit)'}
+            </Typography>
+          </Box>
+        </Box>
+      )}
       
       {/* Subtle status message when processing */}
       {sendingMessage && (

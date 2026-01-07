@@ -262,7 +262,7 @@ async def get_chat(
     Send a message to the chat and trigger AI assistant response.
     
     **Request:**
-    - Message content (1-10,000 characters)
+    - Message content (1-100,000 characters)
     
     **Response:**
     - Created user message metadata
