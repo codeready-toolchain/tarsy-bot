@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Box, TextField, IconButton, CircularProgress, Tooltip, Typography, alpha, Snackbar, Alert } from '@mui/material';
 import { Send, Stop, Warning } from '@mui/icons-material';
+import { MAX_MESSAGE_LENGTH, WARNING_THRESHOLD } from '../../constants/chat';
 
 interface ChatInputProps {
   onSendMessage: (content: string) => Promise<void>;
@@ -10,10 +11,6 @@ interface ChatInputProps {
   canCancel?: boolean;
   canceling?: boolean;
 }
-
-// Backend API limit for chat messages
-const MAX_MESSAGE_LENGTH = 100000;
-const WARNING_THRESHOLD = 90000; // Show warning at 90%
 
 export default function ChatInput({ 
   onSendMessage, 

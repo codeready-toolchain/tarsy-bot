@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ChatInput from '../../components/Chat/ChatInput';
+import { MAX_MESSAGE_LENGTH, WARNING_THRESHOLD } from '../../constants/chat';
 
 describe('ChatInput', () => {
   const mockOnSendMessage = vi.fn();
@@ -395,9 +396,6 @@ describe('ChatInput', () => {
   });
 
   describe('Character Limit Validation', () => {
-    const MAX_MESSAGE_LENGTH = 100000;
-    const WARNING_THRESHOLD = 90000;
-
     it('should show character counter when user types', async () => {
       const user = userEvent.setup();
 
