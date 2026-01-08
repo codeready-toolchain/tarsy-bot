@@ -710,10 +710,26 @@ class MCPClient:
                 session_id, stage_execution_id, mcp_event_id
             )
             
-            summarized = await self.summarizer.summarize_result(
-                server_name, tool_name, result, investigation_conversation, 
-                session_id, stage_execution_id, max_summary_tokens, mcp_event_id
-            )
+            # Wrap summarization with timeout protection
+            # Use llm_iteration_timeout as summarization is essentially an LLM call
+            from tarsy.config.settings import get_settings
+            settings = get_settings()
+            summarization_timeout = settings.llm_iteration_timeout
+            
+            try:
+                summarized = await asyncio.wait_for(
+                    self.summarizer.summarize_result(
+                        server_name, tool_name, result, investigation_conversation, 
+                        session_id, stage_execution_id, max_summary_tokens, mcp_event_id
+                    ),
+                    timeout=summarization_timeout
+                )
+            except asyncio.TimeoutError:
+                error_msg = f"Summarization exceeded {summarization_timeout}s timeout for {server_name}.{tool_name}"
+                logger.error(error_msg)
+                return {
+                    "result": f"Error: Summarization timed out after {summarization_timeout}s. Original result too large ({estimated_tokens} tokens)."
+                }
             
             logger.info(f"Successfully summarized {server_name}.{tool_name} from {estimated_tokens} to ~{max_summary_tokens} tokens")
             return summarized

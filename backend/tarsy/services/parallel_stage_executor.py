@@ -995,9 +995,18 @@ class ParallelStageExecutor:
             original_stage = chain_context.current_stage_name
             chain_context.current_stage_name = "synthesis"
             
-            # Execute synthesis agent with parallel results already in context
+            # Execute synthesis agent with timeout protection
+            # Use alert_processing_timeout as maximum time for synthesis (same as parallel agents)
             logger.info(f"Executing {synthesis_config.agent} with {synthesis_config.iteration_strategy} strategy to synthesize parallel investigation results")
-            synthesis_result = await synthesis_agent.process_alert(chain_context)
+            try:
+                synthesis_result = await asyncio.wait_for(
+                    synthesis_agent.process_alert(chain_context),
+                    timeout=self.settings.alert_processing_timeout
+                )
+            except asyncio.TimeoutError:
+                raise TimeoutError(
+                    f"Synthesis agent exceeded {self.settings.alert_processing_timeout}s timeout"
+                ) from None
             
             # Restore original stage name (for proper context)
             chain_context.current_stage_name = original_stage
