@@ -230,3 +230,34 @@ class TestExecutiveSummaryAgent:
         assert result == multiline_summary
         assert "Line 1:" in result
         assert "Line 3:" in result
+    
+    @pytest.mark.asyncio
+    async def test_generate_executive_summary_timeout(self, mock_llm_client, mock_settings):
+        """Test that summary generation handles timeout gracefully."""
+        import asyncio
+        
+        # Configure very short timeout for testing
+        mock_settings.llm_iteration_timeout = 0.01
+        
+        # Create summary agent with short timeout
+        summary_agent = ExecutiveSummaryAgent(
+            llm_manager=mock_llm_client,
+            settings=mock_settings
+        )
+        
+        # Simulate slow LLM response that exceeds timeout
+        async def slow_response(*args, **kwargs):
+            await asyncio.sleep(0.1)  # 100ms, longer than 10ms timeout
+            return LLMConversation(messages=[
+                LLMMessage(role=MessageRole.ASSISTANT, content="Never reached")
+            ])
+        
+        mock_llm_client.generate_response.side_effect = slow_response
+        
+        result = await summary_agent.generate_executive_summary(
+            content="Analysis",
+            session_id="test-session"
+        )
+        
+        # Should return None on timeout
+        assert result is None
