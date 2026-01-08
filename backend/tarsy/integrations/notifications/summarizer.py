@@ -5,6 +5,7 @@ This lightweight agent creates AI-powered summaries after chain completion,
 displayed in the dashboard reasoning view and used in external notifications (Slack, etc.).
 """
 
+import asyncio
 from typing import TYPE_CHECKING, Optional
 
 from tarsy.agents.prompts.builders import PromptBuilder
@@ -13,6 +14,7 @@ from tarsy.models.unified_interactions import LLMConversation, LLMMessage, Messa
 from tarsy.utils.logger import get_module_logger
 
 if TYPE_CHECKING:
+    from tarsy.config.settings import Settings
     from tarsy.integrations.llm.manager import LLMManager
 
 logger = get_module_logger(__name__)
@@ -26,14 +28,16 @@ class ExecutiveSummaryAgent:
     and used in external notifications (Slack, etc.).
     """
     
-    def __init__(self, llm_manager: 'LLMManager'):
+    def __init__(self, llm_manager: 'LLMManager', settings: 'Settings'):
         """
-        Initialize summarizer with LLM manager and prompt builder.
+        Initialize summarizer with LLM manager, settings, and prompt builder.
         
         Args:
             llm_manager: The LLM manager to use for summarization
+            settings: Settings containing timeout configuration
         """
         self.llm_manager = llm_manager
+        self.settings = settings
         self.prompt_builder = PromptBuilder()
     
     async def generate_executive_summary(
@@ -85,16 +89,26 @@ class ExecutiveSummaryAgent:
             # Create conversation with both messages
             conversation = LLMConversation(messages=[system_message, user_message])
             
-            # Generate summary using LLM manager with RESULT_SUMMARY interaction type
-            # Pass provider to use chain-level or global default
-            response_conversation = await self.llm_manager.generate_response(
-                conversation=conversation,
-                session_id=session_id,
-                stage_execution_id=stage_execution_id,
-                provider=provider,
-                max_tokens=max_tokens,
-                interaction_type=LLMInteractionType.FINAL_ANALYSIS_SUMMARY.value  # Type dedicated to Final Analysis Summaries only
-            )
+            # Generate summary using LLM manager with timeout protection
+            # Use llm_iteration_timeout as executive summary generation is an LLM call
+            try:
+                response_conversation = await asyncio.wait_for(
+                    self.llm_manager.generate_response(
+                        conversation=conversation,
+                        session_id=session_id,
+                        stage_execution_id=stage_execution_id,
+                        provider=provider,
+                        max_tokens=max_tokens,
+                        interaction_type=LLMInteractionType.FINAL_ANALYSIS_SUMMARY.value
+                    ),
+                    timeout=self.settings.llm_iteration_timeout
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"Executive summary generation exceeded {self.settings.llm_iteration_timeout}s timeout "
+                    f"for session {session_id} - returning None"
+                )
+                return None
             
             # Extract summary from response
             assistant_message = response_conversation.get_latest_assistant_message()

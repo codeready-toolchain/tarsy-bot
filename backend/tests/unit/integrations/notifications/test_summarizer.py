@@ -18,9 +18,17 @@ def mock_llm_client():
 
 
 @pytest.fixture
-def summary_agent(mock_llm_client):
+def mock_settings():
+    """Create mock settings."""
+    settings = Mock()
+    settings.llm_iteration_timeout = 180
+    return settings
+
+
+@pytest.fixture
+def summary_agent(mock_llm_client, mock_settings):
     """Create SummaryAgent with mocked dependencies."""
-    return ExecutiveSummaryAgent(llm_manager=mock_llm_client)
+    return ExecutiveSummaryAgent(llm_manager=mock_llm_client, settings=mock_settings)
 
 
 @pytest.mark.unit

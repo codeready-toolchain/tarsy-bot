@@ -253,9 +253,10 @@ class AlertService:
                 stage_manager=self.stage_manager,
             )
 
-            # Initialize final result summarizer with LLM manager
+            # Initialize final result summarizer with LLM manager and settings
             self.final_analysis_summarizer = ExecutiveSummaryAgent(
                 llm_manager=self.llm_manager,
+                settings=self.settings
             )
 
             logger.info("AlertService initialized successfully")
@@ -407,22 +408,11 @@ class AlertService:
                 
                 # Generate executive summary for dashboard display and external notifications
                 # Use chain-level provider for executive summary (or global if not set)
-                # Wrap with timeout to prevent excessive delays (uses llm_iteration_timeout = 180s)
-                try:
-                    final_result_summary = await asyncio.wait_for(
-                        self.final_analysis_summarizer.generate_executive_summary(
-                            content=analysis,
-                            session_id=chain_context.session_id,
-                            provider=chain_definition.llm_provider
-                        ),
-                        timeout=self.settings.llm_iteration_timeout
-                    )
-                except asyncio.TimeoutError:
-                    logger.warning(
-                        f"Executive summary generation exceeded {self.settings.llm_iteration_timeout}s timeout "
-                        f"for session {chain_context.session_id} - completing session without summary"
-                    )
-                    final_result_summary = None
+                final_result_summary = await self.final_analysis_summarizer.generate_executive_summary(
+                    content=analysis,
+                    session_id=chain_context.session_id,
+                    provider=chain_definition.llm_provider
+                )
 
                 # Mark history session as completed successfully
                 self.session_manager.update_session_status(
