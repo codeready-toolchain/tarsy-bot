@@ -164,8 +164,9 @@ async def submit_alert(request: Request) -> AlertResponse:
                 # Keep: \t (0x09), \n (0x0A), \r (0x0D)
                 # Remove: other control chars (0x00-0x08, 0x0B, 0x0C, 0x0E-0x1F, 0x7F-0x9F) and dangerous chars
                 sanitized = re.sub(r'[<>"\'\x00-\x08\x0B\x0C\x0E-\x1f\x7f-\x9f]', '', value)
-                # Limit string length
-                return sanitized[:10000]  # 10KB limit per string field
+                # Limit string length to 1MB per field (sufficient for large log messages/stack traces)
+                # Overall payload is still limited to 10MB at the request level
+                return sanitized[:1000000]  # 1MB limit per string field
             
             # Deep sanitization of nested data
             def deep_sanitize(obj):
