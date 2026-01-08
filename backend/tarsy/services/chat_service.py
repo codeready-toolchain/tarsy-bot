@@ -290,8 +290,11 @@ class ChatService:
             
         Raises:
             ValueError: If chat not found or validation fails
-            asyncio.TimeoutError: If execution exceeds timeout
             Exception: Other processing errors
+            
+        Note:
+            Execution timeouts are handled internally by BaseAgent.process_alert
+            and result in a failed AgentExecutionResult rather than raising an exception.
         """
         chat_mcp_client = None
         execution_id = stage_execution_id  # Use provided ID instead of generating

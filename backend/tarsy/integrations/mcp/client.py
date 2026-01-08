@@ -712,9 +712,7 @@ class MCPClient:
             
             # Wrap summarization with timeout protection
             # Use llm_iteration_timeout as summarization is essentially an LLM call
-            from tarsy.config.settings import get_settings
-            settings = get_settings()
-            summarization_timeout = settings.llm_iteration_timeout
+            summarization_timeout = self.settings.llm_iteration_timeout
             
             try:
                 summarized = await asyncio.wait_for(

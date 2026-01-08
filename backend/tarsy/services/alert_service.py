@@ -1115,14 +1115,12 @@ class AlertService:
                     
                     result = ChainExecutionResult(
                         status=ChainStatus.PAUSED,
-                        stage_results=[],
                         final_analysis=f"Parallel stage '{paused_stage.stage_name}' paused again",
                         timestamp_us=now_us()
                     )
                 else:  # FAILED
                     result = ChainExecutionResult(
                         status=ChainStatus.FAILED,
-                        stage_results=[],
                         error=f"Parallel stage '{paused_stage.stage_name}' failed",
                         timestamp_us=now_us()
                     )
@@ -1426,7 +1424,7 @@ class AlertService:
                             logger.error(f"{error_msg} - stopping chain execution")
                             
                             # Extract any error message from parallel result
-                            chain_error = self._aggregate_stage_errors(chain_context) if chain_context.stage_results else error_msg
+                            chain_error = self._aggregate_stage_errors(chain_context) if chain_context.stage_outputs else error_msg
                             
                             return ChainExecutionResult(
                                 status=ChainStatus.FAILED,

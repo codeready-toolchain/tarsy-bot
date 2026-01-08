@@ -144,6 +144,6 @@ class TestStageFailureDetectionE2E:
                     print(f"✅ Stage '{first_stage['stage_name']}' correctly marked as FAILED: {stage_error[:100]}...")
 
                     print("✅ NEW FAILURE DETECTION TEST PASSED!")
-                    print(f"   📊 Summary: First stage failed, chain stopped immediately, Session=FAILED")
+                    print("   📊 Summary: First stage failed, chain stopped immediately, Session=FAILED")
 
                     return
