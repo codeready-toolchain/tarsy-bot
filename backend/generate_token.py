@@ -2,6 +2,8 @@
 """
 JWT Token Generator for Tarsy API Authentication
 Usage: python generate_token.py [days] [private_key_path] [subject] [issuer]
+
+Default private_key_path: config/keys/jwt_private_key.pem (project root)
 """
 
 import datetime
@@ -80,7 +82,9 @@ def main() -> None:
     """Main function."""
     # Parse command line arguments
     expiration_days = 30  # Default
-    private_key_path = Path(__file__).parent / "../config/keys/jwt_private_key.pem"  # Default based on script location
+    # Default: Use config/keys/jwt_private_key.pem in project root
+    project_root = Path(__file__).parent.parent  # backend/ -> project root
+    private_key_path = project_root / "config/keys/jwt_private_key.pem"
     subject = "monitoring-system"  # Default
     issuer = "http://localhost:8000"  # Default
     
@@ -94,13 +98,13 @@ def main() -> None:
             print("Usage: python generate_token.py [days] [private_key_path] [subject] [issuer]")
             sys.exit(1)
     
-    if len(sys.argv) > 2:
+    if len(sys.argv) > 2 and sys.argv[2].strip():
         private_key_path = Path(sys.argv[2])
     
-    if len(sys.argv) > 3:
+    if len(sys.argv) > 3 and sys.argv[3].strip():
         subject = sys.argv[3]
     
-    if len(sys.argv) > 4:
+    if len(sys.argv) > 4 and sys.argv[4].strip():
         issuer = sys.argv[4]
     
     # Resolve relative paths from current working directory

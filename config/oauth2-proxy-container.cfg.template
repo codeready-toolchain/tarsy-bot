@@ -116,7 +116,8 @@ oidc_jwks_url = "http://tarsy-backend:8000/.well-known/jwks.json"
 skip_oidc_discovery = true
 
 ## Optional: Specify expected JWT issuer and audience for additional validation
-extra_jwt_issuers = ["http://tarsy-backend:8000=tarsy-api"]
+## Accept both internal (tarsy-backend) and external (localhost:8080) issuers
+extra_jwt_issuers = ["http://tarsy-backend:8000=tarsy-api", "http://localhost:8080=tarsy-api"]
 
 provider = "github"
 

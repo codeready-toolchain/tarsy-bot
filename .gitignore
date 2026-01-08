@@ -137,6 +137,7 @@ config/oauth.env
 config/keys/jwt_private_key.pem
 config/keys/*.key
 config/keys/*.pem
+config/keys/*.jwt
 
 # Temporary files
 tmp/

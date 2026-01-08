@@ -249,17 +249,24 @@ generate-jwt-keys: ## Generate RSA key pair for JWT signing/validation
 .PHONY: generate-api-token
 generate-api-token: ## Generate JWT token for API access (365-day expiration, subject: monitoring-system, issuer: http://localhost:8000)
 	@echo "$(GREEN)Generating JWT API token...$(NC)"
-	@$(UV) run python3 generate_token.py 365 ../config/keys/jwt_private_key.pem monitoring-system http://localhost:8000
+	@$(UV) run python3 generate_token.py 365
 
 .PHONY: generate-api-token-exp
-generate-api-token-exp: ## Generate JWT token with custom expiration (Usage: make generate-api-token-exp DAYS=365 [SUBJECT=monitoring-system] [ISSUER=http://localhost:8000])
+generate-api-token-exp: ## Generate JWT token with custom expiration (Usage: make generate-api-token-exp DAYS=365 [SUBJECT=monitoring-system] [ISSUER=http://localhost:8000] [KEY_PATH=/custom/path.pem])
 	@if [ -z "$(DAYS)" ]; then \
-		echo "$(RED)Usage: make generate-api-token-exp DAYS=<number> [SUBJECT=<subject>] [ISSUER=<issuer>]$(NC)"; \
+		echo "$(RED)Usage: make generate-api-token-exp DAYS=<number> [SUBJECT=<subject>] [ISSUER=<issuer>] [KEY_PATH=<path>]$(NC)"; \
 		echo "$(YELLOW)Example: make generate-api-token-exp DAYS=365 SUBJECT=prometheus ISSUER=https://api.production.com$(NC)"; \
 		exit 1; \
 	fi
 	@echo "$(GREEN)Generating JWT API token ($(DAYS) days expiration)...$(NC)"
-	@$(UV) run python3 generate_token.py $(DAYS) ../config/keys/jwt_private_key.pem $(if $(SUBJECT),$(SUBJECT),monitoring-system) $(if $(ISSUER),$(ISSUER),http://localhost:8000)
+	@if [ -n "$(SUBJECT)" ] || [ -n "$(ISSUER)" ] || [ -n "$(KEY_PATH)" ]; then \
+		$(UV) run python3 generate_token.py $(DAYS) \
+			$$(if [ -n "$(KEY_PATH)" ]; then echo "$(KEY_PATH)"; else echo "$$(cd .. && pwd)/config/keys/jwt_private_key.pem"; fi) \
+			$$(if [ -n "$(SUBJECT)" ]; then echo "$(SUBJECT)"; else echo "monitoring-system"; fi) \
+			$$(if [ -n "$(ISSUER)" ]; then echo "$(ISSUER)"; else echo "http://localhost:8000"; fi); \
+	else \
+		$(UV) run python3 generate_token.py $(DAYS); \
+	fi
 
 .PHONY: verify-jwt-setup
 verify-jwt-setup: ## Verify JWT authentication setup
