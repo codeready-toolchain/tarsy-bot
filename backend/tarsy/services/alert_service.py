@@ -1232,7 +1232,6 @@ class AlertService:
             logger.info(f"Starting chain execution '{chain_definition.chain_id}' with {len(chain_definition.stages)} stages")
             
             successful_stages = 0
-            failed_stages = 0
             
             # Execute each stage sequentially
             # If resuming, skip stages before the current stage
@@ -1359,16 +1358,32 @@ class AlertService:
                                 # This ensures next stages receive coherent synthesized output, not raw parallel data
                                 chain_context.add_stage_result(synthesis_execution_id, synthesis_result)
                                 
-                                # Update stage counters based on synthesis result
+                                # Check synthesis result and fail chain if synthesis failed
                                 if synthesis_result.status == StageStatus.COMPLETED:
                                     successful_stages += 1
                                     executed_stage_count += 1  # Increment for the synthesis stage
                                 else:
-                                    failed_stages += 1
-                                    logger.error(f"Synthesis for parallel stage '{stage.name}' failed")
+                                    # Synthesis failed - stop chain execution immediately
+                                    error_msg = synthesis_result.error_message or f"Synthesis for parallel stage '{stage.name}' failed"
+                                    logger.error(f"{error_msg} - stopping chain execution")
+                                    
+                                    return ChainExecutionResult(
+                                        status=ChainStatus.FAILED,
+                                        final_analysis=None,
+                                        error=error_msg,
+                                        timestamp_us=now_us()
+                                    )
                             except Exception as e:
-                                logger.error(f"Automatic synthesis failed for parallel stage '{stage.name}': {e}", exc_info=True)
-                                failed_stages += 1
+                                # Synthesis exception - stop chain execution immediately
+                                error_msg = f"Automatic synthesis failed for parallel stage '{stage.name}': {str(e)}"
+                                logger.error(f"{error_msg} - stopping chain execution", exc_info=True)
+                                
+                                return ChainExecutionResult(
+                                    status=ChainStatus.FAILED,
+                                    final_analysis=None,
+                                    error=error_msg,
+                                    timestamp_us=now_us()
+                                )
                         elif stage_result.status == StageStatus.PAUSED:
                             # Parallel stage paused - propagate pause to session level
                             logger.info(f"Parallel stage '{stage.name}' paused")
@@ -1406,8 +1421,19 @@ class AlertService:
                                 timestamp_us=now_us()
                             )
                         else:
-                            failed_stages += 1
-                            logger.error(f"Parallel stage '{stage.name}' failed")
+                            # Parallel stage failed - stop chain execution immediately
+                            error_msg = f"Parallel stage '{stage.name}' failed"
+                            logger.error(f"{error_msg} - stopping chain execution")
+                            
+                            # Extract any error message from parallel result
+                            chain_error = self._aggregate_stage_errors(chain_context) if chain_context.stage_results else error_msg
+                            
+                            return ChainExecutionResult(
+                                status=ChainStatus.FAILED,
+                                final_analysis=None,
+                                error=chain_error,
+                                timestamp_us=now_us()
+                            )
                     else:
                         # Single-agent execution (existing logic)
                         
@@ -1462,13 +1488,23 @@ class AlertService:
                             executed_stage_count += 1  # Increment for completed stage
                             logger.info(f"Stage '{stage.name}' completed successfully with agent '{stage_result.agent_name}'")
                         else:
-                            # Stage failed - treat as failed even though no exception was thrown
+                            # Stage failed - stop chain execution immediately
                             error_msg = stage_result.error_message or f"Stage '{stage.name}' failed with status {stage_result.status.value}"
-                            logger.error(f"Stage '{stage.name}' failed: {error_msg}")
+                            logger.error(f"Stage '{stage.name}' failed: {error_msg} - stopping chain execution")
                             
                             # Update stage execution as failed
                             await self.stage_manager.update_stage_execution_failed(stage_execution_id, error_msg)
-                            failed_stages += 1
+                            
+                            # Add error result to context for aggregation
+                            chain_context.add_stage_result(stage_execution_id, stage_result)
+                            
+                            # Stop execution immediately
+                            return ChainExecutionResult(
+                                status=ChainStatus.FAILED,
+                                final_analysis=None,
+                                error=error_msg,
+                                timestamp_us=now_us()
+                            )
                     
                 except asyncio.CancelledError as e:
                     # Cancellation is a normal control-flow event (user cancel, timeout, shutdown).
@@ -1549,14 +1585,14 @@ class AlertService:
                     # to avoid secondary failures while constructing error results.
                     agent_label = get_stage_agent_label(stage)
                     error_msg = f"Stage '{stage.name}' failed with agent '{agent_label}': {str(e)}"
-                    logger.error(error_msg, exc_info=True)
+                    logger.error(f"{error_msg} - stopping chain execution", exc_info=True)
                     
                     # Update stage execution as failed (only for non-parallel stages with execution_id)
                     # Parallel stages manage their own execution records via ParallelStageExecutor
                     if stage_execution_id:
                         await self.stage_manager.update_stage_execution_failed(stage_execution_id, error_msg)
                     
-                    # Add structured error as stage output for next stages
+                    # Add structured error as stage output for error aggregation
                     error_result = AgentExecutionResult(
                         status=StageStatus.FAILED,
                         agent_name=agent_label,
@@ -1568,37 +1604,25 @@ class AlertService:
                     if stage_execution_id:
                         chain_context.add_stage_result(stage_execution_id, error_result)
                     
-                    failed_stages += 1
-                    
-                    # DECISION: Continue to next stage even if this one failed
-                    # This allows data collection stages to fail while analysis stages still run
-                    logger.warning(f"Continuing chain execution despite stage failure: {error_msg}")
+                    # Stop execution immediately on stage failure
+                    return ChainExecutionResult(
+                        status=ChainStatus.FAILED,
+                        final_analysis=None,
+                        error=error_msg,
+                        timestamp_us=now_us()
+                    )
             
-            # Extract final analysis from stages
+            # If we reach here, all stages completed successfully
+            # (Any failures would have returned immediately above)
             final_analysis = self._extract_final_analysis_from_stages(chain_context)
             
-            # Determine overall chain status and aggregate errors if any stages failed
-            # Any stage failure should fail the entire session
-            if failed_stages > 0:
-                overall_status = ChainStatus.FAILED  # Any stage failed = session failed
-                # Aggregate stage errors into meaningful chain-level error message
-                chain_error = self._aggregate_stage_errors(chain_context)
-                logger.error(f"Chain execution failed: {failed_stages} of {len(chain_definition.stages)} stages failed")
-            else:
-                overall_status = ChainStatus.COMPLETED  # All stages succeeded
-                chain_error = None
-                logger.info(f"Chain execution completed successfully: {successful_stages} stages completed")
-            
-            logger.info(f"Chain execution completed: {successful_stages} successful, {failed_stages} failed")
-            
-            # Set completion timestamp just before returning result
-            timestamp_us = now_us()
+            logger.info(f"Chain execution completed successfully: {successful_stages} stages completed")
             
             return ChainExecutionResult(
-                status=overall_status,
-                final_analysis=final_analysis if overall_status == ChainStatus.COMPLETED else None,
-                error=chain_error if overall_status == ChainStatus.FAILED else None,
-                timestamp_us=timestamp_us
+                status=ChainStatus.COMPLETED,
+                final_analysis=final_analysis,
+                error=None,
+                timestamp_us=now_us()
             )
             
         except Exception as e:

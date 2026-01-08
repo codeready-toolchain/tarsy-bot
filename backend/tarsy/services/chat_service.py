@@ -432,24 +432,14 @@ class ChatService:
             # Add chat-specific context to chain_context (type-safe!)
             chain_context.chat_context = message_context  # ChatMessageContext dataclass
             
-            # 12. Execute ChatAgent with timeout (600s like sessions)
-            try:
-                result = await asyncio.wait_for(
-                    chat_agent.process_alert(chain_context),
-                    timeout=self.settings.alert_processing_timeout
-                )
-                
-                # 13. Update stage execution as completed
-                await self._update_stage_execution_completed(execution_id, result)
-                
-                logger.info(f"Chat message {execution_id} completed successfully")
-                return execution_id
-                
-            except asyncio.TimeoutError:
-                error_msg = f"Chat message processing exceeded {self.settings.alert_processing_timeout}s timeout"
-                logger.error(f"{error_msg} for execution {execution_id}")
-                await self._update_stage_execution_failed(execution_id, error_msg)
-                raise
+            # 12. Execute ChatAgent (timeout protection is built into BaseAgent.process_alert)
+            result = await chat_agent.process_alert(chain_context)
+            
+            # 13. Update stage execution as completed
+            await self._update_stage_execution_completed(execution_id, result)
+            
+            logger.info(f"Chat message {execution_id} completed successfully")
+            return execution_id
             
         except Exception as e:
             error_msg = f"Chat message processing failed: {str(e)}"
