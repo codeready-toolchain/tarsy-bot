@@ -37,6 +37,11 @@ interface ParallelStageReasoningTabsProps {
   onToggleStage: (stageId: string) => void;
   // Streaming items for real-time display (not yet in DB)
   streamingItems?: [string, ParallelStreamingItem][];
+  // Auto-collapse props
+  shouldAutoCollapse?: (item: ChatFlowItemData) => boolean;
+  onToggleItemExpansion?: (item: ChatFlowItemData) => void;
+  expandAllReasoning?: boolean;
+  isItemCollapsible?: (item: ChatFlowItemData) => boolean;
 }
 
 interface TabPanelProps {
@@ -99,6 +104,10 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
   collapsedStages,
   onToggleStage,
   streamingItems = [],
+  shouldAutoCollapse,
+  onToggleItemExpansion,
+  expandAllReasoning = false,
+  isItemCollapsible,
 }) => {
   const [selectedTab, setSelectedTab] = useState(0);
   const [cancelingAgents, setCancelingAgents] = useState<Set<string>>(new Set());
@@ -367,6 +376,10 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
                   item={item}
                   isCollapsed={item.stageId ? collapsedStages.get(item.stageId) || false : false}
                   onToggleCollapse={item.stageId ? () => onToggleStage(item.stageId!) : undefined}
+                  isAutoCollapsed={shouldAutoCollapse ? shouldAutoCollapse(item) : false}
+                  onToggleAutoCollapse={onToggleItemExpansion ? () => onToggleItemExpansion(item) : undefined}
+                  expandAll={expandAllReasoning}
+                  isCollapsible={isItemCollapsible ? isItemCollapsible(item) : false}
                 />
               ))}
               

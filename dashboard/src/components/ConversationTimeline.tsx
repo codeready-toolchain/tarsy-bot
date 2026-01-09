@@ -6,8 +6,10 @@ import {
   CardContent,
   Chip,
   Alert,
-  alpha
+  alpha,
+  Button
 } from '@mui/material';
+import { ExpandMore, ExpandLess } from '@mui/icons-material';
 import { parseSessionChatFlow, getChatFlowStats } from '../utils/chatFlowParser';
 import type { ChatFlowItemData } from '../utils/chatFlowParser';
 import type { DetailedSession } from '../types';
@@ -23,6 +25,7 @@ import {
   STREAMING_CONTENT_TYPES, 
   parseStreamingContentType 
 } from '../utils/eventTypes';
+import { generateItemKey } from '../utils/textTruncation';
 // Auto-scroll is now handled by the centralized system in SessionDetailPageBase
 
 interface ProcessingIndicatorProps {
@@ -269,9 +272,11 @@ const StreamingItemRenderer = memo(({ item }: { item: ConversationStreamingItem 
  */
 function ConversationTimeline({ 
   session, 
-  autoScroll: _autoScroll = true, // Auto-scroll handled by centralized system
+  autoScroll = true, // Auto-scroll handled by centralized system
   progressStatus = ProgressStatusMessage.PROCESSING
 }: ConversationTimelineProps) {
+  // Suppress unused warning - autoScroll is part of the interface but handled centrally
+  void autoScroll;
   const [chatFlow, setChatFlow] = useState<ChatFlowItemData[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [streamingItems, setStreamingItems] = useState<Map<string, ConversationStreamingItem>>(new Map());
@@ -280,6 +285,57 @@ function ConversationTimeline({
   // Track collapsed stages by execution_id (default: all expanded)
   const [collapsedStages, setCollapsedStages] = useState<Map<string, boolean>>(new Map());
   
+  // Auto-collapse state management
+  // Track which items should be auto-collapsed (by unique key)
+  const [autoCollapsedItems, setAutoCollapsedItems] = useState<Set<string>>(new Set());
+  // Track items user manually expanded (overrides auto-collapse)
+  const [manuallyExpandedItems, setManuallyExpandedItems] = useState<Set<string>>(new Set());
+  // Global "Expand All Reasoning" toggle
+  const [expandAllReasoning, setExpandAllReasoning] = useState<boolean>(false);
+  
+  // Pre-collapse all collapsible items for completed sessions
+  useEffect(() => {
+    if (!session || !chatFlow.length) return;
+    
+    // Only auto-collapse for terminal (completed/failed/cancelled) sessions
+    if (isTerminalSessionStatus(session.status)) {
+      const collapsibleTypes = ['thought', 'native_thinking', 'final_answer', 'summarization'];
+      const itemsToCollapse = new Set<string>();
+      
+      for (const item of chatFlow) {
+        if (collapsibleTypes.includes(item.type)) {
+          const key = generateItemKey(item);
+          itemsToCollapse.add(key);
+        }
+      }
+      
+      // Only update if there are items to collapse (avoid unnecessary re-renders)
+      if (itemsToCollapse.size > 0) {
+        setAutoCollapsedItems(itemsToCollapse);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.session_id, session.status, chatFlow.length]);
+
+  // Load manually expanded items from localStorage on mount
+  useEffect(() => {
+    const key = `session-${session.session_id}-expanded-items`;
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      try {
+        setManuallyExpandedItems(new Set(JSON.parse(saved)));
+      } catch (err) {
+        console.error('Failed to parse localStorage expanded items:', err);
+      }
+    }
+  }, [session.session_id]);
+
+  // Save manually expanded items to localStorage
+  useEffect(() => {
+    const key = `session-${session.session_id}-expanded-items`;
+    localStorage.setItem(key, JSON.stringify(Array.from(manuallyExpandedItems)));
+  }, [manuallyExpandedItems, session.session_id]);
+  
   // Handler to toggle stage collapse/expand
   const handleToggleStage = (stageId: string) => {
     setCollapsedStages(prev => {
@@ -287,6 +343,43 @@ function ConversationTimeline({
       updated.set(stageId, !prev.get(stageId));
       return updated;
     });
+  };
+  
+  // Handler to toggle individual item expansion
+  const handleToggleItemExpansion = (item: ChatFlowItemData) => {
+    const key = generateItemKey(item);
+    setManuallyExpandedItems(prev => {
+      const updated = new Set(prev);
+      if (updated.has(key)) {
+        // User collapsed - remove from manual expand, add back to auto-collapse
+        updated.delete(key);
+        setAutoCollapsedItems(prev => new Set([...prev, key]));
+      } else {
+        // User expanded - add to manual expand, remove from auto-collapse
+        updated.add(key);
+        setAutoCollapsedItems(prev => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      }
+      return updated;
+    });
+  };
+  
+  // Helper to check if an item should be auto-collapsed
+  const shouldAutoCollapse = (item: ChatFlowItemData): boolean => {
+    const key = generateItemKey(item);
+    // Don't collapse if manually expanded
+    if (manuallyExpandedItems.has(key)) return false;
+    // Collapse if in auto-collapse set
+    return autoCollapsedItems.has(key);
+  };
+  
+  // Helper to check if an item is collapsible (regardless of current state)
+  const isItemCollapsible = (item: ChatFlowItemData): boolean => {
+    const collapsibleTypes = ['thought', 'native_thinking', 'final_answer', 'summarization'];
+    return collapsibleTypes.includes(item.type);
   };
   
   // Memoize chat flow stats to prevent recalculation on every render
@@ -746,6 +839,9 @@ function ConversationTimeline({
       const updated = new Map(prev);
       let itemsCleared = 0;
       
+      // Track items transitioning from streaming to DB for auto-collapse
+      const itemsToCollapse = new Set<string>();
+      
       // For each streaming item, check if DB has its ID (matching by TYPE)
       for (const [key, streamingItem] of prev.entries()) {
         let shouldRemove = false;
@@ -780,7 +876,29 @@ function ConversationTimeline({
           updated.delete(key);
           itemsCleared++;
           console.log(`🎯 Cleared streaming item via ID match: ${streamingItem.type}, id=${streamingItem.llm_interaction_id || streamingItem.mcp_event_id || streamingItem.messageId}`);
+          
+          // Track collapsible items transitioning to DB for auto-collapse
+          // Only add to collapse set if this is a collapsible type
+          if (
+            streamingItem.type === STREAMING_CONTENT_TYPES.THOUGHT ||
+            streamingItem.type === STREAMING_CONTENT_TYPES.NATIVE_THINKING ||
+            streamingItem.type === STREAMING_CONTENT_TYPES.FINAL_ANSWER ||
+            streamingItem.type === STREAMING_CONTENT_TYPES.SUMMARIZATION
+          ) {
+            const itemKey = generateItemKey({
+              llm_interaction_id: streamingItem.llm_interaction_id,
+              mcp_event_id: streamingItem.mcp_event_id,
+              type: streamingItem.type
+            });
+            itemsToCollapse.add(itemKey);
+          }
         }
+      }
+      
+      // Add transitioning items to auto-collapsed set
+      if (itemsToCollapse.size > 0) {
+        console.log(`📦 Auto-collapsing ${itemsToCollapse.size} items that transitioned to DB`);
+        setAutoCollapsedItems(prev => new Set([...prev, ...itemsToCollapse]));
       }
       
       if (itemsCleared > 0) {
@@ -848,14 +966,24 @@ function ConversationTimeline({
           <Typography variant="h6" color="primary.main">
             Chain: {session.chain_id || 'Unknown'}
           </Typography>
-          <CopyButton
-            text={formatSessionForCopy}
-            variant="button"
-            buttonVariant="outlined"
-            size="small"
-            label="Copy Chat Flow"
-            tooltip="Copy entire reasoning flow to clipboard"
-          />
+          <Box display="flex" gap={1}>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => setExpandAllReasoning(!expandAllReasoning)}
+              startIcon={expandAllReasoning ? <ExpandLess /> : <ExpandMore />}
+            >
+              {expandAllReasoning ? 'Collapse All' : 'Expand All'} Reasoning
+            </Button>
+            <CopyButton
+              text={formatSessionForCopy}
+              variant="button"
+              buttonVariant="outlined"
+              size="small"
+              label="Copy Chat Flow"
+              tooltip="Copy entire reasoning flow to clipboard"
+            />
+          </Box>
         </Box>
 
         {/* Chain Status Chips */}
@@ -1022,6 +1150,10 @@ function ConversationTimeline({
                             collapsedStages={collapsedStages}
                             onToggleStage={handleToggleStage}
                             streamingItems={stageStreamingItems}
+                            shouldAutoCollapse={shouldAutoCollapse}
+                            onToggleItemExpansion={handleToggleItemExpansion}
+                            expandAllReasoning={expandAllReasoning}
+                            isItemCollapsible={isItemCollapsible}
                           />
                         ) : (
                           <Box sx={{ p: 2, color: 'error.main' }}>
@@ -1038,6 +1170,10 @@ function ConversationTimeline({
                             item={item}
                             isCollapsed={false}
                             onToggleCollapse={undefined}
+                            isAutoCollapsed={shouldAutoCollapse(item)}
+                            onToggleAutoCollapse={() => handleToggleItemExpansion(item)}
+                            expandAll={expandAllReasoning}
+                            isCollapsible={isItemCollapsible(item)}
                           />
                         ))}
                         {/* Show streaming items for this stage (non-parallel only) */}
