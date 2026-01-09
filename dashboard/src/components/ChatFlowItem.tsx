@@ -5,7 +5,9 @@ import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import ToolCallBox from './ToolCallBox';
 import NativeToolsBox from './NativeToolsBox';
-import ContentPreviewTooltip from './ContentPreviewTooltip';
+import EmojiIcon from './EmojiIcon';
+import CollapsibleItemHeader from './CollapsibleItemHeader';
+import CollapseButton from './CollapseButton';
 import type { ChatFlowItemData } from '../utils/chatFlowParser';
 import { formatDurationMs } from '../utils/timestamp';
 import { 
@@ -13,6 +15,7 @@ import {
   finalAnswerMarkdownComponents, 
   thoughtMarkdownComponents 
 } from '../utils/markdownComponents';
+import { FADE_COLLAPSE_ANIMATION } from '../constants/chatFlowAnimations';
 
 interface ChatFlowItemProps {
   item: ChatFlowItemData;
@@ -166,121 +169,26 @@ function ChatFlowItem({
           gap: 1.5,
           alignItems: 'flex-start',
           // Fade animation when auto-collapsing
-          ...(shouldShowCollapsed && {
-            animation: 'fadeCollapse 0.6s ease-out',
-            '@keyframes fadeCollapse': {
-              '0%': { opacity: 1 },
-              '50%': { opacity: 0.3 },
-              '100%': { opacity: 1 },
-            },
-            // Remove dimming on hover (restore visual emphasis)
-            '&:hover .cfi-dimmable': { opacity: 1 },
-            '&:hover .cfi-ellipsis': { opacity: 1 },
-            '&:hover .cfi-ellipsis-dot': { animation: 'cfi-ellipsis-wave 0.8s ease-in-out' },
-            '&:hover .cfi-ellipsis-dot:nth-of-type(1)': { animationDelay: '0s' },
-            '&:hover .cfi-ellipsis-dot:nth-of-type(2)': { animationDelay: '0.15s' },
-            '&:hover .cfi-ellipsis-dot:nth-of-type(3)': { animationDelay: '0.3s' },
-            '@keyframes cfi-ellipsis-wave': {
-              '0%, 60%, 100%': { transform: 'translateY(0)' },
-              '30%': { transform: 'translateY(-4px)' },
-            },
-          })
+          ...(shouldShowCollapsed && FADE_COLLAPSE_ANIMATION)
         }}
       >
-        {/* Emoji with tooltip when collapsed */}
-        {shouldShowCollapsed ? (
-          <ContentPreviewTooltip content={item.content || ''} type="thought">
-            <Box
-              className="cfi-dimmable"
-              sx={{
-                fontSize: '1.1rem',
-                lineHeight: '1.5',
-                flexShrink: 0,
-                cursor: 'help',
-                display: 'flex',
-                alignItems: 'center',
-                height: '1.5rem',
-                opacity: collapsedLeadingIconOpacity,
-                transition: 'opacity 0.2s ease'
-              }}
-            >
-              💭
-            </Box>
-          </ContentPreviewTooltip>
-        ) : (
-          <Box
-            className="cfi-dimmable"
-            sx={{
-              fontSize: '1.1rem',
-              lineHeight: '1.5',
-              flexShrink: 0,
-              display: 'flex',
-              alignItems: 'center',
-              height: '1.5rem',
-              opacity: collapsedLeadingIconOpacity,
-              transition: 'opacity 0.2s ease'
-            }}
-          >
-            💭
-          </Box>
-        )}
+        <EmojiIcon
+          emoji="💭"
+          opacity={collapsedLeadingIconOpacity}
+          showTooltip={shouldShowCollapsed}
+          tooltipContent={item.content || ''}
+          tooltipType="thought"
+        />
         
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          {/* Header - Option 3: Rotating Chevron (grey) */}
-          <Box 
-            sx={{ 
-              display: 'flex',
-              alignItems: 'center',
-              gap: 0,
-              cursor: onToggleAutoCollapse ? 'pointer' : 'default',
-              px: shouldShowCollapsed ? 1 : 0,
-              py: 0.5,
-              mx: shouldShowCollapsed ? -1 : 0,
-              borderRadius: 1,
-              transition: 'background-color 0.2s ease',
-              '&:hover': onToggleAutoCollapse ? {
-                bgcolor: 'action.hover'
-              } : {}
-            }}
-            onClick={onToggleAutoCollapse}
-          >
-            <Typography
-              className="cfi-dimmable"
-              variant="caption"
-              sx={{
-                fontWeight: 700,
-                textTransform: 'none',
-                letterSpacing: 0.5,
-                fontSize: '0.75rem',
-                color: 'info.main',
-                opacity: collapsedHeaderOpacity,
-                transition: 'opacity 0.2s ease'
-              }}
-            >
-              {interactionDurationLabel ? `Thought for ${interactionDurationLabel}` : 'Thought'}
-            </Typography>
-            {onToggleAutoCollapse && shouldShowCollapsed && (
-              <Typography
-                className="cfi-ellipsis"
-                component="span"
-                sx={{
-                  color: 'info.main',
-                  opacity: collapsedHeaderOpacity,
-                  transition: 'opacity 0.2s ease',
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                  lineHeight: 1,
-                  ml: 0.15,
-                  display: 'inline-flex',
-                  gap: 0
-                }}
-              >
-                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
-                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
-                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
-              </Typography>
-            )}
-          </Box>
+          <CollapsibleItemHeader
+            headerText={interactionDurationLabel ? `Thought for ${interactionDurationLabel}` : 'Thought'}
+            headerColor="info.main"
+            headerTextTransform="none"
+            shouldShowCollapsed={shouldShowCollapsed}
+            collapsedHeaderOpacity={collapsedHeaderOpacity}
+            onToggle={onToggleAutoCollapse}
+          />
           
           {/* Collapsible content */}
           <Collapse in={!shouldShowCollapsed} timeout={300}>
@@ -309,28 +217,7 @@ function ChatFlowItem({
                   {item.content}
                 </Typography>
               )}
-              {/* Collapse button at bottom */}
-              {onToggleAutoCollapse && (
-                <Box
-                  onClick={onToggleAutoCollapse}
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 0.5,
-                    mt: 0.5,
-                    cursor: 'pointer',
-                    opacity: 0.6,
-                    '&:hover': {
-                      opacity: 1
-                    }
-                  }}
-                >
-                  <ExpandLess fontSize="small" />
-                  <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
-                    Collapse
-                  </Typography>
-                </Box>
-              )}
+              {onToggleAutoCollapse && <CollapseButton onClick={onToggleAutoCollapse} />}
             </Box>
           </Collapse>
         </Box>
@@ -354,121 +241,26 @@ function ChatFlowItem({
           gap: 1.5,
           alignItems: 'flex-start',
           // Fade animation when auto-collapsing
-          ...(shouldShowCollapsed && {
-            animation: 'fadeCollapse 0.6s ease-out',
-            '@keyframes fadeCollapse': {
-              '0%': { opacity: 1 },
-              '50%': { opacity: 0.3 },
-              '100%': { opacity: 1 },
-            },
-            // Remove dimming on hover (restore visual emphasis)
-            '&:hover .cfi-dimmable': { opacity: 1 },
-            '&:hover .cfi-ellipsis': { opacity: 1 },
-            '&:hover .cfi-ellipsis-dot': { animation: 'cfi-ellipsis-wave 0.8s ease-in-out' },
-            '&:hover .cfi-ellipsis-dot:nth-of-type(1)': { animationDelay: '0s' },
-            '&:hover .cfi-ellipsis-dot:nth-of-type(2)': { animationDelay: '0.15s' },
-            '&:hover .cfi-ellipsis-dot:nth-of-type(3)': { animationDelay: '0.3s' },
-            '@keyframes cfi-ellipsis-wave': {
-              '0%, 60%, 100%': { transform: 'translateY(0)' },
-              '30%': { transform: 'translateY(-4px)' },
-            },
-          })
+          ...(shouldShowCollapsed && FADE_COLLAPSE_ANIMATION)
         }}
       >
-        {/* Emoji with tooltip when collapsed */}
-        {shouldShowCollapsed ? (
-          <ContentPreviewTooltip content={item.content || ''} type="native_thinking">
-            <Box
-              className="cfi-dimmable"
-              sx={{
-                fontSize: '1.1rem',
-                lineHeight: '1.5',
-                flexShrink: 0,
-                cursor: 'help',
-                display: 'flex',
-                alignItems: 'center',
-                height: '1.5rem',
-                opacity: collapsedLeadingIconOpacity,
-                transition: 'opacity 0.2s ease'
-              }}
-            >
-              💭
-            </Box>
-          </ContentPreviewTooltip>
-        ) : (
-          <Box
-            className="cfi-dimmable"
-            sx={{
-              fontSize: '1.1rem',
-              lineHeight: '1.5',
-              flexShrink: 0,
-              display: 'flex',
-              alignItems: 'center',
-              height: '1.5rem',
-              opacity: collapsedLeadingIconOpacity,
-              transition: 'opacity 0.2s ease'
-            }}
-          >
-            💭
-          </Box>
-        )}
+        <EmojiIcon
+          emoji="💭"
+          opacity={collapsedLeadingIconOpacity}
+          showTooltip={shouldShowCollapsed}
+          tooltipContent={item.content || ''}
+          tooltipType="native_thinking"
+        />
         
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          {/* Header - Option 3: Rotating Chevron (grey) */}
-          <Box 
-            sx={{ 
-              display: 'flex',
-              alignItems: 'center',
-              gap: 0,
-              cursor: onToggleAutoCollapse ? 'pointer' : 'default',
-              px: shouldShowCollapsed ? 1 : 0,
-              py: 0.5,
-              mx: shouldShowCollapsed ? -1 : 0,
-              borderRadius: 1,
-              transition: 'background-color 0.2s ease',
-              '&:hover': onToggleAutoCollapse ? {
-                bgcolor: 'action.hover'
-              } : {}
-            }}
-            onClick={onToggleAutoCollapse}
-          >
-            <Typography
-              className="cfi-dimmable"
-              variant="caption"
-              sx={{
-                fontWeight: 700,
-                textTransform: 'none',
-                letterSpacing: 0.5,
-                fontSize: '0.75rem',
-                color: 'info.main',
-                opacity: collapsedHeaderOpacity,
-                transition: 'opacity 0.2s ease'
-              }}
-            >
-              {interactionDurationLabel ? `Thought for ${interactionDurationLabel}` : 'Thought'}
-            </Typography>
-            {onToggleAutoCollapse && shouldShowCollapsed && (
-              <Typography
-                className="cfi-ellipsis"
-                component="span"
-                sx={{
-                  color: 'info.main',
-                  opacity: collapsedHeaderOpacity,
-                  transition: 'opacity 0.2s ease',
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                  lineHeight: 1,
-                  ml: 0.15,
-                  display: 'inline-flex',
-                  gap: 0
-                }}
-              >
-                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
-                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
-                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
-              </Typography>
-            )}
-          </Box>
+          <CollapsibleItemHeader
+            headerText={interactionDurationLabel ? `Thought for ${interactionDurationLabel}` : 'Thought'}
+            headerColor="info.main"
+            headerTextTransform="none"
+            shouldShowCollapsed={shouldShowCollapsed}
+            collapsedHeaderOpacity={collapsedHeaderOpacity}
+            onToggle={onToggleAutoCollapse}
+          />
           
           {/* Collapsible content */}
           <Collapse in={!shouldShowCollapsed} timeout={300}>
@@ -505,28 +297,7 @@ function ChatFlowItem({
                   {item.content}
                 </Typography>
               )}
-              {/* Collapse button at bottom */}
-              {onToggleAutoCollapse && (
-                <Box
-                  onClick={onToggleAutoCollapse}
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 0.5,
-                    mt: 0.5,
-                    cursor: 'pointer',
-                    opacity: 0.6,
-                    '&:hover': {
-                      opacity: 1
-                    }
-                  }}
-                >
-                  <ExpandLess fontSize="small" />
-                  <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
-                    Collapse
-                  </Typography>
-                </Box>
-              )}
+              {onToggleAutoCollapse && <CollapseButton onClick={onToggleAutoCollapse} />}
             </Box>
           </Collapse>
         </Box>
@@ -545,121 +316,26 @@ function ChatFlowItem({
           gap: 1.5,
           alignItems: 'flex-start',
           // Fade animation when auto-collapsing
-          ...(shouldShowCollapsed && {
-            animation: 'fadeCollapse 0.6s ease-out',
-            '@keyframes fadeCollapse': {
-              '0%': { opacity: 1 },
-              '50%': { opacity: 0.3 },
-              '100%': { opacity: 1 },
-            },
-            // Remove dimming on hover (restore visual emphasis)
-            '&:hover .cfi-dimmable': { opacity: 1 },
-            '&:hover .cfi-ellipsis': { opacity: 1 },
-            '&:hover .cfi-ellipsis-dot': { animation: 'cfi-ellipsis-wave 0.8s ease-in-out' },
-            '&:hover .cfi-ellipsis-dot:nth-of-type(1)': { animationDelay: '0s' },
-            '&:hover .cfi-ellipsis-dot:nth-of-type(2)': { animationDelay: '0.15s' },
-            '&:hover .cfi-ellipsis-dot:nth-of-type(3)': { animationDelay: '0.3s' },
-            '@keyframes cfi-ellipsis-wave': {
-              '0%, 60%, 100%': { transform: 'translateY(0)' },
-              '30%': { transform: 'translateY(-4px)' },
-            },
-          })
+          ...(shouldShowCollapsed && FADE_COLLAPSE_ANIMATION)
         }}
       >
-        {/* Emoji with tooltip when collapsed */}
-        {shouldShowCollapsed ? (
-          <ContentPreviewTooltip content={item.content || ''} type="final_answer">
-            <Box
-              className="cfi-dimmable"
-              sx={{
-                fontSize: '1.1rem',
-                lineHeight: '1.5',
-                flexShrink: 0,
-                cursor: 'help',
-                display: 'flex',
-                alignItems: 'center',
-                height: '1.5rem',
-                opacity: collapsedLeadingIconOpacity,
-                transition: 'opacity 0.2s ease'
-              }}
-            >
-              🎯
-            </Box>
-          </ContentPreviewTooltip>
-        ) : (
-          <Box
-            className="cfi-dimmable"
-            sx={{
-              fontSize: '1.1rem',
-              lineHeight: '1.5',
-              flexShrink: 0,
-              display: 'flex',
-              alignItems: 'center',
-              height: '1.5rem',
-              opacity: collapsedLeadingIconOpacity,
-              transition: 'opacity 0.2s ease'
-            }}
-          >
-            🎯
-          </Box>
-        )}
+        <EmojiIcon
+          emoji="🎯"
+          opacity={collapsedLeadingIconOpacity}
+          showTooltip={shouldShowCollapsed}
+          tooltipContent={item.content || ''}
+          tooltipType="final_answer"
+        />
         
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          {/* Header - Option 3: Rotating Chevron (grey) */}
-          <Box 
-            sx={{ 
-              display: 'flex',
-              alignItems: 'center',
-              gap: 0,
-              cursor: onToggleAutoCollapse ? 'pointer' : 'default',
-              px: shouldShowCollapsed ? 1 : 0,
-              py: 0.5,
-              mx: shouldShowCollapsed ? -1 : 0,
-              borderRadius: 1,
-              transition: 'background-color 0.2s ease',
-              '&:hover': onToggleAutoCollapse ? {
-                bgcolor: 'action.hover'
-              } : {}
-            }}
-            onClick={onToggleAutoCollapse}
-          >
-            <Typography
-              className="cfi-dimmable"
-              variant="caption"
-              sx={{
-                fontWeight: 700,
-                textTransform: 'uppercase',
-                letterSpacing: 0.5,
-                fontSize: '0.75rem',
-                color: '#2e7d32',
-                opacity: collapsedHeaderOpacity,
-                transition: 'opacity 0.2s ease'
-              }}
-            >
-              FINAL ANSWER
-            </Typography>
-            {onToggleAutoCollapse && shouldShowCollapsed && (
-              <Typography
-                className="cfi-ellipsis"
-                component="span"
-                sx={{
-                  color: '#2e7d32',
-                  opacity: collapsedHeaderOpacity,
-                  transition: 'opacity 0.2s ease',
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                  lineHeight: 1,
-                  ml: 0.15,
-                  display: 'inline-flex',
-                  gap: 0
-                }}
-              >
-                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
-                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
-                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
-              </Typography>
-            )}
-          </Box>
+          <CollapsibleItemHeader
+            headerText="FINAL ANSWER"
+            headerColor="#2e7d32"
+            headerTextTransform="uppercase"
+            shouldShowCollapsed={shouldShowCollapsed}
+            collapsedHeaderOpacity={collapsedHeaderOpacity}
+            onToggle={onToggleAutoCollapse}
+          />
           
           {/* Collapsible content */}
           <Collapse in={!shouldShowCollapsed} timeout={300}>
@@ -693,28 +369,7 @@ function ChatFlowItem({
               >
                 {item.content || ''}
               </ReactMarkdown>
-              {/* Collapse button at bottom */}
-              {onToggleAutoCollapse && (
-                <Box
-                  onClick={onToggleAutoCollapse}
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 0.5,
-                    mt: 0.5,
-                    cursor: 'pointer',
-                    opacity: 0.6,
-                    '&:hover': {
-                      opacity: 1
-                    }
-                  }}
-                >
-                  <ExpandLess fontSize="small" />
-                  <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
-                    Collapse
-                  </Typography>
-                </Box>
-              )}
+              {onToggleAutoCollapse && <CollapseButton onClick={onToggleAutoCollapse} />}
             </Box>
           </Collapse>
         </Box>
@@ -817,121 +472,26 @@ function ChatFlowItem({
           gap: 1.5,
           alignItems: 'flex-start',
           // Fade animation when auto-collapsing
-          ...(shouldShowCollapsed && {
-            animation: 'fadeCollapse 0.6s ease-out',
-            '@keyframes fadeCollapse': {
-              '0%': { opacity: 1 },
-              '50%': { opacity: 0.3 },
-              '100%': { opacity: 1 },
-            },
-            // Remove dimming on hover (restore visual emphasis)
-            '&:hover .cfi-dimmable': { opacity: 1 },
-            '&:hover .cfi-ellipsis': { opacity: 1 },
-            '&:hover .cfi-ellipsis-dot': { animation: 'cfi-ellipsis-wave 0.8s ease-in-out' },
-            '&:hover .cfi-ellipsis-dot:nth-of-type(1)': { animationDelay: '0s' },
-            '&:hover .cfi-ellipsis-dot:nth-of-type(2)': { animationDelay: '0.15s' },
-            '&:hover .cfi-ellipsis-dot:nth-of-type(3)': { animationDelay: '0.3s' },
-            '@keyframes cfi-ellipsis-wave': {
-              '0%, 60%, 100%': { transform: 'translateY(0)' },
-              '30%': { transform: 'translateY(-4px)' },
-            },
-          })
+          ...(shouldShowCollapsed && FADE_COLLAPSE_ANIMATION)
         }}
       >
-        {/* Emoji with tooltip when collapsed */}
-        {shouldShowCollapsed ? (
-          <ContentPreviewTooltip content={item.content || ''} type="summarization">
-            <Box
-              className="cfi-dimmable"
-              sx={{
-                fontSize: '1.1rem',
-                lineHeight: '1.5',
-                flexShrink: 0,
-                cursor: 'help',
-                display: 'flex',
-                alignItems: 'center',
-                height: '1.5rem',
-                opacity: collapsedLeadingIconOpacity,
-                transition: 'opacity 0.2s ease'
-              }}
-            >
-              📋
-            </Box>
-          </ContentPreviewTooltip>
-        ) : (
-          <Box
-            className="cfi-dimmable"
-            sx={{
-              fontSize: '1.1rem',
-              lineHeight: '1.5',
-              flexShrink: 0,
-              display: 'flex',
-              alignItems: 'center',
-              height: '1.5rem',
-              opacity: collapsedLeadingIconOpacity,
-              transition: 'opacity 0.2s ease'
-            }}
-          >
-            📋
-          </Box>
-        )}
+        <EmojiIcon
+          emoji="📋"
+          opacity={collapsedLeadingIconOpacity}
+          showTooltip={shouldShowCollapsed}
+          tooltipContent={item.content || ''}
+          tooltipType="summarization"
+        />
         
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          {/* Header - Option 3: Rotating Chevron (grey) */}
-          <Box 
-            sx={{ 
-              display: 'flex',
-              alignItems: 'center',
-              gap: 0,
-              cursor: onToggleAutoCollapse ? 'pointer' : 'default',
-              px: shouldShowCollapsed ? 1 : 0,
-              py: 0.5,
-              mx: shouldShowCollapsed ? -1 : 0,
-              borderRadius: 1,
-              transition: 'background-color 0.2s ease',
-              '&:hover': onToggleAutoCollapse ? {
-                bgcolor: 'action.hover'
-              } : {}
-            }}
-            onClick={onToggleAutoCollapse}
-          >
-            <Typography
-              className="cfi-dimmable"
-              variant="caption"
-              sx={{
-                fontWeight: 700,
-                textTransform: 'uppercase',
-                letterSpacing: 0.5,
-                fontSize: '0.75rem',
-                color: 'rgba(237, 108, 2, 0.9)',
-                opacity: collapsedHeaderOpacity,
-                transition: 'opacity 0.2s ease'
-              }}
-            >
-              TOOL RESULT SUMMARY
-            </Typography>
-            {onToggleAutoCollapse && shouldShowCollapsed && (
-              <Typography
-                className="cfi-ellipsis"
-                component="span"
-                sx={{
-                  color: 'rgba(237, 108, 2, 0.9)',
-                  opacity: collapsedHeaderOpacity,
-                  transition: 'opacity 0.2s ease',
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                  lineHeight: 1,
-                  ml: 0.15,
-                  display: 'inline-flex',
-                  gap: 0
-                }}
-              >
-                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
-                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
-                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
-              </Typography>
-            )}
-          </Box>
+          <CollapsibleItemHeader
+            headerText="TOOL RESULT SUMMARY"
+            headerColor="rgba(237, 108, 2, 0.9)"
+            headerTextTransform="uppercase"
+            shouldShowCollapsed={shouldShowCollapsed}
+            collapsedHeaderOpacity={collapsedHeaderOpacity}
+            onToggle={onToggleAutoCollapse}
+          />
           
           {/* Collapsible content */}
           <Collapse in={!shouldShowCollapsed} timeout={300}>
@@ -973,28 +533,7 @@ function ChatFlowItem({
                   </Typography>
                 )}
               </Box>
-              {/* Collapse button at bottom */}
-              {onToggleAutoCollapse && (
-                <Box
-                  onClick={onToggleAutoCollapse}
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 0.5,
-                    mt: 0.5,
-                    cursor: 'pointer',
-                    opacity: 0.6,
-                    '&:hover': {
-                      opacity: 1
-                    }
-                  }}
-                >
-                  <ExpandLess fontSize="small" />
-                  <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
-                    Collapse
-                  </Typography>
-                </Box>
-              )}
+              {onToggleAutoCollapse && <CollapseButton onClick={onToggleAutoCollapse} />}
             </Box>
           </Collapse>
         </Box>

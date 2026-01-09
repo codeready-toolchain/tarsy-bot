@@ -294,31 +294,54 @@ function ConversationTimeline({
   // Global "Expand All Reasoning" toggle
   const [expandAllReasoning, setExpandAllReasoning] = useState<boolean>(false);
   
-  // Pre-collapse all collapsible items for completed sessions
+  // Track which chat flow items have been processed for auto-collapse
+  const [processedChatFlowKeys, setProcessedChatFlowKeys] = useState<Set<string>>(new Set());
+  
+  // Reset processed keys when session changes
+  useEffect(() => {
+    setProcessedChatFlowKeys(new Set());
+  }, [session.session_id]);
+  
+  // Auto-collapse NEW collapsible items as they appear in chatFlow (for active sessions)
+  // For completed sessions, collapse all items at once on first load
   useEffect(() => {
     if (!session || !chatFlow.length) return;
     
-    // Only auto-collapse for terminal (completed/failed/cancelled) sessions
-    if (isTerminalSessionStatus(session.status)) {
-      const collapsibleTypes = ['thought', 'native_thinking', 'final_answer', 'summarization'];
-      const itemsToCollapse = new Set<string>();
-      
-      for (const item of chatFlow) {
-        if (collapsibleTypes.includes(item.type)) {
-          // Exception: Don't auto-collapse final answers from chat/follow-up stages
-          if (item.type === 'final_answer' && item.isChatStage) {
-            continue;
-          }
-          
-          const key = generateItemKey(item);
-          itemsToCollapse.add(key);
+    const collapsibleTypes = ['thought', 'native_thinking', 'final_answer', 'summarization'];
+    const newItemsToCollapse = new Set<string>();
+    const currentFlowKeys = new Set<string>();
+    
+    for (const item of chatFlow) {
+      if (collapsibleTypes.includes(item.type)) {
+        const key = generateItemKey(item);
+        currentFlowKeys.add(key);
+        
+        // Exception: Don't auto-collapse final answers from chat/follow-up stages
+        if (item.type === 'final_answer' && item.isChatStage) {
+          continue;
         }
+        
+        // Skip items that were already processed
+        if (processedChatFlowKeys.has(key)) {
+          continue;
+        }
+        
+        // Skip items that user manually expanded
+        if (manuallyExpandedItems.has(key)) {
+          continue;
+        }
+        
+        newItemsToCollapse.add(key);
       }
-      
-      // Only update if there are items to collapse (avoid unnecessary re-renders)
-      if (itemsToCollapse.size > 0) {
-        setAutoCollapsedItems(itemsToCollapse);
-      }
+    }
+    
+    // Update processed keys to include current flow
+    setProcessedChatFlowKeys(currentFlowKeys);
+    
+    // Add new items to auto-collapsed set (incrementally)
+    if (newItemsToCollapse.size > 0) {
+      console.log(`📦 Auto-collapsing ${newItemsToCollapse.size} NEW collapsible items`);
+      setAutoCollapsedItems(prev => new Set([...prev, ...newItemsToCollapse]));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.session_id, session.status, chatFlow.length]);
@@ -876,9 +899,7 @@ function ConversationTimeline({
       
       const updated = new Map(prev);
       let itemsCleared = 0;
-      
-      // Track items transitioning from streaming to DB for auto-collapse
-      const itemsToCollapse = new Set<string>();
+      const collapsibleItemKeys: string[] = []; // Collect keys for items to auto-collapse
       
       // For each streaming item, check if DB has its ID (matching by TYPE)
       for (const [key, streamingItem] of prev.entries()) {
@@ -928,15 +949,15 @@ function ConversationTimeline({
               mcp_event_id: streamingItem.mcp_event_id,
               type: streamingItem.type
             });
-            itemsToCollapse.add(itemKey);
+            collapsibleItemKeys.push(itemKey);
           }
         }
       }
       
-      // Add transitioning items to auto-collapsed set
-      if (itemsToCollapse.size > 0) {
-        console.log(`📦 Auto-collapsing ${itemsToCollapse.size} items that transitioned to DB`);
-        setAutoCollapsedItems(prev => new Set([...prev, ...itemsToCollapse]));
+      // Auto-collapse items SYNCHRONOUSLY within the state updater
+      if (collapsibleItemKeys.length > 0) {
+        console.log(`📦 Auto-collapsing ${collapsibleItemKeys.length} items that transitioned to DB`);
+        setAutoCollapsedItems(prev => new Set([...prev, ...collapsibleItemKeys]));
       }
       
       if (itemsCleared > 0) {
