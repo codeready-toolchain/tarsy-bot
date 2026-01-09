@@ -267,6 +267,89 @@ const StreamingItemRenderer = memo(({ item }: { item: ConversationStreamingItem 
 });
 
 /**
+ * Clean up old session entries from localStorage
+ * Removes entries older than 7 days and keeps only the 50 most recent sessions
+ * Exported for testing
+ */
+export function cleanupOldSessionEntries() {
+  const sessionKeyPrefix = 'session-';
+  const sessionKeySuffix = '-expanded-items';
+  const maxAgeMs = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
+  const maxSessionsToKeep = 50;
+  
+  try {
+    // Collect all keys from localStorage
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key) {
+        keys.push(key);
+      }
+    }
+    
+    const sessionKeys = keys.filter(key => 
+      key.startsWith(sessionKeyPrefix) && key.endsWith(sessionKeySuffix)
+    );
+    
+    // Parse all session entries with timestamps
+    const sessionEntries: Array<{ key: string; timestamp: number }> = [];
+    
+    for (const key of sessionKeys) {
+      try {
+        const data = localStorage.getItem(key);
+        if (data) {
+          const parsed = JSON.parse(data);
+          // Support both old format (array) and new format (object with timestamp)
+          const timestamp = typeof parsed === 'object' && !Array.isArray(parsed) && parsed.timestamp
+            ? parsed.timestamp
+            : 0; // Old entries without timestamp get 0 (will be kept but counted)
+          
+          sessionEntries.push({ key, timestamp });
+        }
+      } catch (err) {
+        // If parsing fails, remove the corrupted entry
+        console.warn(`Removing corrupted localStorage entry: ${key}`, err);
+        localStorage.removeItem(key);
+      }
+    }
+    
+    const now = Date.now();
+    let removedCount = 0;
+    
+    // Remove entries older than 7 days
+    for (const entry of sessionEntries) {
+      if (entry.timestamp > 0 && now - entry.timestamp > maxAgeMs) {
+        localStorage.removeItem(entry.key);
+        removedCount++;
+      }
+    }
+    
+    // Keep only the N most recent sessions (as a safety measure)
+    // Sort by timestamp (newest first), keep top N
+    const remainingEntries = sessionEntries
+      .filter(entry => {
+        const exists = localStorage.getItem(entry.key) !== null;
+        return exists;
+      })
+      .sort((a, b) => b.timestamp - a.timestamp);
+    
+    if (remainingEntries.length > maxSessionsToKeep) {
+      const entriesToRemove = remainingEntries.slice(maxSessionsToKeep);
+      for (const entry of entriesToRemove) {
+        localStorage.removeItem(entry.key);
+        removedCount++;
+      }
+    }
+    
+    if (removedCount > 0) {
+      console.log(`🧹 Cleaned up ${removedCount} old session entries from localStorage`);
+    }
+  } catch (err) {
+    console.error('Failed to clean up old localStorage entries:', err);
+  }
+}
+
+/**
  * Conversation Timeline Component
  * Renders session as a continuous chat-like flow with thoughts, tool calls, and final answers
  * Plugs into the shared SessionDetailPageBase
@@ -388,17 +471,27 @@ function ConversationTimeline({
     const saved = localStorage.getItem(key);
     if (saved) {
       try {
-        setManuallyExpandedItems(new Set(JSON.parse(saved)));
+        const data = JSON.parse(saved);
+        // Support both old format (array) and new format (object with timestamp)
+        const items = Array.isArray(data) ? data : data.items || [];
+        setManuallyExpandedItems(new Set(items));
       } catch (err) {
         console.error('Failed to parse localStorage expanded items:', err);
       }
     }
+    
+    // Clean up old session entries on mount
+    cleanupOldSessionEntries();
   }, [session.session_id]);
 
-  // Save manually expanded items to localStorage
+  // Save manually expanded items to localStorage with timestamp
   useEffect(() => {
     const key = `session-${session.session_id}-expanded-items`;
-    localStorage.setItem(key, JSON.stringify(Array.from(manuallyExpandedItems)));
+    const data = {
+      items: Array.from(manuallyExpandedItems),
+      timestamp: Date.now()
+    };
+    localStorage.setItem(key, JSON.stringify(data));
   }, [manuallyExpandedItems, session.session_id]);
   
   // Handler to toggle stage collapse/expand
@@ -958,7 +1051,9 @@ function ConversationTimeline({
         }
       }
       
-      // Auto-collapse items SYNCHRONOUSLY within the state updater
+      // Auto-collapse items by enqueueing a state update
+      // Note: React batches and applies state updates asynchronously, but using the functional
+      // updater ensures the update merges with the latest prev value when applied
       if (collapsibleItemKeys.length > 0) {
         console.log(`📦 Auto-collapsing ${collapsibleItemKeys.length} items that transitioned to DB`);
         setAutoCollapsedItems(prev => new Set([...prev, ...collapsibleItemKeys]));
