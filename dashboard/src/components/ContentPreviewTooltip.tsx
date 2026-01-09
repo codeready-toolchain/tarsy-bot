@@ -10,6 +10,7 @@ import {
   thoughtMarkdownComponents, 
   finalAnswerMarkdownComponents 
 } from '../utils/markdownComponents';
+import { CHAT_FLOW_ITEM_TYPES } from '../constants/chatFlowItemTypes';
 
 interface ContentPreviewTooltipProps {
   /** Full content to display in tooltip */
@@ -34,7 +35,7 @@ export default function ContentPreviewTooltip({
   children 
 }: ContentPreviewTooltipProps) {
   // Select appropriate markdown components based on content type
-  const markdownComponents = type === 'final_answer' 
+  const markdownComponents = type === CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER 
     ? finalAnswerMarkdownComponents 
     : thoughtMarkdownComponents;
   

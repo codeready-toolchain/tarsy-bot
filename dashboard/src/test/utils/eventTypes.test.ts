@@ -23,12 +23,13 @@ describe('Event Types - Streaming Content', () => {
     it('should define all expected streaming content types', () => {
       expect(STREAMING_CONTENT_TYPES.THOUGHT).toBe('thought');
       expect(STREAMING_CONTENT_TYPES.FINAL_ANSWER).toBe('final_answer');
+      expect(STREAMING_CONTENT_TYPES.INTERMEDIATE_RESPONSE).toBe('intermediate_response');
       expect(STREAMING_CONTENT_TYPES.SUMMARIZATION).toBe('summarization');
       expect(STREAMING_CONTENT_TYPES.NATIVE_THINKING).toBe('native_thinking');
     });
 
-    it('should have exactly 4 streaming content types', () => {
-      expect(Object.keys(STREAMING_CONTENT_TYPES)).toHaveLength(4);
+    it('should have exactly 5 streaming content types', () => {
+      expect(Object.keys(STREAMING_CONTENT_TYPES)).toHaveLength(5);
     });
   });
 
@@ -36,12 +37,13 @@ describe('Event Types - Streaming Content', () => {
     it('should include all streaming content types', () => {
       expect(ALL_STREAMING_CONTENT_TYPES).toContain('thought');
       expect(ALL_STREAMING_CONTENT_TYPES).toContain('final_answer');
+      expect(ALL_STREAMING_CONTENT_TYPES).toContain('intermediate_response');
       expect(ALL_STREAMING_CONTENT_TYPES).toContain('summarization');
       expect(ALL_STREAMING_CONTENT_TYPES).toContain('native_thinking');
     });
 
-    it('should have exactly 4 entries', () => {
-      expect(ALL_STREAMING_CONTENT_TYPES).toHaveLength(4);
+    it('should have exactly 5 entries', () => {
+      expect(ALL_STREAMING_CONTENT_TYPES).toHaveLength(5);
     });
 
     it('should match STREAMING_CONTENT_TYPES values', () => {

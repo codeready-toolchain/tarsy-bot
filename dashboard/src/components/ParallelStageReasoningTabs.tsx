@@ -18,6 +18,7 @@ import {
 import type { ChatFlowItemData } from '../utils/chatFlowParser';
 import type { StageExecution } from '../types';
 import { apiClient, handleAPIError } from '../services/api';
+import { CHAT_FLOW_ITEM_TYPES } from '../constants/chatFlowItemTypes';
 import ChatFlowItem from './ChatFlowItem';
 import StreamingContentRenderer, { type StreamingItem } from './StreamingContentRenderer';
 import { getParallelStageLabel } from '../utils/parallelStageHelpers';
@@ -139,7 +140,7 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
   
   for (const item of items) {
     // Skip stage_start and user_message items (they're shared across all executions)
-    if (item.type === 'stage_start' || item.type === 'user_message') {
+    if (item.type === CHAT_FLOW_ITEM_TYPES.STAGE_START || item.type === CHAT_FLOW_ITEM_TYPES.USER_MESSAGE) {
       continue;
     }
     

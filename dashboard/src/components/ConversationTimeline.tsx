@@ -26,6 +26,7 @@ import {
   STREAMING_CONTENT_TYPES, 
   parseStreamingContentType 
 } from '../utils/eventTypes';
+import { CHAT_FLOW_ITEM_TYPES } from '../constants/chatFlowItemTypes';
 import { generateItemKey } from '../utils/chatFlowItemKey';
 // Auto-scroll is now handled by the centralized system in SessionDetailPageBase
 
@@ -140,13 +141,14 @@ const StreamingItemRenderer = memo(({ item }: { item: ConversationStreamingItem 
   if (
     item.type === STREAMING_CONTENT_TYPES.THOUGHT || 
     item.type === STREAMING_CONTENT_TYPES.FINAL_ANSWER || 
+    item.type === STREAMING_CONTENT_TYPES.INTERMEDIATE_RESPONSE ||
     item.type === STREAMING_CONTENT_TYPES.SUMMARIZATION || 
     item.type === STREAMING_CONTENT_TYPES.NATIVE_THINKING
   ) {
     return <StreamingContentRenderer item={item} />;
   }
   
-  if (item.type === 'user_message') {
+  if (item.type === CHAT_FLOW_ITEM_TYPES.USER_MESSAGE) {
     return (
       <Box sx={{ mb: 1.5, display: 'flex', gap: 1.5 }}>
         {/* Circular question mark avatar */}
@@ -210,7 +212,7 @@ const StreamingItemRenderer = memo(({ item }: { item: ConversationStreamingItem 
     );
   }
   
-  if (item.type === 'tool_call') {
+  if (item.type === CHAT_FLOW_ITEM_TYPES.TOOL_CALL) {
     // Render in-progress tool call with loading indicator
     return (
       <Box sx={{ ml: 4, my: 1, mr: 1 }}>
@@ -405,7 +407,7 @@ function ConversationTimeline({
         currentFlowKeys.add(key);
         
         // Exception: Don't auto-collapse final answers from chat/follow-up stages
-        if (item.type === 'final_answer' && item.isChatStage) {
+        if (item.type === CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER && item.isChatStage) {
           continue;
         }
         
@@ -443,7 +445,7 @@ function ConversationTimeline({
       
       for (const item of chatFlow) {
         // Find synthesis stage and mark it for collapse
-        if (item.type === 'stage_start' && item.stageName === 'synthesis' && item.stageId) {
+        if (item.type === CHAT_FLOW_ITEM_TYPES.STAGE_START && item.stageName === 'synthesis' && item.stageId) {
           stagesToCollapse.set(item.stageId, true);
         }
       }
@@ -559,7 +561,7 @@ function ConversationTimeline({
     let currentIsParallel = false;
     
     for (const item of chatFlow) {
-      if (item.type === 'stage_start') {
+      if (item.type === CHAT_FLOW_ITEM_TYPES.STAGE_START) {
         // Save previous group if exists
         if (currentGroup.length > 0) {
           groups.push({
@@ -608,9 +610,9 @@ function ConversationTimeline({
     content += `${'='.repeat(60)}\n\n`;
     
     chatFlow.forEach((item) => {
-      if (item.type === 'stage_start') {
+      if (item.type === CHAT_FLOW_ITEM_TYPES.STAGE_START) {
         content += `\n=== Stage: ${item.stageName} (${item.stageAgent}) ===\n\n`;
-      } else if (item.type === 'thought') {
+      } else if (item.type === CHAT_FLOW_ITEM_TYPES.THOUGHT) {
         content += `💭 Thought:\n${item.content}\n\n`;
       } else if (item.type === 'tool_call') {
         content += `🔧 Tool Call: ${item.toolName}\n`;
@@ -622,9 +624,9 @@ function ConversationTimeline({
           content += `   Error: ${item.errorMessage}\n`;
         }
         content += '\n';
-      } else if (item.type === 'summarization') {
+      } else if (item.type === CHAT_FLOW_ITEM_TYPES.SUMMARIZATION) {
         content += `📋 Tool Result Summary${item.mcp_event_id ? ` (MCP: ${item.mcp_event_id})` : ''}:\n${item.content}\n\n`;
-      } else if (item.type === 'final_answer') {
+      } else if (item.type === CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER) {
         content += `🎯 Final Answer:\n${item.content}\n\n`;
       }
     });
@@ -654,9 +656,9 @@ function ConversationTimeline({
       }
       // Separate tool_call and summarization mcp_event_ids
       if (item.mcp_event_id) {
-        if (item.type === 'tool_call') {
+        if (item.type === CHAT_FLOW_ITEM_TYPES.TOOL_CALL) {
           dbToolCallMcpIds.add(item.mcp_event_id);
-        } else if (item.type === 'summarization') {
+        } else if (item.type === CHAT_FLOW_ITEM_TYPES.SUMMARIZATION) {
           dbSummarizationMcpIds.add(item.mcp_event_id);
         }
       }
@@ -983,9 +985,9 @@ function ConversationTimeline({
         }
         // Separate tool_call and summarization mcp_event_ids
         if (item.mcp_event_id) {
-          if (item.type === 'tool_call') {
+          if (item.type === CHAT_FLOW_ITEM_TYPES.TOOL_CALL) {
             dbToolCallMcpIds.add(item.mcp_event_id);
-          } else if (item.type === 'summarization') {
+          } else if (item.type === CHAT_FLOW_ITEM_TYPES.SUMMARIZATION) {
             dbSummarizationMcpIds.add(item.mcp_event_id);
           }
         }
@@ -1005,13 +1007,14 @@ function ConversationTimeline({
         if (
           streamingItem.type === STREAMING_CONTENT_TYPES.THOUGHT ||
           streamingItem.type === STREAMING_CONTENT_TYPES.FINAL_ANSWER ||
+          streamingItem.type === STREAMING_CONTENT_TYPES.INTERMEDIATE_RESPONSE ||
           streamingItem.type === STREAMING_CONTENT_TYPES.NATIVE_THINKING
         ) {
           // Match by llm_interaction_id
           if (streamingItem.llm_interaction_id && dbInteractionIds.has(streamingItem.llm_interaction_id)) {
             shouldRemove = true;
           }
-        } else if (streamingItem.type === 'tool_call') {
+        } else if (streamingItem.type === CHAT_FLOW_ITEM_TYPES.TOOL_CALL) {
           // Tool call streaming items - only deduplicate against tool_call DB items
           if (streamingItem.mcp_event_id && dbToolCallMcpIds.has(streamingItem.mcp_event_id)) {
             shouldRemove = true;
@@ -1021,7 +1024,7 @@ function ConversationTimeline({
           if (streamingItem.mcp_event_id && dbSummarizationMcpIds.has(streamingItem.mcp_event_id)) {
             shouldRemove = true;
           }
-        } else if (streamingItem.type === 'user_message') {
+        } else if (streamingItem.type === CHAT_FLOW_ITEM_TYPES.USER_MESSAGE) {
           // Match by messageId
           if (streamingItem.messageId && dbMessageIds.has(streamingItem.messageId)) {
             shouldRemove = true;
@@ -1269,14 +1272,14 @@ function ConversationTimeline({
               // Filter group items based on collapse state
               const visibleItems = group.items.filter(item => {
                 // Always show stage_start items
-                if (item.type === 'stage_start') return true;
+                if (item.type === CHAT_FLOW_ITEM_TYPES.STAGE_START) return true;
                 // Hide other items if stage is collapsed
                 if (isCollapsed) return false;
                 return true;
               });
               
               // Find stage_start item (should be first)
-              const stageStartItem = visibleItems.find(item => item.type === 'stage_start');
+              const stageStartItem = visibleItems.find(item => item.type === CHAT_FLOW_ITEM_TYPES.STAGE_START);
               const nonStageStartItems = visibleItems.filter(item => item.type !== 'stage_start');
               
               // Check if this is the last stage (to show streaming items here)

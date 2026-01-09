@@ -485,6 +485,7 @@ describe('chatFlowParser', () => {
         finalAnswersCount: 0,
         successfulToolCalls: 0,
         nativeThinkingCount: 0,
+        intermediateResponsesCount: 0,
       });
     });
 
@@ -507,6 +508,7 @@ describe('chatFlowParser', () => {
         finalAnswersCount: 1,
         successfulToolCalls: 1,
         nativeThinkingCount: 0,
+        intermediateResponsesCount: 0,
       });
     });
 

@@ -191,6 +191,54 @@ const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) 
       </Box>
     );
   }
+
+  // Render intermediate response (native thinking - intermediate iterations)
+  if (item.type === STREAMING_CONTENT_TYPES.INTERMEDIATE_RESPONSE) {
+    const hasMarkdown = hasMarkdownSyntax(item.content || '');
+    
+    return (
+      <Box sx={{ mb: 1.5, display: 'flex', gap: 1.5 }}>
+        <Typography 
+          variant="body2" 
+          sx={{ 
+            fontSize: '1.1rem', 
+            lineHeight: 1,
+            flexShrink: 0,
+            mt: 0.25
+          }}
+        >
+          💬
+        </Typography>
+        <TypewriterText text={item.content || ''} speed={3}>
+          {(displayText) => (
+            hasMarkdown ? (
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                <ReactMarkdown
+                  components={thoughtMarkdownComponents}
+                  skipHtml
+                >
+                  {displayText}
+                </ReactMarkdown>
+              </Box>
+            ) : (
+              <Typography 
+                variant="body1" 
+                sx={{ 
+                  whiteSpace: 'pre-wrap', 
+                  wordBreak: 'break-word',
+                  lineHeight: 1.7,
+                  fontSize: '1rem',
+                  color: 'text.primary'
+                }}
+              >
+                {displayText}
+              </Typography>
+            )
+          )}
+        </TypewriterText>
+      </Box>
+    );
+  }
   
   // Render summarization (tool result summary)
   if (item.type === STREAMING_CONTENT_TYPES.SUMMARIZATION) {

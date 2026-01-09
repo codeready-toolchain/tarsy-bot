@@ -425,10 +425,12 @@ class GeminiNativeThinkingClient:
                                             logger.debug(f"[{request_id}] Started streaming response content")
                                         
                                         # Stream response updates every N tokens
+                                        # Note: During streaming we don't know if this is final yet (tool calls come later)
+                                        # so we stream as INTERMEDIATE_RESPONSE. Final chunk will use correct type.
                                         if response_token_count >= RESPONSE_CHUNK_SIZE:
                                             await self._streaming_publisher.publish_chunk(
                                                 session_id, stage_execution_id,
-                                                StreamingEventType.FINAL_ANSWER, accumulated_content,
+                                                StreamingEventType.INTERMEDIATE_RESPONSE, accumulated_content,
                                                 is_complete=False,
                                                 llm_interaction_id=ctx.interaction.interaction_id,
                                                 parallel_metadata=parallel_metadata
@@ -469,6 +471,10 @@ class GeminiNativeThinkingClient:
                             ctx.interaction.output_tokens = getattr(usage, 'candidates_token_count', None)
                             ctx.interaction.total_tokens = getattr(usage, 'total_token_count', None)
                     
+                    # Determine if this is a final response (no tool calls)
+                    # Must check this before sending final chunks so we use correct event type
+                    is_final = len(tool_calls) == 0
+                    
                     # Send final streaming chunks after stream completes
                     if is_streaming_thinking and accumulated_thinking:
                         await self._streaming_publisher.publish_chunk(
@@ -480,9 +486,15 @@ class GeminiNativeThinkingClient:
                         )
                     
                     if is_streaming_response and accumulated_content:
+                        # Send FINAL_ANSWER only if this is truly final (no more tool calls)
+                        # Otherwise send INTERMEDIATE_RESPONSE for intermediate iterations
+                        response_event_type = (
+                            StreamingEventType.FINAL_ANSWER if is_final 
+                            else StreamingEventType.INTERMEDIATE_RESPONSE
+                        )
                         await self._streaming_publisher.publish_chunk(
                             session_id, stage_execution_id,
-                            StreamingEventType.FINAL_ANSWER, accumulated_content,
+                            response_event_type, accumulated_content,
                             is_complete=True,
                             llm_interaction_id=ctx.interaction.interaction_id,
                             parallel_metadata=parallel_metadata
@@ -490,9 +502,6 @@ class GeminiNativeThinkingClient:
                 
                 # Combine thinking content
                 combined_thinking = "\n".join(thinking_content_parts) if thinking_content_parts else None
-                
-                # Determine if this is a final response (no tool calls)
-                is_final = len(tool_calls) == 0
                 
                 # Update conversation with response
                 if accumulated_content.strip():

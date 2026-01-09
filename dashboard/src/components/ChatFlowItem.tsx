@@ -16,6 +16,7 @@ import {
   thoughtMarkdownComponents 
 } from '../utils/markdownComponents';
 import { FADE_COLLAPSE_ANIMATION } from '../constants/chatFlowAnimations';
+import { CHAT_FLOW_ITEM_TYPES } from '../constants/chatFlowItemTypes';
 
 interface ChatFlowItemProps {
   item: ChatFlowItemData;
@@ -53,7 +54,7 @@ function ChatFlowItem({
   const collapsedLeadingIconOpacity = shouldShowCollapsed ? 0.6 : 1;
   
   // Render stage start separator with collapse/expand control
-  if (item.type === 'stage_start') {
+  if (item.type === CHAT_FLOW_ITEM_TYPES.STAGE_START) {
     const isFailed = item.stageStatus === 'failed';
     const hasError = isFailed && item.stageErrorMessage;
     
@@ -157,7 +158,7 @@ function ChatFlowItem({
   }
 
   // Render thought - with hybrid markdown support (only parse markdown when detected)
-  if (item.type === 'thought') {
+  if (item.type === CHAT_FLOW_ITEM_TYPES.THOUGHT) {
     const hasMarkdown = hasMarkdownSyntax(item.content || '');
     const interactionDurationLabel =
       item.interaction_duration_ms != null && item.interaction_duration_ms > 0
@@ -229,7 +230,7 @@ function ChatFlowItem({
   }
 
   // Render native thinking (Gemini 3.0+ native thinking mode)
-  if (item.type === 'native_thinking') {
+  if (item.type === CHAT_FLOW_ITEM_TYPES.NATIVE_THINKING) {
     const hasMarkdown = hasMarkdownSyntax(item.content || '');
     const interactionDurationLabel =
       item.interaction_duration_ms != null && item.interaction_duration_ms > 0
@@ -308,8 +309,57 @@ function ChatFlowItem({
     );
   }
 
+  // Render intermediate response (native thinking - intermediate iterations)
+  // No header label, just icon and content with light markdown
+  if (item.type === CHAT_FLOW_ITEM_TYPES.INTERMEDIATE_RESPONSE) {
+    const hasMarkdown = hasMarkdownSyntax(item.content || '');
+    
+    return (
+      <Box 
+        sx={{ 
+          mb: 1.5,
+          display: 'flex', 
+          gap: 1.5,
+          alignItems: 'flex-start'
+        }}
+      >
+        <EmojiIcon
+          emoji="💬"
+          opacity={1}
+        />
+        
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          {hasMarkdown ? (
+            <Box sx={{ color: 'text.primary' }}>
+              <ReactMarkdown
+                components={thoughtMarkdownComponents}
+                remarkPlugins={[remarkBreaks]}
+                skipHtml
+              >
+                {item.content || ''}
+              </ReactMarkdown>
+            </Box>
+          ) : (
+            <Typography 
+              variant="body1" 
+              sx={{ 
+                whiteSpace: 'pre-wrap', 
+                wordBreak: 'break-word',
+                lineHeight: 1.7,
+                fontSize: '1rem',
+                color: 'text.primary'
+              }}
+            >
+              {item.content}
+            </Typography>
+          )}
+        </Box>
+      </Box>
+    );
+  }
+
   // Render final answer - emphasized text with emoji and markdown support
-  if (item.type === 'final_answer') {
+  if (item.type === CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER) {
     return (
       <Box 
         sx={{ 
@@ -381,7 +431,7 @@ function ChatFlowItem({
   }
 
   // Render tool call - indented expandable box
-  if (item.type === 'tool_call') {
+  if (item.type === CHAT_FLOW_ITEM_TYPES.TOOL_CALL) {
     return (
       <ToolCallBox
         toolName={item.toolName || 'unknown'}
@@ -395,7 +445,7 @@ function ChatFlowItem({
     );
   }
 
-  if (item.type === 'user_message') {
+  if (item.type === CHAT_FLOW_ITEM_TYPES.USER_MESSAGE) {
     return (
       <Box sx={{ mb: 1.5, position: 'relative' }}>
         {/* User avatar icon - positioned absolutely */}
@@ -464,7 +514,7 @@ function ChatFlowItem({
   }
 
   // Render summarization - with hybrid markdown support (maintains amber styling)
-  if (item.type === 'summarization') {
+  if (item.type === CHAT_FLOW_ITEM_TYPES.SUMMARIZATION) {
     const hasMarkdown = hasMarkdownSyntax(item.content || '');
     
     return (
@@ -545,7 +595,7 @@ function ChatFlowItem({
   }
 
   // Render native tool usage indicators
-  if (item.type === 'native_tool_usage' && item.nativeToolsUsage) {
+  if (item.type === CHAT_FLOW_ITEM_TYPES.NATIVE_TOOL_USAGE && item.nativeToolsUsage) {
     return <NativeToolsBox usage={item.nativeToolsUsage} />;
   }
 

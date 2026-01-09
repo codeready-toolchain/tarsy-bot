@@ -6,16 +6,18 @@ import { getMessages } from './conversationParser';
 import { parseReActMessage } from './reactParser';
 import { parseNativeToolsUsage } from './nativeToolsParser';
 import type { NativeToolsUsage } from '../types';
+import { LLM_INTERACTION_TYPES } from '../constants/llmInteractionTypes';
+import { CHAT_FLOW_ITEM_TYPES, type ChatFlowItemType } from '../constants/chatFlowItemTypes';
 
 export interface ChatFlowItemData {
-  type: 'thought' | 'tool_call' | 'final_answer' | 'stage_start' | 'summarization' | 'user_message' | 'native_tool_usage' | 'native_thinking';
+  type: ChatFlowItemType;
   timestamp_us: number;
   stageId?: string; // Stage execution_id - used for grouping and collapse functionality
   executionId?: string; // For parallel stages - identifies which parallel execution this item belongs to
   executionAgent?: string; // For parallel stages - the agent name for this execution
   isParallelStage?: boolean; // Indicates if this item is part of a parallel stage
   isChatStage?: boolean; // Indicates if this item is from a chat/follow-up stage
-  content?: string; // For thought/final_answer/summarization/user_message
+  content?: string; // For thought/final_answer/summarization/user_message/intermediate_response
   stageName?: string; // For stage_start
   stageAgent?: string; // For stage_start
   stageStatus?: string; // For stage_start - stage status ('pending'|'active'|'completed'|'failed')
@@ -27,14 +29,14 @@ export interface ChatFlowItemData {
   success?: boolean; // For tool_call
   errorMessage?: string; // For tool_call
   duration_ms?: number | null; // For tool_call
-  interaction_duration_ms?: number | null; // For thought/native_thinking/final_answer (LLM interaction duration)
+  interaction_duration_ms?: number | null; // For thought/native_thinking/intermediate_response/final_answer (LLM interaction duration)
   mcp_event_id?: string; // For tool_call and summarization - used for deduplication
   // For user_message type
   author?: string; // User who sent the message
   messageId?: string; // Message identifier
   // For native_tool_usage type
   nativeToolsUsage?: NativeToolsUsage;
-  // LLM interaction ID for deduplication of thought/final_answer/native_thinking
+  // LLM interaction ID for deduplication of thought/final_answer/native_thinking/intermediate_response
   llm_interaction_id?: string;
 }
 
@@ -55,7 +57,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
     
     // Add stage start marker (with status and error message for failed stages)
     chatItems.push({
-      type: 'stage_start',
+      type: CHAT_FLOW_ITEM_TYPES.STAGE_START,
       timestamp_us: stageStartTimestamp,
       stageId,
       stageName: stage.stage_name,
@@ -75,7 +77,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
       );
       
       chatItems.push({
-        type: 'user_message',
+        type: CHAT_FLOW_ITEM_TYPES.USER_MESSAGE,
         timestamp_us: userMessageTimestamp,
         stageId,
         content: stage.chat_user_message.content,
@@ -115,7 +117,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
       const thinkingContent = (interaction.details as any).thinking_content;
       if (thinkingContent) {
         chatItems.push({
-          type: 'native_thinking',
+          type: CHAT_FLOW_ITEM_TYPES.NATIVE_THINKING,
           timestamp_us: lastTimestamp,
           stageId,
             executionId,
@@ -137,9 +139,9 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
       // Include llm_interaction_id for deduplication with streaming events
       const llmInteractionId = interaction.id || interaction.event_id;
       
-      if (interactionType === 'investigation' && parsed.thought) {
+      if (interactionType === LLM_INTERACTION_TYPES.INVESTIGATION && parsed.thought) {
         chatItems.push({
-          type: 'thought',
+          type: CHAT_FLOW_ITEM_TYPES.THOUGHT,
           timestamp_us: interaction.timestamp_us,
           stageId,
             executionId,
@@ -150,11 +152,29 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
           interaction_duration_ms: interaction.duration_ms ?? null,
           llm_interaction_id: llmInteractionId
         });
-      } else if (interactionType === 'final_analysis') {
+      } else if (interactionType === LLM_INTERACTION_TYPES.INVESTIGATION && thinkingContent) {
+        // For native thinking investigation iterations, extract intermediate response
+        // from the assistant message (this is the response before tool calls)
+        if (lastAssistantMessage && lastAssistantMessage.content) {
+          chatItems.push({
+            type: CHAT_FLOW_ITEM_TYPES.INTERMEDIATE_RESPONSE,
+            timestamp_us: lastTimestamp, // Use lastTimestamp which is already +1 from thinking
+            stageId,
+              executionId,
+              executionAgent,
+              isParallelStage,
+              isChatStage,
+            content: lastAssistantMessage.content,
+            interaction_duration_ms: interaction.duration_ms ?? null,
+            llm_interaction_id: llmInteractionId
+          });
+          lastTimestamp = lastTimestamp + 1; // Ensure subsequent items come after
+        }
+      } else if (interactionType === LLM_INTERACTION_TYPES.FINAL_ANALYSIS) {
         // Final analysis may have both thought AND final answer - show both
         if (parsed.thought) {
           chatItems.push({
-            type: 'thought',
+            type: CHAT_FLOW_ITEM_TYPES.THOUGHT,
             timestamp_us: interaction.timestamp_us,
             stageId,
               executionId,
@@ -169,7 +189,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
         if (parsed.finalAnswer) {
           lastTimestamp = interaction.timestamp_us + 1;
           chatItems.push({
-            type: 'final_answer',
+            type: CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER,
             timestamp_us: lastTimestamp, // +1 to ensure it comes after thought
             stageId,
               executionId,
@@ -181,12 +201,12 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
             llm_interaction_id: llmInteractionId
           });
         }
-      } else if (interactionType === 'summarization') {
+      } else if (interactionType === LLM_INTERACTION_TYPES.SUMMARIZATION) {
         // Summarization interactions have plain text in the last assistant message
         // Use the lastAssistantMessage already computed earlier (not messages[messages.length - 1])
         if (lastAssistantMessage && lastAssistantMessage.content) {
           chatItems.push({
-            type: 'summarization',
+            type: CHAT_FLOW_ITEM_TYPES.SUMMARIZATION,
             timestamp_us: interaction.timestamp_us,
             stageId,
               executionId,
@@ -212,7 +232,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
         // Only add if tools were actually used (not just enabled)
         if (toolsUsage) {
           chatItems.push({
-            type: 'native_tool_usage',
+            type: CHAT_FLOW_ITEM_TYPES.NATIVE_TOOL_USAGE,
             timestamp_us: lastTimestamp + 2, // +2 to ensure it comes after other items
             stageId,
               executionId,
@@ -236,7 +256,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
       const mcpEventId = mcp.event_id || mcp.id;
       
       chatItems.push({
-        type: 'tool_call',
+        type: CHAT_FLOW_ITEM_TYPES.TOOL_CALL,
         timestamp_us: mcp.timestamp_us,
         stageId,
           executionId,
@@ -274,14 +294,16 @@ export function getChatFlowStats(chatItems: ChatFlowItemData[]): {
   finalAnswersCount: number;
   successfulToolCalls: number;
   nativeThinkingCount: number;
+  intermediateResponsesCount: number;
 } {
   return {
     totalItems: chatItems.length,
-    thoughtsCount: chatItems.filter(i => i.type === 'thought').length,
-    toolCallsCount: chatItems.filter(i => i.type === 'tool_call').length,
-    finalAnswersCount: chatItems.filter(i => i.type === 'final_answer').length,
-    successfulToolCalls: chatItems.filter(i => i.type === 'tool_call' && i.success).length,
-    nativeThinkingCount: chatItems.filter(i => i.type === 'native_thinking').length
+    thoughtsCount: chatItems.filter(i => i.type === CHAT_FLOW_ITEM_TYPES.THOUGHT).length,
+    toolCallsCount: chatItems.filter(i => i.type === CHAT_FLOW_ITEM_TYPES.TOOL_CALL).length,
+    finalAnswersCount: chatItems.filter(i => i.type === CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER).length,
+    successfulToolCalls: chatItems.filter(i => i.type === CHAT_FLOW_ITEM_TYPES.TOOL_CALL && i.success).length,
+    nativeThinkingCount: chatItems.filter(i => i.type === CHAT_FLOW_ITEM_TYPES.NATIVE_THINKING).length,
+    intermediateResponsesCount: chatItems.filter(i => i.type === CHAT_FLOW_ITEM_TYPES.INTERMEDIATE_RESPONSE).length
   };
 }
 
