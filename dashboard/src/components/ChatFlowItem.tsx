@@ -663,7 +663,28 @@ function ChatFlowItem({
           
           {/* Collapsible content */}
           <Collapse in={!shouldShowCollapsed} timeout={300}>
-            <Box sx={{ mt: 0.5 }}>
+            <Box sx={{ 
+              mt: 0.5,
+              bgcolor: (theme) => alpha(theme.palette.success.main, 0.06),
+              border: '1px solid',
+              borderColor: (theme) => alpha(theme.palette.success.main, 0.25),
+              borderRadius: 1.5,
+              p: 2,
+              position: 'relative',
+              // Subtle left border accent
+              '&::before': {
+                content: '""',
+                position: 'absolute',
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: 3,
+                bgcolor: 'success.main',
+                opacity: 0.6,
+                borderRadius: '4px 0 0 4px'
+              },
+              pl: 2.5 // Extra padding for the left accent
+            }}>
               <ReactMarkdown
                 urlTransform={defaultUrlTransform}
                 components={finalAnswerMarkdownComponents}
