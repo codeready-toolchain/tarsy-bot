@@ -673,6 +673,7 @@ function ConversationTimeline({
         if (
           streamItem.type === STREAMING_CONTENT_TYPES.THOUGHT ||
           streamItem.type === STREAMING_CONTENT_TYPES.FINAL_ANSWER ||
+          streamItem.type === STREAMING_CONTENT_TYPES.INTERMEDIATE_RESPONSE ||
           streamItem.type === STREAMING_CONTENT_TYPES.NATIVE_THINKING
         ) {
           return !(streamItem.llm_interaction_id && dbInteractionIds.has(streamItem.llm_interaction_id));

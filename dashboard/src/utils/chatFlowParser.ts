@@ -101,6 +101,9 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
       const llmInteractions = (execution.llm_interactions || [])
       .sort((a, b) => a.timestamp_us - b.timestamp_us);
 
+    // Track previous interaction's assistant messages to detect inherited messages
+    let previousAssistantMessageContents = new Set<string>();
+
     for (const interaction of llmInteractions) {
       const messages = getMessages(interaction);
       const interactionType = interaction.details.interaction_type;
@@ -152,23 +155,33 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
           interaction_duration_ms: interaction.duration_ms ?? null,
           llm_interaction_id: llmInteractionId
         });
-      } else if (interactionType === LLM_INTERACTION_TYPES.INVESTIGATION && thinkingContent) {
-        // For native thinking investigation iterations, extract intermediate response
-        // from the assistant message (this is the response before tool calls)
+      } else if (interactionType === LLM_INTERACTION_TYPES.INVESTIGATION) {
+        // For Investigation iterations, extract intermediate response from the last assistant message
+        // IF it's new to this interaction (not inherited from previous iteration)
+        // Note: thinking_content may be null in some iterations
         if (lastAssistantMessage && lastAssistantMessage.content) {
-          chatItems.push({
-            type: CHAT_FLOW_ITEM_TYPES.INTERMEDIATE_RESPONSE,
-            timestamp_us: lastTimestamp, // Use lastTimestamp which is already +1 from thinking
-            stageId,
-              executionId,
-              executionAgent,
-              isParallelStage,
-              isChatStage,
-            content: lastAssistantMessage.content,
-            interaction_duration_ms: interaction.duration_ms ?? null,
-            llm_interaction_id: llmInteractionId
-          });
-          lastTimestamp = lastTimestamp + 1; // Ensure subsequent items come after
+          // Check if this assistant message existed in the previous interaction
+          // If it did, it's inherited and we shouldn't extract it again
+          const isInheritedMessage = previousAssistantMessageContents.has(lastAssistantMessage.content);
+          
+          if (!isInheritedMessage) {
+            // This is a NEW assistant message in this iteration - extract it
+            chatItems.push({
+              type: CHAT_FLOW_ITEM_TYPES.INTERMEDIATE_RESPONSE,
+              timestamp_us: thinkingContent ? lastTimestamp : interaction.timestamp_us,
+              stageId,
+                executionId,
+                executionAgent,
+                isParallelStage,
+                isChatStage,
+              content: lastAssistantMessage.content,
+              interaction_duration_ms: interaction.duration_ms ?? null,
+              llm_interaction_id: llmInteractionId
+            });
+            if (thinkingContent) {
+              lastTimestamp = lastTimestamp + 1; // Ensure subsequent items come after
+            }
+          }
         }
       } else if (interactionType === LLM_INTERACTION_TYPES.FINAL_ANALYSIS) {
         // Final analysis may have both thought AND final answer - show both
@@ -244,6 +257,12 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
           });
         }
       }
+      
+      // Update the set of assistant message contents for the next iteration
+      // This allows us to detect inherited messages in subsequent interactions
+      previousAssistantMessageContents = new Set(
+        assistantMessages.map(msg => msg.content)
+      );
     }
 
     // Process MCP communications (actual tool calls)
