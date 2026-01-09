@@ -33,6 +33,22 @@ Add systematic quality assessment for TARSy alert analysis sessions through an L
 
 ---
 
+## Async Design Rationale
+
+**Why Async:** Scoring involves multi-turn LLM conversations (score evaluation + missing tools analysis) that take 10-30+ seconds. Synchronous endpoints would timeout and block API responses.
+
+**Pattern Precedent:** Matches TARSy's existing alert processing pattern where POST /alerts returns immediately and clients track progress via WebSocket or polling.
+
+**Benefits:**
+- No request timeouts on long-running LLM operations
+- Real-time progress feedback via WebSocket events
+- Consistent UX with alert processing workflow
+- Reuses existing event infrastructure (no new systems needed)
+- Better error handling through status tracking
+- Race condition prevention via database constraints
+
+---
+
 ## Configuration
 
 **Judge Prompts:**
@@ -68,11 +84,13 @@ The system computes a SHA256 hash of BOTH prompts (concatenated) to create a uni
 
 **Note:** Phase 6 provides dashboard UI for these endpoints with visual score display and manual triggering.
 
-### Score Session
+### Score Session (Async)
 
 **Endpoint:** `POST /api/v1/scoring/sessions/{session_id}/score`
 
-**Purpose:** Trigger scoring for a specific session (operator-initiated or UI-triggered)
+**Purpose:** Trigger async scoring for a session. **Returns immediately** without blocking. Use WebSocket events or polling GET /score to track completion.
+
+**Behavior:** Background task pattern - scoring executes asynchronously while API responds immediately with score_id and status.
 
 **Request Body:**
 
@@ -87,36 +105,80 @@ The system computes a SHA256 hash of BOTH prompts (concatenated) to create a uni
 ```json
 {
   "score_id": "550e8400-e29b-41d4-a716-446655440000",
-  "session_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
-  "criteria_hash": "a3f5b2c1d4e7f9a1b3c5d7e9f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9c1d3e5f7a9",
-  "total_score": 67,
-  "score_analysis": "The investigation demonstrates adequate methodology with notable gaps in evidence gathering and tool selection.\n\n## Score Breakdown\n\nLogical Flow: 15/25\n- The investigation followed a reasonable path initially\n- However, there were logical shortcuts when pod access failed\n- Should have pivoted to historical data analysis sooner\n\nConsistency: 18/25\n- Observations generally support conclusions\n- Some contradictions between stated limitations and confidence level\n\nTool Relevance: 14/25\n- Initial tool selection was appropriate\n- Failed to explore alternative tools after encountering access restrictions\n- Missing critical forensic tools\n\nSynthesis Quality: 20/25\n- Final analysis integrates most available data\n- Could have been more explicit about gaps\n\nTotal: 67",
-  "missing_tools_analysis": "The investigation would have benefited from several additional tools:\n\n1. **list-processes-in-pod**: Would have confirmed whether the suspicious binary was actively running at the time of the alert, providing direct evidence instead of inference from metrics.\n\n2. **read-file-content**: Could have examined the actual malware payload to determine its capabilities and verify the alert classification.\n\n3. **get-pod-events**: Would have provided historical context about pod lifecycle events, helping correlate the alert timing with actual pod activity.",
-  "scored_triggered_by": "alice@example.com",
-  "scored_at": "2025-12-05T10:30:00Z",
-  "is_current_criteria": true
+  "status": "pending",  // pending | in_progress (if already started)
+  "message": "Scoring initiated"
 }
 ```
 
-**Note:** Both `score_analysis` and `missing_tools_analysis` are freeform text fields. The total_score is extracted from the last line of the LLM's scoring response.
+**Idempotency:** If scoring already in progress, returns existing score_id with status. If completed and force_rescore=false, returns existing score_id with message to use force_rescore.
 
 **Error Responses:**
 
-* `400 Bad Request` - Session not completed or invalid state
-* `500 Internal Server Error` - LLM API failure or database error
+* `400 Bad Request` - Session not in terminal state (must be completed/failed/cancelled)
+* `401 Unauthorized` - User not authorized to access endpoint
+* `404 Not Found` - Session not found
+* `409 Conflict` - force_rescore requested while scoring is in progress
+* `500 Internal Server Error` - Database error or scoring service failure
 
 ### Get Session Score
 
 **Endpoint:** `GET /api/v1/scoring/sessions/{session_id}/score`
 
-**Purpose:** Retrieve existing score for a session
+**Purpose:** Retrieve score for a session (any status)
 
-**Response:** Same as Score Session endpoint
+**Response (200 OK):**
+
+```json
+{
+  "score_id": "550e8400-e29b-41d4-a716-446655440000",
+  "session_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "status": "completed",  // pending | in_progress | completed | failed
+  "criteria_hash": "a3f5b2c1...",
+  "total_score": 67,  // NULL if status != completed
+  "score_analysis": "...",  // NULL if status != completed
+  "missing_tools_analysis": "...",  // NULL if status != completed
+  "error_message": null,  // Set when status = failed
+  "scored_triggered_by": "alice@example.com",
+  "started_at_us": 1234567890,
+  "completed_at_us": 1234567920,  // NULL if not terminal
+  "is_current_criteria": true
+}
+```
 
 **Error Responses:**
 
 * `404 Not Found` - Session not found or not yet scored
-* `500 Internal Server Error` - LLM API failure or database error
+* `500 Internal Server Error` - Database error
+
+---
+
+## WebSocket Events
+
+Real-time progress updates broadcast on existing TARSy event channels:
+
+**Event Types:**
+
+1. **scoring.started** - Scoring begins (status → in_progress)
+2. **scoring.progress** - Phase updates (analyzing_methodology, identifying_missing_tools)
+3. **scoring.completed** - Scoring finished successfully (status → completed, total_score available)
+4. **scoring.failed** - Scoring failed (status → failed, error_message set)
+
+**Channels:**
+
+- **Global:** `sessions` channel - High-level events (started, completed, failed) visible to all dashboard users
+- **Session-specific:** `session:{session_id}` channel - Detailed progress updates for individual session views
+
+**Event Payload Structure:**
+
+All events include: `type`, `score_id`, `session_id`, `timestamp_us`. Completed events include `total_score`. Failed events include `error_message`. Progress events include `phase`.
+
+**Frontend Integration:**
+
+Clients subscribe to channels via existing WebSocket infrastructure. Real-time updates enable:
+- Live scoring status in session detail pages
+- Progress indicators during LLM evaluation
+- Automatic score display refresh on completion
+- Error notifications on failure
 
 ---
 
@@ -133,6 +195,28 @@ The system computes a SHA256 hash of BOTH prompts (concatenated) to create a uni
 9. **Non-Intrusive Operation**: Post-session scoring, zero impact on alert processing performance
 10. **Background Task Execution**: Scoring runs asynchronously to avoid blocking API responses
 11. **Manual Control**: Phase 1 is operator-triggered only; automation deferred to future phases for cost control
+12. **Async Execution Pattern**: Background task execution matches TARSy's alert processing pattern using detached async tasks
+13. **Status-Based Lifecycle**: Clear state transitions (pending → in_progress → completed/failed) with database tracking
+14. **Race Condition Prevention**: Database unique constraints and state validation prevent duplicate in-progress scorings
+15. **Orphan Cleanup**: Stuck scorings marked as failed on service restart for data integrity
+16. **No Cancellation (Phase 1)**: Scoring duration (10-30s) too short to warrant cancellation complexity; deferred to future
+17. **No Concurrency Limits (Phase 1)**: Monitor LLM rate limits first; add semaphore-based limits if needed in Phase 2
+
+---
+
+## Edge Cases & Error Handling
+
+**Concurrent Requests:** Database unique constraint prevents duplicate in-progress scorings. Second request returns existing score_id with status.
+
+**Force Rescore During Active Scoring:** Rejected with 409 Conflict. Client must wait for completion or cancellation support (future phase).
+
+**Orphaned Scorings:** Service restart marks any stuck scorings (status=pending/in_progress) as failed with error_message describing reason.
+
+**LLM Failures:** Retry with exponential backoff (3 attempts). Mark scoring as failed if exhausted.
+
+**Service Shutdown:** Graceful handling - CancelledError caught, scoring marked failed, status updates broadcast via WebSocket.
+
+**State Transitions:** Service layer validates transitions (e.g., cannot go from completed back to in_progress) to prevent invalid state.
 
 ---
 
@@ -146,26 +230,37 @@ The system computes a SHA256 hash of BOTH prompts (concatenated) to create a uni
   * Table name: `session_scores`
   * Columns:
     * `score_id` (UUID, primary key)
-    * `session_id` (UUID, unique constraint, foreign key → alert_sessions)
+    * `session_id` (UUID, foreign key → alert_sessions)
     * `criteria_hash` (VARCHAR 64) - SHA256 hash of hardcoded judge prompts
-    * `total_score` (INTEGER, 0-100) - Extracted from last line of score response
-    * `score_analysis` (TEXT) - Freeform score breakdown and reasoning
-    * `missing_tools_analysis` (TEXT) - Freeform missing tools analysis
+    * `total_score` (INTEGER, 0-100, nullable) - Extracted from last line, NULL until completed
+    * `score_analysis` (TEXT, nullable) - Freeform score breakdown, NULL until completed
+    * `missing_tools_analysis` (TEXT, nullable) - Freeform missing tools analysis, NULL until completed
     * `scored_triggered_by` (VARCHAR 255) - User from X-Forwarded-User header
-    * `scored_at` (TIMESTAMP)
-  * Indexes: `session_id`, `criteria_hash`, `total_score`, `scored_at`
-  * Forward migration: CREATE TABLE with indexes
+    * `scored_at_us` (BIGINT) - When scoring was triggered (microseconds)
+    * **Async fields:**
+      * `status` (VARCHAR 50, NOT NULL) - pending | in_progress | completed | failed
+      * `started_at_us` (BIGINT, NOT NULL) - When status became in_progress
+      * `completed_at_us` (BIGINT, nullable) - When status became completed/failed
+      * `error_message` (TEXT, nullable) - Error details if status=failed
+  * Indexes: `session_id`, `criteria_hash`, `total_score`, `status`, (`session_id`, `status`), (`status`, `started_at_us`)
+  * Unique constraint: Partial index on `session_id` WHERE `status` IN ('pending', 'in_progress') - prevents duplicate in-progress scorings
+  * Forward migration: CREATE TABLE with indexes and constraints
   * Rollback migration: DROP TABLE
 
 * [ ] Implement database model (SQLModel): SessionScoreDB
   * Main score record with freeform text fields
+  * Includes async fields: status, started_at_us, completed_at_us, error_message
   * Maps to session_scores table
 
 * [ ] Implement API model (Pydantic): SessionScore
-  * API response model with all database fields
+  * API response model with all database fields including status
   * Computed field: `is_current_criteria` (boolean)
     * Compares stored `criteria_hash` to current hardcoded prompts hash
     * Current hash computed once at TARSy startup
+
+* [ ] Implement ScoringStatus enum (similar to AlertSessionStatus)
+  * Values: PENDING, IN_PROGRESS, COMPLETED, FAILED
+  * Helper method: `terminal_values()` returns [COMPLETED, FAILED]
 
 * [ ] Create repository layer with simple CRUD operations
   * Basic CRUD for session_scores table
@@ -469,7 +564,7 @@ The system computes a SHA256 hash of BOTH prompts (concatenated) to create a uni
 
 ### Prompt 1: `judge_prompt_score`
 
-```
+```text
 You are a computer security expert specializing in DevOps and Kubernetes security operations.
 
 Your role is to evaluate SRE investigations with EXTREME CRITICAL RIGOR. You are a methodology-focused perfectionist who:
@@ -705,7 +800,7 @@ If the answer to any is "yes," deduct more points.
 
 ### Prompt 2: `judge_prompt_followup_missing_tools`
 
-```
+```text
 Based on your analysis above, now identify MCP tools that should have been used but weren't.
 
 ## IDENTIFYING MISSING TOOLS
