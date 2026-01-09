@@ -26,6 +26,7 @@ export interface ChatFlowItemData {
   success?: boolean; // For tool_call
   errorMessage?: string; // For tool_call
   duration_ms?: number | null; // For tool_call
+  interaction_duration_ms?: number | null; // For thought/native_thinking/final_answer (LLM interaction duration)
   mcp_event_id?: string; // For tool_call and summarization - used for deduplication
   // For user_message type
   author?: string; // User who sent the message
@@ -114,6 +115,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
             executionAgent,
             isParallelStage,
           content: thinkingContent,
+          interaction_duration_ms: interaction.duration_ms ?? null,
           llm_interaction_id: interaction.id || interaction.event_id // For deduplication
         });
         lastTimestamp = lastTimestamp + 1; // Ensure subsequent items come after
@@ -136,6 +138,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
             executionAgent,
             isParallelStage,
           content: parsed.thought,
+          interaction_duration_ms: interaction.duration_ms ?? null,
           llm_interaction_id: llmInteractionId
         });
       } else if (interactionType === 'final_analysis') {
@@ -149,6 +152,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
               executionAgent,
               isParallelStage,
             content: parsed.thought,
+            interaction_duration_ms: interaction.duration_ms ?? null,
             llm_interaction_id: llmInteractionId
           });
         }
@@ -162,6 +166,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
               executionAgent,
               isParallelStage,
             content: parsed.finalAnswer,
+            interaction_duration_ms: interaction.duration_ms ?? null,
             llm_interaction_id: llmInteractionId
           });
         }

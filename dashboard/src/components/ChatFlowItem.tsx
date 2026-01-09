@@ -7,6 +7,7 @@ import ToolCallBox from './ToolCallBox';
 import NativeToolsBox from './NativeToolsBox';
 import ContentPreviewTooltip from './ContentPreviewTooltip';
 import type { ChatFlowItemData } from '../utils/chatFlowParser';
+import { formatDurationMs } from '../utils/timestamp';
 import { 
   hasMarkdownSyntax, 
   finalAnswerMarkdownComponents, 
@@ -36,11 +37,14 @@ function ChatFlowItem({
   onToggleCollapse,
   isAutoCollapsed = false,
   onToggleAutoCollapse,
-  expandAll = false,
-  isCollapsible = false // eslint-disable-line @typescript-eslint/no-unused-vars
+  expandAll = false
 }: ChatFlowItemProps) {
   // Determine if we should show collapsed state (header only)
   const shouldShowCollapsed = isAutoCollapsed && !expandAll;
+
+  // Auto-collapsed visual dimming (header + leading icon)
+  const collapsedHeaderOpacity = shouldShowCollapsed ? 0.65 : 1;
+  const collapsedLeadingIconOpacity = shouldShowCollapsed ? 0.6 : 1;
   
   // Render stage start separator with collapse/expand control
   if (item.type === 'stage_start') {
@@ -149,6 +153,10 @@ function ChatFlowItem({
   // Render thought - with hybrid markdown support (only parse markdown when detected)
   if (item.type === 'thought') {
     const hasMarkdown = hasMarkdownSyntax(item.content || '');
+    const interactionDurationLabel =
+      item.interaction_duration_ms != null && item.interaction_duration_ms > 0
+        ? formatDurationMs(item.interaction_duration_ms)
+        : null;
     
     return (
       <Box 
@@ -165,6 +173,16 @@ function ChatFlowItem({
               '50%': { opacity: 0.3 },
               '100%': { opacity: 1 },
             },
+            // Remove dimming on hover (restore visual emphasis)
+            '&:hover .cfi-dimmable': { opacity: 1 },
+            '&:hover .cfi-ellipsis': { opacity: 1 },
+            '&:hover .cfi-ellipsis-dot': { animation: 'cfi-ellipsis-wave 0.9s ease-in-out infinite' },
+            '&:hover .cfi-ellipsis-dot:nth-of-type(2)': { animationDelay: '0.12s' },
+            '&:hover .cfi-ellipsis-dot:nth-of-type(3)': { animationDelay: '0.24s' },
+            '@keyframes cfi-ellipsis-wave': {
+              '0%, 60%, 100%': { transform: 'translateY(0)' },
+              '30%': { transform: 'translateY(-2px)' },
+            },
           })
         }}
       >
@@ -172,6 +190,7 @@ function ChatFlowItem({
         {shouldShowCollapsed ? (
           <ContentPreviewTooltip content={item.content || ''} type="thought">
             <Box
+              className="cfi-dimmable"
               sx={{
                 fontSize: '1.1rem',
                 lineHeight: '1.5',
@@ -179,7 +198,9 @@ function ChatFlowItem({
                 cursor: 'help',
                 display: 'flex',
                 alignItems: 'center',
-                height: '1.5rem'
+                height: '1.5rem',
+                opacity: collapsedLeadingIconOpacity,
+                transition: 'opacity 0.2s ease'
               }}
             >
               💭
@@ -187,13 +208,16 @@ function ChatFlowItem({
           </ContentPreviewTooltip>
         ) : (
           <Box
+            className="cfi-dimmable"
             sx={{
               fontSize: '1.1rem',
               lineHeight: '1.5',
               flexShrink: 0,
               display: 'flex',
               alignItems: 'center',
-              height: '1.5rem'
+              height: '1.5rem',
+              opacity: collapsedLeadingIconOpacity,
+              transition: 'opacity 0.2s ease'
             }}
           >
             💭
@@ -201,7 +225,7 @@ function ChatFlowItem({
         )}
         
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          {/* Header - always visible, changes ">" when collapsed, "^" when expanded */}
+          {/* Header - Option 3: Rotating Chevron (grey) */}
           <Box 
             sx={{ 
               display: 'flex',
@@ -220,19 +244,37 @@ function ChatFlowItem({
             onClick={onToggleAutoCollapse}
           >
             <Typography
+              className="cfi-dimmable"
               variant="caption"
               sx={{
                 fontWeight: 700,
-                textTransform: 'uppercase',
+                textTransform: 'none',
                 letterSpacing: 0.5,
                 fontSize: '0.75rem',
-                color: 'info.main'
+                color: 'info.main',
+                opacity: collapsedHeaderOpacity,
+                transition: 'opacity 0.2s ease'
               }}
             >
-              THOUGHT {shouldShowCollapsed ? '>' : '^'}
+              {interactionDurationLabel ? `Thought for ${interactionDurationLabel}` : 'Thought'}
             </Typography>
-            {shouldShowCollapsed && (
-              <ExpandMore fontSize="small" sx={{ ml: 'auto', opacity: 0.6 }} />
+            {onToggleAutoCollapse && shouldShowCollapsed && (
+              <Typography
+                className="cfi-ellipsis"
+                component="span"
+                sx={{
+                  color: 'info.main',
+                  opacity: collapsedHeaderOpacity,
+                  transition: 'opacity 0.2s ease',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  lineHeight: 1
+                }}
+              >
+                <Box component="span" className="cfi-ellipsis-dot">.</Box>
+                <Box component="span" className="cfi-ellipsis-dot">.</Box>
+                <Box component="span" className="cfi-ellipsis-dot">.</Box>
+              </Typography>
             )}
           </Box>
           
@@ -279,7 +321,6 @@ function ChatFlowItem({
                     }
                   }}
                 >
-                  <ExpandLess fontSize="small" />
                   <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
                     Collapse
                   </Typography>
@@ -295,6 +336,10 @@ function ChatFlowItem({
   // Render native thinking (Gemini 3.0+ native thinking mode)
   if (item.type === 'native_thinking') {
     const hasMarkdown = hasMarkdownSyntax(item.content || '');
+    const interactionDurationLabel =
+      item.interaction_duration_ms != null && item.interaction_duration_ms > 0
+        ? formatDurationMs(item.interaction_duration_ms)
+        : null;
     
     return (
       <Box 
@@ -311,6 +356,16 @@ function ChatFlowItem({
               '50%': { opacity: 0.3 },
               '100%': { opacity: 1 },
             },
+            // Remove dimming on hover (restore visual emphasis)
+            '&:hover .cfi-dimmable': { opacity: 1 },
+            '&:hover .cfi-ellipsis': { opacity: 1 },
+            '&:hover .cfi-ellipsis-dot': { animation: 'cfi-ellipsis-wave 0.9s ease-in-out infinite' },
+            '&:hover .cfi-ellipsis-dot:nth-of-type(2)': { animationDelay: '0.12s' },
+            '&:hover .cfi-ellipsis-dot:nth-of-type(3)': { animationDelay: '0.24s' },
+            '@keyframes cfi-ellipsis-wave': {
+              '0%, 60%, 100%': { transform: 'translateY(0)' },
+              '30%': { transform: 'translateY(-2px)' },
+            },
           })
         }}
       >
@@ -318,6 +373,7 @@ function ChatFlowItem({
         {shouldShowCollapsed ? (
           <ContentPreviewTooltip content={item.content || ''} type="native_thinking">
             <Box
+              className="cfi-dimmable"
               sx={{
                 fontSize: '1.1rem',
                 lineHeight: '1.5',
@@ -325,29 +381,34 @@ function ChatFlowItem({
                 cursor: 'help',
                 display: 'flex',
                 alignItems: 'center',
-                height: '1.5rem'
+                height: '1.5rem',
+                opacity: collapsedLeadingIconOpacity,
+                transition: 'opacity 0.2s ease'
               }}
             >
-              🧠
+              💭
             </Box>
           </ContentPreviewTooltip>
         ) : (
           <Box
+            className="cfi-dimmable"
             sx={{
               fontSize: '1.1rem',
               lineHeight: '1.5',
               flexShrink: 0,
               display: 'flex',
               alignItems: 'center',
-              height: '1.5rem'
+              height: '1.5rem',
+              opacity: collapsedLeadingIconOpacity,
+              transition: 'opacity 0.2s ease'
             }}
           >
-            🧠
+            💭
           </Box>
         )}
         
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          {/* Header - always visible, changes ">" when collapsed, "^" when expanded */}
+          {/* Header - Option 3: Rotating Chevron (grey) */}
           <Box 
             sx={{ 
               display: 'flex',
@@ -366,19 +427,37 @@ function ChatFlowItem({
             onClick={onToggleAutoCollapse}
           >
             <Typography
+              className="cfi-dimmable"
               variant="caption"
               sx={{
                 fontWeight: 700,
-                textTransform: 'uppercase',
+                textTransform: 'none',
                 letterSpacing: 0.5,
                 fontSize: '0.75rem',
-                color: 'info.main'
+                color: 'info.main',
+                opacity: collapsedHeaderOpacity,
+                transition: 'opacity 0.2s ease'
               }}
             >
-              THINKING {shouldShowCollapsed ? '>' : '^'}
+              {interactionDurationLabel ? `Thought for ${interactionDurationLabel}` : 'Thought'}
             </Typography>
-            {shouldShowCollapsed && (
-              <ExpandMore fontSize="small" sx={{ ml: 'auto', opacity: 0.6 }} />
+            {onToggleAutoCollapse && shouldShowCollapsed && (
+              <Typography
+                className="cfi-ellipsis"
+                component="span"
+                sx={{
+                  color: 'info.main',
+                  opacity: collapsedHeaderOpacity,
+                  transition: 'opacity 0.2s ease',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  lineHeight: 1
+                }}
+              >
+                <Box component="span" className="cfi-ellipsis-dot">.</Box>
+                <Box component="span" className="cfi-ellipsis-dot">.</Box>
+                <Box component="span" className="cfi-ellipsis-dot">.</Box>
+              </Typography>
             )}
           </Box>
           
@@ -433,7 +512,9 @@ function ChatFlowItem({
                     }
                   }}
                 >
-                  <ExpandLess fontSize="small" />
+                  <Typography component="span" sx={{ fontSize: '0.9rem', lineHeight: 1, color: 'text.secondary' }}>
+                    ...
+                  </Typography>
                   <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
                     Collapse
                   </Typography>
@@ -464,6 +545,16 @@ function ChatFlowItem({
               '50%': { opacity: 0.3 },
               '100%': { opacity: 1 },
             },
+            // Remove dimming on hover (restore visual emphasis)
+            '&:hover .cfi-dimmable': { opacity: 1 },
+            '&:hover .cfi-ellipsis': { opacity: 1 },
+            '&:hover .cfi-ellipsis-dot': { animation: 'cfi-ellipsis-wave 0.9s ease-in-out infinite' },
+            '&:hover .cfi-ellipsis-dot:nth-of-type(2)': { animationDelay: '0.12s' },
+            '&:hover .cfi-ellipsis-dot:nth-of-type(3)': { animationDelay: '0.24s' },
+            '@keyframes cfi-ellipsis-wave': {
+              '0%, 60%, 100%': { transform: 'translateY(0)' },
+              '30%': { transform: 'translateY(-2px)' },
+            },
           })
         }}
       >
@@ -471,6 +562,7 @@ function ChatFlowItem({
         {shouldShowCollapsed ? (
           <ContentPreviewTooltip content={item.content || ''} type="final_answer">
             <Box
+              className="cfi-dimmable"
               sx={{
                 fontSize: '1.1rem',
                 lineHeight: '1.5',
@@ -478,7 +570,9 @@ function ChatFlowItem({
                 cursor: 'help',
                 display: 'flex',
                 alignItems: 'center',
-                height: '1.5rem'
+                height: '1.5rem',
+                opacity: collapsedLeadingIconOpacity,
+                transition: 'opacity 0.2s ease'
               }}
             >
               🎯
@@ -486,13 +580,16 @@ function ChatFlowItem({
           </ContentPreviewTooltip>
         ) : (
           <Box
+            className="cfi-dimmable"
             sx={{
               fontSize: '1.1rem',
               lineHeight: '1.5',
               flexShrink: 0,
               display: 'flex',
               alignItems: 'center',
-              height: '1.5rem'
+              height: '1.5rem',
+              opacity: collapsedLeadingIconOpacity,
+              transition: 'opacity 0.2s ease'
             }}
           >
             🎯
@@ -500,7 +597,7 @@ function ChatFlowItem({
         )}
         
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          {/* Header - always visible, changes ">" when collapsed, "^" when expanded */}
+          {/* Header - Option 3: Rotating Chevron (grey) */}
           <Box 
             sx={{ 
               display: 'flex',
@@ -519,19 +616,37 @@ function ChatFlowItem({
             onClick={onToggleAutoCollapse}
           >
             <Typography
+              className="cfi-dimmable"
               variant="caption"
               sx={{
                 fontWeight: 700,
                 textTransform: 'uppercase',
                 letterSpacing: 0.5,
                 fontSize: '0.75rem',
-                color: '#2e7d32'
+                color: '#2e7d32',
+                opacity: collapsedHeaderOpacity,
+                transition: 'opacity 0.2s ease'
               }}
             >
-              FINAL ANSWER {shouldShowCollapsed ? '>' : '^'}
+              FINAL ANSWER
             </Typography>
-            {shouldShowCollapsed && (
-              <ExpandMore fontSize="small" sx={{ ml: 'auto', opacity: 0.6 }} />
+            {onToggleAutoCollapse && shouldShowCollapsed && (
+              <Typography
+                className="cfi-ellipsis"
+                component="span"
+                sx={{
+                  color: '#2e7d32',
+                  opacity: collapsedHeaderOpacity,
+                  transition: 'opacity 0.2s ease',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  lineHeight: 1
+                }}
+              >
+                <Box component="span" className="cfi-ellipsis-dot">.</Box>
+                <Box component="span" className="cfi-ellipsis-dot">.</Box>
+                <Box component="span" className="cfi-ellipsis-dot">.</Box>
+              </Typography>
             )}
           </Box>
           
@@ -562,7 +677,6 @@ function ChatFlowItem({
                     }
                   }}
                 >
-                  <ExpandLess fontSize="small" />
                   <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
                     Collapse
                   </Typography>
@@ -677,6 +791,16 @@ function ChatFlowItem({
               '50%': { opacity: 0.3 },
               '100%': { opacity: 1 },
             },
+            // Remove dimming on hover (restore visual emphasis)
+            '&:hover .cfi-dimmable': { opacity: 1 },
+            '&:hover .cfi-ellipsis': { opacity: 1 },
+            '&:hover .cfi-ellipsis-dot': { animation: 'cfi-ellipsis-wave 0.9s ease-in-out infinite' },
+            '&:hover .cfi-ellipsis-dot:nth-of-type(2)': { animationDelay: '0.12s' },
+            '&:hover .cfi-ellipsis-dot:nth-of-type(3)': { animationDelay: '0.24s' },
+            '@keyframes cfi-ellipsis-wave': {
+              '0%, 60%, 100%': { transform: 'translateY(0)' },
+              '30%': { transform: 'translateY(-2px)' },
+            },
           })
         }}
       >
@@ -684,6 +808,7 @@ function ChatFlowItem({
         {shouldShowCollapsed ? (
           <ContentPreviewTooltip content={item.content || ''} type="summarization">
             <Box
+              className="cfi-dimmable"
               sx={{
                 fontSize: '1.1rem',
                 lineHeight: '1.5',
@@ -691,7 +816,9 @@ function ChatFlowItem({
                 cursor: 'help',
                 display: 'flex',
                 alignItems: 'center',
-                height: '1.5rem'
+                height: '1.5rem',
+                opacity: collapsedLeadingIconOpacity,
+                transition: 'opacity 0.2s ease'
               }}
             >
               📋
@@ -699,13 +826,16 @@ function ChatFlowItem({
           </ContentPreviewTooltip>
         ) : (
           <Box
+            className="cfi-dimmable"
             sx={{
               fontSize: '1.1rem',
               lineHeight: '1.5',
               flexShrink: 0,
               display: 'flex',
               alignItems: 'center',
-              height: '1.5rem'
+              height: '1.5rem',
+              opacity: collapsedLeadingIconOpacity,
+              transition: 'opacity 0.2s ease'
             }}
           >
             📋
@@ -713,7 +843,7 @@ function ChatFlowItem({
         )}
         
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          {/* Header - always visible, changes ">" when collapsed, "^" when expanded */}
+          {/* Header - Option 3: Rotating Chevron (grey) */}
           <Box 
             sx={{ 
               display: 'flex',
@@ -732,19 +862,37 @@ function ChatFlowItem({
             onClick={onToggleAutoCollapse}
           >
             <Typography
+              className="cfi-dimmable"
               variant="caption"
               sx={{
                 fontWeight: 700,
                 textTransform: 'uppercase',
                 letterSpacing: 0.5,
                 fontSize: '0.75rem',
-                color: 'rgba(237, 108, 2, 0.9)'
+                color: 'rgba(237, 108, 2, 0.9)',
+                opacity: collapsedHeaderOpacity,
+                transition: 'opacity 0.2s ease'
               }}
             >
-              TOOL RESULT SUMMARY {shouldShowCollapsed ? '>' : '^'}
+              TOOL RESULT SUMMARY
             </Typography>
-            {shouldShowCollapsed && (
-              <ExpandMore fontSize="small" sx={{ ml: 'auto', opacity: 0.6 }} />
+            {onToggleAutoCollapse && shouldShowCollapsed && (
+              <Typography
+                className="cfi-ellipsis"
+                component="span"
+                sx={{
+                  color: 'rgba(237, 108, 2, 0.9)',
+                  opacity: collapsedHeaderOpacity,
+                  transition: 'opacity 0.2s ease',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  lineHeight: 1
+                }}
+              >
+                <Box component="span" className="cfi-ellipsis-dot">.</Box>
+                <Box component="span" className="cfi-ellipsis-dot">.</Box>
+                <Box component="span" className="cfi-ellipsis-dot">.</Box>
+              </Typography>
             )}
           </Box>
           
@@ -804,7 +952,6 @@ function ChatFlowItem({
                     }
                   }}
                 >
-                  <ExpandLess fontSize="small" />
                   <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
                     Collapse
                   </Typography>
