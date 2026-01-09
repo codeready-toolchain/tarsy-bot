@@ -302,6 +302,11 @@ function ConversationTimeline({
     setProcessedChatFlowKeys(new Set());
   }, [session.session_id]);
   
+  // Create a stable representation of chatFlow item identities for dependency tracking
+  const chatFlowItemKeys = useMemo(() => {
+    return chatFlow.map(item => generateItemKey(item)).join('|');
+  }, [chatFlow]);
+  
   // Auto-collapse NEW collapsible items as they appear in chatFlow (for active sessions)
   // For completed sessions, collapse all items at once on first load
   useEffect(() => {
@@ -344,7 +349,7 @@ function ConversationTimeline({
       setAutoCollapsedItems(prev => new Set([...prev, ...newItemsToCollapse]));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.session_id, session.status, chatFlow.length]);
+  }, [session.session_id, session.status, chatFlowItemKeys]);
   
   // Auto-collapse synthesis stage when session is completed
   useEffect(() => {

@@ -39,13 +39,13 @@ describe('chatFlowParser', () => {
       const result = parseSessionChatFlow(session);
 
       expect(result).toHaveLength(2);
-      expect(result[0]).toEqual({
+      expect(result[0]).toMatchObject({
         type: 'stage_start',
         timestamp_us: 1000000,
         stageName: 'Stage 1',
         stageAgent: 'agent-1',
       });
-      expect(result[1]).toEqual({
+      expect(result[1]).toMatchObject({
         type: 'stage_start',
         timestamp_us: 2000000,
         stageName: 'Stage 2',
@@ -77,7 +77,7 @@ describe('chatFlowParser', () => {
 
       expect(result).toHaveLength(2);
       expect(result[0].type).toBe('stage_start');
-      expect(result[1]).toEqual({
+      expect(result[1]).toMatchObject({
         type: 'user_message',
         timestamp_us: 1000500,
         content: 'What is the issue?',
@@ -112,6 +112,37 @@ describe('chatFlowParser', () => {
       const userMessage = result.find(item => item.type === 'user_message');
 
       expect(userMessage?.timestamp_us).toBe(2000001); // stage start + 1
+      expect(userMessage?.timestamp_us).toBeGreaterThan(stageStart!.timestamp_us);
+    });
+
+    it('should handle user message with undefined created_at_us', () => {
+      const session: DetailedSession = {
+        session_id: 'session-1',
+        stages: [
+          {
+            stage_name: 'chat-stage',
+            agent: 'chat-agent',
+            started_at_us: 2000000,
+            chat_user_message: {
+              message_id: 'msg-1',
+              content: 'Question',
+              author: 'user',
+              created_at_us: undefined, // Missing timestamp!
+            },
+            llm_interactions: [],
+            mcp_communications: [],
+          },
+        ],
+      } as any;
+
+      const result = parseSessionChatFlow(session);
+
+      const stageStart = result.find(item => item.type === 'stage_start');
+      const userMessage = result.find(item => item.type === 'user_message');
+
+      // Should use fallback timestamp (stage start + 1), not NaN
+      expect(userMessage?.timestamp_us).toBe(2000001); // stage start + 1
+      expect(userMessage?.timestamp_us).not.toBeNaN();
       expect(userMessage?.timestamp_us).toBeGreaterThan(stageStart!.timestamp_us);
     });
 

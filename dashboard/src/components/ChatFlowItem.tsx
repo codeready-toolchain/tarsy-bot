@@ -26,7 +26,7 @@ interface ChatFlowItemProps {
   onToggleAutoCollapse?: () => void;
   expandAll?: boolean;
   // Whether this item type is collapsible at all (determines if clickable)
-  isCollapsible?: boolean; // eslint-disable-line @typescript-eslint/no-unused-vars
+  isCollapsible?: boolean;
 }
 
 /**
@@ -40,12 +40,15 @@ function ChatFlowItem({
   onToggleCollapse,
   isAutoCollapsed = false,
   onToggleAutoCollapse,
-  expandAll = false
+  expandAll = false,
+  isCollapsible = true
 }: ChatFlowItemProps) {
   // Determine if we should show collapsed state (header only)
-  const shouldShowCollapsed = isAutoCollapsed && !expandAll;
+  // Only collapse if the item is actually collapsible
+  const shouldShowCollapsed = isCollapsible && isAutoCollapsed && !expandAll;
 
   // Auto-collapsed visual dimming (header + leading icon)
+  // Only apply dimming when item is collapsible and should be collapsed
   const collapsedHeaderOpacity = shouldShowCollapsed ? 0.65 : 1;
   const collapsedLeadingIconOpacity = shouldShowCollapsed ? 0.6 : 1;
   
@@ -187,7 +190,7 @@ function ChatFlowItem({
             headerTextTransform="none"
             shouldShowCollapsed={shouldShowCollapsed}
             collapsedHeaderOpacity={collapsedHeaderOpacity}
-            onToggle={onToggleAutoCollapse}
+            onToggle={isCollapsible && onToggleAutoCollapse ? onToggleAutoCollapse : undefined}
           />
           
           {/* Collapsible content */}
@@ -217,7 +220,7 @@ function ChatFlowItem({
                   {item.content}
                 </Typography>
               )}
-              {onToggleAutoCollapse && <CollapseButton onClick={onToggleAutoCollapse} />}
+              {isCollapsible && onToggleAutoCollapse && <CollapseButton onClick={onToggleAutoCollapse} />}
             </Box>
           </Collapse>
         </Box>
@@ -259,7 +262,7 @@ function ChatFlowItem({
             headerTextTransform="none"
             shouldShowCollapsed={shouldShowCollapsed}
             collapsedHeaderOpacity={collapsedHeaderOpacity}
-            onToggle={onToggleAutoCollapse}
+            onToggle={isCollapsible && onToggleAutoCollapse ? onToggleAutoCollapse : undefined}
           />
           
           {/* Collapsible content */}
@@ -297,7 +300,7 @@ function ChatFlowItem({
                   {item.content}
                 </Typography>
               )}
-              {onToggleAutoCollapse && <CollapseButton onClick={onToggleAutoCollapse} />}
+              {isCollapsible && onToggleAutoCollapse && <CollapseButton onClick={onToggleAutoCollapse} />}
             </Box>
           </Collapse>
         </Box>
@@ -334,7 +337,7 @@ function ChatFlowItem({
             headerTextTransform="uppercase"
             shouldShowCollapsed={shouldShowCollapsed}
             collapsedHeaderOpacity={collapsedHeaderOpacity}
-            onToggle={onToggleAutoCollapse}
+            onToggle={isCollapsible && onToggleAutoCollapse ? onToggleAutoCollapse : undefined}
           />
           
           {/* Collapsible content */}
@@ -369,7 +372,7 @@ function ChatFlowItem({
               >
                 {item.content || ''}
               </ReactMarkdown>
-              {onToggleAutoCollapse && <CollapseButton onClick={onToggleAutoCollapse} />}
+              {isCollapsible && onToggleAutoCollapse && <CollapseButton onClick={onToggleAutoCollapse} />}
             </Box>
           </Collapse>
         </Box>
@@ -490,7 +493,7 @@ function ChatFlowItem({
             headerTextTransform="uppercase"
             shouldShowCollapsed={shouldShowCollapsed}
             collapsedHeaderOpacity={collapsedHeaderOpacity}
-            onToggle={onToggleAutoCollapse}
+            onToggle={isCollapsible && onToggleAutoCollapse ? onToggleAutoCollapse : undefined}
           />
           
           {/* Collapsible content */}
@@ -533,7 +536,7 @@ function ChatFlowItem({
                   </Typography>
                 )}
               </Box>
-              {onToggleAutoCollapse && <CollapseButton onClick={onToggleAutoCollapse} />}
+              {isCollapsible && onToggleAutoCollapse && <CollapseButton onClick={onToggleAutoCollapse} />}
             </Box>
           </Collapse>
         </Box>

@@ -68,8 +68,9 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
     // Add user message if this is a chat stage (Option 4: separate item with badge)
     // Ensure user message timestamp is at least equal to stage_start to keep it within the stage
     if (stage.chat_user_message) {
+      const createdAtUs = stage.chat_user_message.created_at_us ?? stageStartTimestamp + 1;
       const userMessageTimestamp = Math.max(
-        stage.chat_user_message.created_at_us,
+        createdAtUs,
         stageStartTimestamp + 1 // +1 to ensure it appears after stage_start marker
       );
       
