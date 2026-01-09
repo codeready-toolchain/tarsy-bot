@@ -1,6 +1,6 @@
 /**
  * ContentPreviewTooltip Component
- * Displays full content in a tooltip when hovering over truncated text
+ * Displays full content in a tooltip when hovering over collapsed items
  * Supports markdown rendering for different content types
  */
 
@@ -21,10 +21,10 @@ interface ContentPreviewTooltipProps {
 }
 
 /**
- * Wraps truncated content with hover tooltip showing full content
+ * Wraps collapsed content with hover tooltip showing full content
  * Features:
  * - 300ms enter delay to avoid accidental triggers
- * - Max width 600px, max height 400px with scroll
+ * - Max width 800px, max height 600px with scroll
  * - Renders full markdown using appropriate components
  * - Positioned top-start to avoid cursor interference
  */
@@ -68,12 +68,14 @@ export default function ContentPreviewTooltip({
       }
       enterDelay={300}
       placement="top-start"
-      PopperProps={{
-        sx: {
-          '& .MuiTooltip-tooltip': {
-            bgcolor: 'transparent',
-            maxWidth: 'none',
-            p: 0
+      slotProps={{
+        popper: {
+          sx: {
+            '& .MuiTooltip-tooltip': {
+              bgcolor: 'transparent',
+              maxWidth: 'none',
+              p: 0
+            }
           }
         }
       }}
