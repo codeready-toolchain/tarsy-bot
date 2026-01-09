@@ -8,6 +8,7 @@ import { parseNativeToolsUsage } from './nativeToolsParser';
 import type { NativeToolsUsage } from '../types';
 import { LLM_INTERACTION_TYPES } from '../constants/llmInteractionTypes';
 import { CHAT_FLOW_ITEM_TYPES, type ChatFlowItemType } from '../constants/chatFlowItemTypes';
+import { isNativeThinkingStrategy } from '../constants/iterationStrategies';
 
 export interface ChatFlowItemData {
   type: ChatFlowItemType;
@@ -97,6 +98,10 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
     for (const execution of executionsToProcess) {
       const executionId = execution.execution_id;
       const executionAgent = execution.agent;
+      // Get the iteration strategy to distinguish native thinking from ReAct
+      const iterationStrategy = (execution as any).iteration_strategy;
+      const isNativeThinking = isNativeThinkingStrategy(iterationStrategy);
+      
     // Process LLM interactions
       const llmInteractions = (execution.llm_interactions || [])
       .sort((a, b) => a.timestamp_us - b.timestamp_us);
@@ -155,10 +160,10 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
           interaction_duration_ms: interaction.duration_ms ?? null,
           llm_interaction_id: llmInteractionId
         });
-      } else if (interactionType === LLM_INTERACTION_TYPES.INVESTIGATION) {
-        // For Investigation iterations, extract intermediate response from the last assistant message
+      } else if (interactionType === LLM_INTERACTION_TYPES.INVESTIGATION && isNativeThinking) {
+        // For native thinking investigation iterations, extract intermediate response from the last assistant message
         // IF it's new to this interaction (not inherited from previous iteration)
-        // Note: thinking_content may be null in some iterations
+        // Note: thinking_content may be null in some iterations (empty thinking, only tool calls)
         if (lastAssistantMessage && lastAssistantMessage.content) {
           // Check if this assistant message existed in the previous interaction
           // If it did, it's inherited and we shouldn't extract it again
