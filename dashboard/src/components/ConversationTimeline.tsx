@@ -7,7 +7,8 @@ import {
   Chip,
   Alert,
   alpha,
-  Button
+  Button,
+  Collapse
 } from '@mui/material';
 import { ExpandMore, ExpandLess } from '@mui/icons-material';
 import { parseSessionChatFlow, getChatFlowStats } from '../utils/chatFlowParser';
@@ -304,6 +305,11 @@ function ConversationTimeline({
       
       for (const item of chatFlow) {
         if (collapsibleTypes.includes(item.type)) {
+          // Exception: Don't auto-collapse final answers from chat/follow-up stages
+          if (item.type === 'final_answer' && item.isChatStage) {
+            continue;
+          }
+          
           const key = generateItemKey(item);
           itemsToCollapse.add(key);
         }
@@ -312,6 +318,38 @@ function ConversationTimeline({
       // Only update if there are items to collapse (avoid unnecessary re-renders)
       if (itemsToCollapse.size > 0) {
         setAutoCollapsedItems(itemsToCollapse);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.session_id, session.status, chatFlow.length]);
+  
+  // Auto-collapse synthesis stage when session is completed
+  useEffect(() => {
+    if (!session || !chatFlow.length) return;
+    
+    // Only auto-collapse for terminal (completed/failed/cancelled) sessions
+    if (isTerminalSessionStatus(session.status)) {
+      const stagesToCollapse = new Map<string, boolean>();
+      
+      for (const item of chatFlow) {
+        // Find synthesis stage and mark it for collapse
+        if (item.type === 'stage_start' && item.stageName === 'synthesis' && item.stageId) {
+          stagesToCollapse.set(item.stageId, true);
+        }
+      }
+      
+      // Only update if there are stages to collapse
+      if (stagesToCollapse.size > 0) {
+        setCollapsedStages(prev => {
+          const updated = new Map(prev);
+          stagesToCollapse.forEach((collapsed, stageId) => {
+            // Only set if not already manually toggled by user
+            if (!prev.has(stageId)) {
+              updated.set(stageId, collapsed);
+            }
+          });
+          return updated;
+        });
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1136,9 +1174,9 @@ function ConversationTimeline({
                     />
                   )}
                   
-                  {/* Render stage content if not collapsed */}
-                  {!isCollapsed && (
-                    group.isParallel ? (
+                  {/* Render stage content with collapse animation */}
+                  <Collapse in={!isCollapsed} timeout={400}>
+                    {group.isParallel ? (
                       // Render parallel stage with tabs
                       // Find the stage object to pass for correct execution order
                       (() => {
@@ -1183,8 +1221,8 @@ function ConversationTimeline({
                             <StreamingItemRenderer key={entryKey} item={entryValue} />
                           ))}
                       </>
-                    )
-                  )}
+                    )}
+                  </Collapse>
                   
                   {/* For the last stage, also show any orphaned streaming items */}
                   {isLastGroup && !isCollapsed && streamingItemsByStage.noStage.length > 0 && (

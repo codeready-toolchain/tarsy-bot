@@ -176,12 +176,13 @@ function ChatFlowItem({
             // Remove dimming on hover (restore visual emphasis)
             '&:hover .cfi-dimmable': { opacity: 1 },
             '&:hover .cfi-ellipsis': { opacity: 1 },
-            '&:hover .cfi-ellipsis-dot': { animation: 'cfi-ellipsis-wave 0.9s ease-in-out infinite' },
-            '&:hover .cfi-ellipsis-dot:nth-of-type(2)': { animationDelay: '0.12s' },
-            '&:hover .cfi-ellipsis-dot:nth-of-type(3)': { animationDelay: '0.24s' },
+            '&:hover .cfi-ellipsis-dot': { animation: 'cfi-ellipsis-wave 0.8s ease-in-out' },
+            '&:hover .cfi-ellipsis-dot:nth-of-type(1)': { animationDelay: '0s' },
+            '&:hover .cfi-ellipsis-dot:nth-of-type(2)': { animationDelay: '0.15s' },
+            '&:hover .cfi-ellipsis-dot:nth-of-type(3)': { animationDelay: '0.3s' },
             '@keyframes cfi-ellipsis-wave': {
               '0%, 60%, 100%': { transform: 'translateY(0)' },
-              '30%': { transform: 'translateY(-2px)' },
+              '30%': { transform: 'translateY(-4px)' },
             },
           })
         }}
@@ -230,7 +231,7 @@ function ChatFlowItem({
             sx={{ 
               display: 'flex',
               alignItems: 'center',
-              gap: 1,
+              gap: 0,
               cursor: onToggleAutoCollapse ? 'pointer' : 'default',
               px: shouldShowCollapsed ? 1 : 0,
               py: 0.5,
@@ -268,12 +269,15 @@ function ChatFlowItem({
                   transition: 'opacity 0.2s ease',
                   fontSize: '0.75rem',
                   fontWeight: 700,
-                  lineHeight: 1
+                  lineHeight: 1,
+                  ml: 0.15,
+                  display: 'inline-flex',
+                  gap: 0
                 }}
               >
-                <Box component="span" className="cfi-ellipsis-dot">.</Box>
-                <Box component="span" className="cfi-ellipsis-dot">.</Box>
-                <Box component="span" className="cfi-ellipsis-dot">.</Box>
+                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
+                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
+                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
               </Typography>
             )}
           </Box>
@@ -321,6 +325,7 @@ function ChatFlowItem({
                     }
                   }}
                 >
+                  <ExpandLess fontSize="small" />
                   <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
                     Collapse
                   </Typography>
@@ -359,12 +364,13 @@ function ChatFlowItem({
             // Remove dimming on hover (restore visual emphasis)
             '&:hover .cfi-dimmable': { opacity: 1 },
             '&:hover .cfi-ellipsis': { opacity: 1 },
-            '&:hover .cfi-ellipsis-dot': { animation: 'cfi-ellipsis-wave 0.9s ease-in-out infinite' },
-            '&:hover .cfi-ellipsis-dot:nth-of-type(2)': { animationDelay: '0.12s' },
-            '&:hover .cfi-ellipsis-dot:nth-of-type(3)': { animationDelay: '0.24s' },
+            '&:hover .cfi-ellipsis-dot': { animation: 'cfi-ellipsis-wave 0.8s ease-in-out' },
+            '&:hover .cfi-ellipsis-dot:nth-of-type(1)': { animationDelay: '0s' },
+            '&:hover .cfi-ellipsis-dot:nth-of-type(2)': { animationDelay: '0.15s' },
+            '&:hover .cfi-ellipsis-dot:nth-of-type(3)': { animationDelay: '0.3s' },
             '@keyframes cfi-ellipsis-wave': {
               '0%, 60%, 100%': { transform: 'translateY(0)' },
-              '30%': { transform: 'translateY(-2px)' },
+              '30%': { transform: 'translateY(-4px)' },
             },
           })
         }}
@@ -413,7 +419,7 @@ function ChatFlowItem({
             sx={{ 
               display: 'flex',
               alignItems: 'center',
-              gap: 1,
+              gap: 0,
               cursor: onToggleAutoCollapse ? 'pointer' : 'default',
               px: shouldShowCollapsed ? 1 : 0,
               py: 0.5,
@@ -451,12 +457,15 @@ function ChatFlowItem({
                   transition: 'opacity 0.2s ease',
                   fontSize: '0.75rem',
                   fontWeight: 700,
-                  lineHeight: 1
+                  lineHeight: 1,
+                  ml: 0.15,
+                  display: 'inline-flex',
+                  gap: 0
                 }}
               >
-                <Box component="span" className="cfi-ellipsis-dot">.</Box>
-                <Box component="span" className="cfi-ellipsis-dot">.</Box>
-                <Box component="span" className="cfi-ellipsis-dot">.</Box>
+                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
+                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
+                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
               </Typography>
             )}
           </Box>
@@ -512,9 +521,7 @@ function ChatFlowItem({
                     }
                   }}
                 >
-                  <Typography component="span" sx={{ fontSize: '0.9rem', lineHeight: 1, color: 'text.secondary' }}>
-                    ...
-                  </Typography>
+                  <ExpandLess fontSize="small" />
                   <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
                     Collapse
                   </Typography>
@@ -548,12 +555,13 @@ function ChatFlowItem({
             // Remove dimming on hover (restore visual emphasis)
             '&:hover .cfi-dimmable': { opacity: 1 },
             '&:hover .cfi-ellipsis': { opacity: 1 },
-            '&:hover .cfi-ellipsis-dot': { animation: 'cfi-ellipsis-wave 0.9s ease-in-out infinite' },
-            '&:hover .cfi-ellipsis-dot:nth-of-type(2)': { animationDelay: '0.12s' },
-            '&:hover .cfi-ellipsis-dot:nth-of-type(3)': { animationDelay: '0.24s' },
+            '&:hover .cfi-ellipsis-dot': { animation: 'cfi-ellipsis-wave 0.8s ease-in-out' },
+            '&:hover .cfi-ellipsis-dot:nth-of-type(1)': { animationDelay: '0s' },
+            '&:hover .cfi-ellipsis-dot:nth-of-type(2)': { animationDelay: '0.15s' },
+            '&:hover .cfi-ellipsis-dot:nth-of-type(3)': { animationDelay: '0.3s' },
             '@keyframes cfi-ellipsis-wave': {
               '0%, 60%, 100%': { transform: 'translateY(0)' },
-              '30%': { transform: 'translateY(-2px)' },
+              '30%': { transform: 'translateY(-4px)' },
             },
           })
         }}
@@ -602,7 +610,7 @@ function ChatFlowItem({
             sx={{ 
               display: 'flex',
               alignItems: 'center',
-              gap: 1,
+              gap: 0,
               cursor: onToggleAutoCollapse ? 'pointer' : 'default',
               px: shouldShowCollapsed ? 1 : 0,
               py: 0.5,
@@ -640,12 +648,15 @@ function ChatFlowItem({
                   transition: 'opacity 0.2s ease',
                   fontSize: '0.75rem',
                   fontWeight: 700,
-                  lineHeight: 1
+                  lineHeight: 1,
+                  ml: 0.15,
+                  display: 'inline-flex',
+                  gap: 0
                 }}
               >
-                <Box component="span" className="cfi-ellipsis-dot">.</Box>
-                <Box component="span" className="cfi-ellipsis-dot">.</Box>
-                <Box component="span" className="cfi-ellipsis-dot">.</Box>
+                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
+                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
+                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
               </Typography>
             )}
           </Box>
@@ -677,6 +688,7 @@ function ChatFlowItem({
                     }
                   }}
                 >
+                  <ExpandLess fontSize="small" />
                   <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
                     Collapse
                   </Typography>
@@ -794,12 +806,13 @@ function ChatFlowItem({
             // Remove dimming on hover (restore visual emphasis)
             '&:hover .cfi-dimmable': { opacity: 1 },
             '&:hover .cfi-ellipsis': { opacity: 1 },
-            '&:hover .cfi-ellipsis-dot': { animation: 'cfi-ellipsis-wave 0.9s ease-in-out infinite' },
-            '&:hover .cfi-ellipsis-dot:nth-of-type(2)': { animationDelay: '0.12s' },
-            '&:hover .cfi-ellipsis-dot:nth-of-type(3)': { animationDelay: '0.24s' },
+            '&:hover .cfi-ellipsis-dot': { animation: 'cfi-ellipsis-wave 0.8s ease-in-out' },
+            '&:hover .cfi-ellipsis-dot:nth-of-type(1)': { animationDelay: '0s' },
+            '&:hover .cfi-ellipsis-dot:nth-of-type(2)': { animationDelay: '0.15s' },
+            '&:hover .cfi-ellipsis-dot:nth-of-type(3)': { animationDelay: '0.3s' },
             '@keyframes cfi-ellipsis-wave': {
               '0%, 60%, 100%': { transform: 'translateY(0)' },
-              '30%': { transform: 'translateY(-2px)' },
+              '30%': { transform: 'translateY(-4px)' },
             },
           })
         }}
@@ -848,7 +861,7 @@ function ChatFlowItem({
             sx={{ 
               display: 'flex',
               alignItems: 'center',
-              gap: 1,
+              gap: 0,
               cursor: onToggleAutoCollapse ? 'pointer' : 'default',
               px: shouldShowCollapsed ? 1 : 0,
               py: 0.5,
@@ -886,12 +899,15 @@ function ChatFlowItem({
                   transition: 'opacity 0.2s ease',
                   fontSize: '0.75rem',
                   fontWeight: 700,
-                  lineHeight: 1
+                  lineHeight: 1,
+                  ml: 0.15,
+                  display: 'inline-flex',
+                  gap: 0
                 }}
               >
-                <Box component="span" className="cfi-ellipsis-dot">.</Box>
-                <Box component="span" className="cfi-ellipsis-dot">.</Box>
-                <Box component="span" className="cfi-ellipsis-dot">.</Box>
+                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
+                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
+                <Box component="span" className="cfi-ellipsis-dot" sx={{ display: 'inline-block' }}>.</Box>
               </Typography>
             )}
           </Box>
@@ -952,6 +968,7 @@ function ChatFlowItem({
                     }
                   }}
                 >
+                  <ExpandLess fontSize="small" />
                   <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
                     Collapse
                   </Typography>

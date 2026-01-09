@@ -14,6 +14,7 @@ export interface ChatFlowItemData {
   executionId?: string; // For parallel stages - identifies which parallel execution this item belongs to
   executionAgent?: string; // For parallel stages - the agent name for this execution
   isParallelStage?: boolean; // Indicates if this item is part of a parallel stage
+  isChatStage?: boolean; // Indicates if this item is from a chat/follow-up stage
   content?: string; // For thought/final_answer/summarization/user_message
   stageName?: string; // For stage_start
   stageAgent?: string; // For stage_start
@@ -49,6 +50,9 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
     const stageStartTimestamp = stage.started_at_us || Date.now() * 1000;
     const stageId = stage.execution_id;
     
+    // Determine if this is a chat stage (has user message = follow-up chat)
+    const isChatStage = !!stage.chat_user_message;
+    
     // Add stage start marker (with status and error message for failed stages)
     chatItems.push({
       type: 'stage_start',
@@ -57,7 +61,8 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
       stageName: stage.stage_name,
       stageAgent: stage.agent,
       stageStatus: stage.status,
-      stageErrorMessage: stage.error_message || undefined
+      stageErrorMessage: stage.error_message || undefined,
+      isChatStage
     });
 
     // Add user message if this is a chat stage (Option 4: separate item with badge)
@@ -74,7 +79,8 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
         stageId,
         content: stage.chat_user_message.content,
         author: stage.chat_user_message.author,
-        messageId: stage.chat_user_message.message_id
+        messageId: stage.chat_user_message.message_id,
+        isChatStage
       });
     }
 
@@ -114,6 +120,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
             executionId,
             executionAgent,
             isParallelStage,
+            isChatStage,
           content: thinkingContent,
           interaction_duration_ms: interaction.duration_ms ?? null,
           llm_interaction_id: interaction.id || interaction.event_id // For deduplication
@@ -137,6 +144,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
             executionId,
             executionAgent,
             isParallelStage,
+            isChatStage,
           content: parsed.thought,
           interaction_duration_ms: interaction.duration_ms ?? null,
           llm_interaction_id: llmInteractionId
@@ -151,6 +159,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
               executionId,
               executionAgent,
               isParallelStage,
+              isChatStage,
             content: parsed.thought,
             interaction_duration_ms: interaction.duration_ms ?? null,
             llm_interaction_id: llmInteractionId
@@ -165,6 +174,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
               executionId,
               executionAgent,
               isParallelStage,
+              isChatStage,
             content: parsed.finalAnswer,
             interaction_duration_ms: interaction.duration_ms ?? null,
             llm_interaction_id: llmInteractionId
@@ -181,6 +191,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
               executionId,
               executionAgent,
               isParallelStage,
+              isChatStage,
             content: lastAssistantMessage.content,
             mcp_event_id: (interaction.details as any).mcp_event_id // Link to the tool call being summarized
           });
@@ -206,6 +217,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
               executionId,
               executionAgent,
               isParallelStage,
+              isChatStage,
             nativeToolsUsage: toolsUsage,
             llm_interaction_id: llmInteractionId
           });
@@ -229,6 +241,7 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
           executionId,
           executionAgent,
           isParallelStage,
+          isChatStage,
         toolName: mcp.details.tool_name || 'unknown',
         toolArguments: mcp.details.tool_arguments || {},
         toolResult: mcp.details.tool_result || null,
