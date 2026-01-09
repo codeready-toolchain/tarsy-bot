@@ -75,33 +75,49 @@ const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) 
         >
           💭
         </Typography>
-        <TypewriterText text={item.content || ''} speed={3}>
-          {(displayText) => (
-            hasMarkdown ? (
-              <Box sx={{ flex: 1, minWidth: 0 }}>
-                <ReactMarkdown
-                  components={thoughtMarkdownComponents}
-                  skipHtml
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography
+            variant="caption"
+            sx={{
+              fontWeight: 700,
+              textTransform: 'none',
+              letterSpacing: 0.5,
+              fontSize: '0.75rem',
+              color: 'info.main',
+              display: 'block',
+              mb: 0.5
+            }}
+          >
+            Thinking...
+          </Typography>
+          <TypewriterText text={item.content || ''} speed={3}>
+            {(displayText) => (
+              hasMarkdown ? (
+                <Box>
+                  <ReactMarkdown
+                    components={thoughtMarkdownComponents}
+                    skipHtml
+                  >
+                    {displayText}
+                  </ReactMarkdown>
+                </Box>
+              ) : (
+                <Typography 
+                  variant="body1" 
+                  sx={{ 
+                    whiteSpace: 'pre-wrap', 
+                    wordBreak: 'break-word',
+                    lineHeight: 1.7,
+                    fontSize: '1rem',
+                    color: 'text.primary'
+                  }}
                 >
                   {displayText}
-                </ReactMarkdown>
-              </Box>
-            ) : (
-              <Typography 
-                variant="body1" 
-                sx={{ 
-                  whiteSpace: 'pre-wrap', 
-                  wordBreak: 'break-word',
-                  lineHeight: 1.7,
-                  fontSize: '1rem',
-                  color: 'text.primary'
-                }}
-              >
-                {displayText}
-              </Typography>
-            )
-          )}
-        </TypewriterText>
+                </Typography>
+              )
+            )}
+          </TypewriterText>
+        </Box>
       </Box>
     );
   }
@@ -121,22 +137,22 @@ const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) 
             mt: 0.25
           }}
         >
-          🧠
+          💭
         </Typography>
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography
             variant="caption"
             sx={{
-              fontWeight: 600,
-              textTransform: 'uppercase',
+              fontWeight: 700,
+              textTransform: 'none',
               letterSpacing: 0.5,
-              fontSize: '0.65rem',
+              fontSize: '0.75rem',
               color: 'info.main',
               display: 'block',
               mb: 0.5
             }}
           >
-            Thinking
+            Thinking...
           </Typography>
           <TypewriterText text={item.content || ''} speed={3}>
             {(displayText) => (
@@ -208,7 +224,7 @@ const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) 
               mt: 0.25
             }}
           >
-            Tool Result Summary
+            TOOL RESULT SUMMARY
           </Typography>
         </Box>
         <Box 
@@ -302,7 +318,7 @@ const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) 
               mt: 0.25
             }}
           >
-            Final Answer
+            FINAL ANSWER
           </Typography>
         </Box>
         <Box sx={{ pl: 3.5 }}>
