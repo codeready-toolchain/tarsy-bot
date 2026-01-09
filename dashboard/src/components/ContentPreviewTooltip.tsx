@@ -42,13 +42,23 @@ export default function ContentPreviewTooltip({
     <Tooltip
       title={
         <Paper 
-          elevation={3} 
+          elevation={8} 
           sx={{ 
-            p: 2, 
-            maxWidth: 600, 
-            maxHeight: 400, 
+            p: 3, 
+            maxWidth: 800, 
+            maxHeight: 600, 
             overflow: 'auto',
-            bgcolor: 'background.paper'
+            bgcolor: 'grey.100',
+            color: 'grey.900',
+            border: '2px solid',
+            borderColor: 'primary.main',
+            '& p, & li, & span': {
+              color: 'grey.900'
+            },
+            '& code': {
+              bgcolor: 'grey.200',
+              color: 'primary.dark'
+            }
           }}
         >
           <ReactMarkdown components={markdownComponents}>

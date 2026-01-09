@@ -1,5 +1,5 @@
-import { memo } from 'react';
-import { Box, Typography, Divider, Chip, alpha, IconButton, Alert } from '@mui/material';
+import { memo, useRef, useEffect, useState } from 'react';
+import { Box, Typography, Divider, Chip, alpha, IconButton, Alert, Collapse } from '@mui/material';
 import { Flag, AccountCircle, ExpandMore, ExpandLess } from '@mui/icons-material';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
@@ -11,7 +11,6 @@ import {
   finalAnswerMarkdownComponents, 
   thoughtMarkdownComponents 
 } from '../utils/markdownComponents';
-import { truncateText } from '../utils/textTruncation';
 import ContentPreviewTooltip from './ContentPreviewTooltip';
 
 interface ChatFlowItemProps {
@@ -148,24 +147,92 @@ function ChatFlowItem({
   if (item.type === 'thought') {
     const hasMarkdown = hasMarkdownSyntax(item.content || '');
     const shouldCollapse = isAutoCollapsed && !expandAll;
-    const truncation = truncateText(item.content || ''); // Always calculate to check if truncatable
-    const displayContent = shouldCollapse ? truncation.truncated : item.content;
-    // Only clickable if content is actually long enough to truncate
-    const isClickable = isCollapsible && !expandAll && truncation.isTruncated;
+    const contentRef = useRef<HTMLDivElement>(null);
+    const [isTruncated, setIsTruncated] = useState(false);
+    const [wasTruncated, setWasTruncated] = useState(false);
+    const [isAutoCollapsing, setIsAutoCollapsing] = useState(false);
+    const prevShouldCollapseRef = useRef(shouldCollapse);
+    const manualInteractionRef = useRef(false);
     
-    const contentElement = (
+    // Detect auto-collapse (streaming → DB transition)
+    useEffect(() => {
+      const wasExpanded = !prevShouldCollapseRef.current;
+      const isNowCollapsed = shouldCollapse;
+      
+      if (wasExpanded && isNowCollapsed && !manualInteractionRef.current) {
+        // This is an auto-collapse (not manual) - trigger fade animation
+        setIsAutoCollapsing(true);
+        const timer = setTimeout(() => setIsAutoCollapsing(false), 600);
+        return () => clearTimeout(timer);
+      }
+      
+      // Reset manual interaction flag after processing
+      manualInteractionRef.current = false;
+      prevShouldCollapseRef.current = shouldCollapse;
+    }, [shouldCollapse]);
+    
+    // Detect if content is visually truncated
+    useEffect(() => {
+      if (shouldCollapse && contentRef.current) {
+        // Small delay to ensure DOM is ready
+        const timer = setTimeout(() => {
+          if (contentRef.current) {
+            // Check if scrollHeight > clientHeight (means content is clamped)
+            const truncated = contentRef.current.scrollHeight > contentRef.current.clientHeight;
+            setIsTruncated(truncated);
+            if (truncated) {
+              setWasTruncated(true); // Remember that it was truncated
+            }
+          }
+        }, 10);
+        return () => clearTimeout(timer);
+      } else {
+        setIsTruncated(false);
+      }
+    }, [shouldCollapse, item.content]);
+    
+    // Show collapse button if currently collapsed and truncated, OR if expanded but was previously truncated
+    const isClickable = isCollapsible && !expandAll && (isTruncated || (!shouldCollapse && wasTruncated));
+    
+    // Wrap toggle handler to prevent fade animation on manual interaction
+    const handleToggle = () => {
+      manualInteractionRef.current = true; // Mark as manual interaction
+      setIsAutoCollapsing(false); // Stop any ongoing fade animation
+      if (onToggleAutoCollapse) {
+        onToggleAutoCollapse();
+      }
+    };
+    
+    return (
       <Box sx={{ mb: 1.5, display: 'flex', gap: 1.5 }}>
-        <Typography
-          variant="body2"
-          sx={{
-            fontSize: '1.1rem',
-            lineHeight: 1,
-            flexShrink: 0,
-            mt: 0.25
-          }}
-        >
-          💭
-        </Typography>
+        {shouldCollapse && isTruncated ? (
+          <ContentPreviewTooltip content={item.content || ''} type="thought">
+            <Typography
+              variant="body2"
+              sx={{
+                fontSize: '1.1rem',
+                lineHeight: 1,
+                flexShrink: 0,
+                mt: 0.25,
+                cursor: 'help'
+              }}
+            >
+              💭
+            </Typography>
+          </ContentPreviewTooltip>
+        ) : (
+          <Typography
+            variant="body2"
+            sx={{
+              fontSize: '1.1rem',
+              lineHeight: 1,
+              flexShrink: 0,
+              mt: 0.25
+            }}
+          >
+            💭
+          </Typography>
+        )}
         <Box
           sx={{
             flex: 1,
@@ -174,60 +241,75 @@ function ChatFlowItem({
             transition: 'background-color 0.2s ease',
             borderRadius: 1,
             px: isClickable ? 1 : 0,
-            '&:hover': isClickable ? { bgcolor: 'action.hover' } : {}
+            '&:hover': isClickable ? { bgcolor: 'action.hover' } : {},
+            // Auto-collapse fade animation
+            ...(isAutoCollapsing && {
+              animation: 'fadeCollapse 0.6s ease-out',
+              '@keyframes fadeCollapse': {
+                '0%': { opacity: 1 },
+                '50%': { opacity: 0.3 },
+                '100%': { opacity: 1 }
+              }
+            })
           }}
-          onClick={isClickable ? onToggleAutoCollapse : undefined}
+          onClick={isClickable ? handleToggle : undefined}
         >
-          {hasMarkdown ? (
-            <ReactMarkdown
-              components={thoughtMarkdownComponents}
-              remarkPlugins={[remarkBreaks]}
-              skipHtml
-            >
-              {displayContent}
-            </ReactMarkdown>
-          ) : (
-            <Typography
-              variant="body1"
+          {/* Always use Collapse component to avoid blink during state transition */}
+          <Collapse in={!shouldCollapse} timeout={300} collapsedSize="3.4rem">
+            <Box
+              ref={contentRef}
               sx={{
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                lineHeight: 1.7,
-                fontSize: '1rem',
-                color: 'text.primary'
+                // When collapsed, show only 2 lines
+                ...(shouldCollapse && {
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden'
+                })
               }}
             >
-              {displayContent}
-            </Typography>
-          )}
+              {hasMarkdown ? (
+                <ReactMarkdown
+                  components={thoughtMarkdownComponents}
+                  remarkPlugins={[remarkBreaks]}
+                  skipHtml
+                >
+                  {item.content}
+                </ReactMarkdown>
+              ) : (
+                <Typography
+                  variant="body1"
+                  sx={{
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    lineHeight: 1.7,
+                    fontSize: '1rem',
+                    color: 'text.primary'
+                  }}
+                >
+                  {item.content}
+                </Typography>
+              )}
+            </Box>
+          </Collapse>
+          
           {isClickable && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5, opacity: 0.6 }}>
               {shouldCollapse ? (
                 <>
                   <ExpandMore fontSize="small" />
                   <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
-                    Click to expand
+                    See more
                   </Typography>
                 </>
               ) : (
-                <>
-                  <ExpandLess fontSize="small" />
-                  <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
-                    Click to collapse
-                  </Typography>
-                </>
+                <ExpandLess fontSize="small" />
               )}
             </Box>
           )}
         </Box>
       </Box>
     );
-    
-    return shouldCollapse && truncation.isTruncated ? (
-      <ContentPreviewTooltip content={item.content || ''} type="thought">
-        {contentElement}
-      </ContentPreviewTooltip>
-    ) : contentElement;
   }
 
   // Render native thinking (Gemini 3.0+ native thinking mode)
@@ -235,23 +317,81 @@ function ChatFlowItem({
   if (item.type === 'native_thinking') {
     const hasMarkdown = hasMarkdownSyntax(item.content || '');
     const shouldCollapse = isAutoCollapsed && !expandAll;
-    const truncation = truncateText(item.content || '');
-    const displayContent = shouldCollapse ? truncation.truncated : item.content;
-    const isClickable = isCollapsible && !expandAll && truncation.isTruncated;
+    const contentRef = useRef<HTMLDivElement>(null);
+    const [isTruncated, setIsTruncated] = useState(false);
+    const [wasTruncated, setWasTruncated] = useState(false);
+    const [isAutoCollapsing, setIsAutoCollapsing] = useState(false);
+    const prevShouldCollapseRef = useRef(shouldCollapse);
+    const manualInteractionRef = useRef(false);
     
-    const contentElement = (
+    // Detect auto-collapse (streaming → DB transition)
+    useEffect(() => {
+      const wasExpanded = !prevShouldCollapseRef.current;
+      const isNowCollapsed = shouldCollapse;
+      
+      if (wasExpanded && isNowCollapsed && !manualInteractionRef.current) {
+        setIsAutoCollapsing(true);
+        const timer = setTimeout(() => setIsAutoCollapsing(false), 600);
+        return () => clearTimeout(timer);
+      }
+      
+      manualInteractionRef.current = false;
+      prevShouldCollapseRef.current = shouldCollapse;
+    }, [shouldCollapse]);
+    
+    // Detect if content is visually truncated
+    useEffect(() => {
+      if (shouldCollapse && contentRef.current) {
+        const truncated = contentRef.current.scrollHeight > contentRef.current.clientHeight;
+        setIsTruncated(truncated);
+        if (truncated) {
+          setWasTruncated(true);
+        }
+      } else {
+        setIsTruncated(false);
+      }
+    }, [shouldCollapse, item.content]);
+    
+    const isClickable = isCollapsible && !expandAll && (isTruncated || (!shouldCollapse && wasTruncated));
+    
+    const handleToggle = () => {
+      manualInteractionRef.current = true;
+      setIsAutoCollapsing(false);
+      if (onToggleAutoCollapse) {
+        onToggleAutoCollapse();
+      }
+    };
+    
+    return (
       <Box sx={{ mb: 1.5, display: 'flex', gap: 1.5 }}>
-        <Typography
-          variant="body2"
-          sx={{
-            fontSize: '1.1rem',
-            lineHeight: 1,
-            flexShrink: 0,
-            mt: 0.25
-          }}
-        >
-          🧠
-        </Typography>
+        {shouldCollapse && isTruncated ? (
+          <ContentPreviewTooltip content={item.content || ''} type="native_thinking">
+            <Typography
+              variant="body2"
+              sx={{
+                fontSize: '1.1rem',
+                lineHeight: 1,
+                flexShrink: 0,
+                mt: 0.25,
+                cursor: 'help'
+              }}
+            >
+              🧠
+            </Typography>
+          </ContentPreviewTooltip>
+        ) : (
+          <Typography
+            variant="body2"
+            sx={{
+              fontSize: '1.1rem',
+              lineHeight: 1,
+              flexShrink: 0,
+              mt: 0.25
+            }}
+          >
+            🧠
+          </Typography>
+        )}
         <Box 
           sx={{ 
             flex: 1, 
@@ -260,9 +400,18 @@ function ChatFlowItem({
             transition: 'background-color 0.2s ease',
             borderRadius: 1,
             px: isClickable ? 1 : 0,
-            '&:hover': isClickable ? { bgcolor: 'action.hover' } : {}
+            '&:hover': isClickable ? { bgcolor: 'action.hover' } : {},
+            // Auto-collapse fade animation
+            ...(isAutoCollapsing && {
+              animation: 'fadeCollapse 0.6s ease-out',
+              '@keyframes fadeCollapse': {
+                '0%': { opacity: 1 },
+                '50%': { opacity: 0.3 },
+                '100%': { opacity: 1 }
+              }
+            })
           }}
-          onClick={isClickable ? onToggleAutoCollapse : undefined}
+          onClick={isClickable ? handleToggle : undefined}
         >
           <Typography
             variant="caption"
@@ -278,86 +427,149 @@ function ChatFlowItem({
           >
             Thinking
           </Typography>
-          {hasMarkdown ? (
-            <Box sx={{ 
-              '& p, & li': { 
-                color: 'text.secondary',
-                fontStyle: 'italic'
-              }
-            }}>
-              <ReactMarkdown
-                components={thoughtMarkdownComponents}
-                remarkPlugins={[remarkBreaks]}
-                skipHtml
-              >
-                {displayContent}
-              </ReactMarkdown>
-            </Box>
-          ) : (
-            <Typography
-              variant="body1"
+          
+          {/* Always use Collapse to avoid blink */}
+          <Collapse in={!shouldCollapse} timeout={300} collapsedSize="3.4rem">
+            <Box
+              ref={contentRef}
               sx={{
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                lineHeight: 1.7,
-                fontSize: '1rem',
-                color: 'text.secondary',
-                fontStyle: 'italic'
+                ...(shouldCollapse && {
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden'
+                })
               }}
             >
-              {displayContent}
-            </Typography>
-          )}
+              {hasMarkdown ? (
+                <Box sx={{ 
+                  '& p, & li': { 
+                    color: 'text.secondary',
+                    fontStyle: 'italic'
+                  }
+                }}>
+                  <ReactMarkdown
+                    components={thoughtMarkdownComponents}
+                    remarkPlugins={[remarkBreaks]}
+                    skipHtml
+                  >
+                    {item.content}
+                  </ReactMarkdown>
+                </Box>
+              ) : (
+                <Typography
+                  variant="body1"
+                  sx={{
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    lineHeight: 1.7,
+                    fontSize: '1rem',
+                    color: 'text.secondary',
+                    fontStyle: 'italic'
+                  }}
+                >
+                  {item.content}
+                </Typography>
+              )}
+            </Box>
+          </Collapse>
+          
           {isClickable && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5, opacity: 0.6 }}>
               {shouldCollapse ? (
                 <>
                   <ExpandMore fontSize="small" />
                   <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
-                    Click to expand
+                    See more
                   </Typography>
                 </>
               ) : (
-                <>
-                  <ExpandLess fontSize="small" />
-                  <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
-                    Click to collapse
-                  </Typography>
-                </>
+                <ExpandLess fontSize="small" />
               )}
             </Box>
           )}
         </Box>
       </Box>
     );
-    
-    return shouldCollapse && truncation.isTruncated ? (
-      <ContentPreviewTooltip content={item.content || ''} type="native_thinking">
-        {contentElement}
-      </ContentPreviewTooltip>
-    ) : contentElement;
   }
 
   // Render final answer - emphasized text with emoji and markdown support
   if (item.type === 'final_answer') {
     const shouldCollapse = isAutoCollapsed && !expandAll;
-    const truncation = truncateText(item.content || '');
-    const displayContent = shouldCollapse ? truncation.truncated : item.content;
-    const isClickable = isCollapsible && !expandAll && truncation.isTruncated;
+    const contentRef = useRef<HTMLDivElement>(null);
+    const [isTruncated, setIsTruncated] = useState(false);
+    const [wasTruncated, setWasTruncated] = useState(false);
+    const [isAutoCollapsing, setIsAutoCollapsing] = useState(false);
+    const prevShouldCollapseRef = useRef(shouldCollapse);
+    const manualInteractionRef = useRef(false);
     
-    const contentElement = (
+    // Detect auto-collapse (streaming → DB transition)
+    useEffect(() => {
+      const wasExpanded = !prevShouldCollapseRef.current;
+      const isNowCollapsed = shouldCollapse;
+      
+      if (wasExpanded && isNowCollapsed && !manualInteractionRef.current) {
+        setIsAutoCollapsing(true);
+        const timer = setTimeout(() => setIsAutoCollapsing(false), 600);
+        return () => clearTimeout(timer);
+      }
+      
+      manualInteractionRef.current = false;
+      prevShouldCollapseRef.current = shouldCollapse;
+    }, [shouldCollapse]);
+    
+    // Detect if content is visually truncated
+    useEffect(() => {
+      if (shouldCollapse && contentRef.current) {
+        const truncated = contentRef.current.scrollHeight > contentRef.current.clientHeight;
+        setIsTruncated(truncated);
+        if (truncated) {
+          setWasTruncated(true);
+        }
+      } else {
+        setIsTruncated(false);
+      }
+    }, [shouldCollapse, item.content]);
+    
+    const isClickable = isCollapsible && !expandAll && (isTruncated || (!shouldCollapse && wasTruncated));
+    
+    const handleToggle = () => {
+      manualInteractionRef.current = true;
+      setIsAutoCollapsing(false);
+      if (onToggleAutoCollapse) {
+        onToggleAutoCollapse();
+      }
+    };
+    
+    return (
       <Box sx={{ mb: 2, mt: 3 }}>
         <Box sx={{ display: 'flex', gap: 1.5, mb: 1 }}>
-          <Typography
-            variant="body2"
-            sx={{
-              fontSize: '1.1rem',
-              lineHeight: 1,
-              flexShrink: 0
-            }}
-          >
-            🎯
-          </Typography>
+          {shouldCollapse && isTruncated ? (
+            <ContentPreviewTooltip content={item.content || ''} type="final_answer">
+              <Typography
+                variant="body2"
+                sx={{
+                  fontSize: '1.1rem',
+                  lineHeight: 1,
+                  flexShrink: 0,
+                  cursor: 'help'
+                }}
+              >
+                🎯
+              </Typography>
+            </ContentPreviewTooltip>
+          ) : (
+            <Typography
+              variant="body2"
+              sx={{
+                fontSize: '1.1rem',
+                lineHeight: 1,
+                flexShrink: 0
+              }}
+            >
+              🎯
+            </Typography>
+          )}
           <Typography
             variant="caption"
             sx={{
@@ -379,45 +591,59 @@ function ChatFlowItem({
             transition: 'background-color 0.2s ease',
             borderRadius: 1,
             px: isClickable ? 1 : 0,
-            '&:hover': isClickable ? { bgcolor: 'action.hover' } : {}
+            '&:hover': isClickable ? { bgcolor: 'action.hover' } : {},
+            // Auto-collapse fade animation
+            ...(isAutoCollapsing && {
+              animation: 'fadeCollapse 0.6s ease-out',
+              '@keyframes fadeCollapse': {
+                '0%': { opacity: 1 },
+                '50%': { opacity: 0.3 },
+                '100%': { opacity: 1 }
+              }
+            })
           }}
-          onClick={isClickable ? onToggleAutoCollapse : undefined}
+          onClick={isClickable ? handleToggle : undefined}
         >
-          <ReactMarkdown
-            urlTransform={defaultUrlTransform}
-            components={finalAnswerMarkdownComponents}
-            remarkPlugins={[remarkBreaks]}
-          >
-            {displayContent || ''}
-          </ReactMarkdown>
+          {/* Always use Collapse to avoid blink */}
+          <Collapse in={!shouldCollapse} timeout={300} collapsedSize="3.4rem">
+            <Box
+              ref={contentRef}
+              sx={{
+                ...(shouldCollapse && {
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden'
+                })
+              }}
+            >
+              <ReactMarkdown
+                urlTransform={defaultUrlTransform}
+                components={finalAnswerMarkdownComponents}
+                remarkPlugins={[remarkBreaks]}
+              >
+                {item.content || ''}
+              </ReactMarkdown>
+            </Box>
+          </Collapse>
+          
           {isClickable && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5, opacity: 0.6 }}>
               {shouldCollapse ? (
                 <>
                   <ExpandMore fontSize="small" />
                   <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
-                    Click to expand
+                    See more
                   </Typography>
                 </>
               ) : (
-                <>
-                  <ExpandLess fontSize="small" />
-                  <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
-                    Click to collapse
-                  </Typography>
-                </>
+                <ExpandLess fontSize="small" />
               )}
             </Box>
           )}
         </Box>
       </Box>
     );
-    
-    return shouldCollapse && truncation.isTruncated ? (
-      <ContentPreviewTooltip content={item.content || ''} type="final_answer">
-        {contentElement}
-      </ContentPreviewTooltip>
-    ) : contentElement;
   }
 
   // Render tool call - indented expandable box
@@ -507,24 +733,81 @@ function ChatFlowItem({
   if (item.type === 'summarization') {
     const hasMarkdown = hasMarkdownSyntax(item.content || '');
     const shouldCollapse = isAutoCollapsed && !expandAll;
-    const truncation = truncateText(item.content || '');
-    const displayContent = shouldCollapse ? truncation.truncated : item.content;
-    const isClickable = isCollapsible && !expandAll && truncation.isTruncated;
+    const contentRef = useRef<HTMLDivElement>(null);
+    const [isTruncated, setIsTruncated] = useState(false);
+    const [wasTruncated, setWasTruncated] = useState(false);
+    const [isAutoCollapsing, setIsAutoCollapsing] = useState(false);
+    const prevShouldCollapseRef = useRef(shouldCollapse);
+    const manualInteractionRef = useRef(false);
     
-    const contentElement = (
+    // Detect auto-collapse (streaming → DB transition)
+    useEffect(() => {
+      const wasExpanded = !prevShouldCollapseRef.current;
+      const isNowCollapsed = shouldCollapse;
+      
+      if (wasExpanded && isNowCollapsed && !manualInteractionRef.current) {
+        setIsAutoCollapsing(true);
+        const timer = setTimeout(() => setIsAutoCollapsing(false), 600);
+        return () => clearTimeout(timer);
+      }
+      
+      manualInteractionRef.current = false;
+      prevShouldCollapseRef.current = shouldCollapse;
+    }, [shouldCollapse]);
+    
+    // Detect if content is visually truncated
+    useEffect(() => {
+      if (shouldCollapse && contentRef.current) {
+        const truncated = contentRef.current.scrollHeight > contentRef.current.clientHeight;
+        setIsTruncated(truncated);
+        if (truncated) {
+          setWasTruncated(true);
+        }
+      } else {
+        setIsTruncated(false);
+      }
+    }, [shouldCollapse, item.content]);
+    
+    const isClickable = isCollapsible && !expandAll && (isTruncated || (!shouldCollapse && wasTruncated));
+    
+    const handleToggle = () => {
+      manualInteractionRef.current = true;
+      setIsAutoCollapsing(false);
+      if (onToggleAutoCollapse) {
+        onToggleAutoCollapse();
+      }
+    };
+    
+    return (
       <Box sx={{ mb: 1.5 }}>
         {/* Header with amber styling */}
         <Box sx={{ display: 'flex', gap: 1.5, mb: 0.5 }}>
-          <Typography
-            variant="body2"
-            sx={{
-              fontSize: '1.1rem',
-              lineHeight: 1,
-              flexShrink: 0
-            }}
-          >
-            📋
-          </Typography>
+          {shouldCollapse && isTruncated ? (
+            <ContentPreviewTooltip content={item.content || ''} type="summarization">
+              <Typography
+                variant="body2"
+                sx={{
+                  fontSize: '1.1rem',
+                  lineHeight: 1,
+                  flexShrink: 0,
+                  cursor: 'help'
+                }}
+              >
+                📋
+              </Typography>
+            </ContentPreviewTooltip>
+          ) : (
+            <Typography
+              variant="body2"
+              sx={{
+                fontSize: '1.1rem',
+                lineHeight: 1,
+                flexShrink: 0
+              }}
+            >
+              📋
+            </Typography>
+          )}
           <Typography
             variant="caption"
             sx={{
@@ -550,65 +833,79 @@ function ChatFlowItem({
             transition: 'background-color 0.2s ease',
             borderRadius: 1,
             px: isClickable ? 1 : 0,
-            '&:hover': isClickable ? { bgcolor: 'action.hover' } : {}
+            '&:hover': isClickable ? { bgcolor: 'action.hover' } : {},
+            // Auto-collapse fade animation
+            ...(isAutoCollapsing && {
+              animation: 'fadeCollapse 0.6s ease-out',
+              '@keyframes fadeCollapse': {
+                '0%': { opacity: 1 },
+                '50%': { opacity: 0.3 },
+                '100%': { opacity: 1 }
+              }
+            })
           }}
-          onClick={isClickable ? onToggleAutoCollapse : undefined}
+          onClick={isClickable ? handleToggle : undefined}
         >
-          {hasMarkdown ? (
-            <Box sx={{ 
-              '& p': { color: 'text.secondary' }, // Apply dimmed color to markdown paragraphs
-              '& li': { color: 'text.secondary' }  // Apply dimmed color to list items
-            }}>
-              <ReactMarkdown
-                components={thoughtMarkdownComponents}
-                remarkPlugins={[remarkBreaks]}
-                skipHtml
-              >
-                {displayContent || ''}
-              </ReactMarkdown>
-            </Box>
-          ) : (
-            <Typography
-              variant="body1"
+          {/* Always use Collapse to avoid blink */}
+          <Collapse in={!shouldCollapse} timeout={300} collapsedSize="3.4rem">
+            <Box
+              ref={contentRef}
               sx={{
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                lineHeight: 1.7,
-                fontSize: '1rem',
-                color: 'text.secondary' // Slightly dimmed to differentiate from thoughts
+                ...(shouldCollapse && {
+                  display: '-webkit-box',
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: 'vertical',
+                  overflow: 'hidden'
+                })
               }}
             >
-              {displayContent || ''}
-            </Typography>
-          )}
+              {hasMarkdown ? (
+                <Box sx={{ 
+                  '& p': { color: 'text.secondary' },
+                  '& li': { color: 'text.secondary' }
+                }}>
+                  <ReactMarkdown
+                    components={thoughtMarkdownComponents}
+                    remarkPlugins={[remarkBreaks]}
+                    skipHtml
+                  >
+                    {item.content || ''}
+                  </ReactMarkdown>
+                </Box>
+              ) : (
+                <Typography
+                  variant="body1"
+                  sx={{
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-word',
+                    lineHeight: 1.7,
+                    fontSize: '1rem',
+                    color: 'text.secondary'
+                  }}
+                >
+                  {item.content || ''}
+                </Typography>
+              )}
+            </Box>
+          </Collapse>
+          
           {isClickable && (
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5, opacity: 0.6 }}>
               {shouldCollapse ? (
                 <>
                   <ExpandMore fontSize="small" />
                   <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
-                    Click to expand
+                    See more
                   </Typography>
                 </>
               ) : (
-                <>
-                  <ExpandLess fontSize="small" />
-                  <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
-                    Click to collapse
-                  </Typography>
-                </>
+                <ExpandLess fontSize="small" />
               )}
             </Box>
           )}
         </Box>
       </Box>
     );
-    
-    return shouldCollapse && truncation.isTruncated ? (
-      <ContentPreviewTooltip content={item.content || ''} type="summarization">
-        {contentElement}
-      </ContentPreviewTooltip>
-    ) : contentElement;
   }
 
   // Render native tool usage indicators

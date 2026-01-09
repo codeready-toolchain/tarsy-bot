@@ -25,7 +25,7 @@ import {
   STREAMING_CONTENT_TYPES, 
   parseStreamingContentType 
 } from '../utils/eventTypes';
-import { generateItemKey } from '../utils/textTruncation';
+import { generateItemKey } from '../utils/chatFlowItemKey';
 // Auto-scroll is now handled by the centralized system in SessionDetailPageBase
 
 interface ProcessingIndicatorProps {
