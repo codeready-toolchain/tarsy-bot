@@ -348,8 +348,7 @@ function ConversationTimeline({
       console.log(`📦 Auto-collapsing ${newItemsToCollapse.size} NEW collapsible items`);
       setAutoCollapsedItems(prev => new Set([...prev, ...newItemsToCollapse]));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.session_id, session.status, chatFlowItemKeys]);
+  }, [session.session_id, session.status, chatFlowItemKeys, manuallyExpandedItems]);
   
   // Auto-collapse synthesis stage when session is completed
   useEffect(() => {
