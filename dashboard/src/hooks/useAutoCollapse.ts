@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 interface UseAutoCollapseOptions {
   isAutoCollapsed: boolean;
@@ -42,15 +42,17 @@ export function useAutoCollapse({
   const [isCollapsing, setIsCollapsing] = useState(false);
   const prevShouldCollapseRef = useRef(shouldCollapse);
   const manualInteractionRef = useRef(false);
+  const isStartingCollapse = !prevShouldCollapseRef.current && shouldCollapse;
 
-  // Track when we're actively collapsing (for delayed clamp)
-  useEffect(() => {
+  // Track when we're actively collapsing (for delayed clamp).
+  // Must run in layout effect so the clamp is disabled before the browser paints the collapsed frame.
+  useLayoutEffect(() => {
     if (!prevShouldCollapseRef.current && shouldCollapse) {
-      // Started collapsing
       setIsCollapsing(true);
       const timer = setTimeout(() => setIsCollapsing(false), 300); // Match Collapse timeout
       return () => clearTimeout(timer);
     }
+    return undefined;
   }, [shouldCollapse]);
 
   // Detect auto-collapse (streaming → DB transition)
@@ -104,8 +106,9 @@ export function useAutoCollapse({
     }
   };
 
-  // Only apply clamp when collapsed AND not actively collapsing (prevents jump)
-  const shouldClampPreview = shouldCollapse && !isCollapsing;
+  // Only apply clamp when collapsed AND not actively collapsing.
+  // Also disable clamp on the very first render where we *start* collapsing, to avoid a one-frame snap.
+  const shouldClampPreview = shouldCollapse && !isCollapsing && !isStartingCollapse;
 
   return {
     shouldCollapse,
