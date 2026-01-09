@@ -4,7 +4,6 @@ import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import TypewriterText from './TypewriterText';
 import { 
   hasMarkdownSyntax, 
-  finalAnswerMarkdownComponents, 
   thoughtMarkdownComponents 
 } from '../utils/markdownComponents';
 import { 
@@ -340,11 +339,13 @@ const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) 
     );
   }
   
-  // Render final answer (ReAct pattern)
+  // Render final answer - uses same style as intermediate_response for smooth transition
   if (item.type === STREAMING_CONTENT_TYPES.FINAL_ANSWER) {
+    const hasMarkdown = hasMarkdownSyntax(item.content || '');
+    
     return (
       <Box sx={{ mb: 2, mt: 3 }}>
-        <Box sx={{ display: 'flex', gap: 1.5, mb: 1 }}>
+        <Box sx={{ display: 'flex', gap: 1.5, mb: 0.5 }}>
           <Typography
             variant="body2"
             sx={{
@@ -369,15 +370,32 @@ const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) 
             FINAL ANSWER
           </Typography>
         </Box>
-        <Box sx={{ pl: 3.5 }}>
+        <Box sx={{ flex: 1, minWidth: 0, ml: 4 }}>
           <TypewriterText text={item.content || ''} speed={3}>
             {(displayText) => (
-              <ReactMarkdown
-                urlTransform={defaultUrlTransform}
-                components={finalAnswerMarkdownComponents}
-              >
-                {displayText}
-              </ReactMarkdown>
+              hasMarkdown ? (
+                <Box sx={{ color: 'text.primary' }}>
+                  <ReactMarkdown
+                    urlTransform={defaultUrlTransform}
+                    components={thoughtMarkdownComponents}
+                  >
+                    {displayText}
+                  </ReactMarkdown>
+                </Box>
+              ) : (
+                <Typography 
+                  variant="body1" 
+                  sx={{ 
+                    whiteSpace: 'pre-wrap', 
+                    wordBreak: 'break-word',
+                    lineHeight: 1.7,
+                    fontSize: '1rem',
+                    color: 'text.primary'
+                  }}
+                >
+                  {displayText}
+                </Typography>
+              )
             )}
           </TypewriterText>
         </Box>

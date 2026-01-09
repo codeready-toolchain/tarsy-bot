@@ -12,7 +12,6 @@ import type { ChatFlowItemData } from '../utils/chatFlowParser';
 import { formatDurationMs } from '../utils/timestamp';
 import { 
   hasMarkdownSyntax, 
-  finalAnswerMarkdownComponents, 
   thoughtMarkdownComponents 
 } from '../utils/markdownComponents';
 import { FADE_COLLAPSE_ANIMATION } from '../constants/chatFlowAnimations';
@@ -358,8 +357,10 @@ function ChatFlowItem({
     );
   }
 
-  // Render final answer - emphasized text with emoji and markdown support
+  // Render final answer - uses same style as intermediate_response for smooth transition
   if (item.type === CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER) {
+    const hasMarkdown = hasMarkdownSyntax(item.content || '');
+    
     return (
       <Box 
         sx={{ 
@@ -392,36 +393,32 @@ function ChatFlowItem({
           
           {/* Collapsible content */}
           <Collapse in={!shouldShowCollapsed} timeout={300}>
-            <Box sx={{ 
-              mt: 0.5,
-              bgcolor: (theme) => alpha(theme.palette.success.main, 0.06),
-              border: '1px solid',
-              borderColor: (theme) => alpha(theme.palette.success.main, 0.25),
-              borderRadius: 1.5,
-              p: 2,
-              position: 'relative',
-              // Subtle left border accent
-              '&::before': {
-                content: '""',
-                position: 'absolute',
-                left: 0,
-                top: 0,
-                bottom: 0,
-                width: 3,
-                bgcolor: 'success.main',
-                opacity: 0.6,
-                borderRadius: '4px 0 0 4px'
-              },
-              pl: 2.5 // Extra padding for the left accent
-            }}>
-              <ReactMarkdown
-                urlTransform={defaultUrlTransform}
-                components={finalAnswerMarkdownComponents}
-                remarkPlugins={[remarkBreaks]}
-                skipHtml
-              >
-                {item.content || ''}
-              </ReactMarkdown>
+            <Box sx={{ mt: 0.5 }}>
+              {hasMarkdown ? (
+                <Box sx={{ color: 'text.primary' }}>
+                  <ReactMarkdown
+                    urlTransform={defaultUrlTransform}
+                    components={thoughtMarkdownComponents}
+                    remarkPlugins={[remarkBreaks]}
+                    skipHtml
+                  >
+                    {item.content || ''}
+                  </ReactMarkdown>
+                </Box>
+              ) : (
+                <Typography 
+                  variant="body1" 
+                  sx={{ 
+                    whiteSpace: 'pre-wrap', 
+                    wordBreak: 'break-word',
+                    lineHeight: 1.7,
+                    fontSize: '1rem',
+                    color: 'text.primary'
+                  }}
+                >
+                  {item.content}
+                </Typography>
+              )}
               {isCollapsible && onToggleAutoCollapse && <CollapseButton onClick={onToggleAutoCollapse} />}
             </Box>
           </Collapse>
