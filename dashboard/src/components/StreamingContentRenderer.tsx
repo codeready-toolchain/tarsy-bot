@@ -262,29 +262,29 @@ const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) 
         </Typography>
         <TypewriterText text={item.content || ''} speed={3}>
           {(displayText) => (
-            hasMarkdown ? (
-              <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              {hasMarkdown ? (
                 <ReactMarkdown
                   components={thoughtMarkdownComponents}
                   skipHtml
                 >
                   {displayText}
                 </ReactMarkdown>
-              </Box>
-            ) : (
-              <Typography 
-                variant="body1" 
-                sx={{ 
-                  whiteSpace: 'pre-wrap', 
-                  wordBreak: 'break-word',
-                  lineHeight: 1.7,
-                  fontSize: '1rem',
-                  color: 'text.primary'
-                }}
-              >
-                {displayText}
-              </Typography>
-            )
+              ) : (
+                <Typography 
+                  variant="body1" 
+                  sx={{ 
+                    whiteSpace: 'pre-wrap', 
+                    wordBreak: 'break-word',
+                    lineHeight: 1.7,
+                    fontSize: '1rem',
+                    color: 'text.primary'
+                  }}
+                >
+                  {displayText}
+                </Typography>
+              )}
+            </Box>
           )}
         </TypewriterText>
       </Box>

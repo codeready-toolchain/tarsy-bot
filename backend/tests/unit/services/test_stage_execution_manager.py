@@ -44,7 +44,7 @@ class TestCreateStageExecution:
         
         manager = StageExecutionManager(history_service=history_service)
         
-        stage = SimpleNamespace(name="test-stage", agent="TestAgent")
+        stage = SimpleNamespace(name="test-stage", agent="TestAgent", iteration_strategy="react")
         
         with patch('tarsy.hooks.hook_context.stage_execution_context') as mock_context:
             # Mock the context manager to set execution_id on the model
@@ -82,7 +82,7 @@ class TestCreateStageExecution:
         
         manager = StageExecutionManager(history_service=history_service)
         
-        stage = SimpleNamespace(name="child-stage", agent="TestAgent")
+        stage = SimpleNamespace(name="child-stage", agent="TestAgent", iteration_strategy="react")
         
         with patch('tarsy.hooks.hook_context.stage_execution_context') as mock_context:
             async def mock_aenter(self):
@@ -114,7 +114,6 @@ class TestCreateStageExecution:
             )
             
             assert execution_id == "child-exec-1"
-    
 
 
 @pytest.mark.unit

@@ -472,7 +472,7 @@ class TestParallelStageExecutorCancellationHandling:
         )
         chain_context = ChainContext.from_processing_alert(processing_alert=processing_alert, session_id="test-session")
 
-        stage = SimpleNamespace(name="test-stage", success_policy=SuccessPolicy.ANY)
+        stage = SimpleNamespace(name="test-stage", success_policy=SuccessPolicy.ANY, iteration_strategy="react")
 
         execution_configs = [
             {"agent_name": "agent-1", "llm_provider": "openai", "iteration_strategy": "react"},
