@@ -298,7 +298,7 @@ Use tools as needed to gather information. When you have sufficient data, provid
             "role": "user",
             "content": """Tool Result: test-data-server.collect_system_info:
 {
-  "result": "[NOTE: The tool output was too long and has been summarized below.]\\n\\nSummarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK."
+  "result": "[NOTE: The tool output was too long and has been summarized below.]\\n\\nSummarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK.\\n\\nIMPORTANT: Re-running this tool will produce the same result. The summary above contains all critical information needed for your investigation. Use this information to proceed with your analysis rather than re-executing the same tool."
 }"""
         },
         # NOTE: No assistant message here - model called kubectl_get events with empty text_content

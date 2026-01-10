@@ -198,6 +198,8 @@ Your specific task is to summarize output from **{server_name}.{tool_name}** in 
 - **Focus On**: Non-default configurations, problematic settings, resource utilization issues
 - **Maintain**: Technical accuracy and context about what the data represents
 - **Format**: Clean, structured text suitable for continued technical investigation
+- **Be Conclusive**: Explicitly state what was found AND what was NOT found to prevent re-queries
+- **Answer Questions**: If the investigation context suggests the investigator was looking for something specific, explicitly confirm whether it was present or absent
 
 Your summary will be inserted as an observation in the ongoing investigation conversation.""")
 
