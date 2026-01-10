@@ -256,10 +256,12 @@ class ParallelStageExecutor:
                 logger.debug(f"Executing {parallel_type} {idx+1}/{len(execution_configs)}: '{agent_name}'")
                 
                 # Get agent instance from factory
+                # Normalize iteration_strategy enum to string for agent factory
+                strategy = config.get("iteration_strategy")
                 agent = self.agent_factory.get_agent(
                     agent_identifier=base_agent,
                     mcp_client=session_mcp_client,
-                    iteration_strategy=config.get("iteration_strategy"),
+                    iteration_strategy=getattr(strategy, "value", strategy),
                     llm_provider=config.get("llm_provider")
                 )
                 
@@ -686,10 +688,12 @@ class ParallelStageExecutor:
                 logger.debug(f"Resuming paused agent {idx+1}/{len(execution_configs)}: '{agent_name}'")
                 
                 # Get agent instance from factory
+                # Normalize iteration_strategy enum to string for agent factory
+                strategy = config.get("iteration_strategy")
                 agent = self.agent_factory.get_agent(
                     agent_identifier=base_agent,
                     mcp_client=session_mcp_client,
-                    iteration_strategy=config.get("iteration_strategy"),
+                    iteration_strategy=getattr(strategy, "value", strategy),
                     llm_provider=config.get("llm_provider")
                 )
                 
@@ -967,7 +971,7 @@ class ParallelStageExecutor:
             synthesis_agent = self.agent_factory.get_agent(
                 agent_identifier=synthesis_config.agent,
                 mcp_client=session_mcp_client,
-                iteration_strategy=synthesis_config.iteration_strategy,  # Configurable strategy
+                iteration_strategy=getattr(synthesis_config.iteration_strategy, "value", synthesis_config.iteration_strategy),  # Configurable strategy
                 llm_provider=effective_provider
             )
             

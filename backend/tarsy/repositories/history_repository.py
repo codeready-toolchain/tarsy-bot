@@ -752,7 +752,8 @@ class HistoryRepository:
             # Force fresh read from database to avoid stale cache issues
             # This is critical for SQLite WAL mode where recent writes might not be visible
             # in the current session snapshot until objects are expired
-            self.session.expire_all()
+            if self.session.bind.dialect.name == 'sqlite':
+                self.session.expire_all()
             
             # Get the session
             session = self.get_alert_session(session_id)

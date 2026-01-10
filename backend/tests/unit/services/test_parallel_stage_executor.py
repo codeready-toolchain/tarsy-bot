@@ -275,7 +275,7 @@ class TestExecutionConfigGeneration:
             name="test-stage",
             agents=[
                 SimpleNamespace(name="agent1", llm_provider="openai", iteration_strategy="react"),
-                SimpleNamespace(name="agent2", llm_provider="anthropic", iteration_strategy="native")
+                SimpleNamespace(name="agent2", llm_provider="anthropic", iteration_strategy="native-thinking")
             ],
             success_policy=SuccessPolicy.ANY
         )

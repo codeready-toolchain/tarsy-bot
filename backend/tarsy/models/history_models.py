@@ -245,7 +245,7 @@ class DetailedStage(BaseModel):
     stage_index: int
     stage_name: str
     agent: str
-    iteration_strategy: Optional[str] = None  # Iteration strategy for this stage (e.g., 'native-thinking', 'react')
+    iteration_strategy: Optional[str] = None  # Iteration strategy for this stage (e.g., 'react', 'native-thinking', 'react-stage', 'synthesis-native-thinking')
     
     # Stage execution info
     status: StageStatus

@@ -91,7 +91,7 @@ class StageExecutionManager:
             parallel_index=parallel_index,
             parallel_type=parallel_type,
             expected_parallel_count=expected_parallel_count,
-            iteration_strategy=stage.iteration_strategy,
+            iteration_strategy=getattr(stage.iteration_strategy, "value", stage.iteration_strategy),
         )
         
         # Trigger stage execution hooks (history + dashboard) via context manager

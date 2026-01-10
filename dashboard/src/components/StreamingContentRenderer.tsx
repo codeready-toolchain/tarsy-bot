@@ -41,6 +41,116 @@ interface StreamingContentRendererProps {
 }
 
 /**
+ * ThinkingBlock - Shared component for thought and native_thinking rendering
+ * 
+ * @param content - The thinking content to display
+ * @param textColor - MUI theme color path (e.g., 'text.primary' or 'text.secondary')
+ * @param isItalic - Whether to render text in italic style
+ */
+interface ThinkingBlockProps {
+  content: string;
+  textColor: string;
+  isItalic?: boolean;
+}
+
+const ThinkingBlock = memo(({ content, textColor, isItalic = false }: ThinkingBlockProps) => {
+  const hasMarkdown = hasMarkdownSyntax(content);
+  
+  return (
+    <Box sx={{ mb: 1.5, display: 'flex', gap: 1.5 }}>
+      <Typography 
+        variant="body2" 
+        sx={{ 
+          fontSize: '1.1rem', 
+          lineHeight: 1,
+          flexShrink: 0,
+          mt: 0.25
+        }}
+      >
+        💭
+      </Typography>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Typography
+          variant="caption"
+          sx={{
+            fontWeight: 700,
+            textTransform: 'none',
+            letterSpacing: 0.5,
+            fontSize: '0.75rem',
+            color: 'info.main',
+            display: 'block',
+            mb: 0.5
+          }}
+        >
+          Thinking...
+        </Typography>
+        {/* Thinking content box with light grey background - fixed height during streaming */}
+        <Box 
+          sx={(theme) => ({ 
+            bgcolor: alpha(theme.palette.grey[300], 0.15),
+            border: '1px solid',
+            borderColor: alpha(theme.palette.grey[400], 0.2),
+            borderRadius: 1,
+            p: 1.5,
+            height: '150px', // Fixed height to prevent UI jumping during streaming
+            overflowY: 'auto',
+            '&::-webkit-scrollbar': {
+              width: '8px',
+            },
+            '&::-webkit-scrollbar-track': {
+              bgcolor: 'transparent',
+            },
+            '&::-webkit-scrollbar-thumb': {
+              bgcolor: alpha(theme.palette.grey[500], 0.3),
+              borderRadius: '4px',
+              '&:hover': {
+                bgcolor: alpha(theme.palette.grey[500], 0.5),
+              }
+            }
+          })}
+        >
+          <TypewriterText text={content} speed={3}>
+            {(displayText) => (
+              hasMarkdown ? (
+                <Box sx={isItalic ? { 
+                  '& p, & li': { 
+                    color: textColor,
+                    fontStyle: 'italic'
+                  }
+                } : undefined}>
+                  <ReactMarkdown
+                    components={thoughtMarkdownComponents}
+                    skipHtml
+                  >
+                    {displayText}
+                  </ReactMarkdown>
+                </Box>
+              ) : (
+                <Typography 
+                  variant="body1" 
+                  sx={{ 
+                    whiteSpace: 'pre-wrap', 
+                    wordBreak: 'break-word',
+                    lineHeight: 1.7,
+                    fontSize: '1rem',
+                    color: textColor,
+                    fontStyle: isItalic ? 'italic' : 'normal'
+                  }}
+                >
+                  {displayText}
+                </Typography>
+              )
+            )}
+          </TypewriterText>
+        </Box>
+      </Box>
+    </Box>
+  );
+});
+
+ThinkingBlock.displayName = 'ThinkingBlock';
+
+/**
  * StreamingContentRenderer Component
  * 
  * Shared renderer for streaming LLM content with typewriter effect.
@@ -59,188 +169,12 @@ interface StreamingContentRendererProps {
 const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) => {
   // Render thought (ReAct pattern)
   if (item.type === STREAMING_CONTENT_TYPES.THOUGHT) {
-    const hasMarkdown = hasMarkdownSyntax(item.content || '');
-    
-    return (
-      <Box sx={{ mb: 1.5, display: 'flex', gap: 1.5 }}>
-        <Typography 
-          variant="body2" 
-          sx={{ 
-            fontSize: '1.1rem', 
-            lineHeight: 1,
-            flexShrink: 0,
-            mt: 0.25
-          }}
-        >
-          💭
-        </Typography>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography
-            variant="caption"
-            sx={{
-              fontWeight: 700,
-              textTransform: 'none',
-              letterSpacing: 0.5,
-              fontSize: '0.75rem',
-              color: 'info.main',
-              display: 'block',
-              mb: 0.5
-            }}
-          >
-            Thinking...
-          </Typography>
-          {/* Thinking content box with light grey background - fixed height during streaming */}
-          <Box 
-            sx={(theme) => ({ 
-              bgcolor: alpha(theme.palette.grey[300], 0.15),
-              border: '1px solid',
-              borderColor: alpha(theme.palette.grey[400], 0.2),
-              borderRadius: 1,
-              p: 1.5,
-              height: '150px', // Fixed height to prevent UI jumping during streaming
-              overflowY: 'auto',
-              '&::-webkit-scrollbar': {
-                width: '8px',
-              },
-              '&::-webkit-scrollbar-track': {
-                bgcolor: 'transparent',
-              },
-              '&::-webkit-scrollbar-thumb': {
-                bgcolor: alpha(theme.palette.grey[500], 0.3),
-                borderRadius: '4px',
-                '&:hover': {
-                  bgcolor: alpha(theme.palette.grey[500], 0.5),
-                }
-              }
-            })}
-          >
-            <TypewriterText text={item.content || ''} speed={3}>
-              {(displayText) => (
-                hasMarkdown ? (
-                  <Box>
-                    <ReactMarkdown
-                      components={thoughtMarkdownComponents}
-                      skipHtml
-                    >
-                      {displayText}
-                    </ReactMarkdown>
-                  </Box>
-                ) : (
-                  <Typography 
-                    variant="body1" 
-                    sx={{ 
-                      whiteSpace: 'pre-wrap', 
-                      wordBreak: 'break-word',
-                      lineHeight: 1.7,
-                      fontSize: '1rem',
-                      color: 'text.primary'
-                    }}
-                  >
-                    {displayText}
-                  </Typography>
-                )
-              )}
-            </TypewriterText>
-          </Box>
-        </Box>
-      </Box>
-    );
+    return <ThinkingBlock content={item.content || ''} textColor="text.primary" />;
   }
 
   // Render native thinking (Gemini 3.0+ native thinking mode)
   if (item.type === STREAMING_CONTENT_TYPES.NATIVE_THINKING) {
-    const hasMarkdown = hasMarkdownSyntax(item.content || '');
-    
-    return (
-      <Box sx={{ mb: 1.5, display: 'flex', gap: 1.5 }}>
-        <Typography 
-          variant="body2" 
-          sx={{ 
-            fontSize: '1.1rem', 
-            lineHeight: 1,
-            flexShrink: 0,
-            mt: 0.25
-          }}
-        >
-          💭
-        </Typography>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography
-            variant="caption"
-            sx={{
-              fontWeight: 700,
-              textTransform: 'none',
-              letterSpacing: 0.5,
-              fontSize: '0.75rem',
-              color: 'info.main',
-              display: 'block',
-              mb: 0.5
-            }}
-          >
-            Thinking...
-          </Typography>
-          {/* Thinking content box with light grey background - fixed height during streaming */}
-          <Box 
-            sx={(theme) => ({ 
-              bgcolor: alpha(theme.palette.grey[300], 0.15),
-              border: '1px solid',
-              borderColor: alpha(theme.palette.grey[400], 0.2),
-              borderRadius: 1,
-              p: 1.5,
-              height: '150px', // Fixed height to prevent UI jumping during streaming
-              overflowY: 'auto',
-              '&::-webkit-scrollbar': {
-                width: '8px',
-              },
-              '&::-webkit-scrollbar-track': {
-                bgcolor: 'transparent',
-              },
-              '&::-webkit-scrollbar-thumb': {
-                bgcolor: alpha(theme.palette.grey[500], 0.3),
-                borderRadius: '4px',
-                '&:hover': {
-                  bgcolor: alpha(theme.palette.grey[500], 0.5),
-                }
-              }
-            })}
-          >
-            <TypewriterText text={item.content || ''} speed={3}>
-              {(displayText) => (
-                hasMarkdown ? (
-                  <Box sx={{ 
-                    '& p, & li': { 
-                      color: 'text.secondary',
-                      fontStyle: 'italic'
-                    }
-                  }}>
-                    <ReactMarkdown
-                      components={thoughtMarkdownComponents}
-                      skipHtml
-                    >
-                      {displayText}
-                    </ReactMarkdown>
-                  </Box>
-                ) : (
-                  <Typography 
-                    variant="body1" 
-                    sx={{ 
-                      whiteSpace: 'pre-wrap', 
-                      wordBreak: 'break-word',
-                      lineHeight: 1.7,
-                      fontSize: '1rem',
-                      color: 'text.secondary',
-                      fontStyle: 'italic'
-                    }}
-                  >
-                    {displayText}
-                  </Typography>
-                )
-              )}
-            </TypewriterText>
-          </Box>
-        </Box>
-      </Box>
-    );
+    return <ThinkingBlock content={item.content || ''} textColor="text.secondary" isItalic />;
   }
 
   // Render intermediate response (native thinking - intermediate iterations)

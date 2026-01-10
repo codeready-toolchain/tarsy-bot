@@ -397,7 +397,12 @@ function ConversationTimeline({
   useEffect(() => {
     if (!session || !chatFlow.length) return;
     
-    const collapsibleTypes = ['thought', 'native_thinking', 'final_answer', 'summarization'];
+    const collapsibleTypes: string[] = [
+      CHAT_FLOW_ITEM_TYPES.THOUGHT,
+      CHAT_FLOW_ITEM_TYPES.NATIVE_THINKING,
+      CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER,
+      CHAT_FLOW_ITEM_TYPES.SUMMARIZATION
+    ];
     const newItemsToCollapse = new Set<string>();
     const currentFlowKeys = new Set<string>();
     
@@ -534,7 +539,12 @@ function ConversationTimeline({
   
   // Helper to check if an item is collapsible (regardless of current state)
   const isItemCollapsible = (item: ChatFlowItemData): boolean => {
-    const collapsibleTypes = ['thought', 'native_thinking', 'final_answer', 'summarization'];
+    const collapsibleTypes: string[] = [
+      CHAT_FLOW_ITEM_TYPES.THOUGHT,
+      CHAT_FLOW_ITEM_TYPES.NATIVE_THINKING,
+      CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER,
+      CHAT_FLOW_ITEM_TYPES.SUMMARIZATION
+    ];
     if (!collapsibleTypes.includes(item.type)) return false;
     
     // Exception: Chat stage final answers should NOT be collapsible
@@ -618,7 +628,7 @@ function ConversationTimeline({
         content += `\n=== Stage: ${item.stageName} (${item.stageAgent}) ===\n\n`;
       } else if (item.type === CHAT_FLOW_ITEM_TYPES.THOUGHT) {
         content += `💭 Thought:\n${item.content}\n\n`;
-      } else if (item.type === 'tool_call') {
+      } else if (item.type === CHAT_FLOW_ITEM_TYPES.TOOL_CALL) {
         content += `🔧 Tool Call: ${item.toolName}\n`;
         content += `   Server: ${item.serverName}\n`;
         content += `   Arguments: ${JSON.stringify(item.toolArguments, null, 2)}\n`;
@@ -1288,7 +1298,7 @@ function ConversationTimeline({
               
               // Find stage_start item (should be first)
               const stageStartItem = visibleItems.find(item => item.type === CHAT_FLOW_ITEM_TYPES.STAGE_START);
-              const nonStageStartItems = visibleItems.filter(item => item.type !== 'stage_start');
+              const nonStageStartItems = visibleItems.filter(item => item.type !== CHAT_FLOW_ITEM_TYPES.STAGE_START);
               
               // Check if this is the last stage (to show streaming items here)
               const isLastGroup = groupIndex === groupedChatFlow.length - 1;

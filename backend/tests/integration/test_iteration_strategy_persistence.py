@@ -99,16 +99,24 @@ class TestIterationStrategyPersistence:
         repo = HistoryRepository(session=test_database_session)
         detailed_session = repo.get_session_details("test-session-2")
 
-        # Verify iteration_strategy is present in DetailedStage
+        # Verify session details were retrieved
+        assert detailed_session is not None, "get_session_details returned None"
         assert len(detailed_session.stages) == 2
         
-        react_stage = detailed_session.stages[0]
+        # Find stages by name (order not guaranteed)
+        react_stage = next(
+            (stage for stage in detailed_session.stages if stage.stage_name == "React Stage"),
+            None
+        )
+        assert react_stage is not None, "React Stage not found in stages"
         assert react_stage.iteration_strategy == "react"
-        assert react_stage.stage_name == "React Stage"
         
-        native_stage = detailed_session.stages[1]
+        native_stage = next(
+            (stage for stage in detailed_session.stages if stage.stage_name == "Native Thinking Stage"),
+            None
+        )
+        assert native_stage is not None, "Native Thinking Stage not found in stages"
         assert native_stage.iteration_strategy == "native-thinking"
-        assert native_stage.stage_name == "Native Thinking Stage"
 
     def test_iteration_strategy_nullable_for_legacy_data(
         self, test_database_session
@@ -152,6 +160,7 @@ class TestIterationStrategyPersistence:
         repo = HistoryRepository(session=test_database_session)
         detailed_session = repo.get_session_details("test-session-3")
 
+        assert detailed_session is not None, "get_session_details returned None"
         assert len(detailed_session.stages) == 1
         legacy_stage = detailed_session.stages[0]
         assert legacy_stage.iteration_strategy is None

@@ -1458,7 +1458,7 @@ class AlertService:
                         agent = self.agent_factory.get_agent(
                             agent_identifier=stage.agent,
                             mcp_client=session_mcp_client,
-                            iteration_strategy=stage.iteration_strategy,
+                            iteration_strategy=getattr(stage.iteration_strategy, "value", stage.iteration_strategy),
                             llm_provider=effective_provider
                         )
                         

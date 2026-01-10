@@ -33,6 +33,17 @@ describe('StreamingContentRenderer - Smoke Tests', () => {
     }).not.toThrow();
   });
 
+  it('should render native_thinking items', () => {
+    const item: StreamingItem = {
+      type: 'native_thinking',
+      content: 'Analyzing with native thinking mode...',
+    };
+
+    expect(() => {
+      render(<StreamingContentRenderer item={item} />);
+    }).not.toThrow();
+  });
+
   it('should render summarization items', () => {
     const item: StreamingItem = {
       type: 'summarization',
