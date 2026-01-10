@@ -63,6 +63,7 @@ describe('Event Types - Streaming Content', () => {
     it.each([
       ['thought', true],
       ['final_answer', true],
+      ['intermediate_response', true],
       ['summarization', true],
       ['native_thinking', true],
     ])('should return true for valid type "%s"', (type, expected) => {
@@ -106,6 +107,7 @@ describe('Event Types - Streaming Content', () => {
     it.each([
       ['thought', 'thought'],
       ['final_answer', 'final_answer'],
+      ['intermediate_response', 'intermediate_response'],
       ['summarization', 'summarization'],
       ['native_thinking', 'native_thinking'],
     ])('should return "%s" unchanged for valid type', (input, expected) => {
