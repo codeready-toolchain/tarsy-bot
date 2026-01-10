@@ -406,10 +406,6 @@ function ConversationTimeline({
         const key = generateItemKey(item);
         currentFlowKeys.add(key);
         
-        // Exception: Don't auto-collapse final answers from chat/follow-up stages
-        if (item.type === CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER && item.isChatStage) {
-          continue;
-        }
         
         // Skip items that were already processed
         if (processedChatFlowKeys.has(key)) {
@@ -539,7 +535,15 @@ function ConversationTimeline({
   // Helper to check if an item is collapsible (regardless of current state)
   const isItemCollapsible = (item: ChatFlowItemData): boolean => {
     const collapsibleTypes = ['thought', 'native_thinking', 'final_answer', 'summarization'];
-    return collapsibleTypes.includes(item.type);
+    if (!collapsibleTypes.includes(item.type)) return false;
+    
+    // Exception: Chat stage final answers should NOT be collapsible
+    // They are direct responses to user questions and should always be visible
+    if (item.type === CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER && item.isChatStage) {
+      return false;
+    }
+    
+    return true;
   };
   
   // Memoize chat flow stats to prevent recalculation on every render
