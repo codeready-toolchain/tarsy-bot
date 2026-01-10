@@ -255,6 +255,20 @@ class DetailedStage(BaseModel):
     stage_output: Optional[dict] = None  # Structured results produced by this stage (e.g. analysis findings, collected data) - used by subsequent stages in chain. None if stage failed/incomplete.
     error_message: Optional[str] = None
     
+    @model_validator(mode='after')
+    def apply_iteration_strategy_fallback(self) -> 'DetailedStage':
+        """
+        Apply backward compatibility fallback for iteration_strategy.
+        
+        For records created before the iteration_strategy DB column was added,
+        fall back to reading from stage_output (where AgentExecutionResult stored it).
+        """
+        # If DB column is None but stage_output has iteration_strategy, use that
+        if self.iteration_strategy is None and self.stage_output and isinstance(self.stage_output, dict):
+            self.iteration_strategy = self.stage_output.get("iteration_strategy")
+        
+        return self
+    
     # Chat context (if this stage is a chat response)
     chat_id: Optional[str] = None
     chat_user_message_id: Optional[str] = None
