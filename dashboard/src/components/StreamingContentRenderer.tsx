@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { Box, Typography } from '@mui/material';
+import { Box, Typography, alpha } from '@mui/material';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import TypewriterText from './TypewriterText';
 import { 
@@ -89,33 +89,59 @@ const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) 
           >
             Thinking...
           </Typography>
-          <TypewriterText text={item.content || ''} speed={3}>
-            {(displayText) => (
-              hasMarkdown ? (
-                <Box>
-                  <ReactMarkdown
-                    components={thoughtMarkdownComponents}
-                    skipHtml
+          {/* Thinking content box with light grey background - fixed height during streaming */}
+          <Box 
+            sx={(theme) => ({ 
+              bgcolor: alpha(theme.palette.grey[300], 0.15),
+              border: '1px solid',
+              borderColor: alpha(theme.palette.grey[400], 0.2),
+              borderRadius: 1,
+              p: 1.5,
+              height: '150px', // Fixed height to prevent UI jumping during streaming
+              overflowY: 'auto',
+              '&::-webkit-scrollbar': {
+                width: '8px',
+              },
+              '&::-webkit-scrollbar-track': {
+                bgcolor: 'transparent',
+              },
+              '&::-webkit-scrollbar-thumb': {
+                bgcolor: alpha(theme.palette.grey[500], 0.3),
+                borderRadius: '4px',
+                '&:hover': {
+                  bgcolor: alpha(theme.palette.grey[500], 0.5),
+                }
+              }
+            })}
+          >
+            <TypewriterText text={item.content || ''} speed={3}>
+              {(displayText) => (
+                hasMarkdown ? (
+                  <Box>
+                    <ReactMarkdown
+                      components={thoughtMarkdownComponents}
+                      skipHtml
+                    >
+                      {displayText}
+                    </ReactMarkdown>
+                  </Box>
+                ) : (
+                  <Typography 
+                    variant="body1" 
+                    sx={{ 
+                      whiteSpace: 'pre-wrap', 
+                      wordBreak: 'break-word',
+                      lineHeight: 1.7,
+                      fontSize: '1rem',
+                      color: 'text.primary'
+                    }}
                   >
                     {displayText}
-                  </ReactMarkdown>
-                </Box>
-              ) : (
-                <Typography 
-                  variant="body1" 
-                  sx={{ 
-                    whiteSpace: 'pre-wrap', 
-                    wordBreak: 'break-word',
-                    lineHeight: 1.7,
-                    fontSize: '1rem',
-                    color: 'text.primary'
-                  }}
-                >
-                  {displayText}
-                </Typography>
-              )
-            )}
-          </TypewriterText>
+                  </Typography>
+                )
+              )}
+            </TypewriterText>
+          </Box>
         </Box>
       </Box>
     );
@@ -153,39 +179,65 @@ const StreamingContentRenderer = memo(({ item }: StreamingContentRendererProps) 
           >
             Thinking...
           </Typography>
-          <TypewriterText text={item.content || ''} speed={3}>
-            {(displayText) => (
-              hasMarkdown ? (
-                <Box sx={{ 
-                  '& p, & li': { 
-                    color: 'text.secondary',
-                    fontStyle: 'italic'
-                  }
-                }}>
-                  <ReactMarkdown
-                    components={thoughtMarkdownComponents}
-                    skipHtml
+          {/* Thinking content box with light grey background - fixed height during streaming */}
+          <Box 
+            sx={(theme) => ({ 
+              bgcolor: alpha(theme.palette.grey[300], 0.15),
+              border: '1px solid',
+              borderColor: alpha(theme.palette.grey[400], 0.2),
+              borderRadius: 1,
+              p: 1.5,
+              height: '150px', // Fixed height to prevent UI jumping during streaming
+              overflowY: 'auto',
+              '&::-webkit-scrollbar': {
+                width: '8px',
+              },
+              '&::-webkit-scrollbar-track': {
+                bgcolor: 'transparent',
+              },
+              '&::-webkit-scrollbar-thumb': {
+                bgcolor: alpha(theme.palette.grey[500], 0.3),
+                borderRadius: '4px',
+                '&:hover': {
+                  bgcolor: alpha(theme.palette.grey[500], 0.5),
+                }
+              }
+            })}
+          >
+            <TypewriterText text={item.content || ''} speed={3}>
+              {(displayText) => (
+                hasMarkdown ? (
+                  <Box sx={{ 
+                    '& p, & li': { 
+                      color: 'text.secondary',
+                      fontStyle: 'italic'
+                    }
+                  }}>
+                    <ReactMarkdown
+                      components={thoughtMarkdownComponents}
+                      skipHtml
+                    >
+                      {displayText}
+                    </ReactMarkdown>
+                  </Box>
+                ) : (
+                  <Typography 
+                    variant="body1" 
+                    sx={{ 
+                      whiteSpace: 'pre-wrap', 
+                      wordBreak: 'break-word',
+                      lineHeight: 1.7,
+                      fontSize: '1rem',
+                      color: 'text.secondary',
+                      fontStyle: 'italic'
+                    }}
                   >
                     {displayText}
-                  </ReactMarkdown>
-                </Box>
-              ) : (
-                <Typography 
-                  variant="body1" 
-                  sx={{ 
-                    whiteSpace: 'pre-wrap', 
-                    wordBreak: 'break-word',
-                    lineHeight: 1.7,
-                    fontSize: '1rem',
-                    color: 'text.secondary',
-                    fontStyle: 'italic'
-                  }}
-                >
-                  {displayText}
-                </Typography>
-              )
-            )}
-          </TypewriterText>
+                  </Typography>
+                )
+              )}
+            </TypewriterText>
+          </Box>
         </Box>
       </Box>
     );

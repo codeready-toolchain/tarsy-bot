@@ -196,30 +196,41 @@ function ChatFlowItem({
           {/* Collapsible content */}
           <Collapse in={!shouldShowCollapsed} timeout={300}>
             <Box sx={{ mt: 0.5 }}>
-              {hasMarkdown ? (
-                <Box sx={{ color: 'text.primary' }}>
-                  <ReactMarkdown
-                    components={thoughtMarkdownComponents}
-                    remarkPlugins={[remarkBreaks]}
-                    skipHtml
+              {/* Thinking content box - no fixed height when finalized (adjusts to content) */}
+              <Box 
+                sx={(theme) => ({ 
+                  bgcolor: alpha(theme.palette.grey[300], 0.15),
+                  border: '1px solid',
+                  borderColor: alpha(theme.palette.grey[400], 0.2),
+                  borderRadius: 1,
+                  p: 1.5
+                })}
+              >
+                {hasMarkdown ? (
+                  <Box sx={{ color: 'text.primary' }}>
+                    <ReactMarkdown
+                      components={thoughtMarkdownComponents}
+                      remarkPlugins={[remarkBreaks]}
+                      skipHtml
+                    >
+                      {item.content || ''}
+                    </ReactMarkdown>
+                  </Box>
+                ) : (
+                  <Typography 
+                    variant="body1" 
+                    sx={{ 
+                      whiteSpace: 'pre-wrap', 
+                      wordBreak: 'break-word',
+                      lineHeight: 1.7,
+                      fontSize: '1rem',
+                      color: 'text.primary'
+                    }}
                   >
-                    {item.content || ''}
-                  </ReactMarkdown>
-                </Box>
-              ) : (
-                <Typography 
-                  variant="body1" 
-                  sx={{ 
-                    whiteSpace: 'pre-wrap', 
-                    wordBreak: 'break-word',
-                    lineHeight: 1.7,
-                    fontSize: '1rem',
-                    color: 'text.primary'
-                  }}
-                >
-                  {item.content}
-                </Typography>
-              )}
+                    {item.content}
+                  </Typography>
+                )}
+              </Box>
               {isCollapsible && onToggleAutoCollapse && <CollapseButton onClick={onToggleAutoCollapse} />}
             </Box>
           </Collapse>
@@ -268,38 +279,49 @@ function ChatFlowItem({
           {/* Collapsible content */}
           <Collapse in={!shouldShowCollapsed} timeout={300}>
             <Box sx={{ mt: 0.5 }}>
-              {hasMarkdown ? (
-                <Box sx={{
-                  '& p, & li': {
+              {/* Thinking content box - no fixed height when finalized (adjusts to content) */}
+              <Box 
+                sx={(theme) => ({ 
+                  bgcolor: alpha(theme.palette.grey[300], 0.15),
+                  border: '1px solid',
+                  borderColor: alpha(theme.palette.grey[400], 0.2),
+                  borderRadius: 1,
+                  p: 1.5
+                })}
+              >
+                {hasMarkdown ? (
+                  <Box sx={{
+                    '& p, & li': {
+                      color: 'text.secondary',
+                      fontStyle: 'italic',
+                    },
                     color: 'text.secondary',
                     fontStyle: 'italic',
-                  },
-                  color: 'text.secondary',
-                  fontStyle: 'italic',
-                }}>
-                  <ReactMarkdown
-                    components={thoughtMarkdownComponents}
-                    remarkPlugins={[remarkBreaks]}
-                    skipHtml
+                  }}>
+                    <ReactMarkdown
+                      components={thoughtMarkdownComponents}
+                      remarkPlugins={[remarkBreaks]}
+                      skipHtml
+                    >
+                      {item.content || ''}
+                    </ReactMarkdown>
+                  </Box>
+                ) : (
+                  <Typography 
+                    variant="body1" 
+                    sx={{ 
+                      whiteSpace: 'pre-wrap', 
+                      wordBreak: 'break-word',
+                      lineHeight: 1.7,
+                      fontSize: '1rem',
+                      color: 'text.secondary',
+                      fontStyle: 'italic'
+                    }}
                   >
-                    {item.content || ''}
-                  </ReactMarkdown>
-                </Box>
-              ) : (
-                <Typography 
-                  variant="body1" 
-                  sx={{ 
-                    whiteSpace: 'pre-wrap', 
-                    wordBreak: 'break-word',
-                    lineHeight: 1.7,
-                    fontSize: '1rem',
-                    color: 'text.secondary',
-                    fontStyle: 'italic'
-                  }}
-                >
-                  {item.content}
-                </Typography>
-              )}
+                    {item.content}
+                  </Typography>
+                )}
+              </Box>
               {isCollapsible && onToggleAutoCollapse && <CollapseButton onClick={onToggleAutoCollapse} />}
             </Box>
           </Collapse>
