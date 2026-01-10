@@ -205,7 +205,8 @@ class ParallelStageExecutor:
         from tarsy.models.agent_config import ChainStageConfigModel
         parent_stage = ChainStageConfigModel(
             name=stage.name,
-            agent=f"parallel-{parallel_type}"  # Synthetic agent name for parent record
+            agent=f"parallel-{parallel_type}",  # Synthetic agent name for parent record
+            iteration_strategy=stage.iteration_strategy  # Pass through stage-level strategy for parent
         )
         
         # Create parent stage execution record with parallel_type and expected count
@@ -231,7 +232,8 @@ class ParallelStageExecutor:
             from tarsy.models.agent_config import ChainStageConfigModel
             child_stage = ChainStageConfigModel(
                 name=f"{stage.name} - {agent_name}",
-                agent=agent_name
+                agent=agent_name,
+                iteration_strategy=config.get("iteration_strategy")
             )
             
             # Create child stage execution record

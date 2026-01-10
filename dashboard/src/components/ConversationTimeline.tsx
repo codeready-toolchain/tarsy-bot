@@ -671,7 +671,7 @@ function ConversationTimeline({
       }
     }
     
-    return Array.from(streamingItems.entries())
+    const filteredItems = Array.from(streamingItems.entries())
       .filter(([, streamItem]) => {
         // ID-based deduplication - match by TYPE and ID
         if (
@@ -680,7 +680,8 @@ function ConversationTimeline({
           streamItem.type === STREAMING_CONTENT_TYPES.INTERMEDIATE_RESPONSE ||
           streamItem.type === STREAMING_CONTENT_TYPES.NATIVE_THINKING
         ) {
-          return !(streamItem.llm_interaction_id && dbInteractionIds.has(streamItem.llm_interaction_id));
+          const shouldShow = !(streamItem.llm_interaction_id && dbInteractionIds.has(streamItem.llm_interaction_id));
+          return shouldShow;
         }
         
         // Tool call streaming items - only deduplicate against tool_call DB items
@@ -698,7 +699,9 @@ function ConversationTimeline({
         }
         
         return true;
-      })
+      });
+    
+    return filteredItems
       .map(([key, streamItem]) => {
         // Metadata is already enriched from backend - just add display fields
         // For parallel stages: executionId = child stage execution ID (stage_execution_id from event)

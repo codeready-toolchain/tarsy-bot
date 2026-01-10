@@ -171,9 +171,10 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
           
           if (!isInheritedMessage) {
             // This is a NEW assistant message in this iteration - extract it
+            const itemTimestamp = thinkingContent ? lastTimestamp : interaction.timestamp_us;
             chatItems.push({
               type: CHAT_FLOW_ITEM_TYPES.INTERMEDIATE_RESPONSE,
-              timestamp_us: thinkingContent ? lastTimestamp : interaction.timestamp_us,
+              timestamp_us: itemTimestamp,
               stageId,
                 executionId,
                 executionAgent,

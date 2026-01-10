@@ -245,6 +245,7 @@ class DetailedStage(BaseModel):
     stage_index: int
     stage_name: str
     agent: str
+    iteration_strategy: Optional[str] = None  # Iteration strategy for this stage (e.g., 'native-thinking', 'react')
     
     # Stage execution info
     status: StageStatus
@@ -355,23 +356,6 @@ class DetailedStage(BaseModel):
         # Sort chronologically by timestamp_us
         return sorted(all_interactions, key=lambda x: x.timestamp_us)
     
-    @computed_field
-    @property
-    def iteration_strategy(self) -> Optional[str]:
-        """
-        Extract iteration strategy from stage output.
-        
-        For all stages: Reads from stage_output.iteration_strategy
-        (This is set by AgentExecutionResult for both single and parallel child executions)
-        
-        Returns:
-            Iteration strategy string (e.g., 'react', 'native-thinking') or None if not available
-        """
-        if not self.stage_output:
-            return None
-        
-        # All execution types store this in their AgentExecutionResult or ParallelStageResult
-        return self.stage_output.get('iteration_strategy')
     
     @computed_field
     @property

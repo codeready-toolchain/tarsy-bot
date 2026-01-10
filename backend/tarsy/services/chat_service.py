@@ -339,7 +339,8 @@ class ChatService:
                 agent=chat_agent_name,
                 status=StageStatus.PENDING.value,
                 chat_id=chat_id,
-                chat_user_message_id=message_id
+                chat_user_message_id=message_id,
+                iteration_strategy=iteration_strategy,
             )
             
             # Trigger stage execution hooks (creates DB record, publishes events)
