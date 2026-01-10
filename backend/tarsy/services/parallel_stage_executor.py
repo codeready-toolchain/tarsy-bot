@@ -63,6 +63,22 @@ class ParallelStageExecutor:
         self.settings = settings
         self.stage_manager = stage_manager
     
+    @staticmethod
+    def _normalize_iteration_strategy(strategy: Any) -> str:
+        """
+        Normalize iteration strategy to string representation.
+        
+        Converts IterationStrategy enum values to their string representation
+        to prevent Enum leakage into database and metadata.
+        
+        Args:
+            strategy: Either a string or IterationStrategy enum value
+            
+        Returns:
+            String representation of the strategy
+        """
+        return getattr(strategy, "value", strategy)
+    
     async def execute_parallel_agents(
         self,
         stage: "ChainStageConfigModel",
@@ -83,7 +99,7 @@ class ParallelStageExecutor:
             {
                 "agent_name": agent_config.name,
                 "llm_provider": agent_config.llm_provider or stage.llm_provider or chain_definition.llm_provider,
-                "iteration_strategy": getattr(agent_config.iteration_strategy, "value", agent_config.iteration_strategy),
+                "iteration_strategy": self._normalize_iteration_strategy(agent_config.iteration_strategy),
             }
             for agent_config in stage.agents
         ]
@@ -114,7 +130,7 @@ class ParallelStageExecutor:
         # Resolve stage-level provider and strategy (same for all replicas)
         # Normalize iteration_strategy to string to prevent Enum leakage
         effective_provider = stage.llm_provider or chain_definition.llm_provider
-        effective_strategy = getattr(stage.iteration_strategy, "value", stage.iteration_strategy)
+        effective_strategy = self._normalize_iteration_strategy(stage.iteration_strategy)
         
         # Build execution configs for each replica
         execution_configs = [
@@ -204,7 +220,7 @@ class ParallelStageExecutor:
         
         # Normalize iteration_strategy once at the start to prevent Enum leakage into DB/metadata
         # Convert IterationStrategy enum to string for consistent serialization across the system
-        stage_strategy_str = getattr(stage.iteration_strategy, "value", stage.iteration_strategy)
+        stage_strategy_str = self._normalize_iteration_strategy(stage.iteration_strategy)
         
         # Create a synthetic stage object for parent stage creation
         # Parent stages need an agent value for the database schema (NOT NULL constraint)
@@ -234,9 +250,8 @@ class ParallelStageExecutor:
             agent_name = config["agent_name"]
             base_agent = config.get("base_agent_name", agent_name)  # For replicas
             
-            # Normalize iteration_strategy for this child (convert Enum to string if needed)
-            child_strategy_raw = config.get("iteration_strategy")
-            child_strategy_str = getattr(child_strategy_raw, "value", child_strategy_raw)
+            # Get normalized iteration_strategy (already normalized during config building)
+            child_strategy_str = config.get("iteration_strategy")
             
             # Create a child stage config for child stage creation
             from tarsy.models.agent_config import ChainStageConfigModel
@@ -643,7 +658,7 @@ class ParallelStageExecutor:
                 config = {
                     "agent_name": child.agent,
                     "llm_provider": agent_config.llm_provider or stage_config.llm_provider or chain_definition.llm_provider,
-                    "iteration_strategy": getattr(agent_config.iteration_strategy, "value", agent_config.iteration_strategy),
+                    "iteration_strategy": self._normalize_iteration_strategy(agent_config.iteration_strategy),
                 }
             else:  # REPLICA
                 # Extract base agent name (e.g., "KubernetesAgent-1" -> "KubernetesAgent")
@@ -654,7 +669,7 @@ class ParallelStageExecutor:
                     "agent_name": child.agent,  # Keep replica name
                     "base_agent_name": base_agent,
                     "llm_provider": stage_config.llm_provider or chain_definition.llm_provider,
-                    "iteration_strategy": getattr(stage_config.iteration_strategy, "value", stage_config.iteration_strategy),
+                    "iteration_strategy": self._normalize_iteration_strategy(stage_config.iteration_strategy),
                 }
             
             execution_configs.append(config)
@@ -683,9 +698,8 @@ class ParallelStageExecutor:
             agent_name = config["agent_name"]
             base_agent = config.get("base_agent_name", agent_name)
             
-            # Normalize iteration_strategy once (defensive normalization, should already be string from config building)
-            child_strategy_raw = config.get("iteration_strategy")
-            child_strategy_str = getattr(child_strategy_raw, "value", child_strategy_raw)
+            # Get normalized iteration_strategy (already normalized during config building)
+            child_strategy_str = config.get("iteration_strategy")
             
             # Find the existing paused child stage execution to reuse
             paused_child = paused_children[idx]
@@ -985,7 +999,7 @@ class ParallelStageExecutor:
             synthesis_agent = self.agent_factory.get_agent(
                 agent_identifier=synthesis_config.agent,
                 mcp_client=session_mcp_client,
-                iteration_strategy=getattr(synthesis_config.iteration_strategy, "value", synthesis_config.iteration_strategy),  # Configurable strategy
+                iteration_strategy=self._normalize_iteration_strategy(synthesis_config.iteration_strategy),
                 llm_provider=effective_provider
             )
             
