@@ -222,10 +222,6 @@ class ParallelStageExecutor:
         """
         stage_started_at_us = now_us()
         
-        # Normalize iteration_strategy once at the start to prevent Enum leakage into DB/metadata
-        # Convert IterationStrategy enum to string for consistent serialization across the system
-        stage_strategy_str = self._normalize_iteration_strategy(stage.iteration_strategy)
-        
         # Create a synthetic stage object for parent stage creation
         # Parent stages need an agent value for the database schema (NOT NULL constraint)
         from tarsy.models.agent_config import ChainStageConfigModel
