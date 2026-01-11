@@ -16,7 +16,7 @@ from tarsy.models.agent_execution_result import (
     AgentExecutionResult,
     ParallelStageResult,
 )
-from tarsy.models.constants import SuccessPolicy, StageStatus
+from tarsy.models.constants import SuccessPolicy, StageStatus, IterationStrategy
 from tarsy.models.processing_context import ChainContext
 from tarsy.services.parallel_stage_executor import ParallelStageExecutor
 from tarsy.utils.timestamp import now_us
@@ -119,6 +119,26 @@ class TestParallelStageExecutorUtilities:
         chain_def = SimpleNamespace(stages=[])
         
         assert executor.is_final_stage_parallel(chain_def) is False
+    
+    def test_normalize_iteration_strategy_with_none(self):
+        """Test that _normalize_iteration_strategy returns 'unknown' for None input."""
+        result = ParallelStageExecutor._normalize_iteration_strategy(None)
+        assert result == "unknown"
+    
+    def test_normalize_iteration_strategy_with_string(self):
+        """Test that _normalize_iteration_strategy returns string as-is."""
+        result = ParallelStageExecutor._normalize_iteration_strategy("react")
+        assert result == "react"
+    
+    def test_normalize_iteration_strategy_with_enum(self):
+        """Test that _normalize_iteration_strategy extracts .value from IterationStrategy enum."""
+        result = ParallelStageExecutor._normalize_iteration_strategy(IterationStrategy.REACT)
+        assert result == "react"
+    
+    def test_normalize_iteration_strategy_with_native_thinking_enum(self):
+        """Test that _normalize_iteration_strategy extracts .value from NATIVE_THINKING enum."""
+        result = ParallelStageExecutor._normalize_iteration_strategy(IterationStrategy.NATIVE_THINKING)
+        assert result == "native-thinking"
 
 
 @pytest.mark.unit

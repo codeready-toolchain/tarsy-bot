@@ -102,6 +102,7 @@ class ParallelStageExecutor:
                 "agent_name": agent_config.name,
                 "llm_provider": agent_config.llm_provider or stage.llm_provider or chain_definition.llm_provider,
                 "iteration_strategy": self._normalize_iteration_strategy(agent_config.iteration_strategy),
+                "iteration_strategy_original": agent_config.iteration_strategy,  # Keep original for Pydantic validation
             }
             for agent_config in stage.agents
         ]
@@ -141,6 +142,7 @@ class ParallelStageExecutor:
                 "base_agent_name": stage.agent,  # Original agent name
                 "llm_provider": effective_provider,
                 "iteration_strategy": effective_strategy,
+                "iteration_strategy_original": stage.iteration_strategy,  # Keep original for Pydantic validation
             }
             for idx in range(stage.replicas)
         ]
@@ -230,7 +232,7 @@ class ParallelStageExecutor:
         parent_stage = ChainStageConfigModel(
             name=stage.name,
             agent=f"parallel-{parallel_type}",  # Synthetic agent name for parent record
-            iteration_strategy=stage_strategy_str  # Normalized string (not Enum)
+            iteration_strategy=stage.iteration_strategy  # Keep original value (Enum or None) for Pydantic validation
         )
         
         # Create parent stage execution record with parallel_type and expected count
@@ -255,12 +257,16 @@ class ParallelStageExecutor:
             # Get normalized iteration_strategy (already normalized during config building)
             child_strategy_str = config.get("iteration_strategy")
             
+            # Get original (non-normalized) iteration_strategy for Pydantic validation
+            # For ChainStageConfigModel, we need the original value (Enum or None), not the normalized string
+            child_strategy_original = config.get("iteration_strategy_original")
+            
             # Create a child stage config for child stage creation
             from tarsy.models.agent_config import ChainStageConfigModel
             child_stage = ChainStageConfigModel(
                 name=f"{stage.name} - {agent_name}",
                 agent=agent_name,
-                iteration_strategy=child_strategy_str  # Normalized string (not Enum)
+                iteration_strategy=child_strategy_original  # Keep original value (Enum or None) for Pydantic validation
             )
             
             # Create child stage execution record
@@ -328,12 +334,12 @@ class ParallelStageExecutor:
                         result.error_message or "Execution failed"
                     )
                 
-                # Create metadata (use normalized string, fallback to agent's strategy)
+                # Create metadata (use normalized string from config)
                 agent_completed_at_us = now_us()
                 metadata = AgentExecutionMetadata(
                     agent_name=agent_name,
                     llm_provider=config["llm_provider"] or self.settings.llm_provider,
-                    iteration_strategy=child_strategy_str or self._normalize_iteration_strategy(agent.iteration_strategy),
+                    iteration_strategy=child_strategy_str or "unknown",
                     started_at_us=agent_started_at_us,
                     completed_at_us=agent_completed_at_us,
                     status=result.status,
@@ -661,6 +667,7 @@ class ParallelStageExecutor:
                     "agent_name": child.agent,
                     "llm_provider": agent_config.llm_provider or stage_config.llm_provider or chain_definition.llm_provider,
                     "iteration_strategy": self._normalize_iteration_strategy(agent_config.iteration_strategy),
+                    "iteration_strategy_original": agent_config.iteration_strategy,  # Keep original for Pydantic validation
                 }
             else:  # REPLICA
                 # Extract base agent name (e.g., "KubernetesAgent-1" -> "KubernetesAgent")
@@ -672,6 +679,7 @@ class ParallelStageExecutor:
                     "base_agent_name": base_agent,
                     "llm_provider": stage_config.llm_provider or chain_definition.llm_provider,
                     "iteration_strategy": self._normalize_iteration_strategy(stage_config.iteration_strategy),
+                    "iteration_strategy_original": stage_config.iteration_strategy,  # Keep original for Pydantic validation
                 }
             
             execution_configs.append(config)
