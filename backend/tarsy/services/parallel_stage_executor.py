@@ -7,7 +7,7 @@ and automatic synthesis of parallel results.
 """
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Union
 
 from tarsy.agents.exceptions import SessionPaused
 from tarsy.config.settings import Settings
@@ -18,7 +18,7 @@ from tarsy.models.agent_execution_result import (
     ParallelStageMetadata,
     ParallelStageResult,
 )
-from tarsy.models.constants import SuccessPolicy, ParallelType, StageStatus  # FailurePolicy is backward compat alias
+from tarsy.models.constants import SuccessPolicy, ParallelType, StageStatus, IterationStrategy  # FailurePolicy is backward compat alias
 from tarsy.models.processing_context import ChainContext
 from tarsy.utils.agent_execution_utils import build_agent_result_from_exception
 from tarsy.utils.logger import get_module_logger
@@ -64,7 +64,7 @@ class ParallelStageExecutor:
         self.stage_manager = stage_manager
     
     @staticmethod
-    def _normalize_iteration_strategy(strategy: Any) -> str:
+    def _normalize_iteration_strategy(strategy: Union[str, IterationStrategy, None]) -> str:
         """
         Normalize iteration strategy to string representation.
         
@@ -72,11 +72,13 @@ class ParallelStageExecutor:
         to prevent Enum leakage into database and metadata.
         
         Args:
-            strategy: Either a string or IterationStrategy enum value
+            strategy: Either a string, IterationStrategy enum value, or None
             
         Returns:
-            String representation of the strategy
+            String representation of the strategy (returns "unknown" for None)
         """
+        if strategy is None:
+            return "unknown"
         return getattr(strategy, "value", strategy)
     
     async def execute_parallel_agents(
@@ -331,7 +333,7 @@ class ParallelStageExecutor:
                 metadata = AgentExecutionMetadata(
                     agent_name=agent_name,
                     llm_provider=config["llm_provider"] or self.settings.llm_provider,
-                    iteration_strategy=child_strategy_str or agent.iteration_strategy.value,
+                    iteration_strategy=child_strategy_str or self._normalize_iteration_strategy(agent.iteration_strategy),
                     started_at_us=agent_started_at_us,
                     completed_at_us=agent_completed_at_us,
                     status=result.status,
