@@ -115,7 +115,8 @@ class ProgressPhase(str, Enum):
     """
     INVESTIGATING = "investigating"  # Default phase - agents are investigating the issue
     SYNTHESIZING = "synthesizing"    # Synthesis agent is combining parallel results
-    SUMMARIZING = "summarizing"      # Executive summary is being generated
+    DISTILLING = "distilling"        # MCP tool result summarization (reduces large outputs)
+    FINALIZING = "finalizing"        # Executive summary generation at chain completion
 
 
 class ChainStatus(Enum):

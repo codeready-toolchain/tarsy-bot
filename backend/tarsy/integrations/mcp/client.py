@@ -705,6 +705,15 @@ class MCPClient:
             
             logger.info(f"Summarizing large MCP result: {server_name}.{tool_name} ({estimated_tokens} tokens)")
             
+            # Publish progress update for distilling status
+            from tarsy.models.constants import ProgressPhase
+            from tarsy.services.events.event_helpers import publish_session_progress_update
+            await publish_session_progress_update(
+                session_id,
+                phase=ProgressPhase.DISTILLING,
+                metadata={"tool": f"{server_name}.{tool_name}", "tokens": estimated_tokens}
+            )
+            
             # Publish immediate placeholder to frontend for instant feedback
             await self._publish_summarization_placeholder(
                 session_id, stage_execution_id, mcp_event_id
@@ -730,6 +739,14 @@ class MCPClient:
                 }
             
             logger.info(f"Successfully summarized {server_name}.{tool_name} from {estimated_tokens} to ~{max_summary_tokens} tokens")
+            
+            # Revert back to investigating status
+            await publish_session_progress_update(
+                session_id,
+                phase=ProgressPhase.INVESTIGATING,
+                metadata=None
+            )
+            
             return summarized
             
         except Exception as e:

@@ -675,10 +675,12 @@ class TestPublishSessionProgressUpdate:
         [
             (ProgressPhase.INVESTIGATING, "investigating"),
             (ProgressPhase.SYNTHESIZING, "synthesizing"),
-            (ProgressPhase.SUMMARIZING, "summarizing"),
+            (ProgressPhase.DISTILLING, "distilling"),         # MCP tool result summarization
+            (ProgressPhase.FINALIZING, "finalizing"),         # Executive summary generation
             ("investigating", "investigating"),
             ("synthesizing", "synthesizing"),
-            ("summarizing", "summarizing"),
+            ("distilling", "distilling"),
+            ("finalizing", "finalizing"),
         ],
     )
     async def test_publishes_progress_update_with_enum_or_string(
