@@ -123,7 +123,7 @@ When the score analysis already exists:
 {
   "score_id": "550e8400-e29b-41d4-a716-446655440000",
   "session_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
-  "status": "completed",  // in_progress | completed | failed
+  "status": "completed",  // or failed
   "prompt_hash": "a3f5b2c1...",
   "total_score": 67,  // NULL if status != completed
   "score_analysis": "...",  // NULL if status != completed
@@ -326,7 +326,7 @@ Clients subscribe to channels via existing WebSocket infrastructure. Real-time u
 **Goal:** Implement hardcoded judge prompts and criteria versioning
 
 * [ ] Hardcode judge prompts as module constants in scoring service
-  * Module file: `backend/tarsy/services/scoring_service.py`
+  * Module file: `backend/tarsy/agents/prompt/judges.py`
   * Constants:
     * `JUDGE_PROMPT_SCORE` - Main scoring evaluation prompt (see Attachment section)
     * `JUDGE_PROMPT_FOLLOWUP_MISSING_TOOLS` - Missing tools analysis prompt
