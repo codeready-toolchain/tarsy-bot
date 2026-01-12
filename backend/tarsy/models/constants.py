@@ -188,11 +188,13 @@ class StreamingEventType(str, Enum):
     
     - THOUGHT: Complete "Thought:" section from ReAct pattern
     - FINAL_ANSWER: Complete "Final Answer:" section from ReAct pattern
+    - INTERMEDIATE_RESPONSE: Assistant response during intermediate iterations (native thinking)
     - SUMMARIZATION: Plain text summarization of tool results
     - NATIVE_THINKING: Native thinking summaries from Gemini models (distinct from ReAct thoughts)
     """
     THOUGHT = "thought"
     FINAL_ANSWER = "final_answer"
+    INTERMEDIATE_RESPONSE = "intermediate_response"
     SUMMARIZATION = "summarization"
     NATIVE_THINKING = "native_thinking"
 

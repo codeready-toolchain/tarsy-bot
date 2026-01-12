@@ -18,6 +18,7 @@ import {
 import type { ChatFlowItemData } from '../utils/chatFlowParser';
 import type { StageExecution } from '../types';
 import { apiClient, handleAPIError } from '../services/api';
+import { CHAT_FLOW_ITEM_TYPES } from '../constants/chatFlowItemTypes';
 import ChatFlowItem from './ChatFlowItem';
 import StreamingContentRenderer, { type StreamingItem } from './StreamingContentRenderer';
 import { getParallelStageLabel } from '../utils/parallelStageHelpers';
@@ -37,6 +38,11 @@ interface ParallelStageReasoningTabsProps {
   onToggleStage: (stageId: string) => void;
   // Streaming items for real-time display (not yet in DB)
   streamingItems?: [string, ParallelStreamingItem][];
+  // Auto-collapse props
+  shouldAutoCollapse?: (item: ChatFlowItemData) => boolean;
+  onToggleItemExpansion?: (item: ChatFlowItemData) => void;
+  expandAllReasoning?: boolean;
+  isItemCollapsible?: (item: ChatFlowItemData) => boolean;
 }
 
 interface TabPanelProps {
@@ -99,6 +105,10 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
   collapsedStages,
   onToggleStage,
   streamingItems = [],
+  shouldAutoCollapse,
+  onToggleItemExpansion,
+  expandAllReasoning = false,
+  isItemCollapsible,
 }) => {
   const [selectedTab, setSelectedTab] = useState(0);
   const [cancelingAgents, setCancelingAgents] = useState<Set<string>>(new Set());
@@ -130,7 +140,7 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
   
   for (const item of items) {
     // Skip stage_start and user_message items (they're shared across all executions)
-    if (item.type === 'stage_start' || item.type === 'user_message') {
+    if (item.type === CHAT_FLOW_ITEM_TYPES.STAGE_START || item.type === CHAT_FLOW_ITEM_TYPES.USER_MESSAGE) {
       continue;
     }
     
@@ -367,6 +377,10 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
                   item={item}
                   isCollapsed={item.stageId ? collapsedStages.get(item.stageId) || false : false}
                   onToggleCollapse={item.stageId ? () => onToggleStage(item.stageId!) : undefined}
+                  isAutoCollapsed={shouldAutoCollapse ? shouldAutoCollapse(item) : false}
+                  onToggleAutoCollapse={onToggleItemExpansion ? () => onToggleItemExpansion(item) : undefined}
+                  expandAll={expandAllReasoning}
+                  isCollapsible={isItemCollapsible ? isItemCollapsible(item) : false}
                 />
               ))}
               

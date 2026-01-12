@@ -196,7 +196,46 @@ class BaseAgent(ABC):
 
     async def process_alert(self, context: ChainContext) -> AgentExecutionResult:
         """
-        Process alert.
+        Process alert with automatic timeout protection.
+        
+        All agents automatically get timeout protection to prevent runaway executions.
+        Uses alert_processing_timeout from settings (default: 600s / 10 minutes).
+        
+        Args:
+            context: ChainContext containing all processing data
+        
+        Returns:
+            Structured AgentExecutionResult with rich investigation summary
+        """
+        # Get timeout from settings
+        from tarsy.config.settings import get_settings
+        settings = get_settings()
+        timeout = settings.alert_processing_timeout
+        
+        try:
+            # Wrap entire agent execution with timeout protection
+            return await asyncio.wait_for(
+                self._process_alert_impl(context),
+                timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            # Agent execution exceeded timeout - return failed result
+            error_msg = f"Agent execution exceeded {timeout}s timeout"
+            logger.error(f"{error_msg} for {self.__class__.__name__} in stage '{context.current_stage_name}'")
+            return AgentExecutionResult(
+                status=StageStatus.FAILED,
+                agent_name=self.__class__.__name__,
+                stage_name=context.current_stage_name,
+                timestamp_us=now_us(),
+                result_summary=error_msg,
+                error_message=error_msg,
+                iteration_strategy=self._iteration_strategy.value,
+                llm_provider=self._llm_provider_name
+            )
+    
+    async def _process_alert_impl(self, context: ChainContext) -> AgentExecutionResult:
+        """
+        Internal implementation of alert processing (wrapped by process_alert with timeout).
         
         Args:
             context: ChainContext containing all processing data

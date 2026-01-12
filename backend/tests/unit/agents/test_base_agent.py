@@ -1292,3 +1292,192 @@ class TestBaseAgentSummarization:
         mock_mcp_client.call_tool.assert_called_once_with(
             "test-server", "kubectl-get", {"resource": "nodes"}, "test-session-compat", None, None, None, ["test-server"]
         )
+
+
+@pytest.mark.unit
+class TestBaseAgentTimeoutProtection:
+    """Test BaseAgent automatic timeout protection for process_alert."""
+    
+    @pytest.fixture
+    def mock_llm_manager(self):
+        """Create mock LLM client."""
+        return Mock(spec=LLMClient)
+    
+    @pytest.fixture
+    def mock_mcp_client(self):
+        """Create mock MCP client."""
+        client = Mock(spec=MCPClient)
+        client.list_tools = AsyncMock(return_value={"test-server": []})
+        return client
+    
+    @pytest.fixture
+    def mock_mcp_registry(self):
+        """Create mock MCP registry."""
+        registry = Mock(spec=MCPServerRegistry)
+        mock_config = Mock()
+        mock_config.server_id = "test-server"
+        mock_config.server_type = "test"
+        mock_config.instructions = "Test instructions"
+        registry.get_server_configs.return_value = [mock_config]
+        return registry
+    
+    @pytest.mark.asyncio
+    async def test_process_alert_timeout_returns_failed_result(
+        self, mock_llm_manager, mock_mcp_client, mock_mcp_registry
+    ):
+        """Test that process_alert returns FAILED result when execution exceeds timeout."""
+        import asyncio
+        from tarsy.models.constants import StageStatus
+        from tarsy.config.settings import get_settings
+        
+        # Create agent
+        agent = TestConcreteAgent(mock_llm_manager, mock_mcp_client, mock_mcp_registry)
+        
+        # Mock _process_alert_impl to take longer than timeout
+        async def slow_implementation(*args, **kwargs):
+            await asyncio.sleep(2)  # Takes 2 seconds
+            from tarsy.models.agent_execution_result import AgentExecutionResult
+            return AgentExecutionResult(
+                status=StageStatus.COMPLETED,
+                agent_name="TestConcreteAgent",
+                stage_name="test",
+                timestamp_us=now_us(),
+                result_summary="Should not reach here"
+            )
+        
+        agent._process_alert_impl = AsyncMock(side_effect=slow_implementation)
+        
+        # Set short timeout
+        settings = get_settings()
+        original_timeout = settings.alert_processing_timeout
+        settings.alert_processing_timeout = 0.5  # 500ms timeout
+        
+        try:
+            # Create chain context
+            from tarsy.models.alert import ProcessingAlert
+            processing_alert = ProcessingAlert(
+                alert_type="test",
+                severity="warning",
+                timestamp=now_us(),
+                environment="production",
+                alert_data={"test": "data"}
+            )
+            chain_context = ChainContext.from_processing_alert(
+                processing_alert=processing_alert,
+                session_id="timeout-test-session",
+                current_stage_name="test-stage"
+            )
+            
+            # Execute and expect timeout handling
+            result = await agent.process_alert(chain_context)
+            
+            # Verify result is FAILED due to timeout
+            assert result.status == StageStatus.FAILED
+            assert "timeout" in result.error_message.lower()
+            assert result.agent_name == "TestConcreteAgent"
+            assert result.stage_name == "test-stage"
+        finally:
+            settings.alert_processing_timeout = original_timeout
+    
+    @pytest.mark.asyncio
+    async def test_process_alert_successful_completion_within_timeout(
+        self, mock_llm_manager, mock_mcp_client, mock_mcp_registry
+    ):
+        """Test that process_alert completes successfully when within timeout."""
+        import asyncio
+        from tarsy.models.constants import StageStatus
+        from tarsy.models.agent_execution_result import AgentExecutionResult
+        
+        # Create agent
+        agent = TestConcreteAgent(mock_llm_manager, mock_mcp_client, mock_mcp_registry)
+        
+        # Mock _process_alert_impl to complete quickly
+        async def fast_implementation(*args, **kwargs):
+            await asyncio.sleep(0.1)  # Fast
+            return AgentExecutionResult(
+                status=StageStatus.COMPLETED,
+                agent_name="TestConcreteAgent",
+                stage_name="test",
+                timestamp_us=now_us(),
+                result_summary="Completed successfully"
+            )
+        
+        agent._process_alert_impl = AsyncMock(side_effect=fast_implementation)
+        
+        # Create chain context
+        from tarsy.models.alert import ProcessingAlert
+        processing_alert = ProcessingAlert(
+            alert_type="test",
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"test": "data"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="success-test-session",
+            current_stage_name="test-stage"
+        )
+        
+        # Execute and expect success
+        result = await agent.process_alert(chain_context)
+        
+        # Verify result is COMPLETED
+        assert result.status == StageStatus.COMPLETED
+        assert result.result_summary == "Completed successfully"
+        assert result.error_message is None
+    
+    @pytest.mark.asyncio
+    async def test_timeout_protection_uses_configured_timeout_value(
+        self, mock_llm_manager, mock_mcp_client, mock_mcp_registry
+    ):
+        """Test that timeout protection uses alert_processing_timeout from settings."""
+        import asyncio
+        from tarsy.models.constants import StageStatus
+        from tarsy.config.settings import get_settings
+        
+        # Create agent
+        agent = TestConcreteAgent(mock_llm_manager, mock_mcp_client, mock_mcp_registry)
+        
+        # Mock _process_alert_impl with specific timing
+        async def timed_implementation(*args, **kwargs):
+            await asyncio.sleep(1.5)  # 1.5 seconds
+            from tarsy.models.agent_execution_result import AgentExecutionResult
+            return AgentExecutionResult(
+                status=StageStatus.COMPLETED,
+                agent_name="TestConcreteAgent",
+                stage_name="test",
+                timestamp_us=now_us(),
+                result_summary="Should not reach if timeout is 1s"
+            )
+        
+        agent._process_alert_impl = AsyncMock(side_effect=timed_implementation)
+        
+        # Test with 1 second timeout (should timeout)
+        settings = get_settings()
+        original_timeout = settings.alert_processing_timeout
+        settings.alert_processing_timeout = 1.0
+        
+        try:
+            from tarsy.models.alert import ProcessingAlert
+            processing_alert = ProcessingAlert(
+                alert_type="test",
+                severity="warning",
+                timestamp=now_us(),
+                environment="production",
+                alert_data={"test": "data"}
+            )
+            chain_context = ChainContext.from_processing_alert(
+                processing_alert=processing_alert,
+                session_id="timing-test-session",
+                current_stage_name="test-stage"
+            )
+            
+            result = await agent.process_alert(chain_context)
+            
+            # Should timeout with 1s timeout
+            assert result.status == StageStatus.FAILED
+            assert "timeout" in result.error_message.lower()
+            assert "1" in result.error_message  # Timeout value in message
+        finally:
+            settings.alert_processing_timeout = original_timeout

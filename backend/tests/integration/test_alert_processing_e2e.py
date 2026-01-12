@@ -250,8 +250,8 @@ class TestErrorHandlingScenarios:
         # Assert - Should return error response
         assert result is not None
         assert "error" in result.lower() or "Error" in result
-        # Verify error message contains processing failure info (updated for chain architecture)  
-        assert "chain processing fail" in result.lower() or "agent creation" in result.lower()
+        # Verify error message contains the specific agent error
+        assert "agent not found" in result.lower()
 
     @pytest.mark.asyncio
     async def test_runbook_download_error(

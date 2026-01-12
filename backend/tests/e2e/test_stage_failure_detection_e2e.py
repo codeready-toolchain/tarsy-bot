@@ -30,10 +30,12 @@ class TestStageFailureDetectionE2E:
         E2E test for new stage failure detection logic.
 
         Tests scenario where:
-        - All stages: All LLM interactions fail -> All Stages FAILED
-        - Session: FAILED (due to any stage failure)
+        - First stage: All LLM interactions fail -> Stage FAILED
+        - Session: FAILED (stops at first stage failure)
 
-        Verifies our new failure detection logic: max iterations + failed last interaction = stage failure.
+        Verifies failure detection logic: 
+        - max iterations + failed last interaction = stage failure
+        - Chain stops immediately on first stage failure
         """
         print("🚀 Starting stage failure detection E2E test...")
 
@@ -130,17 +132,18 @@ class TestStageFailureDetectionE2E:
                     # Get session details with retry logic for robustness
                     detail_data = await E2ETestUtils.get_session_details_async(e2e_test_client, session_id, max_retries=5)
                     stages = detail_data.get("stages", [])
-                    assert len(stages) == 3, f"Expected 3 stages, got {len(stages)}"
+                    # Chain stops at first failure, so only 1 stage should be created
+                    assert len(stages) == 1, f"Expected 1 stage (chain stops at first failure), got {len(stages)}"
 
-                    # Verify the created stage(s) failed with appropriate error messages
-                    for stage in stages:
-                        assert stage["status"] == "failed", f"Expected stage '{stage['stage_name']}' to be 'failed', got: {stage['status']}"
-                        stage_error = stage.get("error_message", "")
-                        # Verify that stages failed due to our new logic (either max iterations or LLM failure)
-                        assert any(keyword in stage_error for keyword in ["reached maximum iterations", "failed", "error"]), f"Expected stage error to indicate failure, got: {stage_error}"
-                        print(f"✅ Stage '{stage['stage_name']}' correctly marked as FAILED: {stage_error[:100]}...")
+                    # Verify the first stage failed with appropriate error message
+                    first_stage = stages[0]
+                    assert first_stage["status"] == "failed", f"Expected stage '{first_stage['stage_name']}' to be 'failed', got: {first_stage['status']}"
+                    stage_error = first_stage.get("error_message", "")
+                    # Verify that stage failed (either max iterations or LLM failure)
+                    assert any(keyword in stage_error for keyword in ["reached maximum iterations", "failed", "error"]), f"Expected stage error to indicate failure, got: {stage_error}"
+                    print(f"✅ Stage '{first_stage['stage_name']}' correctly marked as FAILED: {stage_error[:100]}...")
 
                     print("✅ NEW FAILURE DETECTION TEST PASSED!")
-                    print(f"   📊 Summary: {len(stages)} stage(s) created and properly failed, Session=FAILED")
+                    print("   📊 Summary: First stage failed, chain stopped immediately, Session=FAILED")
 
                     return

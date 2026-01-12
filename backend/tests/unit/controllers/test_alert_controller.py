@@ -645,12 +645,13 @@ containers:
         assert response.status_code == 200
 
     def test_string_length_limits(self, client):
-        """Test string length limiting in sanitization."""
-        long_string_data = {
-            "alert_type": "x" * 15000,  # Over 10KB limit
+        """Test string length limiting in sanitization - accepts large strings up to 1MB per field."""
+        # Test with large but acceptable string (500KB - well under 1MB limit)
+        large_string_data = {
+            "alert_type": "test",
             "runbook": "https://example.com/runbook.md",
             "data": {
-                "message": "y" * 15000
+                "message": "x" * 500000  # 500KB message - should be accepted
             }
         }
         
@@ -661,7 +662,7 @@ containers:
                 status="queued",
                 message="Alert submitted for processing"
             ))
-            response = client.post("/api/v1/alerts", json=long_string_data)
+            response = client.post("/api/v1/alerts", json=large_string_data)
         
         assert response.status_code == 200
 

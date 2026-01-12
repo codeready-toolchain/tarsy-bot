@@ -33,6 +33,8 @@ Your specific task is to summarize output from **test-data-server.collect_system
 - **Focus On**: Non-default configurations, problematic settings, resource utilization issues
 - **Maintain**: Technical accuracy and context about what the data represents
 - **Format**: Clean, structured text suitable for continued technical investigation
+- **Be Conclusive**: Explicitly state what was found AND what was NOT found to prevent re-queries
+- **Answer Questions**: If the investigation context suggests the investigator was looking for something specific, explicitly confirm whether it was present or absent
 
 Your summary will be inserted as an observation in the ongoing investigation conversation."""
         },
@@ -557,7 +559,7 @@ Action Input: {"detailed": false}"""
         {
             "role": "user",
             "content": """Observation: test-data-server.collect_system_info: {
-  "result": "[NOTE: The tool output was too long and has been summarized below.]\\n\\nSummarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK."
+  "result": "[NOTE: The tool output was too long and has been summarized below.]\\n\\nSummarized: System healthy, CPU 45%, Memory 33%, Disk 76%, Network OK.\\n\\nIMPORTANT: Re-running this tool will produce the same result. The summary above contains all critical information needed for your investigation. Use this information to proceed with your analysis rather than re-executing the same tool."
 }"""
         },
         {

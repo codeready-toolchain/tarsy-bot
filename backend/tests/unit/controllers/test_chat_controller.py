@@ -303,7 +303,7 @@ class TestChatController:
 
     def test_send_message_validation_too_long(self, client):
         """Test message validation rejects content exceeding max length."""
-        long_content = "x" * 10001  # Exceeds 10000 char limit
+        long_content = "x" * 100001  # Exceeds 100000 char limit
         response = client.post(
             "/api/v1/chats/test-chat-123/messages",
             json={"content": long_content},

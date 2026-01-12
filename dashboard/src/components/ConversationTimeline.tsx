@@ -6,8 +6,11 @@ import {
   CardContent,
   Chip,
   Alert,
-  alpha
+  alpha,
+  Button,
+  Collapse
 } from '@mui/material';
+import { ExpandMore, ExpandLess } from '@mui/icons-material';
 import { parseSessionChatFlow, getChatFlowStats } from '../utils/chatFlowParser';
 import type { ChatFlowItemData } from '../utils/chatFlowParser';
 import type { DetailedSession } from '../types';
@@ -23,6 +26,8 @@ import {
   STREAMING_CONTENT_TYPES, 
   parseStreamingContentType 
 } from '../utils/eventTypes';
+import { CHAT_FLOW_ITEM_TYPES } from '../constants/chatFlowItemTypes';
+import { generateItemKey } from '../utils/chatFlowItemKey';
 // Auto-scroll is now handled by the centralized system in SessionDetailPageBase
 
 interface ProcessingIndicatorProps {
@@ -136,13 +141,14 @@ const StreamingItemRenderer = memo(({ item }: { item: ConversationStreamingItem 
   if (
     item.type === STREAMING_CONTENT_TYPES.THOUGHT || 
     item.type === STREAMING_CONTENT_TYPES.FINAL_ANSWER || 
+    item.type === STREAMING_CONTENT_TYPES.INTERMEDIATE_RESPONSE ||
     item.type === STREAMING_CONTENT_TYPES.SUMMARIZATION || 
     item.type === STREAMING_CONTENT_TYPES.NATIVE_THINKING
   ) {
     return <StreamingContentRenderer item={item} />;
   }
   
-  if (item.type === 'user_message') {
+  if (item.type === CHAT_FLOW_ITEM_TYPES.USER_MESSAGE) {
     return (
       <Box sx={{ mb: 1.5, display: 'flex', gap: 1.5 }}>
         {/* Circular question mark avatar */}
@@ -206,7 +212,7 @@ const StreamingItemRenderer = memo(({ item }: { item: ConversationStreamingItem 
     );
   }
   
-  if (item.type === 'tool_call') {
+  if (item.type === CHAT_FLOW_ITEM_TYPES.TOOL_CALL) {
     // Render in-progress tool call with loading indicator
     return (
       <Box sx={{ ml: 4, my: 1, mr: 1 }}>
@@ -263,15 +269,100 @@ const StreamingItemRenderer = memo(({ item }: { item: ConversationStreamingItem 
 });
 
 /**
+ * Clean up old session entries from localStorage
+ * Removes entries older than 7 days and keeps only the 50 most recent sessions
+ * Exported for testing
+ */
+export function cleanupOldSessionEntries() {
+  const sessionKeyPrefix = 'session-';
+  const sessionKeySuffix = '-expanded-items';
+  const maxAgeMs = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
+  const maxSessionsToKeep = 50;
+  
+  try {
+    // Collect all keys from localStorage
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key) {
+        keys.push(key);
+      }
+    }
+    
+    const sessionKeys = keys.filter(key => 
+      key.startsWith(sessionKeyPrefix) && key.endsWith(sessionKeySuffix)
+    );
+    
+    // Parse all session entries with timestamps
+    const sessionEntries: Array<{ key: string; timestamp: number }> = [];
+    
+    for (const key of sessionKeys) {
+      try {
+        const data = localStorage.getItem(key);
+        if (data) {
+          const parsed = JSON.parse(data);
+          // Support both old format (array) and new format (object with timestamp)
+          const timestamp = typeof parsed === 'object' && !Array.isArray(parsed) && parsed.timestamp
+            ? parsed.timestamp
+            : 0; // Old entries without timestamp get 0 (will be kept but counted)
+          
+          sessionEntries.push({ key, timestamp });
+        }
+      } catch (err) {
+        // If parsing fails, remove the corrupted entry
+        console.warn(`Removing corrupted localStorage entry: ${key}`, err);
+        localStorage.removeItem(key);
+      }
+    }
+    
+    const now = Date.now();
+    let removedCount = 0;
+    
+    // Remove entries older than 7 days
+    for (const entry of sessionEntries) {
+      if (entry.timestamp > 0 && now - entry.timestamp > maxAgeMs) {
+        localStorage.removeItem(entry.key);
+        removedCount++;
+      }
+    }
+    
+    // Keep only the N most recent sessions (as a safety measure)
+    // Sort by timestamp (newest first), keep top N
+    const remainingEntries = sessionEntries
+      .filter(entry => {
+        const exists = localStorage.getItem(entry.key) !== null;
+        return exists;
+      })
+      .sort((a, b) => b.timestamp - a.timestamp);
+    
+    if (remainingEntries.length > maxSessionsToKeep) {
+      const entriesToRemove = remainingEntries.slice(maxSessionsToKeep);
+      for (const entry of entriesToRemove) {
+        localStorage.removeItem(entry.key);
+        removedCount++;
+      }
+    }
+    
+    if (removedCount > 0) {
+      console.log(`🧹 Cleaned up ${removedCount} old session entries from localStorage`);
+    }
+  } catch (err) {
+    console.error('Failed to clean up old localStorage entries:', err);
+  }
+}
+
+/**
  * Conversation Timeline Component
  * Renders session as a continuous chat-like flow with thoughts, tool calls, and final answers
  * Plugs into the shared SessionDetailPageBase
  */
 function ConversationTimeline({ 
   session, 
-  autoScroll: _autoScroll = true, // Auto-scroll handled by centralized system
+  autoScroll = true, // Auto-scroll handled by centralized system
   progressStatus = ProgressStatusMessage.PROCESSING
 }: ConversationTimelineProps) {
+  // Suppress unused warning - autoScroll is part of the interface but handled centrally
+  void autoScroll;
   const [chatFlow, setChatFlow] = useState<ChatFlowItemData[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [streamingItems, setStreamingItems] = useState<Map<string, ConversationStreamingItem>>(new Map());
@@ -280,6 +371,132 @@ function ConversationTimeline({
   // Track collapsed stages by execution_id (default: all expanded)
   const [collapsedStages, setCollapsedStages] = useState<Map<string, boolean>>(new Map());
   
+  // Auto-collapse state management
+  // Track which items should be auto-collapsed (by unique key)
+  const [autoCollapsedItems, setAutoCollapsedItems] = useState<Set<string>>(new Set());
+  // Track items user manually expanded (overrides auto-collapse)
+  const [manuallyExpandedItems, setManuallyExpandedItems] = useState<Set<string>>(new Set());
+  // Global "Expand All Reasoning" toggle
+  const [expandAllReasoning, setExpandAllReasoning] = useState<boolean>(false);
+  
+  // Track which chat flow items have been processed for auto-collapse
+  const [processedChatFlowKeys, setProcessedChatFlowKeys] = useState<Set<string>>(new Set());
+  
+  // Reset processed keys when session changes
+  useEffect(() => {
+    setProcessedChatFlowKeys(new Set());
+  }, [session.session_id]);
+  
+  // Create a stable representation of chatFlow item identities for dependency tracking
+  const chatFlowItemKeys = useMemo(() => {
+    return chatFlow.map(item => generateItemKey(item)).join('|');
+  }, [chatFlow]);
+  
+  // Auto-collapse NEW collapsible items as they appear in chatFlow (for active sessions)
+  // For completed sessions, collapse all items at once on first load
+  useEffect(() => {
+    if (!session || !chatFlow.length) return;
+    
+    const collapsibleTypes: string[] = [
+      CHAT_FLOW_ITEM_TYPES.THOUGHT,
+      CHAT_FLOW_ITEM_TYPES.NATIVE_THINKING,
+      CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER,
+      CHAT_FLOW_ITEM_TYPES.SUMMARIZATION
+    ];
+    const newItemsToCollapse = new Set<string>();
+    const currentFlowKeys = new Set<string>();
+    
+    for (const item of chatFlow) {
+      if (collapsibleTypes.includes(item.type)) {
+        const key = generateItemKey(item);
+        currentFlowKeys.add(key);
+        
+        
+        // Skip items that were already processed
+        if (processedChatFlowKeys.has(key)) {
+          continue;
+        }
+        
+        // Skip items that user manually expanded
+        if (manuallyExpandedItems.has(key)) {
+          continue;
+        }
+        
+        newItemsToCollapse.add(key);
+      }
+    }
+    
+    // Update processed keys to include current flow
+    setProcessedChatFlowKeys(currentFlowKeys);
+    
+    // Add new items to auto-collapsed set (incrementally)
+    if (newItemsToCollapse.size > 0) {
+      console.log(`📦 Auto-collapsing ${newItemsToCollapse.size} NEW collapsible items`);
+      setAutoCollapsedItems(prev => new Set([...prev, ...newItemsToCollapse]));
+    }
+  }, [session.session_id, session.status, chatFlowItemKeys, manuallyExpandedItems]);
+  
+  // Auto-collapse synthesis stage when session is completed
+  useEffect(() => {
+    if (!session || !chatFlow.length) return;
+    
+    // Only auto-collapse for terminal (completed/failed/cancelled) sessions
+    if (isTerminalSessionStatus(session.status)) {
+      const stagesToCollapse = new Map<string, boolean>();
+      
+      for (const item of chatFlow) {
+        // Find synthesis stage and mark it for collapse
+        if (item.type === CHAT_FLOW_ITEM_TYPES.STAGE_START && item.stageName === 'synthesis' && item.stageId) {
+          stagesToCollapse.set(item.stageId, true);
+        }
+      }
+      
+      // Only update if there are stages to collapse
+      if (stagesToCollapse.size > 0) {
+        setCollapsedStages(prev => {
+          const updated = new Map(prev);
+          stagesToCollapse.forEach((collapsed, stageId) => {
+            // Only set if not already manually toggled by user
+            if (!prev.has(stageId)) {
+              updated.set(stageId, collapsed);
+            }
+          });
+          return updated;
+        });
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.session_id, session.status, chatFlow.length]);
+
+  // Load manually expanded items from localStorage on mount
+  useEffect(() => {
+    const key = `session-${session.session_id}-expanded-items`;
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      try {
+        const data = JSON.parse(saved);
+        // Support both old format (array) and new format (object with timestamp)
+        const items = Array.isArray(data) ? data : data.items || [];
+        setManuallyExpandedItems(new Set(items));
+      } catch (err) {
+        console.error('Failed to parse localStorage expanded items:', err);
+      }
+    }
+    
+    // Clean up old session entries on mount
+    cleanupOldSessionEntries();
+  }, [session.session_id]);
+
+  // Save manually expanded items to localStorage with timestamp
+  useEffect(() => {
+    const key = `session-${session.session_id}-expanded-items`;
+    const data = {
+      items: Array.from(manuallyExpandedItems),
+      timestamp: Date.now()
+    };
+    localStorage.setItem(key, JSON.stringify(data));
+  }, [manuallyExpandedItems, session.session_id]);
+  
   // Handler to toggle stage collapse/expand
   const handleToggleStage = (stageId: string) => {
     setCollapsedStages(prev => {
@@ -287,6 +504,56 @@ function ConversationTimeline({
       updated.set(stageId, !prev.get(stageId));
       return updated;
     });
+  };
+  
+  // Handler to toggle individual item expansion
+  const handleToggleItemExpansion = (item: ChatFlowItemData) => {
+    const key = generateItemKey(item);
+    setManuallyExpandedItems(prev => {
+      const updated = new Set(prev);
+      if (updated.has(key)) {
+        // User collapsed - remove from manual expand, add back to auto-collapse
+        updated.delete(key);
+        setAutoCollapsedItems(prev => new Set([...prev, key]));
+      } else {
+        // User expanded - add to manual expand, remove from auto-collapse
+        updated.add(key);
+        setAutoCollapsedItems(prev => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      }
+      return updated;
+    });
+  };
+  
+  // Helper to check if an item should be auto-collapsed
+  const shouldAutoCollapse = (item: ChatFlowItemData): boolean => {
+    const key = generateItemKey(item);
+    // Don't collapse if manually expanded
+    if (manuallyExpandedItems.has(key)) return false;
+    // Collapse if in auto-collapse set
+    return autoCollapsedItems.has(key);
+  };
+  
+  // Helper to check if an item is collapsible (regardless of current state)
+  const isItemCollapsible = (item: ChatFlowItemData): boolean => {
+    const collapsibleTypes: string[] = [
+      CHAT_FLOW_ITEM_TYPES.THOUGHT,
+      CHAT_FLOW_ITEM_TYPES.NATIVE_THINKING,
+      CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER,
+      CHAT_FLOW_ITEM_TYPES.SUMMARIZATION
+    ];
+    if (!collapsibleTypes.includes(item.type)) return false;
+    
+    // Exception: Chat stage final answers should NOT be collapsible
+    // They are direct responses to user questions and should always be visible
+    if (item.type === CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER && item.isChatStage) {
+      return false;
+    }
+    
+    return true;
   };
   
   // Memoize chat flow stats to prevent recalculation on every render
@@ -308,7 +575,7 @@ function ConversationTimeline({
     let currentIsParallel = false;
     
     for (const item of chatFlow) {
-      if (item.type === 'stage_start') {
+      if (item.type === CHAT_FLOW_ITEM_TYPES.STAGE_START) {
         // Save previous group if exists
         if (currentGroup.length > 0) {
           groups.push({
@@ -357,11 +624,11 @@ function ConversationTimeline({
     content += `${'='.repeat(60)}\n\n`;
     
     chatFlow.forEach((item) => {
-      if (item.type === 'stage_start') {
+      if (item.type === CHAT_FLOW_ITEM_TYPES.STAGE_START) {
         content += `\n=== Stage: ${item.stageName} (${item.stageAgent}) ===\n\n`;
-      } else if (item.type === 'thought') {
+      } else if (item.type === CHAT_FLOW_ITEM_TYPES.THOUGHT) {
         content += `💭 Thought:\n${item.content}\n\n`;
-      } else if (item.type === 'tool_call') {
+      } else if (item.type === CHAT_FLOW_ITEM_TYPES.TOOL_CALL) {
         content += `🔧 Tool Call: ${item.toolName}\n`;
         content += `   Server: ${item.serverName}\n`;
         content += `   Arguments: ${JSON.stringify(item.toolArguments, null, 2)}\n`;
@@ -371,9 +638,9 @@ function ConversationTimeline({
           content += `   Error: ${item.errorMessage}\n`;
         }
         content += '\n';
-      } else if (item.type === 'summarization') {
+      } else if (item.type === CHAT_FLOW_ITEM_TYPES.SUMMARIZATION) {
         content += `📋 Tool Result Summary${item.mcp_event_id ? ` (MCP: ${item.mcp_event_id})` : ''}:\n${item.content}\n\n`;
-      } else if (item.type === 'final_answer') {
+      } else if (item.type === CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER) {
         content += `🎯 Final Answer:\n${item.content}\n\n`;
       }
     });
@@ -403,9 +670,9 @@ function ConversationTimeline({
       }
       // Separate tool_call and summarization mcp_event_ids
       if (item.mcp_event_id) {
-        if (item.type === 'tool_call') {
+        if (item.type === CHAT_FLOW_ITEM_TYPES.TOOL_CALL) {
           dbToolCallMcpIds.add(item.mcp_event_id);
-        } else if (item.type === 'summarization') {
+        } else if (item.type === CHAT_FLOW_ITEM_TYPES.SUMMARIZATION) {
           dbSummarizationMcpIds.add(item.mcp_event_id);
         }
       }
@@ -414,15 +681,17 @@ function ConversationTimeline({
       }
     }
     
-    return Array.from(streamingItems.entries())
+    const filteredItems = Array.from(streamingItems.entries())
       .filter(([, streamItem]) => {
         // ID-based deduplication - match by TYPE and ID
         if (
           streamItem.type === STREAMING_CONTENT_TYPES.THOUGHT ||
           streamItem.type === STREAMING_CONTENT_TYPES.FINAL_ANSWER ||
+          streamItem.type === STREAMING_CONTENT_TYPES.INTERMEDIATE_RESPONSE ||
           streamItem.type === STREAMING_CONTENT_TYPES.NATIVE_THINKING
         ) {
-          return !(streamItem.llm_interaction_id && dbInteractionIds.has(streamItem.llm_interaction_id));
+          const shouldShow = !(streamItem.llm_interaction_id && dbInteractionIds.has(streamItem.llm_interaction_id));
+          return shouldShow;
         }
         
         // Tool call streaming items - only deduplicate against tool_call DB items
@@ -440,7 +709,9 @@ function ConversationTimeline({
         }
         
         return true;
-      })
+      });
+    
+    return filteredItems
       .map(([key, streamItem]) => {
         // Metadata is already enriched from backend - just add display fields
         // For parallel stages: executionId = child stage execution ID (stage_execution_id from event)
@@ -732,9 +1003,9 @@ function ConversationTimeline({
         }
         // Separate tool_call and summarization mcp_event_ids
         if (item.mcp_event_id) {
-          if (item.type === 'tool_call') {
+          if (item.type === CHAT_FLOW_ITEM_TYPES.TOOL_CALL) {
             dbToolCallMcpIds.add(item.mcp_event_id);
-          } else if (item.type === 'summarization') {
+          } else if (item.type === CHAT_FLOW_ITEM_TYPES.SUMMARIZATION) {
             dbSummarizationMcpIds.add(item.mcp_event_id);
           }
         }
@@ -745,6 +1016,7 @@ function ConversationTimeline({
       
       const updated = new Map(prev);
       let itemsCleared = 0;
+      const collapsibleItemKeys: string[] = []; // Collect keys for items to auto-collapse
       
       // For each streaming item, check if DB has its ID (matching by TYPE)
       for (const [key, streamingItem] of prev.entries()) {
@@ -753,13 +1025,14 @@ function ConversationTimeline({
         if (
           streamingItem.type === STREAMING_CONTENT_TYPES.THOUGHT ||
           streamingItem.type === STREAMING_CONTENT_TYPES.FINAL_ANSWER ||
+          streamingItem.type === STREAMING_CONTENT_TYPES.INTERMEDIATE_RESPONSE ||
           streamingItem.type === STREAMING_CONTENT_TYPES.NATIVE_THINKING
         ) {
           // Match by llm_interaction_id
           if (streamingItem.llm_interaction_id && dbInteractionIds.has(streamingItem.llm_interaction_id)) {
             shouldRemove = true;
           }
-        } else if (streamingItem.type === 'tool_call') {
+        } else if (streamingItem.type === CHAT_FLOW_ITEM_TYPES.TOOL_CALL) {
           // Tool call streaming items - only deduplicate against tool_call DB items
           if (streamingItem.mcp_event_id && dbToolCallMcpIds.has(streamingItem.mcp_event_id)) {
             shouldRemove = true;
@@ -769,7 +1042,7 @@ function ConversationTimeline({
           if (streamingItem.mcp_event_id && dbSummarizationMcpIds.has(streamingItem.mcp_event_id)) {
             shouldRemove = true;
           }
-        } else if (streamingItem.type === 'user_message') {
+        } else if (streamingItem.type === CHAT_FLOW_ITEM_TYPES.USER_MESSAGE) {
           // Match by messageId
           if (streamingItem.messageId && dbMessageIds.has(streamingItem.messageId)) {
             shouldRemove = true;
@@ -780,7 +1053,31 @@ function ConversationTimeline({
           updated.delete(key);
           itemsCleared++;
           console.log(`🎯 Cleared streaming item via ID match: ${streamingItem.type}, id=${streamingItem.llm_interaction_id || streamingItem.mcp_event_id || streamingItem.messageId}`);
+          
+          // Track collapsible items transitioning to DB for auto-collapse
+          // Only add to collapse set if this is a collapsible type
+          if (
+            streamingItem.type === STREAMING_CONTENT_TYPES.THOUGHT ||
+            streamingItem.type === STREAMING_CONTENT_TYPES.NATIVE_THINKING ||
+            streamingItem.type === STREAMING_CONTENT_TYPES.FINAL_ANSWER ||
+            streamingItem.type === STREAMING_CONTENT_TYPES.SUMMARIZATION
+          ) {
+            const itemKey = generateItemKey({
+              llm_interaction_id: streamingItem.llm_interaction_id,
+              mcp_event_id: streamingItem.mcp_event_id,
+              type: streamingItem.type
+            });
+            collapsibleItemKeys.push(itemKey);
+          }
         }
+      }
+      
+      // Auto-collapse items by enqueueing a state update
+      // Note: React batches and applies state updates asynchronously, but using the functional
+      // updater ensures the update merges with the latest prev value when applied
+      if (collapsibleItemKeys.length > 0) {
+        console.log(`📦 Auto-collapsing ${collapsibleItemKeys.length} items that transitioned to DB`);
+        setAutoCollapsedItems(prev => new Set([...prev, ...collapsibleItemKeys]));
       }
       
       if (itemsCleared > 0) {
@@ -848,14 +1145,24 @@ function ConversationTimeline({
           <Typography variant="h6" color="primary.main">
             Chain: {session.chain_id || 'Unknown'}
           </Typography>
-          <CopyButton
-            text={formatSessionForCopy}
-            variant="button"
-            buttonVariant="outlined"
-            size="small"
-            label="Copy Chat Flow"
-            tooltip="Copy entire reasoning flow to clipboard"
-          />
+          <Box display="flex" gap={1}>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => setExpandAllReasoning(!expandAllReasoning)}
+              startIcon={expandAllReasoning ? <ExpandLess /> : <ExpandMore />}
+            >
+              {expandAllReasoning ? 'Collapse All' : 'Expand All'} Reasoning
+            </Button>
+            <CopyButton
+              text={formatSessionForCopy}
+              variant="button"
+              buttonVariant="outlined"
+              size="small"
+              label="Copy Chat Flow"
+              tooltip="Copy entire reasoning flow to clipboard"
+            />
+          </Box>
         </Box>
 
         {/* Chain Status Chips */}
@@ -983,15 +1290,15 @@ function ConversationTimeline({
               // Filter group items based on collapse state
               const visibleItems = group.items.filter(item => {
                 // Always show stage_start items
-                if (item.type === 'stage_start') return true;
+                if (item.type === CHAT_FLOW_ITEM_TYPES.STAGE_START) return true;
                 // Hide other items if stage is collapsed
                 if (isCollapsed) return false;
                 return true;
               });
               
               // Find stage_start item (should be first)
-              const stageStartItem = visibleItems.find(item => item.type === 'stage_start');
-              const nonStageStartItems = visibleItems.filter(item => item.type !== 'stage_start');
+              const stageStartItem = visibleItems.find(item => item.type === CHAT_FLOW_ITEM_TYPES.STAGE_START);
+              const nonStageStartItems = visibleItems.filter(item => item.type !== CHAT_FLOW_ITEM_TYPES.STAGE_START);
               
               // Check if this is the last stage (to show streaming items here)
               const isLastGroup = groupIndex === groupedChatFlow.length - 1;
@@ -1008,9 +1315,9 @@ function ConversationTimeline({
                     />
                   )}
                   
-                  {/* Render stage content if not collapsed */}
-                  {!isCollapsed && (
-                    group.isParallel ? (
+                  {/* Render stage content with collapse animation */}
+                  <Collapse in={!isCollapsed} timeout={400}>
+                    {group.isParallel ? (
                       // Render parallel stage with tabs
                       // Find the stage object to pass for correct execution order
                       (() => {
@@ -1022,6 +1329,10 @@ function ConversationTimeline({
                             collapsedStages={collapsedStages}
                             onToggleStage={handleToggleStage}
                             streamingItems={stageStreamingItems}
+                            shouldAutoCollapse={shouldAutoCollapse}
+                            onToggleItemExpansion={handleToggleItemExpansion}
+                            expandAllReasoning={expandAllReasoning}
+                            isItemCollapsible={isItemCollapsible}
                           />
                         ) : (
                           <Box sx={{ p: 2, color: 'error.main' }}>
@@ -1038,6 +1349,10 @@ function ConversationTimeline({
                             item={item}
                             isCollapsed={false}
                             onToggleCollapse={undefined}
+                            isAutoCollapsed={shouldAutoCollapse(item)}
+                            onToggleAutoCollapse={() => handleToggleItemExpansion(item)}
+                            expandAll={expandAllReasoning}
+                            isCollapsible={isItemCollapsible(item)}
                           />
                         ))}
                         {/* Show streaming items for this stage (non-parallel only) */}
@@ -1047,8 +1362,8 @@ function ConversationTimeline({
                             <StreamingItemRenderer key={entryKey} item={entryValue} />
                           ))}
                       </>
-                    )
-                  )}
+                    )}
+                  </Collapse>
                   
                   {/* For the last stage, also show any orphaned streaming items */}
                   {isLastGroup && !isCollapsed && streamingItemsByStage.noStage.length > 0 && (

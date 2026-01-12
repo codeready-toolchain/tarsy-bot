@@ -749,6 +749,12 @@ class HistoryRepository:
         Get complete session details including chronological timeline, stages, and all interactions.
         """
         try:
+            # Force fresh read from database to avoid stale cache issues
+            # This is critical for SQLite WAL mode where recent writes might not be visible
+            # in the current session snapshot until objects are expired
+            if self.session.bind.dialect.name == 'sqlite':
+                self.session.expire_all()
+            
             # Get the session
             session = self.get_alert_session(session_id)
             if not session:
@@ -862,6 +868,7 @@ class HistoryRepository:
                     stage_index=stage_db.stage_index,
                     stage_name=stage_db.stage_name,
                     agent=stage_db.agent,
+                    iteration_strategy=stage_db.iteration_strategy,
                     status=StageStatus(stage_db.status),
                     started_at_us=stage_db.started_at_us,
                     completed_at_us=stage_db.completed_at_us,

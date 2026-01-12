@@ -39,13 +39,13 @@ describe('chatFlowParser', () => {
       const result = parseSessionChatFlow(session);
 
       expect(result).toHaveLength(2);
-      expect(result[0]).toEqual({
+      expect(result[0]).toMatchObject({
         type: 'stage_start',
         timestamp_us: 1000000,
         stageName: 'Stage 1',
         stageAgent: 'agent-1',
       });
-      expect(result[1]).toEqual({
+      expect(result[1]).toMatchObject({
         type: 'stage_start',
         timestamp_us: 2000000,
         stageName: 'Stage 2',
@@ -77,7 +77,7 @@ describe('chatFlowParser', () => {
 
       expect(result).toHaveLength(2);
       expect(result[0].type).toBe('stage_start');
-      expect(result[1]).toEqual({
+      expect(result[1]).toMatchObject({
         type: 'user_message',
         timestamp_us: 1000500,
         content: 'What is the issue?',
@@ -112,6 +112,37 @@ describe('chatFlowParser', () => {
       const userMessage = result.find(item => item.type === 'user_message');
 
       expect(userMessage?.timestamp_us).toBe(2000001); // stage start + 1
+      expect(userMessage?.timestamp_us).toBeGreaterThan(stageStart!.timestamp_us);
+    });
+
+    it('should handle user message with undefined created_at_us', () => {
+      const session: DetailedSession = {
+        session_id: 'session-1',
+        stages: [
+          {
+            stage_name: 'chat-stage',
+            agent: 'chat-agent',
+            started_at_us: 2000000,
+            chat_user_message: {
+              message_id: 'msg-1',
+              content: 'Question',
+              author: 'user',
+              created_at_us: undefined, // Missing timestamp!
+            },
+            llm_interactions: [],
+            mcp_communications: [],
+          },
+        ],
+      } as any;
+
+      const result = parseSessionChatFlow(session);
+
+      const stageStart = result.find(item => item.type === 'stage_start');
+      const userMessage = result.find(item => item.type === 'user_message');
+
+      // Should use fallback timestamp (stage start + 1), not NaN
+      expect(userMessage?.timestamp_us).toBe(2000001); // stage start + 1
+      expect(userMessage?.timestamp_us).not.toBeNaN();
       expect(userMessage?.timestamp_us).toBeGreaterThan(stageStart!.timestamp_us);
     });
 
@@ -441,6 +472,296 @@ describe('chatFlowParser', () => {
       const toolCall = result.find(item => item.type === 'tool_call');
       expect(toolCall?.mcp_event_id).toBe('legacy-id');
     });
+
+    describe('Native Thinking Intermediate Responses', () => {
+      it('should extract intermediate response for native thinking investigation with thinking_content', () => {
+        const session: DetailedSession = {
+          session_id: 'session-1',
+          stages: [
+            {
+              stage_name: 'investigation',
+              agent: 'native-agent',
+              started_at_us: 1000000,
+              iteration_strategy: 'native-thinking',
+              llm_interactions: [
+                {
+                  id: 'llm-1',
+                  timestamp_us: 1500000,
+                  details: {
+                    interaction_type: 'investigation',
+                    thinking_content: 'Analyzing the namespace status...',
+                    messages: [
+                      {
+                        role: 'assistant',
+                        content: 'Based on the namespace details, the termination is blocked.',
+                      },
+                    ],
+                  },
+                },
+              ],
+              mcp_communications: [],
+            },
+          ],
+        } as any;
+
+        const result = parseSessionChatFlow(session);
+
+        const nativeThinking = result.find(item => item.type === 'native_thinking');
+        const intermediateResponse = result.find(item => item.type === 'intermediate_response');
+
+        expect(nativeThinking).toBeDefined();
+        expect(nativeThinking?.content).toBe('Analyzing the namespace status...');
+        expect(intermediateResponse).toBeDefined();
+        expect(intermediateResponse?.content).toBe('Based on the namespace details, the termination is blocked.');
+        expect(intermediateResponse?.timestamp_us).toBe(1500001); // After thinking
+        expect(intermediateResponse?.llm_interaction_id).toBe('llm-1');
+      });
+
+      it('should extract intermediate response for native thinking investigation WITHOUT thinking_content', () => {
+        const session: DetailedSession = {
+          session_id: 'session-1',
+          stages: [
+            {
+              stage_name: 'investigation',
+              agent: 'native-agent',
+              started_at_us: 1000000,
+              iteration_strategy: 'native-thinking',
+              llm_interactions: [
+                {
+                  id: 'llm-1',
+                  timestamp_us: 1500000,
+                  details: {
+                    interaction_type: 'investigation',
+                    thinking_content: null, // No thinking content
+                    messages: [
+                      {
+                        role: 'assistant',
+                        content: 'Based on the namespace details, the termination is blocked.',
+                      },
+                    ],
+                  },
+                },
+              ],
+              mcp_communications: [],
+            },
+          ],
+        } as any;
+
+        const result = parseSessionChatFlow(session);
+
+        const nativeThinking = result.find(item => item.type === 'native_thinking');
+        const intermediateResponse = result.find(item => item.type === 'intermediate_response');
+
+        expect(nativeThinking).toBeUndefined(); // No thinking content
+        expect(intermediateResponse).toBeDefined();
+        expect(intermediateResponse?.content).toBe('Based on the namespace details, the termination is blocked.');
+        expect(intermediateResponse?.timestamp_us).toBe(1500000); // Uses interaction timestamp
+      });
+
+      it('should NOT extract intermediate response for ReAct investigation', () => {
+        const session: DetailedSession = {
+          session_id: 'session-1',
+          stages: [
+            {
+              stage_name: 'investigation',
+              agent: 'react-agent',
+              started_at_us: 1000000,
+              iteration_strategy: 'react',
+              llm_interactions: [
+                {
+                  id: 'llm-1',
+                  timestamp_us: 1500000,
+                  details: {
+                    interaction_type: 'investigation',
+                    messages: [
+                      {
+                        role: 'assistant',
+                        content: 'Thought: I need to check the namespace\nAction: kubectl_get_namespace',
+                      },
+                    ],
+                  },
+                },
+              ],
+              mcp_communications: [],
+            },
+          ],
+        } as any;
+
+        const result = parseSessionChatFlow(session);
+
+        const thought = result.find(item => item.type === 'thought');
+        const intermediateResponse = result.find(item => item.type === 'intermediate_response');
+
+        expect(thought).toBeDefined(); // ReAct thought is extracted
+        expect(thought?.content).toBe('I need to check the namespace');
+        expect(intermediateResponse).toBeUndefined(); // No intermediate response for ReAct
+      });
+
+      it('should deduplicate inherited assistant messages across iterations', () => {
+        const session: DetailedSession = {
+          session_id: 'session-1',
+          stages: [
+            {
+              stage_name: 'investigation',
+              agent: 'native-agent',
+              started_at_us: 1000000,
+              iteration_strategy: 'native-thinking',
+              llm_interactions: [
+                // Iteration 1: First assistant message
+                {
+                  id: 'llm-1',
+                  timestamp_us: 1500000,
+                  details: {
+                    interaction_type: 'investigation',
+                    thinking_content: 'First iteration thinking...',
+                    messages: [
+                      {
+                        role: 'assistant',
+                        content: 'Namespace is stuck in terminating.',
+                      },
+                    ],
+                  },
+                },
+                // Iteration 2: Same message inherited
+                {
+                  id: 'llm-2',
+                  timestamp_us: 1600000,
+                  details: {
+                    interaction_type: 'investigation',
+                    thinking_content: 'Second iteration thinking...',
+                    messages: [
+                      {
+                        role: 'assistant',
+                        content: 'Namespace is stuck in terminating.', // Inherited!
+                      },
+                    ],
+                  },
+                },
+                // Iteration 3: New message
+                {
+                  id: 'llm-3',
+                  timestamp_us: 1700000,
+                  details: {
+                    interaction_type: 'investigation',
+                    thinking_content: 'Third iteration thinking...',
+                    messages: [
+                      {
+                        role: 'assistant',
+                        content: 'Namespace is stuck in terminating.', // Still inherited
+                      },
+                      {
+                        role: 'assistant',
+                        content: 'Based on the namespace details, termination is blocked.', // NEW!
+                      },
+                    ],
+                  },
+                },
+              ],
+              mcp_communications: [],
+            },
+          ],
+        } as any;
+
+        const result = parseSessionChatFlow(session);
+
+        const intermediateResponses = result.filter(item => item.type === 'intermediate_response');
+
+        // Should only extract 2 intermediate responses (iteration 1 and 3), not iteration 2 (inherited)
+        expect(intermediateResponses).toHaveLength(2);
+        expect(intermediateResponses[0].content).toBe('Namespace is stuck in terminating.');
+        expect(intermediateResponses[0].llm_interaction_id).toBe('llm-1');
+        expect(intermediateResponses[1].content).toBe('Based on the namespace details, termination is blocked.');
+        expect(intermediateResponses[1].llm_interaction_id).toBe('llm-3');
+      });
+
+      it('should handle iteration with tool calls that add user messages in same interaction', () => {
+        const session: DetailedSession = {
+          session_id: 'session-1',
+          stages: [
+            {
+              stage_name: 'investigation',
+              agent: 'native-agent',
+              started_at_us: 1000000,
+              iteration_strategy: 'native-thinking',
+              llm_interactions: [
+                {
+                  id: 'llm-1',
+                  timestamp_us: 1500000,
+                  details: {
+                    interaction_type: 'investigation',
+                    thinking_content: null,
+                    messages: [
+                      {
+                        role: 'assistant',
+                        content: 'Based on the namespace details, termination is blocked.',
+                      },
+                      {
+                        role: 'user',
+                        content: 'Tool Result: kubernetes-server.resources_list...',
+                      },
+                      {
+                        role: 'assistant',
+                        content: 'I have identified the blocking resource.',
+                      },
+                    ],
+                  },
+                },
+              ],
+              mcp_communications: [],
+            },
+          ],
+        } as any;
+
+        const result = parseSessionChatFlow(session);
+
+        const intermediateResponses = result.filter(item => item.type === 'intermediate_response');
+
+        // Should extract the LAST assistant message (I have identified...)
+        // not the first one (Based on the namespace...)
+        expect(intermediateResponses).toHaveLength(1);
+        expect(intermediateResponses[0].content).toBe('I have identified the blocking resource.');
+      });
+
+      it('should handle synthesis-native-thinking strategy like native-thinking', () => {
+        const session: DetailedSession = {
+          session_id: 'session-1',
+          stages: [
+            {
+              stage_name: 'synthesis',
+              agent: 'synthesis-agent',
+              started_at_us: 1000000,
+              iteration_strategy: 'synthesis-native-thinking',
+              llm_interactions: [
+                {
+                  id: 'llm-1',
+                  timestamp_us: 1500000,
+                  details: {
+                    interaction_type: 'investigation',
+                    thinking_content: 'Synthesizing results...',
+                    messages: [
+                      {
+                        role: 'assistant',
+                        content: 'All agents have completed their analysis.',
+                      },
+                    ],
+                  },
+                },
+              ],
+              mcp_communications: [],
+            },
+          ],
+        } as any;
+
+        const result = parseSessionChatFlow(session);
+
+        const nativeThinking = result.find(item => item.type === 'native_thinking');
+        const intermediateResponse = result.find(item => item.type === 'intermediate_response');
+
+        expect(nativeThinking).toBeDefined();
+        expect(intermediateResponse).toBeDefined();
+        expect(intermediateResponse?.content).toBe('All agents have completed their analysis.');
+      });
+    });
   });
 
   describe('getChatFlowStats', () => {
@@ -454,6 +775,7 @@ describe('chatFlowParser', () => {
         finalAnswersCount: 0,
         successfulToolCalls: 0,
         nativeThinkingCount: 0,
+        intermediateResponsesCount: 0,
       });
     });
 
@@ -476,6 +798,7 @@ describe('chatFlowParser', () => {
         finalAnswersCount: 1,
         successfulToolCalls: 1,
         nativeThinkingCount: 0,
+        intermediateResponsesCount: 0,
       });
     });
 

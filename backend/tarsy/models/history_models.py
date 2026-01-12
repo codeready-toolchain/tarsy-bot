@@ -245,6 +245,7 @@ class DetailedStage(BaseModel):
     stage_index: int
     stage_name: str
     agent: str
+    iteration_strategy: Optional[str] = None  # Iteration strategy for this stage (e.g., 'react', 'native-thinking', 'react-stage', 'synthesis-native-thinking')
     
     # Stage execution info
     status: StageStatus
@@ -253,6 +254,20 @@ class DetailedStage(BaseModel):
     duration_ms: Optional[int] = None
     stage_output: Optional[dict] = None  # Structured results produced by this stage (e.g. analysis findings, collected data) - used by subsequent stages in chain. None if stage failed/incomplete.
     error_message: Optional[str] = None
+    
+    @model_validator(mode='after')
+    def apply_iteration_strategy_fallback(self) -> 'DetailedStage':
+        """
+        Apply backward compatibility fallback for iteration_strategy.
+        
+        For records created before the iteration_strategy DB column was added,
+        fall back to reading from stage_output (where AgentExecutionResult stored it).
+        """
+        # If DB column is None but stage_output has iteration_strategy, use that
+        if self.iteration_strategy is None and self.stage_output and isinstance(self.stage_output, dict):
+            self.iteration_strategy = self.stage_output.get("iteration_strategy")
+        
+        return self
     
     # Chat context (if this stage is a chat response)
     chat_id: Optional[str] = None
@@ -355,23 +370,6 @@ class DetailedStage(BaseModel):
         # Sort chronologically by timestamp_us
         return sorted(all_interactions, key=lambda x: x.timestamp_us)
     
-    @computed_field
-    @property
-    def iteration_strategy(self) -> Optional[str]:
-        """
-        Extract iteration strategy from stage output.
-        
-        For all stages: Reads from stage_output.iteration_strategy
-        (This is set by AgentExecutionResult for both single and parallel child executions)
-        
-        Returns:
-            Iteration strategy string (e.g., 'react', 'native-thinking') or None if not available
-        """
-        if not self.stage_output:
-            return None
-        
-        # All execution types store this in their AgentExecutionResult or ParallelStageResult
-        return self.stage_output.get('iteration_strategy')
     
     @computed_field
     @property

@@ -604,7 +604,9 @@ class TestMCPClientSummarization:
     @pytest.fixture
     def mock_settings(self):
         """Mock settings."""
-        return Mock(spec=Settings)
+        settings = Mock(spec=Settings)
+        settings.llm_iteration_timeout = 210  # Default timeout for summarization
+        return settings
     
     @pytest.fixture
     def mock_registry_with_summarization(self):
@@ -1023,6 +1025,64 @@ class TestMCPClientSummarization:
             mock_summarizer.summarize_result.assert_not_called()
             assert result["result"] == "x" * 300
             assert "_summarized" not in result
+
+    @pytest.mark.asyncio
+    async def test_call_tool_summarization_timeout_returns_error(self, mock_registry_with_summarization, sample_conversation):
+        """Test that summarization timeout is handled gracefully with error message."""
+        import asyncio
+        
+        # Arrange - Summarizer that takes too long
+        slow_summarizer = Mock(spec=MCPResultSummarizer)
+        
+        async def slow_summarize(*args, **kwargs):
+            await asyncio.sleep(2)  # Takes 2 seconds (exceeds 500ms timeout)
+            return {"result": "Should never reach this"}
+        
+        slow_summarizer.summarize_result = AsyncMock(side_effect=slow_summarize)
+        
+        # Mock settings with short timeout for testing
+        mock_settings = Mock(spec=Settings)
+        mock_settings.llm_iteration_timeout = 0.5  # 500ms timeout for testing
+        client = MCPClient(mock_settings, mock_registry_with_summarization, slow_summarizer)
+        
+        # Mock data masking service to return large result
+        mock_masking = Mock()
+        mock_masking.mask_response.return_value = {"result": "x" * 1000}  # Large result
+        client.data_masking_service = mock_masking
+        
+        large_result = {"result": "x" * 1000}
+        
+        with patch('tarsy.integrations.mcp.client.MCPTransportFactory') as mock_factory, \
+             patch('tarsy.integrations.mcp.client.mcp_interaction_context') as mock_interaction_context:
+            
+            # Setup transport and session mocks
+            mock_transport = AsyncMock()
+            mock_session = AsyncMock()
+            mock_session.call_tool.return_value = Mock(content=large_result["result"])
+            mock_transport.create_session.return_value = mock_session
+            mock_factory.create_transport.return_value = mock_transport
+            
+            mock_ctx = AsyncMock()
+            mock_ctx.get_request_id = Mock(return_value="test-req-timeout")
+            mock_interaction_context.return_value.__aenter__.return_value = mock_ctx
+            
+            await client.initialize()
+            
+            # Act - Call tool with investigation conversation (should trigger summarization)
+            result = await client.call_tool(
+                "test-server",
+                "test-tool",
+                {"param": "value"},
+                "test-session",
+                "test-stage",
+                sample_conversation
+            )
+            
+            # Assert - Should return error message about timeout
+            assert "result" in result
+            result_text = str(result["result"])
+            assert "Error: Summarization timed out" in result_text
+            assert "tokens)" in result_text  # Should include original token count
 
 
 @pytest.mark.unit

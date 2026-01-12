@@ -28,9 +28,16 @@ class TestExecutiveSummaryGeneration:
         return manager
     
     @pytest.fixture
-    def summary_agent(self, mock_llm_manager):
+    def mock_settings(self):
+        """Create mock settings."""
+        settings = Mock()
+        settings.llm_iteration_timeout = 180
+        return settings
+    
+    @pytest.fixture
+    def summary_agent(self, mock_llm_manager, mock_settings):
         """Create ExecutiveSummaryAgent with mocked LLM."""
-        return ExecutiveSummaryAgent(llm_manager=mock_llm_manager)
+        return ExecutiveSummaryAgent(llm_manager=mock_llm_manager, settings=mock_settings)
     
     @pytest.mark.asyncio
     async def test_summary_generation_with_real_prompt_builder(self, summary_agent, mock_llm_manager):

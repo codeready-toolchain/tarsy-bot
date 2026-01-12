@@ -2,6 +2,7 @@ import type { TimelineItem, MCPInteraction, StageExecution } from '../types';
 import { formatTimestamp, formatDurationMs } from './timestamp';
 import { getMessages } from './conversationParser';
 import { isLLMInteraction, isMCPInteraction } from './typeGuards';
+import { LLM_INTERACTION_TYPES } from '../constants/llmInteractionTypes';
 
 /**
  * Shared helper functions for timeline components
@@ -58,10 +59,10 @@ export const formatInteractionForCopy = (interaction: TimelineItem): string => {
       content += `Model: ${interaction.details.model_name || 'N/A'}\n`;
       
       // Show interaction type if it's a summarization
-      const interactionType = interaction.details.interaction_type || 'investigation';
-      if (interactionType === 'summarization') {
+      const interactionType = interaction.details.interaction_type || LLM_INTERACTION_TYPES.INVESTIGATION;
+      if (interactionType === LLM_INTERACTION_TYPES.SUMMARIZATION) {
         content += `Interaction Type: Summarization${interaction.details.mcp_event_id ? ` (MCP Event: ${interaction.details.mcp_event_id})` : ''}\n`;
-      } else if (interactionType === 'final_analysis') {
+      } else if (interactionType === LLM_INTERACTION_TYPES.FINAL_ANALYSIS) {
         content += `Interaction Type: Final Analysis\n`;
       }
       

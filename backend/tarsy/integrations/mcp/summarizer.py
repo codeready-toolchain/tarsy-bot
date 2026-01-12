@@ -113,7 +113,10 @@ class MCPResultSummarizer:
             # This helps the LLM understand it's not seeing the full output and shouldn't repeat the call
             wrapped_summary = (
                 f"[NOTE: The tool output was too long and has been summarized below.]\n\n"
-                f"{summary_text}"
+                f"{summary_text}\n\n"
+                f"IMPORTANT: Re-running this tool will produce the same result. "
+                f"The summary above contains all critical information needed for your investigation. "
+                f"Use this information to proceed with your analysis rather than re-executing the same tool."
             )
             
             # Return summarized result in same structure as original

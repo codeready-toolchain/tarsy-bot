@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ChatInput from '../../components/Chat/ChatInput';
+import { MAX_MESSAGE_LENGTH, WARNING_THRESHOLD } from '../../constants/chat';
 
 describe('ChatInput', () => {
   const mockOnSendMessage = vi.fn();
@@ -391,6 +392,143 @@ describe('ChatInput', () => {
       await user.clear(input);
 
       expect(sendButton).toBeDisabled();
+    });
+  });
+
+  describe('Character Limit Validation', () => {
+    it('should show character counter when user types', async () => {
+      const user = userEvent.setup();
+
+      render(<ChatInput onSendMessage={mockOnSendMessage} />);
+
+      const input = screen.getByPlaceholderText(/Type your question/i);
+      await user.type(input, 'Test message');
+
+      // Character counter should appear
+      expect(screen.getByText(/12 \/ 100,000 characters/i)).toBeInTheDocument();
+    });
+
+    it('should not show character counter when input is empty', () => {
+      render(<ChatInput onSendMessage={mockOnSendMessage} />);
+
+      // Character counter should not be visible
+      expect(screen.queryByText(/\/ 100,000 characters/i)).not.toBeInTheDocument();
+    });
+
+    it('should show warning when approaching character limit', async () => {
+      const user = userEvent.setup();
+
+      render(<ChatInput onSendMessage={mockOnSendMessage} />);
+
+      const input = screen.getByPlaceholderText(/Type your question/i) as HTMLTextAreaElement;
+      
+      // Create a message that's just over the warning threshold
+      const longMessage = 'a'.repeat(WARNING_THRESHOLD + 100);
+      
+      // Use paste event for efficiency with large text
+      await user.click(input);
+      await user.paste(longMessage);
+
+      // Should show warning indicator
+      await waitFor(() => {
+        expect(screen.getByText(/approaching limit/i)).toBeInTheDocument();
+      });
+    });
+
+    it('should show error when exceeding character limit', async () => {
+      const user = userEvent.setup();
+
+      render(<ChatInput onSendMessage={mockOnSendMessage} />);
+
+      const input = screen.getByPlaceholderText(/Type your question/i) as HTMLTextAreaElement;
+      
+      // Create a message that exceeds the limit
+      const tooLongMessage = 'a'.repeat(MAX_MESSAGE_LENGTH + 100);
+      
+      // Use paste event for efficiency with large text
+      await user.click(input);
+      await user.paste(tooLongMessage);
+
+      // Should show error message
+      await waitFor(() => {
+        expect(screen.getByText(/Message exceeds 100,000 character limit/i)).toBeInTheDocument();
+      });
+    });
+
+    it('should disable send button when message exceeds limit', async () => {
+      const user = userEvent.setup();
+
+      render(<ChatInput onSendMessage={mockOnSendMessage} />);
+
+      const input = screen.getByPlaceholderText(/Type your question/i) as HTMLTextAreaElement;
+      const sendButton = screen.getByRole('button');
+      
+      // Create a message that exceeds the limit
+      const tooLongMessage = 'a'.repeat(MAX_MESSAGE_LENGTH + 100);
+      
+      // Use paste event for efficiency with large text
+      await user.click(input);
+      await user.paste(tooLongMessage);
+
+      // Send button should be disabled
+      await waitFor(() => {
+        expect(sendButton).toBeDisabled();
+      });
+    });
+
+    it('should not send message when it exceeds character limit', async () => {
+      const user = userEvent.setup();
+
+      render(<ChatInput onSendMessage={mockOnSendMessage} />);
+
+      const input = screen.getByPlaceholderText(/Type your question/i) as HTMLTextAreaElement;
+      
+      // Create a message that exceeds the limit
+      const tooLongMessage = 'a'.repeat(MAX_MESSAGE_LENGTH + 100);
+      
+      // Use paste event for efficiency with large text
+      await user.click(input);
+      await user.paste(tooLongMessage);
+
+      const sendButton = screen.getByRole('button');
+      
+      // Wait for state to update, then check button is disabled
+      await waitFor(() => {
+        expect(sendButton).toBeDisabled();
+      });
+      
+      // Verify message was never sent
+      expect(mockOnSendMessage).not.toHaveBeenCalled();
+    });
+
+    it('should allow sending message at exactly the character limit', async () => {
+      mockOnSendMessage.mockResolvedValue(undefined);
+      const user = userEvent.setup();
+
+      render(<ChatInput onSendMessage={mockOnSendMessage} />);
+
+      const input = screen.getByPlaceholderText(/Type your question/i) as HTMLTextAreaElement;
+      
+      // Create a message that's exactly at the limit
+      const maxMessage = 'a'.repeat(MAX_MESSAGE_LENGTH);
+      
+      // Use paste event for efficiency with large text
+      await user.click(input);
+      await user.paste(maxMessage);
+
+      const sendButton = screen.getByRole('button');
+      
+      // Send button should be enabled
+      await waitFor(() => {
+        expect(sendButton).not.toBeDisabled();
+      });
+      
+      // Should be able to send
+      await user.click(sendButton);
+
+      await waitFor(() => {
+        expect(mockOnSendMessage).toHaveBeenCalledWith(maxMessage);
+      });
     });
   });
 });

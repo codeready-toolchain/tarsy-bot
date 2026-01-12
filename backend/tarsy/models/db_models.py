@@ -218,6 +218,10 @@ class StageExecution(SQLModel, table=True):
         default=None,
         description="Current iteration number when paused (for pause/resume)"
     )
+    iteration_strategy: Optional[str] = Field(
+        default=None,
+        description="Iteration strategy for this stage (e.g., 'react', 'native_thinking')"
+    )
     
     # Chat context tracking
     chat_id: Optional[str] = Field(

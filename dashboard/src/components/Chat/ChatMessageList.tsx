@@ -15,6 +15,7 @@ import {
   STREAMING_CONTENT_TYPES, 
   parseStreamingContentType 
 } from '../../utils/eventTypes';
+import { LLM_INTERACTION_TYPES } from '../../constants/llmInteractionTypes';
 
 interface ChatMessageListProps {
   sessionId: string;
@@ -386,7 +387,7 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
           }
           // Summarization LLM interactions have mcp_event_id linking to the tool call
           const mcpEventId = (interaction.details as any)?.mcp_event_id;
-          if (mcpEventId && (interaction.details as any)?.interaction_type === 'summarization') {
+          if (mcpEventId && (interaction.details as any)?.interaction_type === LLM_INTERACTION_TYPES.SUMMARIZATION) {
             dbSummarizationMcpIds.add(mcpEventId);
           }
         }
@@ -408,7 +409,7 @@ export default function ChatMessageList({ sessionId, chatId }: ChatMessageListPr
         let shouldRemove = false;
         
         if (item.llm_interaction_id && dbInteractionIds.has(item.llm_interaction_id)) {
-          // LLM interactions (thought, final_answer, native_thinking)
+          // LLM interactions (thought, final_answer, intermediate_response, native_thinking)
           shouldRemove = true;
         } else if (item.type === 'tool_call' && item.mcp_event_id && dbToolCallMcpIds.has(item.mcp_event_id)) {
           // Tool call streaming items - only deduplicate against tool_call DB items

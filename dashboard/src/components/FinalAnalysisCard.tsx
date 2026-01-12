@@ -290,9 +290,9 @@ const FinalAnalysisCard = forwardRef<HTMLDivElement, FinalAnalysisCardProps>(({ 
         {summary && (
           <Box sx={{ mt: 2 }}>
             <Box sx={{
-              bgcolor: (theme) => alpha(theme.palette.success.main, 0.04),
+              bgcolor: (theme) => alpha(theme.palette.success.main, 0.10),
               border: '1px solid',
-              borderColor: (theme) => alpha(theme.palette.success.main, 0.25),
+              borderColor: (theme) => alpha(theme.palette.success.main, 0.35),
               borderRadius: 2,
               p: 2.5,
               position: 'relative',
@@ -426,7 +426,7 @@ const FinalAnalysisCard = forwardRef<HTMLDivElement, FinalAnalysisCardProps>(({ 
               variant="outlined" 
               sx={{ 
                 p: 3, 
-                bgcolor: 'grey.50'
+                bgcolor: 'grey.100'
               }}
             >
               <ReactMarkdown

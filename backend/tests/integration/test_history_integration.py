@@ -1222,8 +1222,15 @@ class TestDuplicatePreventionIntegration:
         assert any(results), "At least one thread should have succeeded in creating the session"
         
         # Verify only one session exists in database
-        session = history_service_with_test_db.get_session_details(shared_session_id)
-        assert session is not None, "Session should exist in database"
+        # Retry logic to handle database transaction commit timing (flaky test fix)
+        session = None
+        for _ in range(10):
+            session = history_service_with_test_db.get_session_details(shared_session_id)
+            if session is not None:
+                break
+            time.sleep(0.1)  # Wait 100ms between retries
+        
+        assert session is not None, "Session should exist in database after transaction commit"
         
         # Session exists and was created successfully
         assert session.session_id == shared_session_id

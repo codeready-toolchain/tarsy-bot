@@ -490,7 +490,9 @@ class TestAlertProcessing:
         chain_context.current_stage_name = "test-stage"
         result = await service.process_alert(chain_context)
         
-        assert "Chain processing failed" in result  # Chain architecture error format
+        # Verify error is formatted in the response
+        assert "# Alert Processing Error" in result
+        assert "Agent processing failed" in result
 
     @pytest.mark.asyncio
     async def test_process_alert_llm_unavailable(self, initialized_service, sample_alert):
@@ -1232,14 +1234,16 @@ class TestEnhancedChainExecution:
         # Execute chain stages
         result = await service._execute_chain_stages(chain_definition, chain_context, session_mcp_client)
         
-        # Verify result indicates failure with aggregated error
+        # Verify result indicates failure - chain stops at first failure
         from tarsy.models.constants import ChainStatus
         assert result.status == ChainStatus.FAILED
         assert result.error is not None
-        assert "Chain processing failed with 2 stage failures:" in result.error
-        assert "Stage 'analysis' (agent: AnalysisAgent): Missing required data fields" in result.error
-        assert "Stage 'notification' (agent: NotificationAgent): SMTP server unreachable" in result.error
+        # Chain stops at first failure (analysis stage), notification stage never runs
+        assert "Missing required data fields" in result.error
         assert result.final_analysis is None  # Should be None for failed chains
+        
+        # Verify only first two stages were called (data-collection succeeded, analysis failed)
+        assert service.agent_factory.get_agent.call_count == 2  # DataAgent and AnalysisAgent only
     
     @pytest.mark.asyncio
     async def test_execute_chain_stages_all_success_returns_analysis(self, initialized_service):
@@ -1351,7 +1355,7 @@ class TestEnhancedChainExecution:
         from tarsy.models.constants import ChainStatus
         assert result.status == ChainStatus.FAILED
         assert result.error is not None
-        assert "Chain processing failed: Stage 'failing-stage' (agent: FailingAgent): Unexpected agent failure" in result.error
+        assert "Stage 'failing-stage' failed with agent 'FailingAgent': Unexpected agent failure" in result.error
         assert result.final_analysis is None
 
     @pytest.mark.asyncio
@@ -1582,11 +1586,9 @@ class TestFullErrorPropagation:
         # Process alert
         result = await service.process_alert(chain_context)
         
-        # Verify the formatted error response contains aggregated errors
+        # Verify the formatted error response contains first stage error (chain stops at first failure)
         assert "# Alert Processing Error" in result
-        assert "Chain processing failed with 2 stage failures:" in result
-        assert "Stage 'stage1' (agent: Agent1): Database connection lost" in result
-        assert "Stage 'stage2' (agent: Agent2): API rate limit exceeded" in result
+        assert "Database connection lost" in result
         assert "**Alert Type:** error-test" in result
         
         # Verify history service was updated with the detailed error
@@ -1595,9 +1597,12 @@ class TestFullErrorPropagation:
                           if call[1].get('status') == 'failed']
         assert len(error_call_args) > 0
         
-        # Verify the error message passed to history contains the aggregated error
+        # Verify the error message passed to history contains the error
         error_message = error_call_args[0][1]['error_message']
-        assert "Chain processing failed with 2 stage failures:" in error_message
+        assert "Database connection lost" in error_message
+        
+        # Verify only first agent was called (chain stopped at first failure)
+        assert service.agent_factory.get_agent.call_count == 1
     
     @pytest.mark.asyncio
     async def test_process_alert_single_stage_failure_formatting(self, service_with_failing_stages):
@@ -1657,11 +1662,10 @@ class TestFullErrorPropagation:
         # Process alert
         result = await service.process_alert(chain_context)
         
-        # Verify single failure format (not numbered list)
+        # Verify single failure format
         assert "# Alert Processing Error" in result
-        assert "Chain processing failed: Stage 'only-stage' (agent: OnlyAgent): Critical system error detected" in result
-        # Should NOT contain "with X stage failures:" since it's a single failure
-        assert "stage failures:" not in result
+        assert "Critical system error detected" in result
+        assert "**Alert Type:** error-test" in result
 
 
 @pytest.mark.unit

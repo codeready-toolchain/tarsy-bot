@@ -70,7 +70,7 @@ class ChatMessageRequest(BaseModel):
     content: str = Field(
         ..., 
         min_length=1, 
-        max_length=10000,
+        max_length=100000,
         description="User's question or follow-up message"
     )
     
