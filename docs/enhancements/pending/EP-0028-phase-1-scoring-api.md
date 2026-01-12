@@ -129,7 +129,7 @@ When the score analysis already exists:
   "score_analysis": "...",  // NULL if status != completed
   "missing_tools_analysis": "...",  // NULL if status != completed
   "error_message": null,  // Set when status = failed
-  "scored_triggered_by": "alice@example.com",
+  "score_triggered_by": "alice@example.com",
   "started_at_us": 1234567890,
   "completed_at_us": 1234567920,  // NULL if not terminal
   "current_prompt_used": true
@@ -175,7 +175,7 @@ When the score analysis already exists:
   "score_analysis": "...",  // NULL if status != completed
   "missing_tools_analysis": "...",  // NULL if status != completed
   "error_message": null,  // Set when status = failed
-  "scored_triggered_by": "alice@example.com",
+  "score_triggered_by": "alice@example.com",
   "started_at_us": 1234567890,
   "completed_at_us": 1234567920,  // NULL if not terminal
   "current_prompt_used": true
@@ -273,7 +273,7 @@ Clients subscribe to channels via existing WebSocket infrastructure. Real-time u
     * `total_score` (INTEGER, 0-100, nullable) - Extracted from last line, NULL until completed
     * `score_analysis` (TEXT, nullable) - Freeform score breakdown, NULL until completed
     * `missing_tools_analysis` (TEXT, nullable) - Freeform missing tools analysis, NULL until completed
-    * `scored_triggered_by` (VARCHAR 255) - User from X-Forwarded-User header
+    * `score_triggered_by` (VARCHAR 255) - User from X-Forwarded-User header
     * `scored_at_us` (BIGINT) - When scoring was triggered (microseconds)
     * **Async fields:**
       * `status` (VARCHAR 50, NOT NULL) - pending | in_progress | completed | failed
@@ -394,7 +394,7 @@ Clients subscribe to channels via existing WebSocket infrastructure. Real-time u
     * `score_analysis` (freeform text, response minus last line)
     * `missing_tools_analysis` (freeform text from turn 3)
     * `prompt_hash` (from module-level hash)
-    * `scored_triggered_by` (user identifier)
+    * `score_triggered_by` (user identifier)
     * `scored_at_us` (timestamp, microseconds)
     * `status` pending
   * Return populated `SessionScore` API model
