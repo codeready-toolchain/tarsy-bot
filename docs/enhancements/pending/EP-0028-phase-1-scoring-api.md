@@ -40,12 +40,13 @@ Add systematic quality assessment for TARSy alert analysis sessions through an L
 **Pattern Precedent:** Matches TARSy's existing alert processing pattern where POST /alerts returns immediately and clients track progress via WebSocket or polling.
 
 **Benefits:**
-- No request timeouts on long-running LLM operations
-- Real-time progress feedback via WebSocket events
-- Consistent UX with alert processing workflow
-- Reuses existing event infrastructure (no new systems needed)
-- Better error handling through status tracking
-- Race condition prevention via database constraints
+
+* No request timeouts on long-running LLM operations
+* Real-time progress feedback via WebSocket events
+* Consistent UX with alert processing workflow
+* Reuses existing event infrastructure (no new systems needed)
+* Better error handling through status tracking
+* Race condition prevention via database constraints
 
 ---
 
@@ -63,7 +64,7 @@ For Phase 1, the judge prompts are **hardcoded in Python** (see Attachment secti
 
 **Criteria Versioning:**
 
-The system computes a SHA256 hash of BOTH prompts (concatenated) to create a unique `criteria_hash`. This hash:
+The system computes a SHA256 hash of BOTH prompts (concatenated) to create a unique `prompt_hash`. This hash:
 
 * Is stored with each score in the database
 * Enables detection of scores produced using obsolete criteria when prompts are updated in code
@@ -105,12 +106,10 @@ The system computes a SHA256 hash of BOTH prompts (concatenated) to create a uni
 ```json
 {
   "score_id": "550e8400-e29b-41d4-a716-446655440000",
-  "status": "pending",  // pending | in_progress (if already started)
+  "status": "pending",
   "message": "Scoring initiated"
 }
 ```
-
-**Idempotency:** If scoring already in progress, returns existing score_id with status. If completed and force_rescore=false, returns existing score_id with message to use force_rescore.
 
 **Error Responses:**
 
@@ -119,6 +118,18 @@ The system computes a SHA256 hash of BOTH prompts (concatenated) to create a uni
 * `404 Not Found` - Session not found
 * `409 Conflict` - force_rescore requested while scoring is in progress
 * `500 Internal Server Error` - Database error or scoring service failure
+
+**Status table**
+
+| Scenario | force_rescore | Existing Score Status | Returned Status | Behavior |
+|----------|---------------|---------------------|------------|----------|
+| No existing score | any | N/A | `pending` | New scoring initiated |
+| Existing score | `false` or omitted | `completed` | `completed` | Return existing score|
+| Existing score | `false` or omitted | `failed`| `failed` | Return existing failed score |
+| Existing score | `false` or omitted | `pending` | `pending` | Return existing pending score |
+| Existing score | `false` or omitted | `in_progress` | `in_progress` | Return existing in-progress score |
+| Existing score | `true` | `completed` or `failed` | `pending` | New scoring initiated |
+| Existing score | `true` | `pending` or `in_progress` | N/A | **409 Conflict** error |
 
 ### Get Session Score
 
@@ -133,7 +144,7 @@ The system computes a SHA256 hash of BOTH prompts (concatenated) to create a uni
   "score_id": "550e8400-e29b-41d4-a716-446655440000",
   "session_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
   "status": "completed",  // pending | in_progress | completed | failed
-  "criteria_hash": "a3f5b2c1...",
+  "prompt_hash": "a3f5b2c1...",
   "total_score": 67,  // NULL if status != completed
   "score_analysis": "...",  // NULL if status != completed
   "missing_tools_analysis": "...",  // NULL if status != completed
@@ -141,7 +152,7 @@ The system computes a SHA256 hash of BOTH prompts (concatenated) to create a uni
   "scored_triggered_by": "alice@example.com",
   "started_at_us": 1234567890,
   "completed_at_us": 1234567920,  // NULL if not terminal
-  "is_current_criteria": true
+  "current_prompt_used": true
 }
 ```
 
@@ -165,8 +176,8 @@ Real-time progress updates broadcast on existing TARSy event channels:
 
 **Channels:**
 
-- **Global:** `sessions` channel - High-level events (started, completed, failed) visible to all dashboard users
-- **Session-specific:** `session:{session_id}` channel - Detailed progress updates for individual session views
+* **Global:** `sessions` channel - High-level events (started, completed, failed) visible to all dashboard users
+* **Session-specific:** `session:{session_id}` channel - Detailed progress updates for individual session views
 
 **Event Payload Structure:**
 
@@ -175,10 +186,11 @@ All events include: `type`, `score_id`, `session_id`, `timestamp_us`. Completed 
 **Frontend Integration:**
 
 Clients subscribe to channels via existing WebSocket infrastructure. Real-time updates enable:
-- Live scoring status in session detail pages
-- Progress indicators during LLM evaluation
-- Automatic score display refresh on completion
-- Error notifications on failure
+
+* Live scoring status in session detail pages
+* Progress indicators during LLM evaluation
+* Automatic score display refresh on completion
+* Error notifications on failure
 
 ---
 
@@ -231,7 +243,7 @@ Clients subscribe to channels via existing WebSocket infrastructure. Real-time u
   * Columns:
     * `score_id` (UUID, primary key)
     * `session_id` (UUID, foreign key → alert_sessions)
-    * `criteria_hash` (VARCHAR 64) - SHA256 hash of hardcoded judge prompts
+    * `prompt_hash` (VARCHAR 64) - SHA256 hash of hardcoded judge prompts
     * `total_score` (INTEGER, 0-100, nullable) - Extracted from last line, NULL until completed
     * `score_analysis` (TEXT, nullable) - Freeform score breakdown, NULL until completed
     * `missing_tools_analysis` (TEXT, nullable) - Freeform missing tools analysis, NULL until completed
@@ -242,7 +254,7 @@ Clients subscribe to channels via existing WebSocket infrastructure. Real-time u
       * `started_at_us` (BIGINT, NOT NULL) - When status became in_progress
       * `completed_at_us` (BIGINT, nullable) - When status became completed/failed
       * `error_message` (TEXT, nullable) - Error details if status=failed
-  * Indexes: `session_id`, `criteria_hash`, `total_score`, `status`, (`session_id`, `status`), (`status`, `started_at_us`)
+  * Indexes: `session_id`, `prompt_hash`, `total_score`, `status`, (`session_id`, `status`), (`status`, `started_at_us`)
   * Unique constraint: Partial index on `session_id` WHERE `status` IN ('pending', 'in_progress') - prevents duplicate in-progress scorings
   * Forward migration: CREATE TABLE with indexes and constraints
   * Rollback migration: DROP TABLE
@@ -254,9 +266,9 @@ Clients subscribe to channels via existing WebSocket infrastructure. Real-time u
 
 * [ ] Implement API model (Pydantic): SessionScore
   * API response model with all database fields including status
-  * Computed field: `is_current_criteria` (boolean)
-    * Compares stored `criteria_hash` to current hardcoded prompts hash
-    * Current hash computed once at TARSy startup
+  * Computed field: `current_prompt_used` (boolean)
+    * Compares stored `prompt_hash` to current hardcoded prompts hash
+    * Current hash computed once at TARSy startup (set to 0 in this phase)
 
 * [ ] Implement ScoringStatus enum (similar to AlertSessionStatus)
   * Values: PENDING, IN_PROGRESS, COMPLETED, FAILED
@@ -264,7 +276,7 @@ Clients subscribe to channels via existing WebSocket infrastructure. Real-time u
 
 * [ ] Create repository layer with simple CRUD operations
   * Basic CRUD for session_scores table
-  * Hash comparison logic for `is_current_criteria`
+  * Hash comparison logic for `current_prompt_used`
   * Database to API model mapping
 
 * [ ] Test database schema and basic model operations
@@ -299,6 +311,7 @@ Clients subscribe to channels via existing WebSocket infrastructure. Real-time u
   * Compute SHA256 hash (deterministic criteria versioning)
   * Hash computed once at TARSy startup (module load time)
   * Store as module-level variable for reuse
+  * Change the implementation of the `current_prompt_used` to use this computed hash
 
 * [ ] Test hash determinism and reproducibility
   * Verify same prompts produce same hash
@@ -342,29 +355,22 @@ Clients subscribe to channels via existing WebSocket infrastructure. Real-time u
   * Use TARSy's default LLM configuration via existing LLM client infrastructure
   * Support conversation history across turns
   * Use LLM client with conversation history support
+  * reuse existing code to gain support for retries, back-off, circuit breaking, etc.
 
 * [ ] Implement score extraction logic
   * Regex pattern: `r'(\d+)\s*$'` (extracts integer from last line)
   * Validate score is 0-100 range
   * Handle extraction failures with detailed error logging
 
-* [ ] Add retry logic with exponential backoff
-  * Max 3 retries with delays: 1s, 2s, 4s
-  * Retry on LLM API failures
-  * Log retry attempts
-
-* [ ] Implement circuit breaker pattern
-  * Open circuit after 5 consecutive failures
-  * Prevent cascading failures to LLM service
-
 * [ ] Implement database storage logic
   * Insert single `session_scores` record with:
     * `total_score` (extracted integer)
     * `score_analysis` (freeform text, response minus last line)
     * `missing_tools_analysis` (freeform text from turn 3)
-    * `criteria_hash` (from module-level hash)
+    * `prompt_hash` (from module-level hash)
     * `scored_triggered_by` (user identifier)
-    * `scored_at` (timestamp)
+    * `scored_at_us` (timestamp, microseconds)
+    * `status` pending
   * Return populated `SessionScore` API model
   * Database retry: attempt once on failure, then return 500
 
@@ -405,34 +411,25 @@ Clients subscribe to channels via existing WebSocket infrastructure. Real-time u
   * Endpoint: `POST /api/v1/scoring/sessions/{session_id}/score`
   * Request body: `{"force_rescore": false}` (optional)
   * Implementation:
-    * Check if score exists (unless `force_rescore=true`)
-    * If exists and not forcing rescore, return existing score immediately
-    * Otherwise, execute scoring via FastAPI `BackgroundTasks`
-    * Return score result (immediate if exists, or after background task completion)
+    * see the API usage section for details
+    * Use FastAPI `BackgroundTasks` for async execution
   * Error responses:
-    * `400 Bad Request` - Session not completed or invalid state
-    * `500 Internal Server Error` - LLM API failure or database error
+    * See the API usage section
 
 * [ ] Add GET /score endpoint for retrieval
   * Endpoint: `GET /api/v1/scoring/sessions/{session_id}/score`
   * Implementation:
     * Retrieve score from repository
-    * Compute `is_current_criteria` by comparing stored hash to current hash
+    * Compute `current_prompt_used` by comparing stored hash to current hash
     * Return score with all fields
   * Error responses:
-    * `404 Not Found` - Session not found or not yet scored
-    * `500 Internal Server Error` - Database error
+    * See the API usage section
 
 * [ ] Implement error handling and validation
   * Session existence validation
   * Session completion state validation
   * Proper HTTP status codes for all error cases
   * Detailed error messages for debugging
-
-* [ ] Add user attribution from oauth2-proxy headers
-  * Extract user from `X-Forwarded-User` header
-  * Pass to scoring service for `scored_triggered_by` field
-  * Store in session_scores table for audit trail
 
 * [ ] Register routes in main.py
   * Import scoring controller
