@@ -407,7 +407,7 @@ Clients subscribe to channels via existing WebSocket infrastructure. Real-time u
   * LLM API failures: Handled by retry + circuit breaker
 
 * [ ] Test end-to-end scoring flow with mocked LLM responses
-  * Mock multi-turn LLM conversation (4 turns)
+  * Mock multi-turn LLM conversation (2 turns)
   * Verify score extraction
   * Test database storage
   * Validate error handling paths
