@@ -101,14 +101,40 @@ The system computes a SHA256 hash of BOTH prompts (concatenated) to create a uni
 }
 ```
 
-**Response (200 OK):**
+**Response:**
+
+When a new score analysis is initiated:
+
+**Status 202 (Accepted):**
 
 ```json
 {
   "score_id": "550e8400-e29b-41d4-a716-446655440000",
-  "status": "pending",
-  "message": "Scoring initiated"
+  "session_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "status": "pending", // or in_progress
 }
+```
+
+When the score analysis already exists:
+
+**Status 200 (OK):**
+
+```json
+{
+  "score_id": "550e8400-e29b-41d4-a716-446655440000",
+  "session_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "status": "completed",  // in_progress | completed | failed
+  "prompt_hash": "a3f5b2c1...",
+  "total_score": 67,  // NULL if status != completed
+  "score_analysis": "...",  // NULL if status != completed
+  "missing_tools_analysis": "...",  // NULL if status != completed
+  "error_message": null,  // Set when status = failed
+  "scored_triggered_by": "alice@example.com",
+  "started_at_us": 1234567890,
+  "completed_at_us": 1234567920,  // NULL if not terminal
+  "current_prompt_used": true
+}
+
 ```
 
 **Error Responses:**
@@ -121,15 +147,15 @@ The system computes a SHA256 hash of BOTH prompts (concatenated) to create a uni
 
 **Status table**
 
-| Scenario | force_rescore | Existing Score Status | Returned Status | Behavior |
-|----------|---------------|---------------------|------------|----------|
-| No existing score | any | N/A | `pending` | New scoring initiated |
-| Existing score | `false` or omitted | `completed` | `completed` | Return existing score|
-| Existing score | `false` or omitted | `failed`| `failed` | Return existing failed score |
-| Existing score | `false` or omitted | `pending` | `pending` | Return existing pending score |
-| Existing score | `false` or omitted | `in_progress` | `in_progress` | Return existing in-progress score |
-| Existing score | `true` | `completed` or `failed` | `pending` | New scoring initiated |
-| Existing score | `true` | `pending` or `in_progress` | N/A | **409 Conflict** error |
+| Scenario | force_rescore | Existing Score Status | Returned Status | HTTP Status | Behavior |
+|----------|---------------|---------------------|------------|---|-------|
+| No existing score | any | N/A | `pending` | 202 | New scoring initiated |
+| Existing score | `false` or omitted | `completed` | `completed` | 200 | Return existing score|
+| Existing score | `false` or omitted | `failed`| `failed` | 200 | Return existing failed score |
+| Existing score | `false` or omitted | `pending` | `pending` | 202 | Return existing pending score |
+| Existing score | `false` or omitted | `in_progress` | `in_progress` | 202 | Return existing in-progress score |
+| Existing score | `true` | `completed` or `failed` | `pending` | 202 | New scoring initiated |
+| Existing score | `true` | `pending` or `in_progress` | N/A | 409 | Conflict error |
 
 ### Get Session Score
 
