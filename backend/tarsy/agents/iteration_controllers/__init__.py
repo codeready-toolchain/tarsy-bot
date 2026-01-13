@@ -5,13 +5,14 @@ This module provides clean separation between different agent processing strateg
 allowing BaseAgent to use composition instead of conditional logic throughout.
 """
 
-from .base_controller import IterationController, ReactController
+from .base_controller import IterationController
 from .chat_native_thinking_controller import ChatNativeThinkingController
 from .chat_react_controller import ChatReActController
 from .native_thinking_controller import NativeThinkingController
-from .react_controller import SimpleReActController
+from .react_base_controller import ReactController
 from .react_final_analysis_controller import ReactFinalAnalysisController
 from .react_stage_controller import ReactStageController
+from .simple_react_controller import SimpleReActController
 from .synthesis_controller import SynthesisController
 from .synthesis_native_thinking_controller import SynthesisNativeThinkingController
 

@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from tarsy.agents.exceptions import AgentError, MaxIterationsFailureError
-from tarsy.agents.iteration_controllers.react_controller import SimpleReActController
+from tarsy.agents.iteration_controllers.simple_react_controller import SimpleReActController
 from tarsy.agents.iteration_controllers.react_final_analysis_controller import (
     ReactFinalAnalysisController,
 )
@@ -306,6 +306,3 @@ class TestReactFinalAnalysisControllerFailureDetection:
         assert exc_info.value is original_error
         assert exc_info.value.max_iterations == 5
 
-
-# NOTE: BaseAgent exception handling tests removed due to complex mocking requirements
-# The functionality is verified through integration tests and real-world testing

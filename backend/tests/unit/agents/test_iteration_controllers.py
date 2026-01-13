@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
-from tarsy.agents.iteration_controllers.react_controller import SimpleReActController
+from tarsy.agents.iteration_controllers.simple_react_controller import SimpleReActController
 from tarsy.agents.iteration_controllers.react_final_analysis_controller import (
     ReactFinalAnalysisController,
 )

@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from tarsy.agents.exceptions import MaxIterationsFailureError, SessionPaused
-from tarsy.agents.iteration_controllers.base_controller import ReactController
+from tarsy.agents.iteration_controllers.react_base_controller import ReactController
 from tarsy.models.processing_context import StageContext
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 
@@ -71,7 +71,7 @@ class TestIterationControllerPauseDetection:
         context.available_tools.tools = []
         
         # Mock settings
-        with patch('tarsy.agents.iteration_controllers.base_controller.get_settings') as mock_settings:
+        with patch('tarsy.agents.iteration_controllers.react_base_controller.get_settings') as mock_settings:
             settings_mock = MagicMock()
             settings_mock.llm_iteration_timeout = 30
             mock_settings.return_value = settings_mock
@@ -113,7 +113,7 @@ class TestIterationControllerPauseDetection:
         context.available_tools.tools = []
         
         # Mock settings
-        with patch('tarsy.agents.iteration_controllers.base_controller.get_settings') as mock_settings:
+        with patch('tarsy.agents.iteration_controllers.react_base_controller.get_settings') as mock_settings:
             settings_mock = MagicMock()
             settings_mock.llm_iteration_timeout = 30
             mock_settings.return_value = settings_mock
@@ -164,7 +164,7 @@ class TestIterationControllerPauseDetection:
         context.available_tools = MagicMock()
         context.available_tools.tools = []
         
-        with patch('tarsy.agents.iteration_controllers.base_controller.get_settings') as mock_settings:
+        with patch('tarsy.agents.iteration_controllers.react_base_controller.get_settings') as mock_settings:
             settings_mock = MagicMock()
             settings_mock.llm_iteration_timeout = 30
             mock_settings.return_value = settings_mock
@@ -226,7 +226,7 @@ class TestIterationControllerPauseDetection:
         context.available_tools = MagicMock()
         context.available_tools.tools = []
         
-        with patch('tarsy.agents.iteration_controllers.base_controller.get_settings') as mock_settings:
+        with patch('tarsy.agents.iteration_controllers.react_base_controller.get_settings') as mock_settings:
             settings_mock = MagicMock()
             settings_mock.llm_iteration_timeout = 30
             mock_settings.return_value = settings_mock
@@ -268,7 +268,7 @@ class TestIterationControllerPauseDetection:
         context.available_tools = MagicMock()
         context.available_tools.tools = []
         
-        with patch('tarsy.agents.iteration_controllers.base_controller.get_settings') as mock_settings:
+        with patch('tarsy.agents.iteration_controllers.react_base_controller.get_settings') as mock_settings:
             settings_mock = MagicMock()
             settings_mock.llm_iteration_timeout = 30
             mock_settings.return_value = settings_mock
