@@ -40,6 +40,22 @@ class ReactFinalAnalysisController(IterationController):
         """Final analysis doesn't need MCP tool discovery."""
         return False
     
+    def _get_forced_conclusion_prompt(self, iteration: int) -> str:
+        """
+        Get forced conclusion prompt - not used by final analysis controller.
+        
+        Final analysis controller makes a single LLM call without iterations,
+        so this method should never be called.
+        
+        Args:
+            iteration: Iteration count (unused)
+            
+        Returns:
+            Empty string (method not used in final analysis flow)
+        """
+        # Final analysis doesn't use iterations, so this should never be called
+        return ""
+    
     async def execute_analysis_loop(self, context: 'StageContext') -> str:
         """Execute final analysis with StageContext."""
         logger.info("Starting final analysis with StageContext")

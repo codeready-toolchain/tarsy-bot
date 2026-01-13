@@ -44,6 +44,22 @@ class SynthesisController(IterationController):
         """Synthesis doesn't need MCP tools."""
         return False
     
+    def _get_forced_conclusion_prompt(self, iteration: int) -> str:
+        """
+        Get forced conclusion prompt - not used by synthesis controller.
+        
+        Synthesis controller makes a single LLM call without iterations,
+        so this method should never be called.
+        
+        Args:
+            iteration: Iteration count (unused)
+            
+        Returns:
+            Empty string (method not used in synthesis flow)
+        """
+        # Synthesis doesn't use iterations, so this should never be called
+        return ""
+    
     async def execute_analysis_loop(self, context: 'StageContext') -> str:
         """Execute synthesis with single LLM call (no tools)."""
         logger.info("Starting synthesis analysis (tool-less, single call)")
