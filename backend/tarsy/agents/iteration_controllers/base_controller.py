@@ -261,6 +261,38 @@ class IterationController(ABC):
         """
         pass
     
+    async def _call_llm_for_forced_conclusion(
+        self,
+        conversation: LLMConversation,
+        context: 'StageContext',
+        timeout: int
+    ) -> str:
+        """
+        Strategy-specific LLM call for forced conclusion.
+        
+        Controllers that support forced conclusions (ReAct, Native Thinking) should override this.
+        Controllers that don't use iterations (like Synthesis) don't need to implement this.
+        
+        Default implementation raises NotImplementedError.
+        
+        Args:
+            conversation: Current conversation with forced conclusion prompt already added
+            context: Stage context
+            timeout: Timeout in seconds
+            
+        Returns:
+            Conclusion text from LLM
+            
+        Raises:
+            NotImplementedError: If controller doesn't support forced conclusions
+            asyncio.TimeoutError: If LLM call times out
+            Exception: On LLM communication failures
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} does not support forced conclusions. "
+            "This method should be overridden by controllers that use iterations."
+        )
+    
     async def _force_conclusion(
         self,
         conversation: LLMConversation,
@@ -270,9 +302,8 @@ class IterationController(ABC):
         """
         Force LLM to conclude investigation with available data.
         
-        Makes a single LLM call WITHOUT tools to synthesize findings.
-        Similar to executive summary but for incomplete investigations.
-        Uses strategy-specific prompt from _get_forced_conclusion_prompt().
+        Template method that handles common logic (progress updates, prompts, error handling)
+        while delegating the actual LLM call to _call_llm_for_forced_conclusion().
         
         Args:
             conversation: Current conversation state
@@ -283,7 +314,7 @@ class IterationController(ABC):
             Conclusion text (final answer)
         """
         import asyncio
-        from tarsy.models.constants import LLMInteractionType, ProgressPhase
+        from tarsy.models.constants import ProgressPhase
         from tarsy.config.settings import get_settings
         from tarsy.services.events.event_helpers import publish_session_progress_update
         
@@ -308,31 +339,16 @@ class IterationController(ABC):
         # Add conclusion request to conversation
         conversation.append_observation(conclusion_prompt)
         
-        # Get agent and IDs
-        agent = context.agent
-        stage_execution_id = agent.get_current_stage_execution_id()
+        # Get settings for timeout
         settings = get_settings()
         
-        # Make final LLM call WITHOUT tools
+        # Delegate to strategy-specific LLM call
         try:
-            response = await asyncio.wait_for(
-                self.llm_manager.generate_response(
-                    conversation=conversation,
-                    session_id=context.session_id,
-                    stage_execution_id=stage_execution_id,
-                    interaction_type=LLMInteractionType.FORCED_CONCLUSION.value,
-                    # NO mcp_event_id or tools - pure LLM call
-                ),
+            return await self._call_llm_for_forced_conclusion(
+                conversation=conversation,
+                context=context,
                 timeout=settings.llm_iteration_timeout
             )
-            
-            # Extract final message
-            final_message = response.get_latest_assistant_message()
-            if final_message:
-                return final_message.content
-            else:
-                return "Unable to generate conclusion (no response from LLM)"
-                
         except asyncio.TimeoutError:
             if logger:
                 logger.warning("Forced conclusion call timed out")

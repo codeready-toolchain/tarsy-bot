@@ -220,7 +220,8 @@ class GeminiNativeThinkingClient:
         max_tokens: Optional[int] = None,
         timeout_seconds: int = 180,
         native_tools_override: Optional[NativeToolsConfig] = None,
-        parallel_metadata: Optional[ParallelExecutionMetadata] = None
+        parallel_metadata: Optional[ParallelExecutionMetadata] = None,
+        interaction_type: Optional[str] = None
     ) -> NativeThinkingResponse:
         """
         Generate response using Gemini's native thinking and function calling.
@@ -518,11 +519,14 @@ class GeminiNativeThinkingClient:
                 if combined_thinking:
                     ctx.interaction.thinking_content = combined_thinking
                 
-                # Set interaction type based on whether this is final
-                ctx.interaction.interaction_type = (
-                    LLMInteractionType.FINAL_ANALYSIS.value if is_final 
-                    else LLMInteractionType.INVESTIGATION.value
-                )
+                # Set interaction type - use provided type or infer from is_final
+                if interaction_type:
+                    ctx.interaction.interaction_type = interaction_type
+                else:
+                    ctx.interaction.interaction_type = (
+                        LLMInteractionType.FINAL_ANALYSIS.value if is_final 
+                        else LLMInteractionType.INVESTIGATION.value
+                    )
                 
                 ctx.interaction.native_tools_config = native_tools_config
                 

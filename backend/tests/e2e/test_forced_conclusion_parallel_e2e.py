@@ -14,6 +14,7 @@ Architecture:
 - DETERMINISTIC: Mock responses provide predictable forced conclusion behavior
 """
 
+import asyncio
 import logging
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -24,6 +25,8 @@ from tarsy.integrations.mcp.client import MCPClient
 
 from .e2e_utils import E2ETestUtils, assert_conversation_messages
 from .expected_forced_conclusion_conversations import (
+    EXPECTED_CHAT_FORCED_CONCLUSION_CONVERSATION,
+    EXPECTED_CHAT_INTERACTIONS,
     EXPECTED_FORCED_CONCLUSION_INTERACTIONS,
     EXPECTED_K8S_FORCED_CONCLUSION_CONVERSATION,
     EXPECTED_LOG_FORCED_CONCLUSION_CONVERSATION,
@@ -170,6 +173,52 @@ Pod is likely failing due to database connectivity issues. The pod attempts to c
                     "input_tokens": 500,
                     "output_tokens": 220,
                     "total_tokens": 720
+                },
+                # Chat responses (calls 5, 6, 7 - forced to use tools via mock)
+                5: {  # Chat - First tool call
+                    "text_content": "",
+                    "thinking_content": "The user wants current status. I should check the pod status.",
+                    "function_calls": [{"name": "kubernetes-server__kubectl_get", "args": {"resource": "pods", "name": "pod-1", "namespace": "test-namespace"}}],
+                    "input_tokens": 180,
+                    "output_tokens": 65,
+                    "total_tokens": 245
+                },
+                6: {  # Chat - Second tool call (reaches max iterations)
+                    "text_content": "",
+                    "thinking_content": "I see the pod status. Let me get more details with kubectl describe.",
+                    "function_calls": [{"name": "kubernetes-server__kubectl_describe", "args": {"resource": "pod", "name": "pod-1", "namespace": "test-namespace"}}],
+                    "input_tokens": 200,
+                    "output_tokens": 70,
+                    "total_tokens": 270
+                },
+                7: {  # Chat - Forced conclusion
+                    "text_content": """**Forced Conclusion - Current Pod Status**
+
+Based on the investigation:
+
+**Current Status:**
+- Pod pod-1 is in CrashLoopBackOff state
+- Exit code 1, restart count 5
+- Database connection timeout errors
+
+**Root Cause:**
+Consistent with original investigation - database connectivity issue to db.example.com:5432
+
+**Limitations:**
+Investigation reached iteration limit (2 iterations). Complete analysis not performed.
+
+**Immediate Actions:**
+1. Check database service availability
+2. Verify network connectivity to database
+3. Review pod configuration and credentials
+4. Examine network policies
+
+The pod will continue restarting until database connectivity is restored.""",
+                    "thinking_content": "I've reached the iteration limit. Based on the data gathered, I can provide a forced conclusion.",
+                    "function_calls": None,
+                    "input_tokens": 240,
+                    "output_tokens": 125,
+                    "total_tokens": 365
                 }
             }
             
@@ -305,7 +354,14 @@ Further investigation recommended for comprehensive analysis.""",
             
             # Patch LLM clients (both Gemini SDK and LangChain)
             with self._create_llm_patch_context(gemini_mock_factory, streaming_mock):
-                with patch.object(MCPClient, "list_tools", mock_list_tools), \
+                # Create a mock initialize method that sets up mock sessions without real server processes
+                async def mock_initialize(self):
+                    """Mock initialization that bypasses real server startup."""
+                    self.sessions = mock_sessions.copy()
+                    self._initialized = True
+                    
+                with patch.object(MCPClient, "initialize", mock_initialize), \
+                     patch.object(MCPClient, "list_tools", mock_list_tools), \
                      patch.object(MCPClient, "call_tool", mock_call_tool):
                     with E2ETestUtils.setup_runbook_service_patching("# Test Runbook\nThis is a test runbook for forced conclusion testing."):
                         # ============================================================================
@@ -581,6 +637,13 @@ Further investigation recommended for comprehensive analysis.""",
                         
                         print(f"  ✅ Session tokens verified: {actual_input} input + {actual_output} output = {actual_total} total (exact match)")
                         
+                        # ============================================================================
+                        # STEP 11: Test chat functionality with forced conclusion
+                        # ============================================================================
+                        print("🔧 Step 11: Testing chat with forced conclusion...")
+                        await self._test_chat_with_forced_conclusion(test_client, session_id)
+                        print("  ✅ Chat with forced conclusion verified")
+                        
                         print("✅ All verifications passed!")
         
         finally:
@@ -589,3 +652,299 @@ Further investigation recommended for comprehensive analysis.""",
             settings.force_conclusion_at_max_iterations = original_force_conclusion
             print(f"🔧 Restored max_llm_mcp_iterations to {original_max_iterations}")
             print(f"🔧 Restored force_conclusion_at_max_iterations to {original_force_conclusion}")
+    
+    async def _test_chat_with_forced_conclusion(self, test_client, session_id: str):
+        """
+        Test that chat messages properly use forced conclusion when hitting max iterations.
+        
+        The mock forces Gemini to make tool calls (via function_calls in mock responses),
+        which triggers iterations and forced conclusion at max limit.
+        
+        Uses the same detailed validation pattern as test_api_e2e.py with:
+        - Chat availability checking
+        - Chat creation
+        - Message sending and waiting for completion
+        - Complete conversation validation (including forced conclusion prompt)
+        - Exact token count verification
+        """
+        # Note: max_llm_mcp_iterations is still 2 from the parent test
+        # Chats ALWAYS use forced conclusion regardless of force_conclusion_at_max_iterations setting
+        
+        # Step 1: Check chat availability
+        print("    📝 Checking chat availability...")
+        availability_response = test_client.get(f"/api/v1/sessions/{session_id}/chat-available")
+        assert availability_response.status_code == 200, (
+            f"Chat availability check failed: {availability_response.text}"
+        )
+        availability_data = availability_response.json()
+        assert availability_data.get("available") is True, (
+            "Chat should be available for completed session"
+        )
+        assert availability_data.get("chat_id") is None, (
+            "Chat ID should be None before chat is created"
+        )
+        print("    ✅ Chat availability verified")
+        
+        # Step 2: Create chat
+        print("    📝 Creating chat...")
+        create_chat_response = test_client.post(
+            f"/api/v1/sessions/{session_id}/chat",
+            headers={"X-Forwarded-User": "test-user@example.com"}
+        )
+        assert create_chat_response.status_code == 200, (
+            f"Chat creation failed: {create_chat_response.text}"
+        )
+        chat_data = create_chat_response.json()
+        chat_id = chat_data.get("chat_id")
+        assert chat_id is not None, "Chat ID missing"
+        assert chat_data.get("session_id") == session_id, "Chat session_id mismatch"
+        print(f"    ✅ Chat created: {chat_id}")
+        
+        # Step 3: Send chat message and wait for completion
+        # Mock forces Gemini to make tool calls, triggering forced conclusion at max iterations
+        print("    📝 Sending chat message (will hit max iterations)...")
+        chat_stage = await self._send_and_wait_for_chat_message(
+            test_client=test_client,
+            session_id=session_id,
+            chat_id=chat_id,
+            content="What is the CURRENT status of pod-1 right now? Check the live pod status and events.",
+            message_label="Chat message"
+        )
+        print("    ✅ Chat message completed")
+        
+        # Step 4: Verify chat response with forced conclusion validation
+        print("    📝 Verifying chat conversation with forced conclusion...")
+        await self._verify_chat_response(
+            chat_stage=chat_stage,
+            expected_conversation=EXPECTED_CHAT_FORCED_CONCLUSION_CONVERSATION,
+            expected_spec=EXPECTED_CHAT_INTERACTIONS['chat_forced_conclusion']
+        )
+        print("    ✅ Chat conversation validated with forced conclusion")
+
+    async def _send_and_wait_for_chat_message(
+        self,
+        test_client,
+        session_id: str,
+        chat_id: str,
+        content: str,
+        message_label: str = "Message"
+    ):
+        """
+        Send a chat message and wait for the response stage to complete.
+        
+        Returns:
+            The completed chat stage for verification
+        """
+        # Send the message
+        send_message_response = test_client.post(
+            f"/api/v1/chats/{chat_id}/messages",
+            json={"content": content},
+            headers={"X-Forwarded-User": "test-user@example.com"}
+        )
+        
+        assert send_message_response.status_code == 200, (
+            f"{message_label} failed: {send_message_response.text}"
+        )
+        
+        message_data = send_message_response.json()
+        message_id = message_data.get("message_id")
+        assert message_id is not None, f"{message_label} ID missing"
+        
+        # Wait for chat stage to appear and complete
+        max_wait = 15  # seconds
+        poll_interval = 0.5
+        
+        chat_stage = None
+        for i in range(int(max_wait / poll_interval)):
+            detail_data = await E2ETestUtils.get_session_details_async(test_client, session_id)
+            stages = detail_data.get("stages", [])
+            
+            # Look for the chat stage
+            chat_stages = [s for s in stages 
+                          if s.get("stage_id", "").startswith("chat-response") 
+                          and s.get("chat_id") == chat_id]
+            
+            if chat_stages:
+                chat_stage = chat_stages[-1]  # Get the latest chat stage
+                if chat_stage.get("status") == "completed":
+                    print(f"      ✅ {message_label} completed in {(i+1) * poll_interval:.1f}s")
+                    break
+            
+            await asyncio.sleep(poll_interval)
+        else:
+            raise AssertionError(
+                f"{message_label} did not complete within {max_wait}s"
+            )
+        
+        return chat_stage
+
+    async def _verify_chat_response(
+        self,
+        chat_stage,
+        expected_conversation: dict,
+        expected_spec: dict
+    ):
+        """
+        Verify the structure of a chat response using detailed conversation validation.
+        
+        This follows the same pattern as test_api_e2e.py's _verify_chat_response method.
+        
+        Args:
+            chat_stage: The chat stage execution data from the API
+            expected_conversation: Expected conversation structure (with 'messages' key)
+            expected_spec: Expected interaction specification (with 'llm_count', 'mcp_count', 'interactions')
+        """
+        # Verify basic stage structure
+        assert chat_stage is not None, "Chat stage not found"
+        assert chat_stage.get("agent") == "ChatAgent", (
+            f"Expected ChatAgent, got {chat_stage.get('agent')}"
+        )
+        assert chat_stage.get("status") == "completed", (
+            f"Chat stage not completed: {chat_stage.get('status')}"
+        )
+        
+        # Verify chat-specific fields
+        assert chat_stage.get("chat_id") is not None, "Chat ID missing from stage"
+        assert chat_stage.get("chat_user_message_id") is not None, (
+            "Chat user message ID missing from stage"
+        )
+        
+        # Verify embedded user message data
+        chat_user_message = chat_stage.get("chat_user_message")
+        assert chat_user_message is not None, (
+            "Chat user message data missing - should be embedded"
+        )
+        assert chat_user_message.get("message_id") is not None, "User message ID missing"
+        assert chat_user_message.get("content") == "What is the CURRENT status of pod-1 right now? Check the live pod status and events.", (
+            f"User message content mismatch: {chat_user_message.get('content')}"
+        )
+        assert chat_user_message.get("author") == "test-user@example.com", (
+            f"User message author mismatch: {chat_user_message.get('author')}"
+        )
+        
+        # Get interactions
+        llm_interactions = chat_stage.get("llm_interactions", [])
+        mcp_interactions = chat_stage.get("mcp_communications", [])
+        
+        # Verify interaction counts
+        assert len(llm_interactions) == expected_spec["llm_count"], (
+            f"Expected {expected_spec['llm_count']} LLM interactions, got {len(llm_interactions)}"
+        )
+        assert len(mcp_interactions) == expected_spec["mcp_count"], (
+            f"Expected {expected_spec['mcp_count']} MCP interactions, got {len(mcp_interactions)}"
+        )
+        
+        # Verify complete interaction flow in chronological order
+        chronological_interactions = chat_stage.get("chronological_interactions", [])
+        assert len(chronological_interactions) == len(expected_spec["interactions"]), (
+            f"Chronological interaction count mismatch: expected {len(expected_spec['interactions'])}, "
+            f"got {len(chronological_interactions)}"
+        )
+        
+        # Track token totals
+        expected_input_tokens = 0
+        expected_output_tokens = 0
+        expected_total_tokens = 0
+        
+        # Verify each interaction
+        for i, expected_interaction in enumerate(expected_spec["interactions"]):
+            actual_interaction = chronological_interactions[i]
+            interaction_type = expected_interaction["type"]
+            
+            assert actual_interaction["type"] == interaction_type, (
+                f"Interaction {i+1} type mismatch: expected {interaction_type}, "
+                f"got {actual_interaction['type']}"
+            )
+            
+            details = actual_interaction["details"]
+            if details["success"] != expected_interaction["success"]:
+                print(f"\n❌ Interaction {i+1} success mismatch:")
+                print(f"   Expected: {expected_interaction['success']}")
+                print(f"   Actual: {details['success']}")
+                if not details["success"] and details.get("error"):
+                    print(f"   Error: {details.get('error')}")
+            assert details["success"] == expected_interaction["success"], (
+                f"Interaction {i+1} success mismatch"
+            )
+            
+            if interaction_type == "llm":
+                # Verify conversation structure (message count and roles)
+                actual_conversation = details["conversation"]
+                actual_messages = actual_conversation["messages"]
+                
+                # For chat forced conclusion interactions, verify the prompt was sent
+                if details.get("interaction_type") == "forced_conclusion":
+                    # Check for forced conclusion prompt in the messages
+                    forced_conclusion_found = False
+                    for msg in actual_messages:
+                        if msg["role"] == "user" and "iteration limit" in msg.get("content", "").lower():
+                            forced_conclusion_found = True
+                            print(f"      ✅ Forced conclusion prompt found in chat interaction {i+1}")
+                            break
+                    
+                    assert forced_conclusion_found, (
+                        f"Interaction {i+1} marked as forced_conclusion but no forced conclusion prompt found in messages"
+                    )
+                
+                # Verify interaction_type
+                if "interaction_type" in expected_interaction:
+                    assert details.get("interaction_type") == expected_interaction["interaction_type"], (
+                        f"Interaction {i+1} interaction_type mismatch: "
+                        f"expected '{expected_interaction['interaction_type']}', "
+                        f"got '{details.get('interaction_type')}'"
+                    )
+                
+                # Verify token usage
+                if "input_tokens" in expected_interaction:
+                    assert details["input_tokens"] == expected_interaction["input_tokens"], (
+                        f"Interaction {i+1} input_tokens mismatch: "
+                        f"expected {expected_interaction['input_tokens']}, got {details['input_tokens']}"
+                    )
+                    assert details["output_tokens"] == expected_interaction["output_tokens"], (
+                        f"Interaction {i+1} output_tokens mismatch: "
+                        f"expected {expected_interaction['output_tokens']}, got {details['output_tokens']}"
+                    )
+                    assert details["total_tokens"] == expected_interaction["total_tokens"], (
+                        f"Interaction {i+1} total_tokens mismatch: "
+                        f"expected {expected_interaction['total_tokens']}, got {details['total_tokens']}"
+                    )
+                    
+                    expected_input_tokens += expected_interaction["input_tokens"]
+                    expected_output_tokens += expected_interaction["output_tokens"]
+                    expected_total_tokens += expected_interaction["total_tokens"]
+            
+            elif interaction_type == "mcp":
+                assert details["communication_type"] == expected_interaction["communication_type"], (
+                    f"Interaction {i+1} communication_type mismatch"
+                )
+                assert details["server_name"] == expected_interaction["server_name"], (
+                    f"Interaction {i+1} server_name mismatch"
+                )
+                
+                if expected_interaction["communication_type"] == "tool_call":
+                    assert details["tool_name"] == expected_interaction["tool_name"], (
+                        f"Interaction {i+1} tool_name mismatch"
+                    )
+        
+        # Validate stage-level token totals
+        actual_stage_input_tokens = chat_stage.get("stage_input_tokens")
+        actual_stage_output_tokens = chat_stage.get("stage_output_tokens")
+        actual_stage_total_tokens = chat_stage.get("stage_total_tokens")
+        
+        assert actual_stage_input_tokens == expected_input_tokens, (
+            f"Stage input_tokens mismatch: expected {expected_input_tokens}, "
+            f"got {actual_stage_input_tokens}"
+        )
+        assert actual_stage_output_tokens == expected_output_tokens, (
+            f"Stage output_tokens mismatch: expected {expected_output_tokens}, "
+            f"got {actual_stage_output_tokens}"
+        )
+        assert actual_stage_total_tokens == expected_total_tokens, (
+            f"Stage total_tokens mismatch: expected {expected_total_tokens}, "
+            f"got {actual_stage_total_tokens}"
+        )
+        
+        print(
+            f"      ✅ Chat validated: {len(llm_interactions)} LLM, "
+            f"{len(mcp_interactions)} MCP, {expected_total_tokens} tokens"
+        )

@@ -123,7 +123,25 @@ Provide a clear, structured conclusion that directly addresses the investigation
         },
         {
             "role": "assistant",
-            "content": """Default response"""
+            "content": """**Forced Conclusion - Kubernetes Analysis**
+
+Based on the investigation so far:
+
+**Findings:**
+- Pod pod-1 is in CrashLoopBackOff state in test-namespace
+- Pod has been restarting repeatedly
+- Container exit code indicates failure
+
+**Limitations:**
+Investigation reached iteration limit. Full root cause analysis incomplete, but initial findings suggest pod stability issues.
+
+**Recommendations:**
+1. Check pod logs for specific error messages
+2. Review pod events for additional context
+3. Verify resource limits and requests
+4. Check for configuration issues
+
+Further investigation needed for complete root cause analysis."""
         }
     ]
 }
@@ -442,7 +460,25 @@ This is a test runbook for forced conclusion testing.
 <!-- Analysis Result START -->
 ## Analysis Result
 
-Default response
+**Forced Conclusion - Kubernetes Analysis**
+
+Based on the investigation so far:
+
+**Findings:**
+- Pod pod-1 is in CrashLoopBackOff state in test-namespace
+- Pod has been restarting repeatedly
+- Container exit code indicates failure
+
+**Limitations:**
+Investigation reached iteration limit. Full root cause analysis incomplete, but initial findings suggest pod stability issues.
+
+**Recommendations:**
+1. Check pod logs for specific error messages
+2. Review pod events for additional context
+3. Verify resource limits and requests
+4. Check for configuration issues
+
+Further investigation needed for complete root cause analysis.
 <!-- Analysis Result END -->
 
 #### Agent 2: LogAgent (anthropic-default, react)
@@ -482,25 +518,34 @@ Begin!"""
         },
         {
             "role": "assistant",
-            "content": """**Forced Conclusion - Kubernetes Analysis**
+            "content": """**Synthesis of Parallel Investigations (Forced Conclusions)**
 
-Based on the investigation so far:
+Combined analysis from both agents (note: both reached iteration limits):
 
-**Findings:**
-- Pod pod-1 is in CrashLoopBackOff state in test-namespace
-- Pod has been restarting repeatedly
+**From Kubernetes Agent (Forced Conclusion):**
+- Pod pod-1 in CrashLoopBackOff state
+- Multiple restart attempts observed
 - Container exit code indicates failure
+- Investigation incomplete due to iteration limit
 
-**Limitations:**
-Investigation reached iteration limit. Full root cause analysis incomplete, but initial findings suggest pod stability issues.
+**From Log Agent (Forced Conclusion):**
+- Database connection timeout to db.example.com:5432
+- Root cause: Unable to connect to database
+- Investigation incomplete due to iteration limit
 
-**Recommendations:**
-1. Check pod logs for specific error messages
-2. Review pod events for additional context
-3. Verify resource limits and requests
-4. Check for configuration issues
+**Preliminary Conclusion:**
+Pod is likely failing due to database connectivity issues. The pod attempts to connect to db.example.com:5432 but times out, causing crashes and CrashLoopBackOff.
 
-Further investigation needed for complete root cause analysis."""
+**Note:** Both agents reached iteration limits and provided forced conclusions. Recommendations are based on available data.
+
+**Recommended Actions:**
+1. Verify database service is running and accessible
+2. Check network connectivity to db.example.com:5432
+3. Validate database credentials in pod configuration
+4. Review firewall/network policies
+5. Consider increasing timeout values if appropriate
+
+**Follow-up:** Additional investigation may be needed for complete root cause analysis."""
         }
     ]
 }
@@ -530,13 +575,13 @@ EXPECTED_FORCED_CONCLUSION_INTERACTIONS = {
                 'total_tokens': 290,
                 'messages_count': 4,  # system + user + tool_result + tool_result
             },
-            # LLM 3 - Forced conclusion
-            # Note: Token counts reflect actual system behavior (may differ from mock definition due to forced conclusion path)
+            # LLM 3 - Forced conclusion (using Native Thinking)
+            # Note: Token counts match Gemini mock response (call #3 in gemini_response_map)
             {
                 'type': 'llm',
-                'input_tokens': 100,
-                'output_tokens': 50,
-                'total_tokens': 150,
+                'input_tokens': 250,
+                'output_tokens': 120,
+                'total_tokens': 370,
                 'messages_count': 6,  # All previous + forced conclusion prompt + response
                 'has_forced_conclusion_prompt': True,
             },
@@ -579,12 +624,12 @@ EXPECTED_FORCED_CONCLUSION_INTERACTIONS = {
         'mcp_count': 0,
         'interactions': [
             # LLM 1 - Synthesis combining forced conclusions
-            # Note: Token counts reflect actual system behavior
+            # Note: Token counts match Gemini mock response (call #4 in gemini_response_map)
             {
                 'type': 'llm',
-                'input_tokens': 250,
-                'output_tokens': 120,
-                'total_tokens': 370,
+                'input_tokens': 500,
+                'output_tokens': 220,
+                'total_tokens': 720,
                 'messages_count': 3,  # system + user_with_parallel_results + assistant_synthesis
             },
         ],
@@ -598,20 +643,154 @@ EXPECTED_FORCED_CONCLUSION_INTERACTIONS = {
 EXPECTED_SESSION_TOTALS = {
     # Note: Session totals include an additional interaction not visible in stage details
     # (possibly initial setup or parallel coordination overhead)
-    # KubernetesAgent: 200 + 220 + 100 = 520
+    # KubernetesAgent: 200 + 220 + 250 = 670 (forced conclusion uses Native Thinking: 250 instead of 100)
     # LogAgent: 190 + 210 + 230 = 630
-    # SynthesisAgent: 250
+    # SynthesisAgent: 500 (updated to match mock call #4)
     # Additional: 100 (unknown source, consistent across runs)
-    # Total: 520 + 630 + 250 + 100 = 1500
-    'input_tokens': 1500,
+    # Total: 670 + 630 + 500 + 100 = 1900
+    'input_tokens': 1900,
     
-    # KubernetesAgent: 60 + 70 + 50 = 180
+    # KubernetesAgent: 60 + 70 + 120 = 250 (forced conclusion uses Native Thinking: 120 instead of 50)
     # LogAgent: 55 + 65 + 115 = 235
-    # SynthesisAgent: 120
+    # SynthesisAgent: 220 (updated to match mock call #4)
     # Additional: 50 (unknown source, consistent across runs)
-    # Total: 180 + 235 + 120 + 50 = 585
-    'output_tokens': 585,
+    # Total: 250 + 235 + 220 + 50 = 755
+    'output_tokens': 755,
     
-    # Total: 1500 + 585 = 2085
-    'total_tokens': 2085,
+    # Total: 1900 + 755 = 2655
+    'total_tokens': 2655,
+}
+
+# ============================================================================
+# CHAT - FORCED CONCLUSION WITH TOOL CALLS (Native Thinking)
+# ============================================================================
+# Mock forces Gemini to make tool calls (via function_calls in mock responses)
+# which triggers iterations and forced conclusion at max limit
+
+EXPECTED_CHAT_FORCED_CONCLUSION_CONVERSATION = {
+    "messages": [
+        {
+            "role": "system",
+            "content": """## Chat Assistant Instructions
+
+You are an expert Site Reliability Engineer (SRE) assistant helping with follow-up questions about a completed alert investigation.
+
+The user has reviewed the investigation results and has follow-up questions. Your role is to:
+- Provide clear, actionable answers based on the investigation history
+- Use available tools to gather fresh, real-time data when needed
+- Reference specific findings from the original investigation when relevant
+- Maintain the same professional SRE communication style
+- Be concise but thorough in your responses
+
+You have access to the same tools and systems that were used in the original investigation.
+
+## Agent-Specific Instructions
+
+## Response Guidelines
+
+1. **Context Awareness**: Reference the investigation history when it provides relevant context
+2. **Fresh Data**: Use tools to gather current system state if the question requires up-to-date information
+3. **Clarity**: If the question is ambiguous or unclear, ask for clarification in your Final Answer
+4. **Specificity**: Always reference actual data and observations, not assumptions
+5. **Brevity**: Be concise but complete - users have already read the full investigation
+
+Focus on answering follow-up questions about a completed investigation for human operators to execute."""
+        },
+        {
+            "role": "user",
+            "content": """[Investigation History - dynamic content]
+
+**Question:** What is the CURRENT status of pod-1 right now? Check the live pod status and events.
+
+**Your Task:**
+Answer the user's question based on the investigation context above.
+- Reference investigation history when relevant
+- Use tools to get fresh data if needed
+- Provide clear, actionable responses
+
+Begin your response:"""
+        },
+        # First tool call - kubectl_get (mock forces this)
+        {
+            "role": "model",
+            "content": "[Tool call: kubernetes-server__kubectl_get]"
+        },
+        {
+            "role": "user",
+            "content": """Tool Result: kubernetes-server__kubectl_get:
+{"result": "Pod pod-1 is in CrashLoopBackOff state"}"""
+        },
+        # Second tool call - kubectl_describe (mock forces this, reaches max iterations)
+        {
+            "role": "model",
+            "content": "[Tool call: kubernetes-server__kubectl_describe]"
+        },
+        {
+            "role": "user",
+            "content": """Tool Result: kubernetes-server__kubectl_describe:
+{"result": "Pod pod-1 details: exit code 1, restart count 5"}"""
+        },
+        # Forced conclusion prompt (sent by system at max iterations)
+        {
+            "role": "user",
+            "content": """You have reached the investigation iteration limit (2 iterations).
+
+Please conclude your investigation by answering the original question based on what you've discovered.
+
+**Conclusion guidance:**
+- Use the data and observations you've already gathered
+- Perfect information is not required - provide actionable insights from available findings
+- If gaps remain, clearly state what you couldn't determine and why
+- Focus on practical next steps based on current knowledge
+
+Provide a clear, structured conclusion that directly addresses the investigation question."""
+        },
+        # Forced conclusion response (mock provides this)
+        {
+            "role": "model",
+            "content": """**Forced Conclusion - Current Pod Status**
+
+Based on the investigation:
+
+**Current Status:**
+- Pod pod-1 is in CrashLoopBackOff state
+- Exit code 1, restart count 5
+- Database connection timeout errors
+
+**Root Cause:**
+Consistent with original investigation - database connectivity issue to db.example.com:5432
+
+**Limitations:**
+Investigation reached iteration limit (2 iterations). Complete analysis not performed.
+
+**Immediate Actions:**
+1. Check database service availability
+2. Verify network connectivity to database
+3. Review pod configuration and credentials
+4. Examine network policies
+
+The pod will continue restarting until database connectivity is restored."""
+        }
+    ]
+}
+
+EXPECTED_CHAT_INTERACTIONS = {
+    'chat_forced_conclusion': {
+        'llm_count': 3,  # 2 tool calls + forced conclusion
+        'mcp_count': 3,  # 1 tool_list + 2 tool_call
+        'interactions': [
+            # MCP 1 - Tool list discovery for kubernetes-server
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            # LLM 1 - First tool call (kubectl_get pods) - mock forces tool call
+            {'type': 'llm', 'success': True, 'conversation_index': 3, 'input_tokens': 180, 'output_tokens': 65, 'total_tokens': 245, 'interaction_type': 'investigation'},
+            # MCP 2 - kubectl_get call
+            {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
+            # LLM 2 - Second tool call (kubectl_describe pod) - mock forces tool call
+            {'type': 'llm', 'success': True, 'conversation_index': 5, 'input_tokens': 200, 'output_tokens': 70, 'total_tokens': 270, 'interaction_type': 'investigation'},
+            # MCP 3 - kubectl_describe call
+            {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_describe', 'server_name': 'kubernetes-server'},
+            # LLM 3 - Forced conclusion with final answer
+            {'type': 'llm', 'success': True, 'conversation_index': 8, 'input_tokens': 240, 'output_tokens': 125, 'total_tokens': 365, 'interaction_type': 'forced_conclusion'}
+        ]
+    }
 }

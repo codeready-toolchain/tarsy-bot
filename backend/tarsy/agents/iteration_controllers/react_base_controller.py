@@ -11,6 +11,7 @@ from abc import abstractmethod
 from typing import TYPE_CHECKING, Optional
 
 from ...config.settings import get_settings
+from ...models.constants import LLMInteractionType
 from ...models.unified_interactions import LLMConversation, MessageRole
 from ..parsers.react_parser import ReActParser
 from .base_controller import IterationController
@@ -264,6 +265,48 @@ class ReactController(IterationController):
             ReAct-formatted prompt requesting Final Answer
         """
         return self.prompt_builder.build_react_forced_conclusion_prompt(iteration)
+    
+    async def _call_llm_for_forced_conclusion(
+        self,
+        conversation: LLMConversation,
+        context: 'StageContext',
+        timeout: int
+    ) -> str:
+        """
+        ReAct-specific LLM call using LangChain generate_response().
+        
+        Args:
+            conversation: Current conversation with forced conclusion prompt already added
+            context: Stage context
+            timeout: Timeout in seconds
+            
+        Returns:
+            Conclusion text from LLM
+            
+        Raises:
+            asyncio.TimeoutError: If LLM call times out
+            Exception: On LLM communication failures
+        """
+        agent = context.agent
+        stage_execution_id = agent.get_current_stage_execution_id()
+        
+        response = await asyncio.wait_for(
+            self.llm_manager.generate_response(
+                conversation=conversation,
+                session_id=context.session_id,
+                stage_execution_id=stage_execution_id,
+                interaction_type=LLMInteractionType.FORCED_CONCLUSION.value,
+                # NO mcp_event_id or tools - pure LLM call
+            ),
+            timeout=timeout
+        )
+        
+        # Extract final message
+        final_message = response.get_latest_assistant_message()
+        if final_message:
+            return final_message.content
+        else:
+            return "Unable to generate conclusion (no response from LLM)"
 
     @abstractmethod
     def build_initial_conversation(self, context: 'StageContext') -> 'LLMConversation':

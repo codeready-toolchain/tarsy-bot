@@ -63,8 +63,12 @@ def assert_conversation_messages(
         if expected_content != actual_content:
             # Show difference for debugging
             print(f"\n❌ Content mismatch in message {i}:")
+            print(f"  Expected role: {expected_role}")
+            print(f"  Actual role: {actual_role}")
             print(f"  Expected length: {len(expected_content)}")
             print(f"  Actual length: {len(actual_content)}")
+            print(f"  Expected preview: {expected_content[:200]}...")
+            print(f"  Actual preview: {actual_content[:200]}...")
             
             # Find where they differ
             for idx, (e_char, a_char) in enumerate(zip(expected_content, actual_content)):
