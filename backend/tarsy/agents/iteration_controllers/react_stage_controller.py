@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.utils.logger import get_module_logger
 
-from .base_controller import ReactController
+from .react_base_controller import ReactController
 
 if TYPE_CHECKING:
     from tarsy.agents.prompts import PromptBuilder

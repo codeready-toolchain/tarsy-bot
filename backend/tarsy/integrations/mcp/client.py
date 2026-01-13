@@ -655,6 +655,28 @@ class MCPClient:
             logger.debug(f"✗ Failed to initialize {server_id}: {extract_error_details(e)}")
             return False
     
+    async def _set_investigating_status(self, session_id: str) -> None:
+        """
+        Set session status to INVESTIGATING (e.g., after distilling completes).
+        
+        This is a non-critical operation - failures are logged but not propagated
+        to avoid disrupting the agent's investigation flow.
+        
+        Args:
+            session_id: Session ID for status update
+        """
+        try:
+            from tarsy.models.constants import ProgressPhase
+            from tarsy.services.events.event_helpers import publish_session_progress_update
+            await publish_session_progress_update(
+                session_id,
+                phase=ProgressPhase.INVESTIGATING,
+                metadata=None
+            )
+        except Exception as e:
+            # Non-critical - don't fail the investigation if status update fails
+            logger.debug(f"Failed to set investigating status: {e}")
+    
     async def _maybe_summarize_result(
         self, 
         server_name: str, 
@@ -705,6 +727,15 @@ class MCPClient:
             
             logger.info(f"Summarizing large MCP result: {server_name}.{tool_name} ({estimated_tokens} tokens)")
             
+            # Publish progress update for distilling status
+            from tarsy.models.constants import ProgressPhase
+            from tarsy.services.events.event_helpers import publish_session_progress_update
+            await publish_session_progress_update(
+                session_id,
+                phase=ProgressPhase.DISTILLING,
+                metadata={"tool": f"{server_name}.{tool_name}", "tokens": estimated_tokens}
+            )
+            
             # Publish immediate placeholder to frontend for instant feedback
             await self._publish_summarization_placeholder(
                 session_id, stage_execution_id, mcp_event_id
@@ -725,16 +756,24 @@ class MCPClient:
             except asyncio.TimeoutError:
                 error_msg = f"Summarization exceeded {summarization_timeout}s timeout for {server_name}.{tool_name}"
                 logger.error(error_msg)
+                # Set back to investigating status on timeout
+                await self._set_investigating_status(session_id)
                 return {
                     "result": f"Error: Summarization timed out after {summarization_timeout}s. Original result too large ({estimated_tokens} tokens)."
                 }
             
             logger.info(f"Successfully summarized {server_name}.{tool_name} from {estimated_tokens} to ~{max_summary_tokens} tokens")
+            
+            # Set back to investigating status
+            await self._set_investigating_status(session_id)
+            
             return summarized
             
         except Exception as e:
             error_details = extract_error_details(e)
             logger.error(f"Failed to summarize MCP result {server_name}.{tool_name}: {error_details}")
+            # Set back to investigating status on error
+            await self._set_investigating_status(session_id)
             # Return error message as result for graceful degradation
             return {
                 "result": f"Error: Failed to summarize large result ({estimated_tokens} tokens). Summarization error: {str(e)}"

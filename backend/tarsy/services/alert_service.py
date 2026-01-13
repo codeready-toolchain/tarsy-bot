@@ -402,7 +402,7 @@ class AlertService:
                 )
                 await publish_session_progress_update(
                     chain_context.session_id,
-                    phase=ProgressPhase.SUMMARIZING,
+                    phase=ProgressPhase.FINALIZING,
                     metadata=None
                 )
                 
@@ -1149,7 +1149,7 @@ class AlertService:
                 )
                 await publish_session_progress_update(
                     session_id,
-                    phase=ProgressPhase.SUMMARIZING,
+                    phase=ProgressPhase.FINALIZING,
                     metadata=None
                 )
                 
