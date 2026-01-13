@@ -449,7 +449,7 @@ function ChatFlowItem({
     );
   }
 
-  // Render forced conclusion - similar to final answer but with warning color
+  // Render forced conclusion - same style as final answer with max iterations indicator
   if (item.type === CHAT_FLOW_ITEM_TYPES.FORCED_CONCLUSION) {
     const hasMarkdown = hasMarkdownSyntax(item.content || '');
     
@@ -466,7 +466,7 @@ function ChatFlowItem({
         }}
       >
         <EmojiIcon
-          emoji="⚠️"
+          emoji="🎯"
           opacity={collapsedLeadingIconOpacity}
           showTooltip={shouldShowCollapsed}
           tooltipContent={item.content || ''}
@@ -475,8 +475,8 @@ function ChatFlowItem({
         
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <CollapsibleItemHeader
-            headerText="FORCED CONCLUSION (Max Iterations)"
-            headerColor="#ed6c02"
+            headerText="FINAL ANSWER (⚠️Max Iterations)"
+            headerColor="#2e7d32"
             headerTextTransform="uppercase"
             shouldShowCollapsed={shouldShowCollapsed}
             collapsedHeaderOpacity={collapsedHeaderOpacity}

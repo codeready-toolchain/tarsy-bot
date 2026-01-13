@@ -306,7 +306,7 @@ class IterationController(ABC):
         conclusion_prompt = self._get_forced_conclusion_prompt(iteration)
         
         # Add conclusion request to conversation
-        conversation.append_user_message(conclusion_prompt)
+        conversation.append_observation(conclusion_prompt)
         
         # Get agent and IDs
         agent = context.agent

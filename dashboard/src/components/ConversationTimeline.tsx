@@ -401,6 +401,7 @@ function ConversationTimeline({
       CHAT_FLOW_ITEM_TYPES.THOUGHT,
       CHAT_FLOW_ITEM_TYPES.NATIVE_THINKING,
       CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER,
+      CHAT_FLOW_ITEM_TYPES.FORCED_CONCLUSION,
       CHAT_FLOW_ITEM_TYPES.SUMMARIZATION
     ];
     const newItemsToCollapse = new Set<string>();
@@ -543,13 +544,14 @@ function ConversationTimeline({
       CHAT_FLOW_ITEM_TYPES.THOUGHT,
       CHAT_FLOW_ITEM_TYPES.NATIVE_THINKING,
       CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER,
+      CHAT_FLOW_ITEM_TYPES.FORCED_CONCLUSION,
       CHAT_FLOW_ITEM_TYPES.SUMMARIZATION
     ];
     if (!collapsibleTypes.includes(item.type)) return false;
     
     // Exception: Chat stage final answers should NOT be collapsible
     // They are direct responses to user questions and should always be visible
-    if (item.type === CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER && item.isChatStage) {
+    if ((item.type === CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER || item.type === CHAT_FLOW_ITEM_TYPES.FORCED_CONCLUSION) && item.isChatStage) {
       return false;
     }
     
@@ -642,6 +644,8 @@ function ConversationTimeline({
         content += `📋 Tool Result Summary${item.mcp_event_id ? ` (MCP: ${item.mcp_event_id})` : ''}:\n${item.content}\n\n`;
       } else if (item.type === CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER) {
         content += `🎯 Final Answer:\n${item.content}\n\n`;
+      } else if (item.type === CHAT_FLOW_ITEM_TYPES.FORCED_CONCLUSION) {
+        content += `🎯 Final Answer (⚠️Max Iterations):\n${item.content}\n\n`;
       }
     });
     
