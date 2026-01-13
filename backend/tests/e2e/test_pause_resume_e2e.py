@@ -248,10 +248,13 @@ class TestPauseResumeE2E:
         from tarsy.config.settings import get_settings
         settings = get_settings()
         original_max_iterations = settings.max_llm_mcp_iterations
+        original_force_conclusion = settings.force_conclusion_at_max_iterations
 
         try:
             settings.max_llm_mcp_iterations = 2
+            settings.force_conclusion_at_max_iterations = False
             print(f"🔧 Overrode max_llm_mcp_iterations from {original_max_iterations} to 2")
+            print(f"🔧 Overrode force_conclusion_at_max_iterations from {original_force_conclusion} to False")
             # Track all LLM interactions
             all_llm_interactions = []
 
@@ -711,5 +714,6 @@ Finalizers:   [kubernetes.io/pvc-protection]
         finally:
             # Always restore original value, even on failure
             settings.max_llm_mcp_iterations = original_max_iterations
+            settings.force_conclusion_at_max_iterations = original_force_conclusion
             print(f"🔧 Restored max_llm_mcp_iterations to {original_max_iterations}")
 

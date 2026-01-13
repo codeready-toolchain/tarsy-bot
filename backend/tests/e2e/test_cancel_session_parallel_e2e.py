@@ -108,10 +108,13 @@ class TestCancelPausedSessionParallelE2E(ParallelTestBase):
 
         settings = get_settings()
         original_max_iterations = settings.max_llm_mcp_iterations
+        original_force_conclusion = settings.force_conclusion_at_max_iterations
 
         try:
             settings.max_llm_mcp_iterations = 1
+            settings.force_conclusion_at_max_iterations = False
             print("🔧 Set max_llm_mcp_iterations to 1 (both agents will pause)")
+            print(f"🔧 Set force_conclusion_at_max_iterations to False (was {original_force_conclusion})")
 
             # KubernetesAgent pauses at iteration 1 (native thinking tool call)
             gemini_response_map = {
@@ -228,4 +231,5 @@ Action Input: {"namespace": "test-namespace", "pod": "pod-1"}""",
 
         finally:
             settings.max_llm_mcp_iterations = original_max_iterations
+            settings.force_conclusion_at_max_iterations = original_force_conclusion
 

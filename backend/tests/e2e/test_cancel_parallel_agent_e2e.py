@@ -178,10 +178,13 @@ class TestCancelParallelAgentE2E(ParallelTestBase):
         from tarsy.config.settings import get_settings
         settings = get_settings()
         original_max_iterations = settings.max_llm_mcp_iterations
+        original_force_conclusion = settings.force_conclusion_at_max_iterations
 
         try:
             settings.max_llm_mcp_iterations = 2
+            settings.force_conclusion_at_max_iterations = False
             print("🔧 Set max_llm_mcp_iterations to 2")
+            print(f"🔧 Set force_conclusion_at_max_iterations to False (was {original_force_conclusion})")
 
             # ============================================================================
             # NATIVE THINKING MOCK (for KubernetesAgent - pauses at iteration 2)
@@ -397,6 +400,7 @@ Root cause identified from logs.""",
 
         finally:
             settings.max_llm_mcp_iterations = original_max_iterations
+            settings.force_conclusion_at_max_iterations = original_force_conclusion
             print(f"🔧 Restored max_llm_mcp_iterations to {original_max_iterations}")
 
     async def _execute_cancel_keeps_session_paused_test(self, test_client, alert_data):
@@ -406,11 +410,14 @@ Root cause identified from logs.""",
         from tarsy.config.settings import get_settings
         settings = get_settings()
         original_max_iterations = settings.max_llm_mcp_iterations
+        original_force_conclusion = settings.force_conclusion_at_max_iterations
 
         try:
             # Set max_iterations to 1 so both agents pause quickly
             settings.max_llm_mcp_iterations = 1
+            settings.force_conclusion_at_max_iterations = False
             print("🔧 Set max_llm_mcp_iterations to 1 (both agents will pause)")
+            print(f"🔧 Set force_conclusion_at_max_iterations to False (was {original_force_conclusion})")
 
             # ============================================================================
             # NATIVE THINKING MOCK (for KubernetesAgent and SynthesisAgent)
@@ -632,6 +639,7 @@ Action Input: {"namespace": "test-namespace", "pod": "pod-1"}""",
 
         finally:
             settings.max_llm_mcp_iterations = original_max_iterations
+            settings.force_conclusion_at_max_iterations = original_force_conclusion
             print(f"🔧 Restored max_llm_mcp_iterations to {original_max_iterations}")
 
     async def _execute_cancel_with_three_agents_test(self, test_client, alert_data):
@@ -642,10 +650,13 @@ Action Input: {"namespace": "test-namespace", "pod": "pod-1"}""",
 
         settings = get_settings()
         original_max_iterations = settings.max_llm_mcp_iterations
+        original_force_conclusion = settings.force_conclusion_at_max_iterations
 
         try:
             settings.max_llm_mcp_iterations = 1
+            settings.force_conclusion_at_max_iterations = False
             print("🔧 Set max_llm_mcp_iterations to 1 (only KubernetesAgent will pause)")
+            print(f"🔧 Set force_conclusion_at_max_iterations to False (was {original_force_conclusion})")
 
             # ============================================================================
             # NATIVE THINKING MOCK (KubernetesAgent pauses at iteration 1)
@@ -832,5 +843,6 @@ Final Answer: **Remediation Plan**
 
         finally:
             settings.max_llm_mcp_iterations = original_max_iterations
+            settings.force_conclusion_at_max_iterations = original_force_conclusion
             print(f"🔧 Restored max_llm_mcp_iterations to {original_max_iterations}")
 

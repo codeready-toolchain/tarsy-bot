@@ -278,10 +278,13 @@ class TestNativeThinkingPauseResumeE2E:
         from tarsy.config.settings import get_settings
         settings = get_settings()
         original_max_iterations = settings.max_llm_mcp_iterations
+        original_force_conclusion = settings.force_conclusion_at_max_iterations
         
         try:
             settings.max_llm_mcp_iterations = 2
+            settings.force_conclusion_at_max_iterations = False
             print(f"🔧 Set max_llm_mcp_iterations to 2 (was {original_max_iterations})")
+            print(f"🔧 Set force_conclusion_at_max_iterations to False (was {original_force_conclusion})")
             
             # Track all Gemini interactions
             all_gemini_interactions = []
@@ -597,5 +600,6 @@ class TestNativeThinkingPauseResumeE2E:
         
         finally:
             settings.max_llm_mcp_iterations = original_max_iterations
+            settings.force_conclusion_at_max_iterations = original_force_conclusion
             print(f"🔧 Restored max_llm_mcp_iterations to {original_max_iterations}")
 
