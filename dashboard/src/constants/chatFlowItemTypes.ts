@@ -11,6 +11,7 @@
  * THOUGHT: ReAct pattern thought
  * TOOL_CALL: MCP tool execution
  * FINAL_ANSWER: Final answer/result
+ * FORCED_CONCLUSION: Forced conclusion when max iterations reached
  * STAGE_START: Stage execution marker
  * SUMMARIZATION: Tool result summarization
  * USER_MESSAGE: User's chat message

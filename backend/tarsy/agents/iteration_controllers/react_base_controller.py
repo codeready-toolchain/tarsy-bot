@@ -296,6 +296,7 @@ class ReactController(IterationController):
                 session_id=context.session_id,
                 stage_execution_id=stage_execution_id,
                 interaction_type=LLMInteractionType.FORCED_CONCLUSION.value,
+                provider=self._llm_provider_name,
                 # NO mcp_event_id or tools - pure LLM call
             ),
             timeout=timeout

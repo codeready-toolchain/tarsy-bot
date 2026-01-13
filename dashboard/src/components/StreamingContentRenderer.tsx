@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useEffect, useRef } from 'react';
 import { Box, Typography, alpha } from '@mui/material';
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import TypewriterText from './TypewriterText';
@@ -55,6 +55,14 @@ interface ThinkingBlockProps {
 
 const ThinkingBlock = memo(({ content, textColor, isItalic = false }: ThinkingBlockProps) => {
   const hasMarkdown = hasMarkdownSyntax(content);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  
+  // Auto-scroll to bottom when content changes during streaming
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
+  }, [content]);
   
   return (
     <Box sx={{ mb: 1.5, display: 'flex', gap: 1.5 }}>
@@ -86,6 +94,7 @@ const ThinkingBlock = memo(({ content, textColor, isItalic = false }: ThinkingBl
         </Typography>
         {/* Thinking content box with light grey background - fixed height during streaming */}
         <Box 
+          ref={scrollContainerRef}
           sx={(theme) => ({ 
             bgcolor: alpha(theme.palette.grey[300], 0.15),
             border: '1px solid',

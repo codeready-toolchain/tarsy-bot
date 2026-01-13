@@ -51,6 +51,82 @@ function ChatFlowItem({
   // Only apply dimming when item is collapsible and should be collapsed
   const collapsedHeaderOpacity = shouldShowCollapsed ? 0.65 : 1;
   const collapsedLeadingIconOpacity = shouldShowCollapsed ? 0.6 : 1;
+
+  /**
+   * Shared rendering logic for final result items (FINAL_ANSWER and FORCED_CONCLUSION)
+   * Both types share the same structure and styling, differing only in header text and tooltip type
+   */
+  const renderFinalResult = (
+    headerText: string,
+    tooltipType: 'final_answer' | 'forced_conclusion'
+  ) => {
+    const hasMarkdown = hasMarkdownSyntax(item.content || '');
+    
+    return (
+      <Box 
+        sx={{ 
+          mb: 2, 
+          mt: 3,
+          display: 'flex', 
+          gap: 1.5,
+          alignItems: 'flex-start',
+          // Fade animation when auto-collapsing
+          ...(shouldShowCollapsed && FADE_COLLAPSE_ANIMATION)
+        }}
+      >
+        <EmojiIcon
+          emoji="🎯"
+          opacity={collapsedLeadingIconOpacity}
+          showTooltip={shouldShowCollapsed}
+          tooltipContent={item.content || ''}
+          tooltipType={tooltipType}
+        />
+        
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <CollapsibleItemHeader
+            headerText={headerText}
+            headerColor="#2e7d32"
+            headerTextTransform="uppercase"
+            shouldShowCollapsed={shouldShowCollapsed}
+            collapsedHeaderOpacity={collapsedHeaderOpacity}
+            onToggle={isCollapsible && onToggleAutoCollapse ? onToggleAutoCollapse : undefined}
+          />
+          
+          {/* Collapsible content */}
+          <Collapse in={!shouldShowCollapsed} timeout={300}>
+            <Box sx={{ mt: 0.5 }}>
+              {hasMarkdown ? (
+                <Box sx={{ color: 'text.primary' }}>
+                  <ReactMarkdown
+                    urlTransform={defaultUrlTransform}
+                    components={thoughtMarkdownComponents}
+                    remarkPlugins={[remarkBreaks]}
+                    skipHtml
+                  >
+                    {item.content || ''}
+                  </ReactMarkdown>
+                </Box>
+              ) : (
+                <Typography 
+                  variant="body1" 
+                  sx={{ 
+                    whiteSpace: 'pre-wrap', 
+                    wordBreak: 'break-word',
+                    lineHeight: 1.7,
+                    fontSize: '1rem',
+                    color: 'text.primary'
+                  }}
+                >
+                  {item.content}
+                </Typography>
+              )}
+              {isCollapsible && onToggleAutoCollapse && <CollapseButton onClick={onToggleAutoCollapse} />}
+            </Box>
+          </Collapse>
+        </Box>
+      </Box>
+    );
+  };
   
   // Render stage start separator with collapse/expand control
   if (item.type === CHAT_FLOW_ITEM_TYPES.STAGE_START) {
@@ -381,142 +457,12 @@ function ChatFlowItem({
 
   // Render final answer - uses same style as intermediate_response for smooth transition
   if (item.type === CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER) {
-    const hasMarkdown = hasMarkdownSyntax(item.content || '');
-    
-    return (
-      <Box 
-        sx={{ 
-          mb: 2, 
-          mt: 3,
-          display: 'flex', 
-          gap: 1.5,
-          alignItems: 'flex-start',
-          // Fade animation when auto-collapsing
-          ...(shouldShowCollapsed && FADE_COLLAPSE_ANIMATION)
-        }}
-      >
-        <EmojiIcon
-          emoji="🎯"
-          opacity={collapsedLeadingIconOpacity}
-          showTooltip={shouldShowCollapsed}
-          tooltipContent={item.content || ''}
-          tooltipType="final_answer"
-        />
-        
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <CollapsibleItemHeader
-            headerText="FINAL ANSWER"
-            headerColor="#2e7d32"
-            headerTextTransform="uppercase"
-            shouldShowCollapsed={shouldShowCollapsed}
-            collapsedHeaderOpacity={collapsedHeaderOpacity}
-            onToggle={isCollapsible && onToggleAutoCollapse ? onToggleAutoCollapse : undefined}
-          />
-          
-          {/* Collapsible content */}
-          <Collapse in={!shouldShowCollapsed} timeout={300}>
-            <Box sx={{ mt: 0.5 }}>
-              {hasMarkdown ? (
-                <Box sx={{ color: 'text.primary' }}>
-                  <ReactMarkdown
-                    urlTransform={defaultUrlTransform}
-                    components={thoughtMarkdownComponents}
-                    remarkPlugins={[remarkBreaks]}
-                    skipHtml
-                  >
-                    {item.content || ''}
-                  </ReactMarkdown>
-                </Box>
-              ) : (
-                <Typography 
-                  variant="body1" 
-                  sx={{ 
-                    whiteSpace: 'pre-wrap', 
-                    wordBreak: 'break-word',
-                    lineHeight: 1.7,
-                    fontSize: '1rem',
-                    color: 'text.primary'
-                  }}
-                >
-                  {item.content}
-                </Typography>
-              )}
-              {isCollapsible && onToggleAutoCollapse && <CollapseButton onClick={onToggleAutoCollapse} />}
-            </Box>
-          </Collapse>
-        </Box>
-      </Box>
-    );
+    return renderFinalResult("FINAL ANSWER", "final_answer");
   }
 
   // Render forced conclusion - same style as final answer with max iterations indicator
   if (item.type === CHAT_FLOW_ITEM_TYPES.FORCED_CONCLUSION) {
-    const hasMarkdown = hasMarkdownSyntax(item.content || '');
-    
-    return (
-      <Box 
-        sx={{ 
-          mb: 2, 
-          mt: 3,
-          display: 'flex', 
-          gap: 1.5,
-          alignItems: 'flex-start',
-          // Fade animation when auto-collapsing
-          ...(shouldShowCollapsed && FADE_COLLAPSE_ANIMATION)
-        }}
-      >
-        <EmojiIcon
-          emoji="🎯"
-          opacity={collapsedLeadingIconOpacity}
-          showTooltip={shouldShowCollapsed}
-          tooltipContent={item.content || ''}
-          tooltipType="forced_conclusion"
-        />
-        
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <CollapsibleItemHeader
-            headerText="FINAL ANSWER (⚠️Max Iterations)"
-            headerColor="#2e7d32"
-            headerTextTransform="uppercase"
-            shouldShowCollapsed={shouldShowCollapsed}
-            collapsedHeaderOpacity={collapsedHeaderOpacity}
-            onToggle={isCollapsible && onToggleAutoCollapse ? onToggleAutoCollapse : undefined}
-          />
-          
-          {/* Collapsible content */}
-          <Collapse in={!shouldShowCollapsed} timeout={300}>
-            <Box sx={{ mt: 0.5 }}>
-              {hasMarkdown ? (
-                <Box sx={{ color: 'text.primary' }}>
-                  <ReactMarkdown
-                    urlTransform={defaultUrlTransform}
-                    components={thoughtMarkdownComponents}
-                    remarkPlugins={[remarkBreaks]}
-                    skipHtml
-                  >
-                    {item.content || ''}
-                  </ReactMarkdown>
-                </Box>
-              ) : (
-                <Typography 
-                  variant="body1" 
-                  sx={{ 
-                    whiteSpace: 'pre-wrap', 
-                    wordBreak: 'break-word',
-                    lineHeight: 1.7,
-                    fontSize: '1rem',
-                    color: 'text.primary'
-                  }}
-                >
-                  {item.content}
-                </Typography>
-              )}
-              {isCollapsible && onToggleAutoCollapse && <CollapseButton onClick={onToggleAutoCollapse} />}
-            </Box>
-          </Collapse>
-        </Box>
-      </Box>
-    );
+    return renderFinalResult("FINAL ANSWER (⚠️Max Iterations)", "forced_conclusion");
   }
 
   // Render tool call - indented expandable box

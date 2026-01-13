@@ -451,3 +451,136 @@ class TestPromptDifferences:
         # Verify Native Thinking-specific method was called
         mock_prompt_builder.build_native_thinking_forced_conclusion_prompt.assert_called_once_with(5)
         assert prompt == "Native thinking conclusion prompt"
+
+
+@pytest.mark.unit
+class TestProviderConsistency:
+    """Test that LLM provider is consistent between investigation and forced conclusion."""
+    
+    @pytest.fixture
+    def mock_llm_manager(self):
+        """Create mock LLM manager that tracks provider parameter."""
+        manager = AsyncMock()
+        
+        async def mock_generate(conversation, session_id, stage_execution_id=None, **kwargs):
+            updated_conversation = LLMConversation(messages=conversation.messages.copy())
+            interaction_type = kwargs.get('interaction_type')
+            
+            if interaction_type == LLMInteractionType.FORCED_CONCLUSION.value:
+                updated_conversation.append_assistant_message("Forced conclusion response")
+            else:
+                updated_conversation.append_assistant_message("Thought: Investigating...")
+            
+            return updated_conversation
+        
+        manager.generate_response = AsyncMock(side_effect=mock_generate)
+        return manager
+    
+    @pytest.fixture
+    def mock_prompt_builder(self):
+        """Create mock prompt builder."""
+        builder = Mock()
+        builder.build_standard_react_prompt.return_value = "ReAct prompt"
+        builder.get_enhanced_react_system_message.return_value = "You are an AI assistant."
+        builder.build_react_forced_conclusion_prompt.return_value = "Please conclude now."
+        return builder
+    
+    @pytest.fixture
+    def sample_context(self):
+        """Create sample context."""
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        mock_agent = Mock()
+        mock_agent.max_iterations = 1
+        mock_agent.get_current_stage_execution_id.return_value = "stage-789"
+        
+        processing_alert = ProcessingAlert(
+            alert_type="test",
+            severity="warning",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"alert": "TestAlert"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="test-session",
+            current_stage_name="analysis"
+        )
+        chain_context.chat_context = None
+        
+        available_tools = AvailableTools(tools=[])
+        return StageContext(
+            chain_context=chain_context,
+            available_tools=available_tools,
+            agent=mock_agent
+        )
+    
+    @pytest.mark.asyncio
+    async def test_forced_conclusion_uses_same_provider_as_investigation(
+        self, mock_llm_manager, mock_prompt_builder, sample_context
+    ):
+        """Test that forced conclusion uses the same LLM provider as the investigation loop."""
+        controller = TestReactController(mock_llm_manager, mock_prompt_builder)
+        
+        # Set a specific LLM provider
+        test_provider = "test-provider-gpt4"
+        controller.set_llm_provider(test_provider)
+        
+        with patch('tarsy.config.settings.get_settings') as mock_settings:
+            settings_mock = Mock()
+            settings_mock.force_conclusion_at_max_iterations = True
+            settings_mock.llm_iteration_timeout = 30
+            mock_settings.return_value = settings_mock
+            
+            # Execute analysis loop (will reach max iterations and force conclusion)
+            await controller.execute_analysis_loop(sample_context)
+            
+            # Get all calls to generate_response
+            calls = mock_llm_manager.generate_response.call_args_list
+            
+            # Should have at least 2 calls: 1 investigation + 1 forced conclusion
+            assert len(calls) >= 2
+            
+            # Extract provider parameter from each call
+            providers_used = [call.kwargs.get('provider') for call in calls]
+            
+            # All calls should use the same provider
+            assert all(p == test_provider for p in providers_used), \
+                f"Expected all calls to use provider '{test_provider}', but got: {providers_used}"
+            
+            # Verify the forced conclusion call specifically
+            forced_conclusion_calls = [
+                call for call in calls 
+                if call.kwargs.get('interaction_type') == LLMInteractionType.FORCED_CONCLUSION.value
+            ]
+            assert len(forced_conclusion_calls) == 1, "Should have exactly one forced conclusion call"
+            assert forced_conclusion_calls[0].kwargs.get('provider') == test_provider, \
+                f"Forced conclusion should use provider '{test_provider}'"
+    
+    @pytest.mark.asyncio
+    async def test_forced_conclusion_respects_none_provider(
+        self, mock_llm_manager, mock_prompt_builder, sample_context
+    ):
+        """Test that forced conclusion respects None provider (uses global default)."""
+        controller = TestReactController(mock_llm_manager, mock_prompt_builder)
+        
+        # Explicitly set provider to None (use global default)
+        controller.set_llm_provider(None)
+        
+        with patch('tarsy.config.settings.get_settings') as mock_settings:
+            settings_mock = Mock()
+            settings_mock.force_conclusion_at_max_iterations = True
+            settings_mock.llm_iteration_timeout = 30
+            mock_settings.return_value = settings_mock
+            
+            # Execute analysis loop
+            await controller.execute_analysis_loop(sample_context)
+            
+            # Get all calls to generate_response
+            calls = mock_llm_manager.generate_response.call_args_list
+            
+            # All calls should have provider=None
+            providers_used = [call.kwargs.get('provider') for call in calls]
+            assert all(p is None for p in providers_used), \
+                f"Expected all calls to use provider=None (global default), but got: {providers_used}"

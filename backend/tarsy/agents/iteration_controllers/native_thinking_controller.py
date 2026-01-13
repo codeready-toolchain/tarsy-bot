@@ -17,6 +17,7 @@ from typing import TYPE_CHECKING, Optional
 
 from tarsy.config.settings import get_settings
 from tarsy.integrations.llm.gemini_client import GeminiNativeThinkingClient
+from tarsy.models.constants import LLMInteractionType
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.utils.logger import get_module_logger
 
@@ -430,9 +431,6 @@ class NativeThinkingController(IterationController):
             asyncio.TimeoutError: If LLM call times out
             Exception: On LLM communication failures
         """
-        import asyncio
-        from tarsy.models.constants import LLMInteractionType
-        
         agent = context.agent
         native_client = self._get_native_client()
         

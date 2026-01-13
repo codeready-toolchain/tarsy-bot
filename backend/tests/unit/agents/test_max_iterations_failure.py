@@ -5,7 +5,7 @@ Tests the new failure detection functionality that marks stages and sessions as 
 when max iterations is reached with the last interaction failing.
 """
 
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -149,7 +149,6 @@ class TestReactControllerMaxIterationsFailure:
     async def test_max_iterations_with_last_interaction_successful(self, controller, sample_context, mock_llm_manager):
         """Test that SessionPaused is raised when max iterations reached without final answer."""
         from tarsy.agents.exceptions import SessionPaused
-        from unittest.mock import patch, Mock
         
         # Mock LLM to fail first, then succeed on last attempt
         call_count = 0
