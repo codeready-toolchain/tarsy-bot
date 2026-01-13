@@ -199,9 +199,19 @@ class TestSimpleReActController:
         
         mock_llm_manager.generate_response.side_effect = mock_generate_response_incomplete
         
-        # Should raise SessionPaused when reaching max iterations with successful last interaction
-        with pytest.raises(SessionPaused) as exc_info:
-            await controller.execute_analysis_loop(sample_context)
+        # Ensure chat_context is None so forced conclusion isn't triggered
+        sample_context.chain_context.chat_context = None
+        
+        # Mock settings to disable forced conclusion
+        with patch('tarsy.config.settings.get_settings') as mock_settings:
+            settings_mock = Mock()
+            settings_mock.force_conclusion_at_max_iterations = False
+            settings_mock.llm_iteration_timeout = 30
+            mock_settings.return_value = settings_mock
+            
+            # Should raise SessionPaused when reaching max iterations with successful last interaction
+            with pytest.raises(SessionPaused) as exc_info:
+                await controller.execute_analysis_loop(sample_context)
         
         # Verify the exception details
         assert exc_info.value.iteration == 1
@@ -690,9 +700,19 @@ class TestReactStageController:
         
         mock_llm_manager.generate_response.side_effect = mock_generate_response_incomplete
         
-        # Should raise SessionPaused when reaching max iterations
-        with pytest.raises(SessionPaused) as exc_info:
-            await controller.execute_analysis_loop(sample_context)
+        # Ensure chat_context is None so forced conclusion isn't triggered
+        sample_context.chain_context.chat_context = None
+        
+        # Mock settings to disable forced conclusion
+        with patch('tarsy.config.settings.get_settings') as mock_settings:
+            settings_mock = Mock()
+            settings_mock.force_conclusion_at_max_iterations = False
+            settings_mock.llm_iteration_timeout = 30
+            mock_settings.return_value = settings_mock
+            
+            # Should raise SessionPaused when reaching max iterations
+            with pytest.raises(SessionPaused) as exc_info:
+                await controller.execute_analysis_loop(sample_context)
         
         # Verify the exception details
         assert exc_info.value.iteration == 1
@@ -717,9 +737,19 @@ class TestReactStageController:
         
         mock_llm_manager.generate_response.side_effect = mock_generate_response_incomplete
         
-        # Should raise SessionPaused when reaching max iterations
-        with pytest.raises(SessionPaused) as exc_info:
-            await controller.execute_analysis_loop(sample_context)
+        # Ensure chat_context is None so forced conclusion isn't triggered
+        sample_context.chain_context.chat_context = None
+        
+        # Mock settings to disable forced conclusion
+        with patch('tarsy.config.settings.get_settings') as mock_settings:
+            settings_mock = Mock()
+            settings_mock.force_conclusion_at_max_iterations = False
+            settings_mock.llm_iteration_timeout = 30
+            mock_settings.return_value = settings_mock
+            
+            # Should raise SessionPaused when reaching max iterations
+            with pytest.raises(SessionPaused) as exc_info:
+                await controller.execute_analysis_loop(sample_context)
         
         # Verify the exception details
         assert exc_info.value.iteration == 1

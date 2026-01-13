@@ -141,18 +141,6 @@ class TestIsSafeTeardownError:
         error = httpx.HTTPStatusError("Server error", request=request, response=response)
         assert is_safe_teardown_error(error) is False
 
-    def test_empty_exception_group_is_safe(self) -> None:
-        """Test that an empty BaseExceptionGroup is considered safe."""
-        # Edge case: group with no exceptions
-        try:
-            error = BaseExceptionGroup("empty", [])
-        except ValueError:
-            # BaseExceptionGroup requires at least one exception in some Python versions
-            pytest.skip("BaseExceptionGroup requires at least one exception")
-        else:
-            # If we can create an empty group, it should be safe (vacuous truth)
-            assert is_safe_teardown_error(error) is True
-
     def test_single_exception_in_group(self) -> None:
         """Test BaseExceptionGroup with single safe exception."""
         error = BaseExceptionGroup(

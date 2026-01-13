@@ -149,6 +149,7 @@ class TestReactControllerMaxIterationsFailure:
     async def test_max_iterations_with_last_interaction_successful(self, controller, sample_context, mock_llm_manager):
         """Test that SessionPaused is raised when max iterations reached without final answer."""
         from tarsy.agents.exceptions import SessionPaused
+        from unittest.mock import patch, Mock
         
         # Mock LLM to fail first, then succeed on last attempt
         call_count = 0
@@ -164,9 +165,19 @@ class TestReactControllerMaxIterationsFailure:
         
         mock_llm_manager.generate_response.side_effect = mock_generate_with_final_success
         
-        # Should raise SessionPaused exception at max iterations
-        with pytest.raises(SessionPaused) as exc_info:
-            await controller.execute_analysis_loop(sample_context)
+        # Ensure chat_context is None so forced conclusion isn't triggered
+        sample_context.chain_context.chat_context = None
+        
+        # Mock settings to disable forced conclusion
+        with patch('tarsy.config.settings.get_settings') as mock_settings:
+            settings_mock = Mock()
+            settings_mock.force_conclusion_at_max_iterations = False
+            settings_mock.llm_iteration_timeout = 30
+            mock_settings.return_value = settings_mock
+            
+            # Should raise SessionPaused exception at max iterations
+            with pytest.raises(SessionPaused) as exc_info:
+                await controller.execute_analysis_loop(sample_context)
         
         assert "maximum iterations" in str(exc_info.value)
         assert exc_info.value.iteration == 2
