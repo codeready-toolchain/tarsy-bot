@@ -221,6 +221,84 @@ describe('chatFlowParser', () => {
       expect(finalAnswer?.timestamp_us).toBe(1500001);
     });
 
+    it('should parse forced conclusion interaction with thought and conclusion', () => {
+      const session: DetailedSession = {
+        session_id: 'session-1',
+        stages: [
+          {
+            stage_name: 'investigation',
+            agent: 'investigator',
+            started_at_us: 1000000,
+            llm_interactions: [
+              {
+                timestamp_us: 1500000,
+                details: {
+                  interaction_type: 'forced_conclusion',
+                  messages: [
+                    {
+                      role: 'assistant',
+                      content: 'Thought: Reached iteration limit\nFinal Answer: Based on available data, issue is likely Y',
+                    },
+                  ],
+                },
+              },
+            ],
+            mcp_communications: [],
+          },
+        ],
+      } as any;
+
+      const result = parseSessionChatFlow(session);
+
+      const thought = result.find(item => item.type === 'thought');
+      const forcedConclusion = result.find(item => item.type === 'forced_conclusion');
+
+      expect(thought).toBeDefined();
+      expect(thought?.content).toBe('Reached iteration limit');
+      expect(forcedConclusion).toBeDefined();
+      expect(forcedConclusion?.content).toBe('Based on available data, issue is likely Y');
+      expect(forcedConclusion?.type).toBe('forced_conclusion'); // Different from final_answer
+      // Forced conclusion should come after thought
+      expect(forcedConclusion?.timestamp_us).toBe(1500001);
+    });
+
+    it('should parse forced conclusion without thought (only conclusion)', () => {
+      const session: DetailedSession = {
+        session_id: 'session-1',
+        stages: [
+          {
+            stage_name: 'investigation',
+            agent: 'investigator',
+            started_at_us: 1000000,
+            llm_interactions: [
+              {
+                timestamp_us: 1500000,
+                details: {
+                  interaction_type: 'forced_conclusion',
+                  messages: [
+                    {
+                      role: 'assistant',
+                      content: 'Final Answer: Unable to complete analysis within iteration limit',
+                    },
+                  ],
+                },
+              },
+            ],
+            mcp_communications: [],
+          },
+        ],
+      } as any;
+
+      const result = parseSessionChatFlow(session);
+
+      const thought = result.find(item => item.type === 'thought');
+      const forcedConclusion = result.find(item => item.type === 'forced_conclusion');
+
+      expect(thought).toBeUndefined(); // No thought in this case
+      expect(forcedConclusion).toBeDefined();
+      expect(forcedConclusion?.content).toBe('Unable to complete analysis within iteration limit');
+    });
+
     it('should parse summarization interactions', () => {
       const session: DetailedSession = {
         session_id: 'session-1',
@@ -773,6 +851,7 @@ describe('chatFlowParser', () => {
         thoughtsCount: 0,
         toolCallsCount: 0,
         finalAnswersCount: 0,
+        forcedConclusionsCount: 0,
         successfulToolCalls: 0,
         nativeThinkingCount: 0,
         intermediateResponsesCount: 0,
@@ -796,10 +875,28 @@ describe('chatFlowParser', () => {
         thoughtsCount: 2,
         toolCallsCount: 2,
         finalAnswersCount: 1,
+        forcedConclusionsCount: 0,
         successfulToolCalls: 1,
         nativeThinkingCount: 0,
         intermediateResponsesCount: 0,
       });
+    });
+
+    it('should count forced conclusions separately from final answers', () => {
+      const items: ChatFlowItemData[] = [
+        { type: 'thought', timestamp_us: 1000, content: 'T1' },
+        { type: 'final_answer', timestamp_us: 1001, content: 'Normal completion' },
+        { type: 'thought', timestamp_us: 1002, content: 'T2' },
+        { type: 'forced_conclusion', timestamp_us: 1003, content: 'Forced at max iterations' },
+        { type: 'forced_conclusion', timestamp_us: 1004, content: 'Another forced conclusion' },
+      ];
+
+      const stats = getChatFlowStats(items);
+
+      expect(stats.totalItems).toBe(5);
+      expect(stats.thoughtsCount).toBe(2);
+      expect(stats.finalAnswersCount).toBe(1); // Only normal final answer
+      expect(stats.forcedConclusionsCount).toBe(2); // Two forced conclusions
     });
 
     it('should count user messages and summarizations', () => {

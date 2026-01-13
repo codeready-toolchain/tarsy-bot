@@ -190,6 +190,28 @@ describe('timelineHelpers', () => {
       expect(formatted).toContain('Interaction Type: Final Analysis');
     });
 
+    it('should format LLM interaction with forced_conclusion type', () => {
+      const interaction = {
+        id: 'int-1',
+        type: 'llm',
+        step_description: 'Forced Conclusion',
+        timestamp_us: 1705315845000000,
+        details: {
+          model_name: 'gpt-4',
+          interaction_type: 'forced_conclusion',
+          messages: [
+            { role: 'user', content: 'You have reached the investigation iteration limit...' },
+            { role: 'assistant', content: 'Final Answer: Based on available data, the issue is...' },
+          ],
+          success: true,
+        } as any,
+      } as any as TimelineItem;
+
+      const formatted = formatInteractionForCopy(interaction);
+      expect(formatted).toContain('Interaction Type: Forced Conclusion (Max Iterations)');
+      expect(formatted).toContain('Based on available data');
+    });
+
     it('should format failed LLM interaction', () => {
       const interaction = {
         id: 'int-1',
