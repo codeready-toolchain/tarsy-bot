@@ -487,23 +487,48 @@ Further investigation recommended for comprehensive analysis.""",
                             expected_k8s_messages_count
                         )
                         
-                        # Verify exact token counts
+                        # Verify chronological interactions (LLM + MCP in order)
                         expected_k8s_spec = EXPECTED_FORCED_CONCLUSION_INTERACTIONS['k8s_agent']
                         assert len(k8s_interactions) == expected_k8s_spec['llm_count']
                         
-                        # Verify all 3 LLM interactions with exact token counts
-                        for i, expected_interaction in enumerate(expected_k8s_spec['interactions']):
-                            actual_interaction = k8s_interactions[i]
-                            actual_details = actual_interaction["details"]
-                            
-                            assert actual_details["input_tokens"] == expected_interaction["input_tokens"], \
-                                f"K8s interaction {i+1} input_tokens mismatch: expected {expected_interaction['input_tokens']}, got {actual_details['input_tokens']}"
-                            assert actual_details["output_tokens"] == expected_interaction["output_tokens"], \
-                                f"K8s interaction {i+1} output_tokens mismatch: expected {expected_interaction['output_tokens']}, got {actual_details['output_tokens']}"
-                            assert actual_details["total_tokens"] == expected_interaction["total_tokens"], \
-                                f"K8s interaction {i+1} total_tokens mismatch: expected {expected_interaction['total_tokens']}, got {actual_details['total_tokens']}"
+                        # Get chronological interactions (mixed LLM and MCP)
+                        k8s_chronological = k8s_execution.get("chronological_interactions", [])
+                        assert len(k8s_chronological) == len(expected_k8s_spec['interactions']), \
+                            f"K8s chronological interaction count mismatch: expected {len(expected_k8s_spec['interactions'])}, got {len(k8s_chronological)}"
                         
-                        print("  ✅ KubernetesAgent forced conclusion verified with exact token counts")
+                        # Verify each interaction in chronological order
+                        for i, expected_interaction in enumerate(expected_k8s_spec['interactions']):
+                            actual_interaction = k8s_chronological[i]
+                            interaction_type = expected_interaction['type']
+                            
+                            assert actual_interaction['type'] == interaction_type, \
+                                f"K8s interaction {i+1} type mismatch: expected {interaction_type}, got {actual_interaction['type']}"
+                            
+                            details = actual_interaction["details"]
+                            assert details['success'] == expected_interaction['success'], \
+                                f"K8s interaction {i+1} success mismatch"
+                            
+                            if interaction_type == 'llm':
+                                # Verify LLM interaction details
+                                assert details["interaction_type"] == expected_interaction["interaction_type"], \
+                                    f"K8s interaction {i+1} interaction_type mismatch"
+                                assert details["input_tokens"] == expected_interaction["input_tokens"], \
+                                    f"K8s interaction {i+1} input_tokens mismatch: expected {expected_interaction['input_tokens']}, got {details['input_tokens']}"
+                                assert details["output_tokens"] == expected_interaction["output_tokens"], \
+                                    f"K8s interaction {i+1} output_tokens mismatch"
+                                assert details["total_tokens"] == expected_interaction["total_tokens"], \
+                                    f"K8s interaction {i+1} total_tokens mismatch"
+                            elif interaction_type == 'mcp':
+                                # Verify MCP interaction details
+                                assert details["communication_type"] == expected_interaction["communication_type"], \
+                                    f"K8s interaction {i+1} communication_type mismatch"
+                                assert details["server_name"] == expected_interaction["server_name"], \
+                                    f"K8s interaction {i+1} server_name mismatch"
+                                if expected_interaction["communication_type"] == "tool_call":
+                                    assert details["tool_name"] == expected_interaction["tool_name"], \
+                                        f"K8s interaction {i+1} tool_name mismatch"
+                        
+                        print("  ✅ KubernetesAgent forced conclusion verified with chronological interactions")
                         
                         # ============================================================================
                         # STEP 7: Verify LogAgent forced conclusion
@@ -536,50 +561,53 @@ Further investigation recommended for comprehensive analysis.""",
                             expected_log_messages_count
                         )
                         
-                        # Verify exact token counts for LogAgent
+                        # Verify chronological interactions (LLM + MCP in order)
                         expected_log_spec = EXPECTED_FORCED_CONCLUSION_INTERACTIONS['log_agent']
                         assert len(log_interactions) == expected_log_spec['llm_count']
                         
-                        # Verify all 3 LLM interactions with exact token counts
+                        # Get chronological interactions (mixed LLM and MCP)
+                        log_chronological = log_execution.get("chronological_interactions", [])
+                        assert len(log_chronological) == len(expected_log_spec['interactions']), \
+                            f"Log chronological interaction count mismatch: expected {len(expected_log_spec['interactions'])}, got {len(log_chronological)}"
+                        
+                        # Verify each interaction in chronological order
                         for i, expected_interaction in enumerate(expected_log_spec['interactions']):
-                            actual_interaction = log_interactions[i]
-                            actual_details = actual_interaction["details"]
+                            actual_interaction = log_chronological[i]
+                            interaction_type = expected_interaction['type']
                             
-                            assert actual_details["input_tokens"] == expected_interaction["input_tokens"], \
-                                f"Log interaction {i+1} input_tokens mismatch: expected {expected_interaction['input_tokens']}, got {actual_details['input_tokens']}"
-                            assert actual_details["output_tokens"] == expected_interaction["output_tokens"], \
-                                f"Log interaction {i+1} output_tokens mismatch: expected {expected_interaction['output_tokens']}, got {actual_details['output_tokens']}"
-                            assert actual_details["total_tokens"] == expected_interaction["total_tokens"], \
-                                f"Log interaction {i+1} total_tokens mismatch: expected {expected_interaction['total_tokens']}, got {actual_details['total_tokens']}"
+                            assert actual_interaction['type'] == interaction_type, \
+                                f"Log interaction {i+1} type mismatch: expected {interaction_type}, got {actual_interaction['type']}"
+                            
+                            details = actual_interaction["details"]
+                            assert details['success'] == expected_interaction['success'], \
+                                f"Log interaction {i+1} success mismatch"
+                            
+                            if interaction_type == 'llm':
+                                # Verify LLM interaction details
+                                assert details["interaction_type"] == expected_interaction["interaction_type"], \
+                                    f"Log interaction {i+1} interaction_type mismatch"
+                                assert details["input_tokens"] == expected_interaction["input_tokens"], \
+                                    f"Log interaction {i+1} input_tokens mismatch: expected {expected_interaction['input_tokens']}, got {details['input_tokens']}"
+                                assert details["output_tokens"] == expected_interaction["output_tokens"], \
+                                    f"Log interaction {i+1} output_tokens mismatch"
+                                assert details["total_tokens"] == expected_interaction["total_tokens"], \
+                                    f"Log interaction {i+1} total_tokens mismatch"
+                            elif interaction_type == 'mcp':
+                                # Verify MCP interaction details
+                                assert details["communication_type"] == expected_interaction["communication_type"], \
+                                    f"Log interaction {i+1} communication_type mismatch"
+                                assert details["server_name"] == expected_interaction["server_name"], \
+                                    f"Log interaction {i+1} server_name mismatch"
+                                if expected_interaction["communication_type"] == "tool_call":
+                                    assert details["tool_name"] == expected_interaction["tool_name"], \
+                                        f"Log interaction {i+1} tool_name mismatch"
                         
-                        print("  ✅ LogAgent forced conclusion verified with exact token counts")
-                        
-                        # ============================================================================
-                        # STEP 8: Verify MCP tool calls
-                        # ============================================================================
-                        print("🔧 Step 8: Verifying MCP tool calls...")
-                        
-                        # KubernetesAgent should have MCP calls (tool_list + actual tool calls)
-                        k8s_mcp = k8s_execution.get("mcp_communications", [])
-                        # Filter to only tool_call type (exclude tool_list)
-                        k8s_tool_calls = [mcp for mcp in k8s_mcp if mcp["details"].get("communication_type") == "tool_call"]
-                        assert len(k8s_tool_calls) == 2, f"Expected 2 tool calls for KubernetesAgent, got {len(k8s_tool_calls)}"
-                        assert k8s_tool_calls[0]["details"]["tool_name"] == "kubectl_get"
-                        assert k8s_tool_calls[1]["details"]["tool_name"] == "kubectl_describe"
-                        
-                        # LogAgent should have MCP calls (tool_list + actual tool calls)
-                        log_mcp = log_execution.get("mcp_communications", [])
-                        # Filter to only tool_call type (exclude tool_list)
-                        log_tool_calls = [mcp for mcp in log_mcp if mcp["details"].get("communication_type") == "tool_call"]
-                        assert len(log_tool_calls) == 2, f"Expected 2 tool calls for LogAgent, got {len(log_tool_calls)}"
-                        assert log_tool_calls[0]["details"]["tool_name"] == "get_logs"
-                        assert log_tool_calls[1]["details"]["tool_name"] == "kubectl_describe"
-                        print("  ✅ MCP tool calls verified")
+                        print("  ✅ LogAgent forced conclusion verified with chronological interactions")
                         
                         # ============================================================================
-                        # STEP 9: Verify synthesis stage
+                        # STEP 8: Verify synthesis stage
                         # ============================================================================
-                        print("🔧 Step 9: Verifying synthesis stage...")
+                        print("🔧 Step 8: Verifying synthesis stage...")
                         synthesis_interactions = synthesis_stage.get("llm_interactions", [])
                         
                         # Should have 1 synthesis interaction
@@ -614,9 +642,9 @@ Further investigation recommended for comprehensive analysis.""",
                         print("  ✅ Synthesis stage verified with exact token counts")
                         
                         # ============================================================================
-                        # STEP 10: Verify session-level token aggregation
+                        # STEP 9: Verify session-level token aggregation
                         # ============================================================================
-                        print("🔧 Step 10: Verifying session-level token aggregation...")
+                        print("🔧 Step 9: Verifying session-level token aggregation...")
                         
                         # Verify session-level token aggregation with exact expected totals
                         actual_input = detail_data.get("session_input_tokens")
@@ -638,9 +666,9 @@ Further investigation recommended for comprehensive analysis.""",
                         print(f"  ✅ Session tokens verified: {actual_input} input + {actual_output} output = {actual_total} total (exact match)")
                         
                         # ============================================================================
-                        # STEP 11: Test chat functionality with forced conclusion
+                        # STEP 10: Test chat functionality with forced conclusion
                         # ============================================================================
-                        print("🔧 Step 11: Testing chat with forced conclusion...")
+                        print("🔧 Step 10: Testing chat with forced conclusion...")
                         await self._test_chat_with_forced_conclusion(test_client, session_id)
                         print("  ✅ Chat with forced conclusion verified")
                         
@@ -872,19 +900,16 @@ Further investigation recommended for comprehensive analysis.""",
                 actual_conversation = details["conversation"]
                 actual_messages = actual_conversation["messages"]
                 
-                # For chat forced conclusion interactions, verify the prompt was sent
-                if details.get("interaction_type") == "forced_conclusion":
-                    # Check for forced conclusion prompt in the messages
-                    forced_conclusion_found = False
-                    for msg in actual_messages:
-                        if msg["role"] == "user" and "iteration limit" in msg.get("content", "").lower():
-                            forced_conclusion_found = True
-                            print(f"      ✅ Forced conclusion prompt found in chat interaction {i+1}")
-                            break
-                    
-                    assert forced_conclusion_found, (
-                        f"Interaction {i+1} marked as forced_conclusion but no forced conclusion prompt found in messages"
+                # For the final forced conclusion interaction, validate full conversation structure
+                if details.get("interaction_type") == "forced_conclusion" and expected_conversation:
+                    # Validate the complete conversation matches expected structure
+                    expected_messages_count = len(expected_conversation["messages"])
+                    assert_conversation_messages(
+                        expected_conversation,
+                        actual_messages,
+                        expected_messages_count
                     )
+                    print(f"      ✅ Forced conclusion conversation validated in chat interaction {i+1}")
                 
                 # Verify interaction_type
                 if "interaction_type" in expected_interaction:

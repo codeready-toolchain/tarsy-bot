@@ -559,79 +559,44 @@ EXPECTED_FORCED_CONCLUSION_INTERACTIONS = {
         'llm_count': 3,  # 2 tool calls + 1 forced conclusion
         'mcp_count': 3,  # 1 tool_list + 2 tool_calls
         'interactions': [
+            # MCP 1 - Tool list discovery for kubernetes-server
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
             # LLM 1 - Tool call for kubectl_get
-            {
-                'type': 'llm',
-                'input_tokens': 200,
-                'output_tokens': 60,
-                'total_tokens': 260,
-                'messages_count': 3,  # system + user + tool_result
-            },
+            {'type': 'llm', 'success': True, 'input_tokens': 200, 'output_tokens': 60, 'total_tokens': 260, 'interaction_type': 'investigation'},
+            # MCP 2 - kubectl_get call
+            {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
             # LLM 2 - Tool call for kubectl_describe
-            {
-                'type': 'llm',
-                'input_tokens': 220,
-                'output_tokens': 70,
-                'total_tokens': 290,
-                'messages_count': 4,  # system + user + tool_result + tool_result
-            },
+            {'type': 'llm', 'success': True, 'input_tokens': 220, 'output_tokens': 70, 'total_tokens': 290, 'interaction_type': 'investigation'},
+            # MCP 3 - kubectl_describe call
+            {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_describe', 'server_name': 'kubernetes-server'},
             # LLM 3 - Forced conclusion (using Native Thinking)
-            # Note: Token counts match Gemini mock response (call #3 in gemini_response_map)
-            {
-                'type': 'llm',
-                'input_tokens': 250,
-                'output_tokens': 120,
-                'total_tokens': 370,
-                'messages_count': 6,  # All previous + forced conclusion prompt + response
-                'has_forced_conclusion_prompt': True,
-            },
+            {'type': 'llm', 'success': True, 'input_tokens': 250, 'output_tokens': 120, 'total_tokens': 370, 'interaction_type': 'forced_conclusion'},
         ],
     },
     'log_agent': {
         'llm_count': 3,  # 2 tool calls + 1 forced conclusion
         'mcp_count': 3,  # 1 tool_list + 2 tool_calls
         'interactions': [
-            # LLM 1 - Tool call for get_logs
-            {
-                'type': 'llm',
-                'input_tokens': 190,
-                'output_tokens': 55,
-                'total_tokens': 245,
-                'messages_count': 3,  # system + user + assistant_action
-            },
-            # LLM 2 - Tool call for kubectl_describe
-            {
-                'type': 'llm',
-                'input_tokens': 210,
-                'output_tokens': 65,
-                'total_tokens': 275,
-                'messages_count': 5,  # system + user + assistant_action + observation + assistant_action
-            },
-            # LLM 3 - Forced conclusion with Final Answer
-            {
-                'type': 'llm',
-                'input_tokens': 230,
-                'output_tokens': 115,
-                'total_tokens': 345,
-                'messages_count': 8,  # All previous + observation + forced conclusion prompt + assistant_final_answer
-                'has_forced_conclusion_prompt': True,
-                'has_final_answer': True,
-            },
+            # MCP 1 - Tool list discovery for kubernetes-server
+            {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
+            # LLM 1 - Tool call for get_logs (ReAct format)
+            {'type': 'llm', 'success': True, 'input_tokens': 190, 'output_tokens': 55, 'total_tokens': 245, 'interaction_type': 'investigation'},
+            # MCP 2 - get_logs call
+            {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'get_logs', 'server_name': 'kubernetes-server'},
+            # LLM 2 - Tool call for kubectl_describe (reaches max iterations)
+            {'type': 'llm', 'success': True, 'input_tokens': 210, 'output_tokens': 65, 'total_tokens': 275, 'interaction_type': 'investigation'},
+            # MCP 3 - kubectl_describe call
+            {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_describe', 'server_name': 'kubernetes-server'},
+            # LLM 3 - Forced conclusion with Final Answer (ReAct format)
+            {'type': 'llm', 'success': True, 'input_tokens': 230, 'output_tokens': 115, 'total_tokens': 345, 'interaction_type': 'forced_conclusion'},
         ],
     },
     'synthesis': {
         'llm_count': 1,
         'mcp_count': 0,
         'interactions': [
-            # LLM 1 - Synthesis combining forced conclusions
-            # Note: Token counts match Gemini mock response (call #4 in gemini_response_map)
-            {
-                'type': 'llm',
-                'input_tokens': 500,
-                'output_tokens': 220,
-                'total_tokens': 720,
-                'messages_count': 3,  # system + user_with_parallel_results + assistant_synthesis
-            },
+            # LLM 1 - Synthesis combining forced conclusions (no MCP calls in synthesis)
+            {'type': 'llm', 'success': True, 'input_tokens': 500, 'output_tokens': 220, 'total_tokens': 720, 'interaction_type': 'final_analysis'},
         ],
     },
 }
@@ -698,7 +663,139 @@ Focus on answering follow-up questions about a completed investigation for human
         },
         {
             "role": "user",
-            "content": """[Investigation History - dynamic content]
+            "content": """═══════════════════════════════════════════════════════════════════════════════
+📋 INVESTIGATION CONTEXT
+═══════════════════════════════════════════════════════════════════════════════
+
+# Original Investigation
+
+### Initial Investigation Request
+
+Synthesize the investigation results and provide recommendations.
+
+## Alert Details
+
+### Alert Metadata
+**Alert Type:** test-forced-conclusion-parallel
+**Timestamp:** {TIMESTAMP}
+
+### Alert Data
+```json
+{
+  "description": "Test forced conclusion scenario with parallel agent execution",
+  "namespace": "test-namespace"
+}
+```
+
+## Runbook Content
+```markdown
+<!-- RUNBOOK START -->
+# Test Runbook
+This is a test runbook for forced conclusion testing.
+<!-- RUNBOOK END -->
+```
+
+## Previous Stage Data
+### Results from parallel stage 'investigation':
+
+**Parallel Execution Summary**: 2/2 agents succeeded
+
+#### Agent 1: KubernetesAgent (google-default, native-thinking)
+**Status**: completed
+
+<!-- Analysis Result START -->
+## Analysis Result
+
+**Forced Conclusion - Kubernetes Analysis**
+
+Based on the investigation so far:
+
+**Findings:**
+- Pod pod-1 is in CrashLoopBackOff state in test-namespace
+- Pod has been restarting repeatedly
+- Container exit code indicates failure
+
+**Limitations:**
+Investigation reached iteration limit. Full root cause analysis incomplete, but initial findings suggest pod stability issues.
+
+**Recommendations:**
+1. Check pod logs for specific error messages
+2. Review pod events for additional context
+3. Verify resource limits and requests
+4. Check for configuration issues
+
+Further investigation needed for complete root cause analysis.
+<!-- Analysis Result END -->
+
+#### Agent 2: LogAgent (anthropic-default, react)
+**Status**: completed
+
+<!-- Analysis Result START -->
+## Analysis Result
+
+Thought: I've reached the iteration limit. Based on the logs I've analyzed, I can provide a preliminary conclusion about the database connectivity issue.
+
+Final Answer: **Forced Conclusion - Log Analysis**
+
+Based on available log data:
+
+**Findings:**
+- Error: Database connection timeout to db.example.com:5432
+- Pod failing due to inability to connect to database
+- CrashLoopBackOff is result of repeated connection failures
+
+**Limitations:**
+Investigation reached iteration limit. Complete log analysis not performed, but critical error identified.
+
+**Preliminary Root Cause:**
+Database connectivity issue causing pod crashes.
+
+**Recommendations:**
+1. Verify database service availability
+2. Check network connectivity from pod to database
+3. Review database credentials
+4. Examine connection timeout settings
+
+Further investigation recommended for comprehensive analysis.
+<!-- Analysis Result END -->
+
+
+Begin!
+
+**Agent Response:**
+
+**Synthesis of Parallel Investigations (Forced Conclusions)**
+
+Combined analysis from both agents (note: both reached iteration limits):
+
+**From Kubernetes Agent (Forced Conclusion):**
+- Pod pod-1 in CrashLoopBackOff state
+- Multiple restart attempts observed
+- Container exit code indicates failure
+- Investigation incomplete due to iteration limit
+
+**From Log Agent (Forced Conclusion):**
+- Database connection timeout to db.example.com:5432
+- Root cause: Unable to connect to database
+- Investigation incomplete due to iteration limit
+
+**Preliminary Conclusion:**
+Pod is likely failing due to database connectivity issues. The pod attempts to connect to db.example.com:5432 but times out, causing crashes and CrashLoopBackOff.
+
+**Note:** Both agents reached iteration limits and provided forced conclusions. Recommendations are based on available data.
+
+**Recommended Actions:**
+1. Verify database service is running and accessible
+2. Check network connectivity to db.example.com:5432
+3. Validate database credentials in pod configuration
+4. Review firewall/network policies
+5. Consider increasing timeout values if appropriate
+
+**Follow-up:** Additional investigation may be needed for complete root cause analysis.
+
+═══════════════════════════════════════════════════════════════════════════════
+🎯 CURRENT TASK
+═══════════════════════════════════════════════════════════════════════════════
 
 **Question:** What is the CURRENT status of pod-1 right now? Check the live pod status and events.
 
@@ -710,25 +807,21 @@ Answer the user's question based on the investigation context above.
 
 Begin your response:"""
         },
-        # First tool call - kubectl_get (mock forces this)
+        # Native Thinking: Tool calls are NOT separate messages, they're in metadata
+        # Only tool results appear as user messages
         {
-            "role": "model",
-            "content": "[Tool call: kubernetes-server__kubectl_get]"
+            "role": "user",
+            "content": """Tool Result: kubernetes-server.kubectl_get:
+{
+  "result": "{\\"result\\": \\"Pod pod-1 is in CrashLoopBackOff state\\"}"
+}"""
         },
         {
             "role": "user",
-            "content": """Tool Result: kubernetes-server__kubectl_get:
-{"result": "Pod pod-1 is in CrashLoopBackOff state"}"""
-        },
-        # Second tool call - kubectl_describe (mock forces this, reaches max iterations)
-        {
-            "role": "model",
-            "content": "[Tool call: kubernetes-server__kubectl_describe]"
-        },
-        {
-            "role": "user",
-            "content": """Tool Result: kubernetes-server__kubectl_describe:
-{"result": "Pod pod-1 details: exit code 1, restart count 5"}"""
+            "content": """Tool Result: kubernetes-server.kubectl_describe:
+{
+  "result": "{\\"result\\": \\"Pod pod-1 details: exit code 1, restart count 5\\"}"
+}"""
         },
         # Forced conclusion prompt (sent by system at max iterations)
         {
@@ -747,7 +840,7 @@ Provide a clear, structured conclusion that directly addresses the investigation
         },
         # Forced conclusion response (mock provides this)
         {
-            "role": "model",
+            "role": "assistant",
             "content": """**Forced Conclusion - Current Pod Status**
 
 Based on the investigation:
@@ -781,16 +874,16 @@ EXPECTED_CHAT_INTERACTIONS = {
         'interactions': [
             # MCP 1 - Tool list discovery for kubernetes-server
             {'type': 'mcp', 'communication_type': 'tool_list', 'success': True, 'server_name': 'kubernetes-server'},
-            # LLM 1 - First tool call (kubectl_get pods) - mock forces tool call
-            {'type': 'llm', 'success': True, 'conversation_index': 3, 'input_tokens': 180, 'output_tokens': 65, 'total_tokens': 245, 'interaction_type': 'investigation'},
+            # LLM 1 - First tool call (kubectl_get pods) - Native Thinking format (tool call in metadata, not messages)
+            {'type': 'llm', 'success': True, 'conversation_index': 2, 'input_tokens': 180, 'output_tokens': 65, 'total_tokens': 245, 'interaction_type': 'investigation'},
             # MCP 2 - kubectl_get call
             {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_get', 'server_name': 'kubernetes-server'},
-            # LLM 2 - Second tool call (kubectl_describe pod) - mock forces tool call
-            {'type': 'llm', 'success': True, 'conversation_index': 5, 'input_tokens': 200, 'output_tokens': 70, 'total_tokens': 270, 'interaction_type': 'investigation'},
+            # LLM 2 - Second tool call (kubectl_describe pod) - Native Thinking format
+            {'type': 'llm', 'success': True, 'conversation_index': 3, 'input_tokens': 200, 'output_tokens': 70, 'total_tokens': 270, 'interaction_type': 'investigation'},
             # MCP 3 - kubectl_describe call
             {'type': 'mcp', 'communication_type': 'tool_call', 'success': True, 'tool_name': 'kubectl_describe', 'server_name': 'kubernetes-server'},
-            # LLM 3 - Forced conclusion with final answer
-            {'type': 'llm', 'success': True, 'conversation_index': 8, 'input_tokens': 240, 'output_tokens': 125, 'total_tokens': 365, 'interaction_type': 'forced_conclusion'}
+            # LLM 3 - Forced conclusion with final answer (Native Thinking format: assistant role)
+            {'type': 'llm', 'success': True, 'conversation_index': 5, 'input_tokens': 240, 'output_tokens': 125, 'total_tokens': 365, 'interaction_type': 'forced_conclusion'}
         ]
     }
 }
