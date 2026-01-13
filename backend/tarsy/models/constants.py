@@ -158,7 +158,7 @@ class SystemHealthStatus(Enum):
 class IterationStrategy(str, Enum):
     """
     Available iteration strategies for agent processing.
-    
+
     Each strategy implements a different approach to alert analysis:
     - REACT: Standard ReAct pattern with Think→Action→Observation cycles for complete analysis
     - REACT_STAGE: ReAct pattern for stage-specific analysis within multi-stage chains
@@ -173,6 +173,25 @@ class IterationStrategy(str, Enum):
     NATIVE_THINKING = "native-thinking"   # Gemini native thinking + function calling
     SYNTHESIS = "synthesis"               # Generic synthesis (no tools)
     SYNTHESIS_NATIVE_THINKING = "synthesis-native-thinking"  # Gemini synthesis with thinking
+
+
+class ScoringStatus(Enum):
+    """Status values for session scoring operations."""
+
+    PENDING = "pending"           # Scoring queued but not started
+    IN_PROGRESS = "in_progress"   # LLM currently scoring the session
+    COMPLETED = "completed"       # Scoring finished successfully
+    FAILED = "failed"            # Scoring failed with error
+
+    @classmethod
+    def active_values(cls) -> List[str]:
+        """Active status values (scoring in progress)."""
+        return [cls.PENDING.value, cls.IN_PROGRESS.value]
+
+    @classmethod
+    def values(cls) -> List[str]:
+        """All status values as strings."""
+        return [status.value for status in cls]
 
 
 class LLMInteractionType(str, Enum):
