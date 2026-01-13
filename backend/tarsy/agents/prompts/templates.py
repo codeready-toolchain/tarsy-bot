@@ -257,3 +257,32 @@ Investigate this alert using the available tools and provide:
 4. Prevention recommendations
 
 Use tools as needed to gather information. When you have sufficient data, provide your complete analysis.""")
+
+
+# ==============================================================================
+# FORCED CONCLUSION TEMPLATES (Max Iterations Reached)
+# ==============================================================================
+
+# Shared template base for forced conclusion prompts
+FORCED_CONCLUSION_TEMPLATE = PromptTemplate.from_template("""You have reached the investigation iteration limit ({iteration_limit} iterations).
+
+Please conclude your investigation by answering the original question based on what you've discovered.
+
+**Conclusion guidance:**
+- Use the data and observations you've already gathered
+- Perfect information is not required - provide actionable insights from available findings
+- If gaps remain, clearly state what you couldn't determine and why
+- Focus on practical next steps based on current knowledge
+
+{format_instructions}""")
+
+# ReAct-specific formatting instructions
+REACT_FORCED_CONCLUSION_FORMAT = """**CRITICAL:** You MUST format your response using the ReAct format:
+
+Thought: [your final reasoning about what you've discovered]
+Final Answer: [your complete structured conclusion]
+
+The "Final Answer:" marker is required for proper parsing. Begin your conclusion now."""
+
+# Native Thinking-specific formatting instructions
+NATIVE_THINKING_FORCED_CONCLUSION_FORMAT = """Provide a clear, structured conclusion that directly addresses the investigation question."""

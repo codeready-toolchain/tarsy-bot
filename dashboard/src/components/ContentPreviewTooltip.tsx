@@ -16,7 +16,7 @@ interface ContentPreviewTooltipProps {
   /** Full content to display in tooltip */
   content: string;
   /** Type of content (determines markdown rendering style) */
-  type: 'thought' | 'final_answer' | 'summarization' | 'native_thinking';
+  type: 'thought' | 'final_answer' | 'forced_conclusion' | 'summarization' | 'native_thinking';
   /** Child element that triggers the tooltip */
   children: React.ReactElement;
 }
@@ -35,7 +35,7 @@ export default function ContentPreviewTooltip({
   children 
 }: ContentPreviewTooltipProps) {
   // Select appropriate markdown components based on content type
-  const markdownComponents = type === CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER 
+  const markdownComponents = (type === CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER || type === CHAT_FLOW_ITEM_TYPES.FORCED_CONCLUSION)
     ? finalAnswerMarkdownComponents 
     : thoughtMarkdownComponents;
   

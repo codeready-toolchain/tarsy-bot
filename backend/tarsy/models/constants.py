@@ -116,6 +116,7 @@ class ProgressPhase(str, Enum):
     INVESTIGATING = "investigating"  # Default phase - agents are investigating the issue
     SYNTHESIZING = "synthesizing"    # Synthesis agent is combining parallel results
     DISTILLING = "distilling"        # MCP tool result summarization (reduces large outputs)
+    CONCLUDING = "concluding"        # Forced conclusion at iteration limit
     FINALIZING = "finalizing"        # Executive summary generation at chain completion
 
 
@@ -164,11 +165,13 @@ class LLMInteractionType(str, Enum):
     - INVESTIGATION: ReAct investigation/reasoning iterations (thought/action/observation loops)
     - SUMMARIZATION: MCP result summarization calls (reduce large tool outputs)
     - FINAL_ANALYSIS: Stage conclusion with "Final Answer:" (any stage, any strategy)
+    - FORCED_CONCLUSION: Forced conclusion at max iterations (incomplete investigation)
     - FINAL_ANALYSIS_SUMMARY: Executive summary of final analysis (dashboard display, notifications)
     """
     INVESTIGATION = "investigation"
     SUMMARIZATION = "summarization"
     FINAL_ANALYSIS = "final_analysis"
+    FORCED_CONCLUSION = "forced_conclusion"
     FINAL_ANALYSIS_SUMMARY = "final_analysis_summary"
 
 
@@ -178,6 +181,7 @@ class LLMInteractionType(str, Enum):
 CHAT_CONTEXT_INTERACTION_TYPES: frozenset[str] = frozenset({
     LLMInteractionType.INVESTIGATION.value,
     LLMInteractionType.FINAL_ANALYSIS.value,
+    LLMInteractionType.FORCED_CONCLUSION.value,
     # SUMMARIZATION is excluded - it's internal tool result processing, not investigation context
     # FINAL_ANALYSIS_SUMMARY excluded - it's a condensed summary, full analysis already included
 })

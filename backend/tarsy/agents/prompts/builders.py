@@ -715,3 +715,43 @@ Executive Summary (1-4 lines, facts only):"""
             sections.append("")
         
         return "\n".join(sections)
+    
+    def build_react_forced_conclusion_prompt(self, iteration_limit: int) -> str:
+        """
+        Build ReAct-specific forced conclusion prompt at iteration limit.
+        
+        Args:
+            iteration_limit: The iteration count when limit was reached
+            
+        Returns:
+            ReAct-formatted prompt requesting Final Answer
+        """
+        from tarsy.agents.prompts.templates import (
+            FORCED_CONCLUSION_TEMPLATE,
+            REACT_FORCED_CONCLUSION_FORMAT,
+        )
+        
+        return FORCED_CONCLUSION_TEMPLATE.format(
+            iteration_limit=iteration_limit,
+            format_instructions=REACT_FORCED_CONCLUSION_FORMAT
+        )
+    
+    def build_native_thinking_forced_conclusion_prompt(self, iteration_limit: int) -> str:
+        """
+        Build Native Thinking-specific forced conclusion prompt at iteration limit.
+        
+        Args:
+            iteration_limit: The iteration count when limit was reached
+            
+        Returns:
+            Natural language prompt requesting conclusion
+        """
+        from tarsy.agents.prompts.templates import (
+            FORCED_CONCLUSION_TEMPLATE,
+            NATIVE_THINKING_FORCED_CONCLUSION_FORMAT,
+        )
+        
+        return FORCED_CONCLUSION_TEMPLATE.format(
+            iteration_limit=iteration_limit,
+            format_instructions=NATIVE_THINKING_FORCED_CONCLUSION_FORMAT
+        )

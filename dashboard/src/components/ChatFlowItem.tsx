@@ -449,6 +449,76 @@ function ChatFlowItem({
     );
   }
 
+  // Render forced conclusion - similar to final answer but with warning color
+  if (item.type === CHAT_FLOW_ITEM_TYPES.FORCED_CONCLUSION) {
+    const hasMarkdown = hasMarkdownSyntax(item.content || '');
+    
+    return (
+      <Box 
+        sx={{ 
+          mb: 2, 
+          mt: 3,
+          display: 'flex', 
+          gap: 1.5,
+          alignItems: 'flex-start',
+          // Fade animation when auto-collapsing
+          ...(shouldShowCollapsed && FADE_COLLAPSE_ANIMATION)
+        }}
+      >
+        <EmojiIcon
+          emoji="⚠️"
+          opacity={collapsedLeadingIconOpacity}
+          showTooltip={shouldShowCollapsed}
+          tooltipContent={item.content || ''}
+          tooltipType="forced_conclusion"
+        />
+        
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <CollapsibleItemHeader
+            headerText="FORCED CONCLUSION (Max Iterations)"
+            headerColor="#ed6c02"
+            headerTextTransform="uppercase"
+            shouldShowCollapsed={shouldShowCollapsed}
+            collapsedHeaderOpacity={collapsedHeaderOpacity}
+            onToggle={isCollapsible && onToggleAutoCollapse ? onToggleAutoCollapse : undefined}
+          />
+          
+          {/* Collapsible content */}
+          <Collapse in={!shouldShowCollapsed} timeout={300}>
+            <Box sx={{ mt: 0.5 }}>
+              {hasMarkdown ? (
+                <Box sx={{ color: 'text.primary' }}>
+                  <ReactMarkdown
+                    urlTransform={defaultUrlTransform}
+                    components={thoughtMarkdownComponents}
+                    remarkPlugins={[remarkBreaks]}
+                    skipHtml
+                  >
+                    {item.content || ''}
+                  </ReactMarkdown>
+                </Box>
+              ) : (
+                <Typography 
+                  variant="body1" 
+                  sx={{ 
+                    whiteSpace: 'pre-wrap', 
+                    wordBreak: 'break-word',
+                    lineHeight: 1.7,
+                    fontSize: '1rem',
+                    color: 'text.primary'
+                  }}
+                >
+                  {item.content}
+                </Typography>
+              )}
+              {isCollapsible && onToggleAutoCollapse && <CollapseButton onClick={onToggleAutoCollapse} />}
+            </Box>
+          </Collapse>
+        </Box>
+      </Box>
+    );
+  }
+
   // Render tool call - indented expandable box
   if (item.type === CHAT_FLOW_ITEM_TYPES.TOOL_CALL) {
     return (

@@ -17,6 +17,7 @@ export const LLM_INTERACTION_TYPES = {
   INVESTIGATION: 'investigation',
   SUMMARIZATION: 'summarization',
   FINAL_ANALYSIS: 'final_analysis',
+  FORCED_CONCLUSION: 'forced_conclusion',
   FINAL_ANALYSIS_SUMMARY: 'final_analysis_summary',
 } as const;
 

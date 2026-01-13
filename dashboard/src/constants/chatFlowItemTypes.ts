@@ -22,6 +22,7 @@ export const CHAT_FLOW_ITEM_TYPES = {
   THOUGHT: 'thought',
   TOOL_CALL: 'tool_call',
   FINAL_ANSWER: 'final_answer',
+  FORCED_CONCLUSION: 'forced_conclusion',
   STAGE_START: 'stage_start',
   SUMMARIZATION: 'summarization',
   USER_MESSAGE: 'user_message',

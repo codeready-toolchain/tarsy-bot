@@ -187,6 +187,31 @@ class SessionPaused(AgentError):
         return result
 
 
+class ForceConclusion(AgentError):
+    """
+    Signal to force LLM conclusion at max iterations.
+    
+    Used when max iterations reached and system should force conclusion
+    instead of pausing. Not an error condition but a control flow signal.
+    """
+    
+    def __init__(
+        self, 
+        iteration: int, 
+        conversation: Optional['LLMConversation'] = None,
+        context: Optional[Dict[str, Any]] = None
+    ):
+        super().__init__("Max iterations reached, forcing conclusion", context, recoverable=True)
+        self.iteration = iteration
+        self.conversation = conversation
+        
+    def to_dict(self) -> Dict[str, Any]:
+        result = super().to_dict()
+        result["iteration"] = self.iteration
+        # Don't include conversation in to_dict - it's for internal use only
+        return result
+
+
 # Recovery strategies
 class ErrorRecoveryHandler:
     """

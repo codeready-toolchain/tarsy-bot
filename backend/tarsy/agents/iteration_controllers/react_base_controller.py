@@ -233,14 +233,37 @@ class ReactController(IterationController):
                 conversation.append_observation(format_reminder)
                 continue
                 
-        # 8. Max iterations reached - pause for user action or fail
-        self._raise_max_iterations_exception(
-            max_iterations=max_iterations,
-            last_interaction_failed=last_interaction_failed,
-            conversation=conversation,
-            context=context,
-            logger=self.logger
-        )
+        # 8. Max iterations reached - check if we should pause or force conclusion
+        from ..exceptions import ForceConclusion
+        
+        try:
+            self._raise_max_iterations_exception(
+                max_iterations=max_iterations,
+                last_interaction_failed=last_interaction_failed,
+                conversation=conversation,
+                context=context,
+                logger=self.logger
+            )
+        except ForceConclusion as e:
+            # Force conclusion was requested
+            return await self._force_conclusion(
+                conversation=e.conversation,
+                context=context,
+                iteration=e.iteration
+            )
+        # If SessionPaused is raised, it will propagate up (existing behavior)
+
+    def _get_forced_conclusion_prompt(self, iteration: int) -> str:
+        """
+        Get ReAct-specific forced conclusion prompt with Final Answer requirement.
+        
+        Args:
+            iteration: Iteration count when limit reached
+            
+        Returns:
+            ReAct-formatted prompt requesting Final Answer
+        """
+        return self.prompt_builder.build_react_forced_conclusion_prompt(iteration)
 
     @abstractmethod
     def build_initial_conversation(self, context: 'StageContext') -> 'LLMConversation':

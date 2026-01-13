@@ -220,6 +220,37 @@ export function parseSessionChatFlow(session: DetailedSession): ChatFlowItemData
             llm_interaction_id: llmInteractionId
           });
         }
+      } else if (interactionType === LLM_INTERACTION_TYPES.FORCED_CONCLUSION) {
+        // Forced conclusion at max iterations - similar to final analysis but marked differently
+        if (parsed.thought) {
+          chatItems.push({
+            type: CHAT_FLOW_ITEM_TYPES.THOUGHT,
+            timestamp_us: interaction.timestamp_us,
+            stageId,
+            executionId,
+            executionAgent,
+            isParallelStage,
+            isChatStage,
+            content: parsed.thought,
+            interaction_duration_ms: interaction.duration_ms ?? null,
+            llm_interaction_id: llmInteractionId
+          });
+        }
+        if (parsed.finalAnswer) {
+          lastTimestamp = interaction.timestamp_us + 1;
+          chatItems.push({
+            type: CHAT_FLOW_ITEM_TYPES.FORCED_CONCLUSION,  // Different type for visual distinction
+            timestamp_us: lastTimestamp,
+            stageId,
+            executionId,
+            executionAgent,
+            isParallelStage,
+            isChatStage,
+            content: parsed.finalAnswer,
+            interaction_duration_ms: interaction.duration_ms ?? null,
+            llm_interaction_id: llmInteractionId
+          });
+        }
       } else if (interactionType === LLM_INTERACTION_TYPES.SUMMARIZATION) {
         // Summarization interactions have plain text in the last assistant message
         // Use the lastAssistantMessage already computed earlier (not messages[messages.length - 1])
@@ -317,6 +348,7 @@ export function getChatFlowStats(chatItems: ChatFlowItemData[]): {
   thoughtsCount: number;
   toolCallsCount: number;
   finalAnswersCount: number;
+  forcedConclusionsCount: number;
   successfulToolCalls: number;
   nativeThinkingCount: number;
   intermediateResponsesCount: number;
@@ -326,6 +358,7 @@ export function getChatFlowStats(chatItems: ChatFlowItemData[]): {
     thoughtsCount: chatItems.filter(i => i.type === CHAT_FLOW_ITEM_TYPES.THOUGHT).length,
     toolCallsCount: chatItems.filter(i => i.type === CHAT_FLOW_ITEM_TYPES.TOOL_CALL).length,
     finalAnswersCount: chatItems.filter(i => i.type === CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER).length,
+    forcedConclusionsCount: chatItems.filter(i => i.type === CHAT_FLOW_ITEM_TYPES.FORCED_CONCLUSION).length,
     successfulToolCalls: chatItems.filter(i => i.type === CHAT_FLOW_ITEM_TYPES.TOOL_CALL && i.success).length,
     nativeThinkingCount: chatItems.filter(i => i.type === CHAT_FLOW_ITEM_TYPES.NATIVE_THINKING).length,
     intermediateResponsesCount: chatItems.filter(i => i.type === CHAT_FLOW_ITEM_TYPES.INTERMEDIATE_RESPONSE).length

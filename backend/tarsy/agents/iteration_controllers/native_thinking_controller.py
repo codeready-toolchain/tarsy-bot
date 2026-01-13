@@ -373,14 +373,38 @@ class NativeThinkingController(IterationController):
                 
                 conversation.append_observation(f"Error: {error_msg}")
         
-        # 3. Max iterations reached - pause for user action or fail
-        self._raise_max_iterations_exception(
-            max_iterations=max_iterations,
-            last_interaction_failed=last_interaction_failed,
-            conversation=conversation,
-            context=context,
-            logger=self.logger
-        )
+        # 3. Max iterations reached - check if we should pause or force conclusion
+        from ..exceptions import ForceConclusion
+        
+        try:
+            self._raise_max_iterations_exception(
+                max_iterations=max_iterations,
+                last_interaction_failed=last_interaction_failed,
+                conversation=conversation,
+                context=context,
+                logger=self.logger
+            )
+        except ForceConclusion as e:
+            return await self._force_conclusion(
+                conversation=e.conversation,
+                context=context,
+                iteration=e.iteration
+            )
+        # If SessionPaused is raised, it will propagate up (existing behavior)
+    
+    def _get_forced_conclusion_prompt(self, iteration: int) -> str:
+        """
+        Get Native Thinking-specific forced conclusion prompt.
+        
+        No format requirements - Gemini uses native reasoning without markers.
+        
+        Args:
+            iteration: Iteration count when limit reached
+            
+        Returns:
+            Natural language prompt requesting conclusion
+        """
+        return self.prompt_builder.build_native_thinking_forced_conclusion_prompt(iteration)
     
     def _build_initial_conversation(self, context: 'StageContext') -> LLMConversation:
         """

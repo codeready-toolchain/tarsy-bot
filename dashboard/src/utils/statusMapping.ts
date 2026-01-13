@@ -12,6 +12,7 @@ export const ProgressPhase = {
   INVESTIGATING: 'investigating',
   SYNTHESIZING: 'synthesizing',
   DISTILLING: 'distilling',      // MCP tool result summarization
+  CONCLUDING: 'concluding',      // Forced conclusion at iteration limit
   FINALIZING: 'finalizing',      // Executive summary generation
 } as const;
 
@@ -34,6 +35,7 @@ export const ProgressStatusMessage = {
   INVESTIGATING: 'Investigating...',
   SYNTHESIZING: 'Synthesizing...',
   DISTILLING: 'Distilling...',        // MCP tool result summarization
+  CONCLUDING: 'Concluding...',        // Forced conclusion at iteration limit
   FINALIZING: 'Finalizing...',        // Executive summary generation
   PROCESSING: 'Processing...',
 } as const;
@@ -51,6 +53,7 @@ export function mapEventToProgressStatus(event: any): string {
   // Explicit progress update event (e.g., distilling, finalizing)
   if (eventType === 'session.progress_update') {
     const phase = event.phase || event.data?.phase;
+    if (phase === ProgressPhase.CONCLUDING) return ProgressStatusMessage.CONCLUDING;        // Forced conclusion at iteration limit
     if (phase === ProgressPhase.DISTILLING) return ProgressStatusMessage.DISTILLING;        // MCP tool result summarization
     if (phase === ProgressPhase.FINALIZING) return ProgressStatusMessage.FINALIZING;        // Executive summary generation
     if (phase === ProgressPhase.SYNTHESIZING) return ProgressStatusMessage.SYNTHESIZING;

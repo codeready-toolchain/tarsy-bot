@@ -77,6 +77,10 @@ class Settings(BaseSettings):
         default=30,
         description="Maximum number of LLM->MCP iterative loops for multi-step runbook processing"
     )
+    force_conclusion_at_max_iterations: bool = Field(
+        default=False,
+        description="Force LLM to conclude with available data when max iterations reached (instead of pausing for manual resume). Chats always use forced conclusion regardless of this setting."
+    )
     
     # LLM Streaming Configuration
     enable_llm_streaming: bool = Field(
