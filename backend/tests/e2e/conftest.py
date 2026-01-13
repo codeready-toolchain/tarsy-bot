@@ -951,3 +951,17 @@ def e2e_cancel_agent_three_agents_alert():
             "namespace": "test-namespace",
         },
     }
+
+
+@pytest.fixture
+def e2e_forced_conclusion_parallel_alert():
+    """Alert for forced conclusion with parallel agents (mixed iteration strategies)."""
+    return {
+        "alert_type": "test-forced-conclusion-parallel",
+        "runbook": "https://runbooks.example.com/forced-conclusion-test",
+        "severity": "warning",
+        "data": {
+            "description": "Test forced conclusion scenario with parallel agent execution",
+            "namespace": "test-namespace",
+        },
+    }
