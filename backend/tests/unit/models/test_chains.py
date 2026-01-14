@@ -53,15 +53,15 @@ class TestChainStageConfigModel:
     @pytest.mark.parametrize("stage_data,expected_dict", [
         (
             {"name": "test-stage", "agent": "TestAgent", "iteration_strategy": "react"},
-            {'name': 'test-stage', 'agent': 'TestAgent', 'agents': None, 'replicas': 1, 'success_policy': SuccessPolicy.ANY, 'iteration_strategy': 'react', 'llm_provider': None, 'synthesis': None}
+            {'name': 'test-stage', 'agent': 'TestAgent', 'agents': None, 'replicas': 1, 'success_policy': SuccessPolicy.ANY, 'iteration_strategy': 'react', 'llm_provider': None, 'max_iterations': None, 'force_conclusion_at_max_iterations': None, 'synthesis': None}
         ),
         (
             {"name": "test-stage", "agent": "TestAgent"},
-            {'name': 'test-stage', 'agent': 'TestAgent', 'agents': None, 'replicas': 1, 'success_policy': SuccessPolicy.ANY, 'iteration_strategy': None, 'llm_provider': None, 'synthesis': None}
+            {'name': 'test-stage', 'agent': 'TestAgent', 'agents': None, 'replicas': 1, 'success_policy': SuccessPolicy.ANY, 'iteration_strategy': None, 'llm_provider': None, 'max_iterations': None, 'force_conclusion_at_max_iterations': None, 'synthesis': None}
         ),
         (
             {"name": "custom-stage", "agent": "custom", "iteration_strategy": "react"},
-            {'name': 'custom-stage', 'agent': 'custom', 'agents': None, 'replicas': 1, 'success_policy': SuccessPolicy.ANY, 'iteration_strategy': 'react', 'llm_provider': None, 'synthesis': None}
+            {'name': 'custom-stage', 'agent': 'custom', 'agents': None, 'replicas': 1, 'success_policy': SuccessPolicy.ANY, 'iteration_strategy': 'react', 'llm_provider': None, 'max_iterations': None, 'force_conclusion_at_max_iterations': None, 'synthesis': None}
         )
     ])
     def test_to_dict_serialization(self, stage_data, expected_dict):
@@ -113,6 +113,8 @@ class TestChainStageConfigModel:
             'success_policy': SuccessPolicy.ANY,
             'iteration_strategy': None,
             'llm_provider': 'openai-default',
+            'max_iterations': None,
+            'force_conclusion_at_max_iterations': None,
             'synthesis': None
         }
 
@@ -226,12 +228,14 @@ class TestChainConfigModel:
             'chain_id': 'serialization-test',
             'alert_types': ['alert1', 'alert2'],
             'stages': [
-                {'name': 'stage1', 'agent': 'Agent1', 'agents': None, 'replicas': 1, 'success_policy': SuccessPolicy.ANY, 'iteration_strategy': None, 'llm_provider': None, 'synthesis': None},
-                {'name': 'stage2', 'agent': 'Agent2', 'agents': None, 'replicas': 1, 'success_policy': SuccessPolicy.ANY, 'iteration_strategy': 'react', 'llm_provider': None, 'synthesis': None}
+                {'name': 'stage1', 'agent': 'Agent1', 'agents': None, 'replicas': 1, 'success_policy': SuccessPolicy.ANY, 'iteration_strategy': None, 'llm_provider': None, 'max_iterations': None, 'force_conclusion_at_max_iterations': None, 'synthesis': None},
+                {'name': 'stage2', 'agent': 'Agent2', 'agents': None, 'replicas': 1, 'success_policy': SuccessPolicy.ANY, 'iteration_strategy': 'react', 'llm_provider': None, 'max_iterations': None, 'force_conclusion_at_max_iterations': None, 'synthesis': None}
             ],
             'description': 'Test serialization',
             'chat': {'enabled': True, 'agent': 'ChatAgent', 'iteration_strategy': None, 'llm_provider': None},
-            'llm_provider': None
+            'llm_provider': None,
+            'max_iterations': None,
+            'force_conclusion_at_max_iterations': None
         }
         
         assert result == expected
@@ -250,11 +254,13 @@ class TestChainConfigModel:
             'chain_id': 'test-chain',
             'alert_types': ['test'],
             'stages': [
-                {'name': 'test-stage', 'agent': 'TestAgent', 'agents': None, 'replicas': 1, 'success_policy': SuccessPolicy.ANY, 'iteration_strategy': None, 'llm_provider': None, 'synthesis': None}
+                {'name': 'test-stage', 'agent': 'TestAgent', 'agents': None, 'replicas': 1, 'success_policy': SuccessPolicy.ANY, 'iteration_strategy': None, 'llm_provider': None, 'max_iterations': None, 'force_conclusion_at_max_iterations': None, 'synthesis': None}
             ],
             'description': None,
             'chat': {'enabled': True, 'agent': 'ChatAgent', 'iteration_strategy': None, 'llm_provider': None},
-            'llm_provider': None
+            'llm_provider': None,
+            'max_iterations': None,
+            'force_conclusion_at_max_iterations': None
         }
         
         assert result == expected
@@ -323,12 +329,14 @@ class TestChainConfigModel:
             'chain_id': 'provider-serialization-test',
             'alert_types': ['test'],
             'stages': [
-                {'name': 'stage1', 'agent': 'Agent1', 'agents': None, 'replicas': 1, 'success_policy': SuccessPolicy.ANY, 'iteration_strategy': None, 'llm_provider': 'gemini-flash', 'synthesis': None},
-                {'name': 'stage2', 'agent': 'Agent2', 'agents': None, 'replicas': 1, 'success_policy': SuccessPolicy.ANY, 'iteration_strategy': None, 'llm_provider': None, 'synthesis': None}
+                {'name': 'stage1', 'agent': 'Agent1', 'agents': None, 'replicas': 1, 'success_policy': SuccessPolicy.ANY, 'iteration_strategy': None, 'llm_provider': 'gemini-flash', 'max_iterations': None, 'force_conclusion_at_max_iterations': None, 'synthesis': None},
+                {'name': 'stage2', 'agent': 'Agent2', 'agents': None, 'replicas': 1, 'success_policy': SuccessPolicy.ANY, 'iteration_strategy': None, 'llm_provider': None, 'max_iterations': None, 'force_conclusion_at_max_iterations': None, 'synthesis': None}
             ],
             'description': None,
             'chat': {'enabled': True, 'agent': 'ChatAgent', 'iteration_strategy': None, 'llm_provider': None},
-            'llm_provider': 'google-default'
+            'llm_provider': 'google-default',
+            'max_iterations': None,
+            'force_conclusion_at_max_iterations': None
         }
         
         assert result == expected

@@ -1215,7 +1215,7 @@ class TestEnhancedChainExecution:
         )
         
         # Mock get_agent to return appropriate agents
-        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None):
+        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None, max_iterations=None, force_conclusion=None):
             if agent_identifier == 'DataAgent':
                 agent = successful_agent
             elif agent_identifier == 'AnalysisAgent': 
@@ -1287,7 +1287,7 @@ class TestEnhancedChainExecution:
             final_analysis="All systems operational"
         )
         
-        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None):
+        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None, max_iterations=None, force_conclusion=None):
             agent = successful_agent
             agent.set_current_stage_execution_id = Mock()
             return agent
@@ -1338,7 +1338,7 @@ class TestEnhancedChainExecution:
         failing_agent = AsyncMock()
         failing_agent.process_alert.side_effect = Exception("Unexpected agent failure")
         
-        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None):
+        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None, max_iterations=None, force_conclusion=None):
             agent = failing_agent
             agent.set_current_stage_execution_id = Mock()
             return agent
@@ -1414,7 +1414,7 @@ class TestEnhancedChainExecution:
         cancelled_agent.process_alert.side_effect = _raise_cancel
         cancelled_agent.set_current_stage_execution_id = Mock()
 
-        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None):
+        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None, max_iterations=None, force_conclusion=None):
             return cancelled_agent
 
         service.agent_factory.get_agent.side_effect = mock_get_agent
@@ -1553,7 +1553,7 @@ class TestFullErrorPropagation:
             error_message="API rate limit exceeded"
         )
         
-        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None):
+        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None, max_iterations=None, force_conclusion=None):
             if agent_identifier == 'Agent1':
                 agent = failing_agent_1
             else:  # Agent2
@@ -1633,7 +1633,7 @@ class TestFullErrorPropagation:
             error_message="Critical system error detected"
         )
         
-        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None):
+        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None, max_iterations=None, force_conclusion=None):
             agent = failing_agent
             agent.set_current_stage_execution_id = Mock()
             return agent

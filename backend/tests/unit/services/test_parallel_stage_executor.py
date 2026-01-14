@@ -294,10 +294,12 @@ class TestExecutionConfigGeneration:
         stage = SimpleNamespace(
             name="test-stage",
             agents=[
-                SimpleNamespace(name="agent1", llm_provider="openai", iteration_strategy="react"),
-                SimpleNamespace(name="agent2", llm_provider="anthropic", iteration_strategy="native-thinking")
+                SimpleNamespace(name="agent1", llm_provider="openai", iteration_strategy="react", max_iterations=None, force_conclusion_at_max_iterations=None),
+                SimpleNamespace(name="agent2", llm_provider="anthropic", iteration_strategy="native-thinking", max_iterations=None, force_conclusion_at_max_iterations=None)
             ],
-            success_policy=SuccessPolicy.ANY
+            success_policy=SuccessPolicy.ANY,
+            max_iterations=None,
+            force_conclusion_at_max_iterations=None
         )
         
         # Create ProcessingAlert from Alert
@@ -318,7 +320,9 @@ class TestExecutionConfigGeneration:
         )
         
         chain_def = SimpleNamespace(
-            llm_provider="default-provider"
+            llm_provider="default-provider",
+            max_iterations=None,
+            force_conclusion_at_max_iterations=None
         )
         
         await executor.execute_parallel_agents(
@@ -387,7 +391,9 @@ class TestExecutionConfigGeneration:
             replicas=3,
             llm_provider="openai",
             iteration_strategy="react",
-            success_policy=SuccessPolicy.ALL
+            success_policy=SuccessPolicy.ALL,
+            max_iterations=None,
+            force_conclusion_at_max_iterations=None
         )
         
         # Create ProcessingAlert from Alert
@@ -407,7 +413,11 @@ class TestExecutionConfigGeneration:
             session_id="test-session"
         )
         
-        chain_def = SimpleNamespace(llm_provider=None)
+        chain_def = SimpleNamespace(
+            llm_provider=None,
+            max_iterations=None,
+            force_conclusion_at_max_iterations=None
+        )
         
         await executor.execute_replicated_agent(
             stage=stage,

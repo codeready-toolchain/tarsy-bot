@@ -44,6 +44,7 @@ class TestSimpleReActController:
         """Create mock prompt builder."""
         builder = Mock()
         builder.build_standard_react_prompt.return_value = "ReAct prompt"
+        builder.build_react_forced_conclusion.return_value = "Please provide your best conclusion based on the available data."
         builder.get_enhanced_react_system_message.return_value = "You are an AI assistant that analyzes alerts using the ReAct pattern."
         builder.parse_react_response.return_value = {
             'thought': 'Need to analyze the alert',
@@ -68,6 +69,8 @@ class TestSimpleReActController:
         """Create mock agent for ReAct testing."""
         agent = Mock()
         agent.max_iterations = 3
+        agent.force_conclusion_at_max_iterations = False
+        agent.get_force_conclusion.return_value = False
         # EP-0012: create_prompt_context method removed, using StageContext directly
         agent.execute_mcp_tools = AsyncMock(return_value={
             "test-server": [{"tool": "test-tool", "result": "success"}]
@@ -190,6 +193,8 @@ class TestSimpleReActController:
         from tarsy.agents.exceptions import SessionPaused
         
         mock_agent.max_iterations = 1  # Force max iterations quickly
+        mock_agent.force_conclusion_at_max_iterations = False
+        mock_agent.get_force_conclusion.return_value = False
         
         # Mock LLM to return incomplete responses (no Final Answer) to force max iterations
         async def mock_generate_response_incomplete(conversation, session_id, stage_execution_id=None, **kwargs):
@@ -538,6 +543,7 @@ class TestReactStageController:
         """Create mock prompt builder."""
         builder = Mock()
         builder.build_stage_analysis_react_prompt.return_value = "Stage analysis ReAct prompt"
+        builder.build_react_forced_conclusion.return_value = "Please provide your best conclusion based on the available data."
         builder.get_enhanced_react_system_message.return_value = "You are an agent doing partial analysis using ReAct."
         builder.parse_react_response.return_value = {
             'thought': 'Need to analyze partially',
@@ -563,6 +569,8 @@ class TestReactStageController:
         """Create mock agent for partial analysis testing."""
         agent = Mock()
         agent.max_iterations = 3
+        agent.force_conclusion_at_max_iterations = False
+        agent.get_force_conclusion.return_value = False
         # EP-0012: create_prompt_context method removed, using StageContext directly
         agent.get_current_stage_execution_id.return_value = "stage-exec-789"
         agent.execute_mcp_tools = AsyncMock(return_value={
@@ -688,6 +696,8 @@ class TestReactStageController:
         from tarsy.agents.exceptions import SessionPaused
         
         mock_agent.max_iterations = 1  # Force quick max iterations
+        mock_agent.force_conclusion_at_max_iterations = False
+        mock_agent.get_force_conclusion.return_value = False
         
         # Mock responses that return LLMConversation objects
         call_count = 0
@@ -728,6 +738,7 @@ class TestReactStageController:
         from tarsy.agents.exceptions import SessionPaused
         
         mock_agent.max_iterations = 1
+        mock_agent.force_conclusion_at_max_iterations = False
         
         # Mock LLM to return incomplete responses (no Final Answer) to force max iterations
         async def mock_generate_response_incomplete(conversation, session_id, stage_execution_id=None, **kwargs):

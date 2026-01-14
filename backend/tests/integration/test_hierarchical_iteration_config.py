@@ -33,7 +33,7 @@ class TestHierarchicalIterationConfig:
     @pytest.fixture
     def mcp_registry(self):
         """Create minimal MCP registry."""
-        return MCPServerRegistry(server_configs={})
+        return MCPServerRegistry(config={}, configured_servers={})
 
     @pytest.fixture
     def agent_factory(self, mock_llm_manager, mcp_registry):

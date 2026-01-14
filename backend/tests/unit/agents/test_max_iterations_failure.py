@@ -88,6 +88,7 @@ class TestReactControllerMaxIterationsFailure:
         builder = Mock()
         builder.get_enhanced_react_system_message.return_value = "System message"
         builder.build_standard_react_prompt.return_value = "User prompt"
+        builder.build_react_forced_conclusion.return_value = "Please provide your best conclusion based on the available data."
         return builder
     
     @pytest.fixture
@@ -95,6 +96,8 @@ class TestReactControllerMaxIterationsFailure:
         """Create mock agent."""
         agent = Mock()
         agent.max_iterations = 2  # Low number for testing
+        agent.force_conclusion_at_max_iterations = False
+        agent.get_force_conclusion.return_value = False
         agent.get_current_stage_execution_id.return_value = "stage-123"
         return agent
     

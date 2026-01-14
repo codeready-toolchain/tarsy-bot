@@ -52,11 +52,14 @@ class TestIterationControllerPauseDetection:
         
         # Create controller
         mock_prompt_builder = MagicMock()
+        mock_prompt_builder.build_react_forced_conclusion.return_value = "Please provide your best conclusion."
         controller = TestReactController(mock_llm_manager, mock_prompt_builder)
         
         # Create mock context with agent
         mock_agent = MagicMock()
         mock_agent.max_iterations = 2  # Set low for testing
+        mock_agent.force_conclusion_at_max_iterations = False  # Should pause, not force conclusion
+        mock_agent.get_force_conclusion.return_value = False  # Mock the method call
         mock_agent.get_current_stage_execution_id.return_value = "test-stage-id"
         
         mock_chain_context = MagicMock()
@@ -152,11 +155,14 @@ class TestIterationControllerPauseDetection:
         
         # Create controller
         mock_prompt_builder = MagicMock()
+        mock_prompt_builder.build_react_forced_conclusion.return_value = "Please provide your best conclusion."
         controller = TestReactController(mock_llm_manager, mock_prompt_builder)
         
         # Create context
         mock_agent = MagicMock()
         mock_agent.max_iterations = 3
+        mock_agent.force_conclusion_at_max_iterations = False  # Should pause, not force conclusion
+        mock_agent.get_force_conclusion.return_value = False  # Mock the method call
         mock_agent.get_current_stage_execution_id.return_value = "test-stage-id"
         
         mock_chain_context = MagicMock()
@@ -260,10 +266,13 @@ class TestIterationControllerPauseDetection:
         )
         
         mock_prompt_builder = MagicMock()
+        mock_prompt_builder.build_react_forced_conclusion.return_value = "Please provide your best conclusion."
         controller = TestReactController(mock_llm_manager, mock_prompt_builder)
         
         mock_agent = MagicMock()
         mock_agent.max_iterations = 1
+        mock_agent.force_conclusion_at_max_iterations = False  # Should pause, not force conclusion
+        mock_agent.get_force_conclusion.return_value = False  # Mock the method call
         mock_agent.get_current_stage_execution_id.return_value = "stage-123"
         
         mock_chain_context = MagicMock()
