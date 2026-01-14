@@ -918,7 +918,10 @@ class MCPClient:
             # Emit started event before execution (for real-time UI feedback)
             from tarsy.services.events.event_helpers import (
                 publish_mcp_tool_call_started,
+                publish_session_progress_update,
             )
+            from tarsy.models.constants import ProgressPhase
+            
             await publish_mcp_tool_call_started(
                 session_id=session_id,
                 communication_id=ctx.interaction.communication_id,
@@ -926,6 +929,16 @@ class MCPClient:
                 tool_name=tool_name,
                 tool_arguments=parameters,
                 stage_id=stage_execution_id
+            )
+            
+            # Update progress status to "Gathering information..." before tool execution
+            await publish_session_progress_update(
+                session_id=session_id,
+                phase=ProgressPhase.GATHERING_INFO,
+                stage_execution_id=stage_execution_id,
+                parent_stage_execution_id=parent_stage_execution_id,
+                parallel_index=parallel_index,
+                agent_name=agent_name
             )
             
             # Log the outgoing tool call
@@ -989,12 +1002,33 @@ class MCPClient:
                 
                 # Store actual result and event ID for potential summarization outside the context
                 actual_result = response_dict
+                
+                # Restore progress status to "Investigating..." after tool execution
+                await publish_session_progress_update(
+                    session_id=session_id,
+                    phase=ProgressPhase.INVESTIGATING,
+                    stage_execution_id=stage_execution_id,
+                    parent_stage_execution_id=parent_stage_execution_id,
+                    parallel_index=parallel_index,
+                    agent_name=agent_name
+                )
             
             except asyncio.TimeoutError:
                 # No retry - let LLM handle it
                 error_msg = f"MCP tool call timed out after {timeout_seconds}s"
                 logger.error(f"{error_msg} for {server_name}.{tool_name}")
                 self._log_mcp_error(server_name, tool_name, error_msg, request_id)
+                
+                # Restore progress status on error
+                await publish_session_progress_update(
+                    session_id=session_id,
+                    phase=ProgressPhase.INVESTIGATING,
+                    stage_execution_id=stage_execution_id,
+                    parent_stage_execution_id=parent_stage_execution_id,
+                    parallel_index=parallel_index,
+                    agent_name=agent_name
+                )
+                
                 raise TimeoutError(error_msg) from None
                     
             except Exception as e:
@@ -1003,6 +1037,17 @@ class MCPClient:
                 error_msg = f"Failed to call tool {tool_name} on {server_name}: {error_details}"
                 logger.error(error_msg)
                 self._log_mcp_error(server_name, tool_name, error_details, request_id)
+                
+                # Restore progress status on error
+                await publish_session_progress_update(
+                    session_id=session_id,
+                    phase=ProgressPhase.INVESTIGATING,
+                    stage_execution_id=stage_execution_id,
+                    parent_stage_execution_id=parent_stage_execution_id,
+                    parallel_index=parallel_index,
+                    agent_name=agent_name
+                )
+                
                 raise Exception(error_msg) from e
         
         # MCP interaction is now stored in DB with actual result

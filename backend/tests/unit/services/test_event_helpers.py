@@ -674,10 +674,12 @@ class TestPublishSessionProgressUpdate:
         "phase_input,expected_phase_value",
         [
             (ProgressPhase.INVESTIGATING, "investigating"),
+            (ProgressPhase.GATHERING_INFO, "gathering_info"),  # MCP tool execution
             (ProgressPhase.SYNTHESIZING, "synthesizing"),
-            (ProgressPhase.DISTILLING, "distilling"),         # MCP tool result summarization
-            (ProgressPhase.FINALIZING, "finalizing"),         # Executive summary generation
+            (ProgressPhase.DISTILLING, "distilling"),          # MCP tool result summarization
+            (ProgressPhase.FINALIZING, "finalizing"),          # Executive summary generation
             ("investigating", "investigating"),
+            ("gathering_info", "gathering_info"),
             ("synthesizing", "synthesizing"),
             ("distilling", "distilling"),
             ("finalizing", "finalizing"),

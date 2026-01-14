@@ -113,11 +113,12 @@ class ProgressPhase(str, Enum):
     
     These phases provide user-friendly status messages during alert processing.
     """
-    INVESTIGATING = "investigating"  # Default phase - agents are investigating the issue
-    SYNTHESIZING = "synthesizing"    # Synthesis agent is combining parallel results
-    DISTILLING = "distilling"        # MCP tool result summarization (reduces large outputs)
-    CONCLUDING = "concluding"        # Forced conclusion at iteration limit
-    FINALIZING = "finalizing"        # Executive summary generation at chain completion
+    INVESTIGATING = "investigating"   # Default phase - agents are investigating the issue
+    GATHERING_INFO = "gathering_info" # MCP tool execution (collecting data from systems)
+    SYNTHESIZING = "synthesizing"     # Synthesis agent is combining parallel results
+    DISTILLING = "distilling"         # MCP tool result summarization (reduces large outputs)
+    CONCLUDING = "concluding"         # Forced conclusion at iteration limit
+    FINALIZING = "finalizing"         # Executive summary generation at chain completion
 
 
 class ChainStatus(Enum):

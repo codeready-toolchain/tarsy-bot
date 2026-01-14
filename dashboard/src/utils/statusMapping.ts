@@ -10,10 +10,11 @@
  */
 export const ProgressPhase = {
   INVESTIGATING: 'investigating',
+  GATHERING_INFO: 'gathering_info',  // MCP tool execution (collecting data from systems)
   SYNTHESIZING: 'synthesizing',
-  DISTILLING: 'distilling',      // MCP tool result summarization
-  CONCLUDING: 'concluding',      // Forced conclusion at iteration limit
-  FINALIZING: 'finalizing',      // Executive summary generation
+  DISTILLING: 'distilling',          // MCP tool result summarization
+  CONCLUDING: 'concluding',          // Forced conclusion at iteration limit
+  FINALIZING: 'finalizing',          // Executive summary generation
 } as const;
 
 /**
@@ -33,6 +34,7 @@ export const StageName = {
  */
 export const ProgressStatusMessage = {
   INVESTIGATING: 'Investigating...',
+  GATHERING_INFO: 'Gathering information...',  // MCP tool execution (collecting data from systems)
   SYNTHESIZING: 'Synthesizing...',
   DISTILLING: 'Distilling...',        // MCP tool result summarization
   CONCLUDING: 'Concluding...',        // Forced conclusion at iteration limit
@@ -94,6 +96,7 @@ export function mapEventToProgressStatus(event: any, includeAgentContext?: boole
     else if (phase === ProgressPhase.DISTILLING) statusMessage = ProgressStatusMessage.DISTILLING;        // MCP tool result summarization
     else if (phase === ProgressPhase.FINALIZING) statusMessage = ProgressStatusMessage.FINALIZING;        // Executive summary generation
     else if (phase === ProgressPhase.SYNTHESIZING) statusMessage = ProgressStatusMessage.SYNTHESIZING;
+    else if (phase === ProgressPhase.GATHERING_INFO) statusMessage = ProgressStatusMessage.GATHERING_INFO;  // MCP tool execution
     else if (phase === ProgressPhase.INVESTIGATING) statusMessage = ProgressStatusMessage.INVESTIGATING;
   }
   

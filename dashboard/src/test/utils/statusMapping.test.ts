@@ -16,6 +16,7 @@ describe('statusMapping', () => {
   describe('ProgressPhase constants', () => {
     it('should have all required phase values', () => {
       expect(ProgressPhase.INVESTIGATING).toBe('investigating');
+      expect(ProgressPhase.GATHERING_INFO).toBe('gathering_info');
       expect(ProgressPhase.SYNTHESIZING).toBe('synthesizing');
       expect(ProgressPhase.DISTILLING).toBe('distilling');
       expect(ProgressPhase.CONCLUDING).toBe('concluding');
@@ -26,6 +27,7 @@ describe('statusMapping', () => {
   describe('ProgressStatusMessage constants', () => {
     it('should have all required status messages', () => {
       expect(ProgressStatusMessage.INVESTIGATING).toBe('Investigating...');
+      expect(ProgressStatusMessage.GATHERING_INFO).toBe('Gathering information...');
       expect(ProgressStatusMessage.SYNTHESIZING).toBe('Synthesizing...');
       expect(ProgressStatusMessage.DISTILLING).toBe('Distilling...');
       expect(ProgressStatusMessage.CONCLUDING).toBe('Concluding...');
@@ -59,6 +61,7 @@ describe('statusMapping', () => {
 
     it('should return false for non-terminal progress statuses', () => {
       expect(isTerminalProgressStatus('Investigating...')).toBe(false);
+      expect(isTerminalProgressStatus('Gathering information...')).toBe(false);
       expect(isTerminalProgressStatus('Synthesizing...')).toBe(false);
       expect(isTerminalProgressStatus('Distilling...')).toBe(false);
       expect(isTerminalProgressStatus('Concluding...')).toBe(false);
@@ -113,6 +116,14 @@ describe('statusMapping', () => {
           phase: 'finalizing',
         };
         expect(mapEventToProgressStatus(event)).toBe('Finalizing...');
+      });
+
+      it('should map GATHERING_INFO phase for tool execution', () => {
+        const event = {
+          type: 'session.progress_update',
+          phase: 'gathering_info',
+        };
+        expect(mapEventToProgressStatus(event)).toBe('Gathering information...');
       });
 
       it('should handle phase in nested data object', () => {
@@ -323,6 +334,27 @@ describe('statusMapping', () => {
         const result = mapEventToProgressStatus(event, true);
         
         expect(result).toHaveProperty('stageExecutionId', 'exec-primary');
+      });
+
+      it('should handle GATHERING_INFO phase with agent context', () => {
+        const event = {
+          type: 'session.progress_update',
+          phase: 'gathering_info',
+          stage_execution_id: 'exec-tool-123',
+          parent_stage_execution_id: 'parent-456',
+          parallel_index: 1,
+          agent_name: 'kubernetes-agent',
+        };
+        
+        const result = mapEventToProgressStatus(event, true);
+        
+        expect(result).toEqual({
+          status: 'Gathering information...',
+          stageExecutionId: 'exec-tool-123',
+          parentStageExecutionId: 'parent-456',
+          parallelIndex: 1,
+          agentName: 'kubernetes-agent',
+        });
       });
     });
   });
