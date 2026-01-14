@@ -36,7 +36,7 @@ import { useChatState } from '../hooks/useChatState';
 import type { DetailedSession } from '../types';
 import { useAdvancedAutoScroll } from '../hooks/useAdvancedAutoScroll';
 import { isTerminalSessionEvent } from '../utils/eventTypes';
-import { isActiveSessionStatus, isTerminalSessionStatus, SESSION_STATUS } from '../utils/statusConstants';
+import { isActiveSessionStatus, isTerminalSessionStatus, isActiveStageStatus, SESSION_STATUS } from '../utils/statusConstants';
 import { mapEventToProgressStatus, ProgressStatusMessage, StageName, isTerminalProgressStatus } from '../utils/statusMapping';
 import { STAGE_STATUS } from '../utils/statusConstants';
 
@@ -177,6 +177,15 @@ function SessionDetailPageBase({
   // Track previous session status to detect transitions
   const prevStatusRef = useRef<string | undefined>(undefined);
   
+  // ============================================================================
+  // Initial Status Initialization Effects
+  // ============================================================================
+  // The following two effects both run on [session?.session_id, loading] to
+  // initialize related but separate state when the session first loads:
+  // 1. progressStatus: Session-level status (e.g., "Investigating...", "Synthesizing...")
+  // 2. agentProgressStatuses: Per-agent statuses for parallel executions
+  // Both must initialize from the same session data to ensure UI consistency.
+  
   // Initialize progress status from current session state on load
   useEffect(() => {
     if (!session || loading) return;
@@ -198,7 +207,7 @@ function SessionDetailPageBase({
       // Regular non-parallel stage
       setProgressStatus(ProgressStatusMessage.INVESTIGATING);
     }
-  }, [session?.session_id, loading]); // Only run when session first loads
+  }, [session?.session_id, loading]);
   
   // Initialize per-agent progress statuses for parallel executions on load
   useEffect(() => {
@@ -207,10 +216,10 @@ function SessionDetailPageBase({
     // Only initialize if session is actively processing
     if (!isActiveSessionStatus(session.status)) return;
     
-    // Find parallel parent stages (active OR pending - might have active children)
+    // Find parallel parent stages (active, pending, or paused - might have active children)
     const parallelStages = session.stages?.filter((s: any) => {
       const hasParallelExecutions = s.parallel_executions && s.parallel_executions.length > 0;
-      const isRelevantStatus = s.status === STAGE_STATUS.ACTIVE || s.status === STAGE_STATUS.PENDING;
+      const isRelevantStatus = isActiveStageStatus(s.status);
       return isRelevantStatus && hasParallelExecutions;
     });
     
@@ -224,8 +233,8 @@ function SessionDetailPageBase({
       
       for (const execution of stage.parallel_executions) {
         // Set status based on execution state
-        if (execution.status === STAGE_STATUS.ACTIVE || execution.status === STAGE_STATUS.PENDING) {
-          // Active/pending parallel agents show Investigating
+        if (isActiveStageStatus(execution.status)) {
+          // Active/pending/paused parallel agents show Investigating
           initialStatusMap.set(execution.execution_id, ProgressStatusMessage.INVESTIGATING);
         } else if (execution.status === STAGE_STATUS.COMPLETED) {
           // Completed agents get terminal status
@@ -244,7 +253,7 @@ function SessionDetailPageBase({
     if (initialStatusMap.size > 0) {
       setAgentProgressStatuses(initialStatusMap);
     }
-  }, [session?.session_id, loading]); // Only run when session first loads
+  }, [session?.session_id, loading]);
   
   // Bottom cancel dialog state
   const [showBottomCancelDialog, setShowBottomCancelDialog] = useState(false);
