@@ -64,14 +64,10 @@ class SessionScoreRepository:
         return self.base_repo.get_by_id(score_id)
 
     def get_scores_for_session(
-        self,
-        session_id: str,
-        status: Optional[str] = None
+        self, session_id: str, status: Optional[str] = None
     ) -> List[SessionScore]:
         """Get all scoring attempts for a session, ordered by scored_at_us descending."""
-        statement = select(SessionScore).where(
-            SessionScore.session_id == session_id
-        )
+        statement = select(SessionScore).where(SessionScore.session_id == session_id)
 
         if status:
             statement = statement.where(SessionScore.status == status)
@@ -90,7 +86,7 @@ class SessionScoreRepository:
         statement = select(SessionScore).where(
             and_(
                 SessionScore.session_id == session_id,
-                SessionScore.status.in_(ScoringStatus.active_values())
+                SessionScore.status.in_(ScoringStatus.active_values()),
             )
         )
 
@@ -108,7 +104,7 @@ class SessionScoreRepository:
         error_message: Optional[str] = None,
         total_score: Optional[int] = None,
         score_analysis: Optional[str] = None,
-        missing_tools_analysis: Optional[str] = None
+        missing_tools_analysis: Optional[str] = None,
     ) -> Optional[SessionScore]:
         """
         Update scoring status and related fields.

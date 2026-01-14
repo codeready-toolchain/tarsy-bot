@@ -8,9 +8,10 @@ performance and consistency with the rest of the system.
 
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, computed_field
 
 from tarsy.models.constants import ChainStatus
+from tarsy.agents.prompts.judges import CURRENT_PROMPT_HASH
 
 # Non-history related response models
 
@@ -167,11 +168,20 @@ class SessionScoreResponse(BaseModel):
     )
     error_message: Optional[str] = Field(None, description="Error details if failed")
 
-    # Computed field (set to False in Phase 1, will be calculated in Phase 2)
-    current_prompt_used: bool = Field(
-        default=False,
-        description="Whether this score uses the current prompt template (Phase 2 feature)",
-    )
+    @computed_field  # type: ignore[misc]
+    @property
+    def current_prompt_used(self) -> bool:
+        """
+        Whether this score uses the current prompt template.
+
+        Compares the stored prompt_hash with the current hash computed from
+        the judge prompts in judges.py. If they match, the score is current.
+        If they differ, the score was produced with obsolete criteria.
+
+        Returns:
+            True if prompt_hash matches current hash, False otherwise
+        """
+        return self.prompt_hash == CURRENT_PROMPT_HASH
 
 
 # ===== Session Control API Models =====
@@ -185,4 +195,3 @@ class CancelAgentResponse(BaseModel):
     stage_status: str = Field(
         description="Updated parent stage status after re-evaluation"
     )
-
