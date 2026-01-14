@@ -119,7 +119,9 @@ class ChainRegistry:
                                 ParallelAgentConfig(
                                     name=agent["name"],
                                     llm_provider=agent.get("llm_provider"),
-                                    iteration_strategy=agent.get("iteration_strategy")
+                                    iteration_strategy=agent.get("iteration_strategy"),
+                                    max_iterations=agent.get("max_iterations"),
+                                    force_conclusion_at_max_iterations=agent.get("force_conclusion_at_max_iterations")
                                 )
                                 for agent in stage["agents"]
                             ] if stage.get("agents") else None,
@@ -127,6 +129,8 @@ class ChainRegistry:
                             success_policy=SuccessPolicy(stage.get("success_policy", stage.get("failure_policy", "any"))),  # Support both old and new names, default to "any"
                             iteration_strategy=stage.get("iteration_strategy"),
                             llm_provider=stage.get("llm_provider"),
+                            max_iterations=stage.get("max_iterations"),
+                            force_conclusion_at_max_iterations=stage.get("force_conclusion_at_max_iterations"),
                             synthesis=synthesis_config
                         ))
                     
@@ -136,6 +140,8 @@ class ChainRegistry:
                         stages=stages,
                         description=chain_data.get("description"),
                         llm_provider=chain_data.get("llm_provider"),
+                        max_iterations=chain_data.get("max_iterations"),
+                        force_conclusion_at_max_iterations=chain_data.get("force_conclusion_at_max_iterations"),
                         chat=ChatConfig(
                             enabled=chain_data["chat"].get("enabled", True),
                             agent=chain_data["chat"].get("agent"),

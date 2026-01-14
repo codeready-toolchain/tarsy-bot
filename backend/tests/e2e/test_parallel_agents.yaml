@@ -138,6 +138,8 @@ agent_chains:
   multi-agent-forced-conclusion-chain:
     alert_types:
       - "test-forced-conclusion-parallel"
+    max_iterations: 2  # Chain-level: Applies to all stages and chat
+    force_conclusion_at_max_iterations: true  # Chain-level: Force conclusion instead of pause
     stages:
       - name: "investigation"
         agents:
@@ -152,5 +154,5 @@ agent_chains:
           agent: "SynthesisAgent"
           iteration_strategy: "synthesis-native-thinking"
           llm_provider: "google-default"
-    description: "Multi-agent parallel with mixed iteration strategies for forced conclusion tests"
+    description: "Multi-agent parallel with mixed iteration strategies for forced conclusion tests (chain-level iteration config)"
   

@@ -173,7 +173,9 @@ class ConfigurationLoader:
                                 {
                                     "name": agent.name,
                                     "llm_provider": agent.llm_provider,
-                                    "iteration_strategy": agent.iteration_strategy
+                                    "iteration_strategy": agent.iteration_strategy,
+                                    "max_iterations": agent.max_iterations,
+                                    "force_conclusion_at_max_iterations": agent.force_conclusion_at_max_iterations
                                 }
                                 for agent in stage.agents
                             ] if stage.agents else None,
@@ -181,6 +183,8 @@ class ConfigurationLoader:
                             "success_policy": stage.success_policy,
                             "iteration_strategy": stage.iteration_strategy,
                             "llm_provider": stage.llm_provider,
+                            "max_iterations": stage.max_iterations,
+                            "force_conclusion_at_max_iterations": stage.force_conclusion_at_max_iterations,
                             "synthesis": {
                                 "agent": stage.synthesis.agent,
                                 "iteration_strategy": stage.synthesis.iteration_strategy,
@@ -191,6 +195,8 @@ class ConfigurationLoader:
                     ],
                     "description": chain_config.description,
                     "llm_provider": chain_config.llm_provider,
+                    "max_iterations": chain_config.max_iterations,
+                    "force_conclusion_at_max_iterations": chain_config.force_conclusion_at_max_iterations,
                     "chat": {
                         "enabled": chain_config.chat.enabled,
                         "agent": chain_config.chat.agent,
