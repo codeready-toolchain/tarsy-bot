@@ -448,14 +448,16 @@ function SessionDetailPageBase({
               });
             }
           } else if (eventType === 'stage.completed' || eventType === 'stage.failed') {
-            if (update.stage_execution_id && isParallelChildUpdate) {
+            // Backend sends stage_id, not stage_execution_id in completion events
+            const executionId = update.stage_execution_id || update.stage_id;
+            if (executionId && isParallelChildUpdate) {
               // Set terminal status when this specific parallel child stage completes or fails
-              // Use stage_execution_id to match the key format from mapEventToProgressStatus
+              // Use executionId (from stage_id or stage_execution_id) to match the key format from mapEventToProgressStatus
               const terminalStatus = eventType === 'stage.completed' ? ProgressStatusMessage.COMPLETED : ProgressStatusMessage.FAILED;
-              console.log(`📊 Setting terminal status for ${terminalStatus.toLowerCase()} stage: ${update.stage_execution_id}`);
+              console.log(`📊 Setting terminal status for ${terminalStatus.toLowerCase()} stage: ${executionId}`);
               setAgentProgressStatuses(prev => {
                 const newMap = new Map(prev);
-                newMap.set(update.stage_execution_id, terminalStatus);
+                newMap.set(executionId, terminalStatus);
                 return newMap;
               });
             } else if (update.expected_parallel_count && update.expected_parallel_count > 0 && (update.parent_stage_execution_id === undefined || update.parent_stage_execution_id === null)) {
@@ -878,14 +880,14 @@ function SessionDetailPageBase({
                     
                     if (!agentStatus) {
                       // Agent hasn't received its first status update yet → starting
-                    return 'Processing...';
-                  }
-                  
-                  if (isTerminalProgressStatus(agentStatus)) {
-                    // Agent has finished (completed/failed/cancelled)
-                    // Check if other agents are still running (have non-terminal statuses)
-                    const otherAgentsRunning = Array.from(agentProgressStatuses.entries())
-                      .some(([id, status]) => id !== selectedAgentExecutionId && !isTerminalProgressStatus(status));
+                      return 'Starting...';
+                    }
+                    
+                    if (isTerminalProgressStatus(agentStatus)) {
+                      // Agent has finished (completed/failed/cancelled)
+                      // Check if other agents are still running (have non-terminal statuses)
+                      const otherAgentsRunning = Array.from(agentProgressStatuses.entries())
+                        .some(([id, status]) => id !== selectedAgentExecutionId && !isTerminalProgressStatus(status));
                       
                       if (otherAgentsRunning) {
                         return 'Waiting for other agents...';
