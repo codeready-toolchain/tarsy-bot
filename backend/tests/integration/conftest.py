@@ -64,6 +64,10 @@ def mock_settings():
     settings.log_level = "INFO"
     settings.agent_config_path = None  # No agent config for integration tests
     
+    # Data masking settings (disabled for tests)
+    settings.alert_data_masking_enabled = False
+    settings.alert_data_masking_pattern_group = "default"
+    
     # History/Database settings - use in-memory database for integration tests
     settings.database_url = "sqlite:///:memory:"
     

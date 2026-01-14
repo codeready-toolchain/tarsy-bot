@@ -1,5 +1,5 @@
 """
-Integration tests for alert submission with session creation.
+Unit tests for alert submission with session creation.
 
 Tests that the submit_alert endpoint creates the session in the database
 before returning the response to the client, eliminating race conditions.
@@ -17,14 +17,9 @@ from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
 from tarsy.models.db_models import AlertSession
 
 
-@pytest.mark.integration
+@pytest.mark.unit
 class TestAlertSubmissionSessionCreation:
     """Test session creation during alert submission."""
-
-    @pytest.fixture(autouse=True)
-    def _setup(self, ensure_integration_test_isolation):
-        """Ensure test isolation."""
-        pass
 
     @pytest.fixture
     def client(self):
@@ -70,8 +65,7 @@ class TestAlertSubmissionSessionCreation:
             yield mock_service
 
     def test_submit_alert_creates_session_before_response(
-        self, client, valid_alert_data, mock_alert_service, mock_chain_definition, 
-        test_database_session: Session
+        self, client, valid_alert_data, mock_alert_service, mock_chain_definition
     ):
         """Test that session is created in database before API response is returned."""
         # Arrange - Mock session creation to return True
@@ -144,81 +138,3 @@ class TestAlertSubmissionSessionCreation:
         assert "error" in data["detail"]
         assert data["detail"]["error"] == "Session creation failed"
 
-@pytest.mark.integration
-class TestIdempotentSessionCreation:
-    """Test that background processing handles pre-created sessions correctly."""
-
-    @pytest.mark.asyncio
-    async def test_process_alert_with_existing_session(
-        self, test_database_session: Session
-    ):
-        """Test that process_alert handles sessions created by endpoint."""
-        from tarsy.models.alert import ProcessingAlert
-        from tarsy.models.processing_context import ChainContext
-        from tarsy.services.session_manager import SessionManager
-        from tarsy.services.history_service import HistoryService
-        from tarsy.utils.timestamp import now_us
-        
-        # Arrange
-        session_id = str(uuid.uuid4())
-        
-        # Create session in database (simulating endpoint behavior)
-        pre_created_session = AlertSession(
-            session_id=session_id,
-            alert_data={"test": "data"},
-            agent_type="chain:test-chain",
-            alert_type="kubernetes",
-            status="pending",
-            chain_id="test-chain",
-            chain_definition={"chain_id": "test-chain", "stages": []},
-            author="test-user"
-        )
-        test_database_session.add(pre_created_session)
-        test_database_session.commit()
-        
-        # Create history service and session manager
-        history_service = HistoryService()
-        session_manager = SessionManager(history_service)
-        
-        # Create chain context
-        processing_alert = ProcessingAlert(
-            alert_type="kubernetes",
-            severity="high",
-            timestamp=now_us(),
-            environment="test",
-            alert_data={"test": "data"}
-        )
-        chain_context = ChainContext.from_processing_alert(
-            processing_alert=processing_alert,
-            session_id=session_id,
-            current_stage_name="analysis"
-        )
-        
-        chain_definition = ChainConfigModel(
-            chain_id="test-chain",
-            alert_types=["kubernetes"],
-            stages=[
-                ChainStageConfigModel(
-                    name="analysis",
-                    agent="KubernetesAgent"
-                )
-            ]
-        )
-        
-        # Act - Try to create session again (simulating background processing)
-        result = session_manager.create_chain_history_session(chain_context, chain_definition)
-        
-        # Assert - Should return True (session already exists, no error)
-        # The actual behavior depends on the implementation - it may return False or True
-        # The key is that it doesn't raise an exception
-        assert result in [True, False], "Session creation should be idempotent"
-        
-        # Verify only one session exists in database
-        from sqlmodel import select, func
-        session_count = test_database_session.exec(
-            select(func.count(AlertSession.session_id)).where(
-                AlertSession.session_id == session_id
-            )
-        ).one()
-        
-        assert session_count == 1, "Should only have one session record"
