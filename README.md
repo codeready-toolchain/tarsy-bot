@@ -111,18 +111,19 @@ This deployment is designed for development and testing environments, serving as
 ## Key Features
 
 - **🛠️ Configuration-Based Agents**: Deploy new agents and chain definitions via YAML configuration without code changes
-- **🔧 Flexible Alert Processing**: Accept arbitrary JSON payloads from any monitoring system  
+- **📥 Flexible Alert Processing**: Accept arbitrary JSON payloads from any monitoring system  
 - **🧠 Chain-Based Agent Architecture**: Specialized agents with domain-specific tools and AI reasoning working in coordinated stages
-- **⚡ Parallel Agent Execution**: Run multiple agents concurrently for independent domain investigation with automatic synthesis. Supports multi-agent parallelism, replica parallelism for redundancy, and comparison parallelism for A/B testing different LLM providers or strategies
+- **🔀 Parallel Agent Execution**: Run multiple agents concurrently for independent domain investigation with automatic synthesis. Supports multi-agent parallelism, replica parallelism for redundancy, and comparison parallelism for A/B testing different LLM providers or strategies
 - **🔌 MCP Server Integration**: Agents dynamically connect to MCP servers for domain-specific tools (kubectl, database clients, monitoring APIs). Add new MCP servers via configuration without code changes
 - **🤖 Multi-LLM Provider Support**: Configure and switch between multiple LLM providers (OpenAI, Google, Anthropic, xAI, etc.) via YAML. Define your own LLM provider. Optional Google Search grounding for Gemini models to enhance responses with real-time web information. Native thinking mode for Gemini 2.0+ provides visible internal reasoning and reliable structured tool calling
-- **📚 GitHub Runbook Integration**: Optional automatic retrieval and inclusion of relevant runbooks from GitHub repositories per agent chain. Contextualizes investigations with team knowledge
+- **📖 GitHub Runbook Integration**: Optional automatic retrieval and inclusion of relevant runbooks from GitHub repositories per agent chain. Contextualizes investigations with team knowledge
 - **📊 Comprehensive Audit Trail**: Complete visibility into chain processing workflows with stage-level timeline reconstruction
 - **🖥️ SRE Dashboard**: Real-time monitoring with live LLM streaming and interactive chain timeline visualization
 - **💬 Follow-up Chat**: Continue investigating after sessions complete - ask clarifying questions, request deeper analysis, or explore different aspects with full context and tool access
-- **⏸️ Pause & Resume**: Long-running investigations automatically pause at iteration limits and can be resumed with one click. Preserves full conversation state and continues exactly where it left off. For parallel stages, only paused agents re-execute while completed results are preserved. Optionally configure forced conclusion instead of pausing via hierarchical `force_conclusion_at_max_iterations` setting (system, agent, chain, stage, or parallel agent level)
+- **⏸️ Pause & Resume**: Long-running investigations automatically pause at iteration limits and can be resumed with one click. Preserves full conversation state and continues exactly where it left off. For parallel stages, only paused agents re-execute while completed results are preserved
+- **🏁 Force Conclusion**: Alternatively, configure automatic conclusion at iteration limits instead of pausing. Agents generate final summaries and complete the investigation gracefully. Configurable via hierarchical `force_conclusion_at_max_iterations` setting (system, agent, chain, stage, or parallel agent level)
 - **🔒 Data Masking**: Hybrid masking system combining code-based structural analysis (Kubernetes Secrets) with regex patterns (API keys, passwords, certificates, emails, SSH keys) to automatically protect sensitive data in MCP responses and alert payloads
-- **📝 Tool Result Summarization**: Automatic summarization of verbose MCP tool outputs using LLM-powered analysis. Reduces token usage and improves agent reasoning by focusing on relevant information while preserving full results in audit logs
+- **🔍 Tool Result Summarization**: Automatic summarization of verbose MCP tool outputs using LLM-powered analysis. Reduces token usage and improves agent reasoning by focusing on relevant information while preserving full results in audit logs
 
 ## Architecture
 
