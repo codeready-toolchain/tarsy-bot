@@ -115,43 +115,39 @@ class TestForcedConclusionConfiguration:
         """Test that forced conclusion is triggered when setting is enabled."""
         controller = TestReactController(mock_llm_manager, mock_prompt_builder)
         
-        # Mock settings with forced conclusion enabled
-        with patch('tarsy.config.settings.get_settings') as mock_settings:
-            settings_mock = Mock()
-            settings_mock.force_conclusion_at_max_iterations = True
-            settings_mock.llm_iteration_timeout = 30
-            mock_settings.return_value = settings_mock
+        # Configure agent with forced conclusion enabled
+        sample_context.agent.get_force_conclusion = Mock(return_value=True)
+        
+        # Mock the final conclusion LLM call
+        original_generate = mock_llm_manager.generate_response.side_effect
+        
+        call_count = 0
+        async def mock_generate_with_conclusion(conversation, session_id, stage_execution_id=None, **kwargs):
+            nonlocal call_count
+            call_count += 1
             
-            # Mock the final conclusion LLM call
-            original_generate = mock_llm_manager.generate_response.side_effect
-            
-            call_count = 0
-            async def mock_generate_with_conclusion(conversation, session_id, stage_execution_id=None, **kwargs):
-                nonlocal call_count
-                call_count += 1
-                
-                # Check if this is the forced conclusion call
-                interaction_type = kwargs.get('interaction_type')
-                if interaction_type == LLMInteractionType.FORCED_CONCLUSION.value:
-                    updated_conversation = LLMConversation(messages=conversation.messages.copy())
-                    updated_conversation.append_assistant_message("Based on available data, here's my conclusion...")
-                    return updated_conversation
-                else:
-                    # Regular incomplete response
-                    return await original_generate(conversation, session_id, stage_execution_id, **kwargs)
-            
-            mock_llm_manager.generate_response.side_effect = mock_generate_with_conclusion
-            
-            # Execute should return forced conclusion
-            result = await controller.execute_analysis_loop(sample_context)
-            
-            # Verify conclusion was returned
-            assert "conclusion" in result.lower()
-            # Verify the forced conclusion interaction type was used
-            assert any(
-                call.kwargs.get('interaction_type') == LLMInteractionType.FORCED_CONCLUSION.value
-                for call in mock_llm_manager.generate_response.call_args_list
-            )
+            # Check if this is the forced conclusion call
+            interaction_type = kwargs.get('interaction_type')
+            if interaction_type == LLMInteractionType.FORCED_CONCLUSION.value:
+                updated_conversation = LLMConversation(messages=conversation.messages.copy())
+                updated_conversation.append_assistant_message("Based on available data, here's my conclusion...")
+                return updated_conversation
+            else:
+                # Regular incomplete response
+                return await original_generate(conversation, session_id, stage_execution_id, **kwargs)
+        
+        mock_llm_manager.generate_response.side_effect = mock_generate_with_conclusion
+        
+        # Execute should return forced conclusion
+        result = await controller.execute_analysis_loop(sample_context)
+        
+        # Verify conclusion was returned
+        assert "conclusion" in result.lower()
+        # Verify the forced conclusion interaction type was used
+        assert any(
+            call.kwargs.get('interaction_type') == LLMInteractionType.FORCED_CONCLUSION.value
+            for call in mock_llm_manager.generate_response.call_args_list
+        )
     
     @pytest.mark.asyncio
     async def test_pause_when_setting_disabled(
@@ -162,20 +158,16 @@ class TestForcedConclusionConfiguration:
         
         controller = TestReactController(mock_llm_manager, mock_prompt_builder)
         
-        # Mock settings with forced conclusion disabled
-        with patch('tarsy.config.settings.get_settings') as mock_settings:
-            settings_mock = Mock()
-            settings_mock.force_conclusion_at_max_iterations = False
-            settings_mock.llm_iteration_timeout = 30
-            mock_settings.return_value = settings_mock
-            
-            # Should raise SessionPaused
-            with pytest.raises(SessionPaused) as exc_info:
-                await controller.execute_analysis_loop(sample_context)
-            
-            # Verify exception details
-            assert exc_info.value.iteration == 2
-            assert exc_info.value.recoverable is True
+        # Configure agent with forced conclusion disabled
+        sample_context.agent.get_force_conclusion = Mock(return_value=False)
+        
+        # Should raise SessionPaused
+        with pytest.raises(SessionPaused) as exc_info:
+            await controller.execute_analysis_loop(sample_context)
+        
+        # Verify exception details
+        assert exc_info.value.iteration == 2
+        assert exc_info.value.recoverable is True
     
     @pytest.mark.asyncio
     async def test_always_force_conclusion_for_chats(
@@ -219,32 +211,28 @@ class TestForcedConclusionConfiguration:
             agent=mock_agent
         )
         
-        # Mock settings with forced conclusion DISABLED
-        with patch('tarsy.config.settings.get_settings') as mock_settings:
-            settings_mock = Mock()
-            settings_mock.force_conclusion_at_max_iterations = False  # Explicitly disabled
-            settings_mock.llm_iteration_timeout = 30
-            mock_settings.return_value = settings_mock
-            
-            # Mock the final conclusion LLM call
-            original_generate = mock_llm_manager.generate_response.side_effect
-            
-            async def mock_generate_with_conclusion(conversation, session_id, stage_execution_id=None, **kwargs):
-                interaction_type = kwargs.get('interaction_type')
-                if interaction_type == LLMInteractionType.FORCED_CONCLUSION.value:
-                    updated_conversation = LLMConversation(messages=conversation.messages.copy())
-                    updated_conversation.append_assistant_message("Chat conclusion based on available data...")
-                    return updated_conversation
-                else:
-                    return await original_generate(conversation, session_id, stage_execution_id, **kwargs)
-            
-            mock_llm_manager.generate_response.side_effect = mock_generate_with_conclusion
-            
-            # Execute should return forced conclusion even with setting disabled
-            result = await controller.execute_analysis_loop(chat_context_obj)
-            
-            # Verify conclusion was returned (not SessionPaused)
-            assert "conclusion" in result.lower() or "chat" in result.lower()
+        # Configure agent with forced conclusion DISABLED (but chats should still force conclusion)
+        mock_agent.get_force_conclusion = Mock(return_value=False)
+        
+        # Mock the final conclusion LLM call
+        original_generate = mock_llm_manager.generate_response.side_effect
+        
+        async def mock_generate_with_conclusion(conversation, session_id, stage_execution_id=None, **kwargs):
+            interaction_type = kwargs.get('interaction_type')
+            if interaction_type == LLMInteractionType.FORCED_CONCLUSION.value:
+                updated_conversation = LLMConversation(messages=conversation.messages.copy())
+                updated_conversation.append_assistant_message("Chat conclusion based on available data...")
+                return updated_conversation
+            else:
+                return await original_generate(conversation, session_id, stage_execution_id, **kwargs)
+        
+        mock_llm_manager.generate_response.side_effect = mock_generate_with_conclusion
+        
+        # Execute should return forced conclusion even with setting disabled
+        result = await controller.execute_analysis_loop(chat_context_obj)
+        
+        # Verify conclusion was returned (not SessionPaused)
+        assert "conclusion" in result.lower() or "chat" in result.lower()
 
 
 @pytest.mark.unit
@@ -318,37 +306,34 @@ class TestForcedConclusionExecution:
         """Test forced conclusion successfully generates conclusion."""
         controller = TestReactController(mock_llm_manager, mock_prompt_builder)
         
-        with patch('tarsy.config.settings.get_settings') as mock_settings:
-            settings_mock = Mock()
-            settings_mock.force_conclusion_at_max_iterations = True
-            settings_mock.llm_iteration_timeout = 30
-            mock_settings.return_value = settings_mock
+        # Configure agent with forced conclusion enabled
+        sample_context.agent.get_force_conclusion = Mock(return_value=True)
+        
+        # Mock conclusion call
+        call_count = 0
+        async def mock_generate_with_conclusion(conversation, session_id, stage_execution_id=None, **kwargs):
+            nonlocal call_count
+            call_count += 1
             
-            # Mock conclusion call
-            call_count = 0
-            async def mock_generate_with_conclusion(conversation, session_id, stage_execution_id=None, **kwargs):
-                nonlocal call_count
-                call_count += 1
-                
-                interaction_type = kwargs.get('interaction_type')
-                updated_conversation = LLMConversation(messages=conversation.messages.copy())
-                
-                if interaction_type == LLMInteractionType.FORCED_CONCLUSION.value:
-                    updated_conversation.append_assistant_message(
-                        "Based on the investigation so far, here is my conclusion: The alert indicates a potential issue."
-                    )
-                else:
-                    updated_conversation.append_assistant_message("Thought: Investigating...")
-                
-                return updated_conversation
+            interaction_type = kwargs.get('interaction_type')
+            updated_conversation = LLMConversation(messages=conversation.messages.copy())
             
-            mock_llm_manager.generate_response.side_effect = mock_generate_with_conclusion
+            if interaction_type == LLMInteractionType.FORCED_CONCLUSION.value:
+                updated_conversation.append_assistant_message(
+                    "Based on the investigation so far, here is my conclusion: The alert indicates a potential issue."
+                )
+            else:
+                updated_conversation.append_assistant_message("Thought: Investigating...")
             
-            result = await controller.execute_analysis_loop(sample_context)
-            
-            # Verify conclusion was generated
-            assert "conclusion" in result.lower()
-            assert "investigation" in result.lower()
+            return updated_conversation
+        
+        mock_llm_manager.generate_response.side_effect = mock_generate_with_conclusion
+        
+        result = await controller.execute_analysis_loop(sample_context)
+        
+        # Verify conclusion was generated
+        assert "conclusion" in result.lower()
+        assert "investigation" in result.lower()
     
     @pytest.mark.asyncio
     async def test_forced_conclusion_with_llm_timeout(
@@ -359,9 +344,12 @@ class TestForcedConclusionExecution:
         
         controller = TestReactController(mock_llm_manager, mock_prompt_builder)
         
+        # Configure agent with forced conclusion enabled
+        sample_context.agent.get_force_conclusion = Mock(return_value=True)
+        
+        # Mock settings with short timeout
         with patch('tarsy.config.settings.get_settings') as mock_settings:
             settings_mock = Mock()
-            settings_mock.force_conclusion_at_max_iterations = True
             settings_mock.llm_iteration_timeout = 0.1  # Very short timeout
             mock_settings.return_value = settings_mock
             
@@ -390,28 +378,25 @@ class TestForcedConclusionExecution:
         """Test graceful degradation when forced conclusion LLM call fails."""
         controller = TestReactController(mock_llm_manager, mock_prompt_builder)
         
-        with patch('tarsy.config.settings.get_settings') as mock_settings:
-            settings_mock = Mock()
-            settings_mock.force_conclusion_at_max_iterations = True
-            settings_mock.llm_iteration_timeout = 30
-            mock_settings.return_value = settings_mock
-            
-            # Mock LLM to fail on conclusion call
-            async def mock_generate_with_error(conversation, session_id, stage_execution_id=None, **kwargs):
-                interaction_type = kwargs.get('interaction_type')
-                if interaction_type == LLMInteractionType.FORCED_CONCLUSION.value:
-                    raise Exception("LLM API error")
-                else:
-                    updated_conversation = LLMConversation(messages=conversation.messages.copy())
-                    updated_conversation.append_assistant_message("Thought: Investigating...")
-                    return updated_conversation
-            
-            mock_llm_manager.generate_response.side_effect = mock_generate_with_error
-            
-            result = await controller.execute_analysis_loop(sample_context)
-            
-            # Verify fallback message
-            assert "iteration limit" in result.lower()
+        # Configure agent with forced conclusion enabled
+        sample_context.agent.get_force_conclusion = Mock(return_value=True)
+        
+        # Mock LLM to fail on conclusion call
+        async def mock_generate_with_error(conversation, session_id, stage_execution_id=None, **kwargs):
+            interaction_type = kwargs.get('interaction_type')
+            if interaction_type == LLMInteractionType.FORCED_CONCLUSION.value:
+                raise Exception("LLM API error")
+            else:
+                updated_conversation = LLMConversation(messages=conversation.messages.copy())
+                updated_conversation.append_assistant_message("Thought: Investigating...")
+                return updated_conversation
+        
+        mock_llm_manager.generate_response.side_effect = mock_generate_with_error
+        
+        result = await controller.execute_analysis_loop(sample_context)
+        
+        # Verify fallback message
+        assert "iteration limit" in result.lower()
 
 
 @pytest.mark.unit
@@ -527,36 +512,33 @@ class TestProviderConsistency:
         test_provider = "test-provider-gpt4"
         controller.set_llm_provider(test_provider)
         
-        with patch('tarsy.config.settings.get_settings') as mock_settings:
-            settings_mock = Mock()
-            settings_mock.force_conclusion_at_max_iterations = True
-            settings_mock.llm_iteration_timeout = 30
-            mock_settings.return_value = settings_mock
-            
-            # Execute analysis loop (will reach max iterations and force conclusion)
-            await controller.execute_analysis_loop(sample_context)
-            
-            # Get all calls to generate_response
-            calls = mock_llm_manager.generate_response.call_args_list
-            
-            # Should have at least 2 calls: 1 investigation + 1 forced conclusion
-            assert len(calls) >= 2
-            
-            # Extract provider parameter from each call
-            providers_used = [call.kwargs.get('provider') for call in calls]
-            
-            # All calls should use the same provider
-            assert all(p == test_provider for p in providers_used), \
-                f"Expected all calls to use provider '{test_provider}', but got: {providers_used}"
-            
-            # Verify the forced conclusion call specifically
-            forced_conclusion_calls = [
-                call for call in calls 
-                if call.kwargs.get('interaction_type') == LLMInteractionType.FORCED_CONCLUSION.value
-            ]
-            assert len(forced_conclusion_calls) == 1, "Should have exactly one forced conclusion call"
-            assert forced_conclusion_calls[0].kwargs.get('provider') == test_provider, \
-                f"Forced conclusion should use provider '{test_provider}'"
+        # Configure agent with forced conclusion enabled
+        sample_context.agent.get_force_conclusion = Mock(return_value=True)
+        
+        # Execute analysis loop (will reach max iterations and force conclusion)
+        await controller.execute_analysis_loop(sample_context)
+        
+        # Get all calls to generate_response
+        calls = mock_llm_manager.generate_response.call_args_list
+        
+        # Should have at least 2 calls: 1 investigation + 1 forced conclusion
+        assert len(calls) >= 2
+        
+        # Extract provider parameter from each call
+        providers_used = [call.kwargs.get('provider') for call in calls]
+        
+        # All calls should use the same provider
+        assert all(p == test_provider for p in providers_used), \
+            f"Expected all calls to use provider '{test_provider}', but got: {providers_used}"
+        
+        # Verify the forced conclusion call specifically
+        forced_conclusion_calls = [
+            call for call in calls 
+            if call.kwargs.get('interaction_type') == LLMInteractionType.FORCED_CONCLUSION.value
+        ]
+        assert len(forced_conclusion_calls) == 1, "Should have exactly one forced conclusion call"
+        assert forced_conclusion_calls[0].kwargs.get('provider') == test_provider, \
+            f"Forced conclusion should use provider '{test_provider}'"
     
     @pytest.mark.asyncio
     async def test_forced_conclusion_respects_none_provider(
@@ -568,19 +550,16 @@ class TestProviderConsistency:
         # Explicitly set provider to None (use global default)
         controller.set_llm_provider(None)
         
-        with patch('tarsy.config.settings.get_settings') as mock_settings:
-            settings_mock = Mock()
-            settings_mock.force_conclusion_at_max_iterations = True
-            settings_mock.llm_iteration_timeout = 30
-            mock_settings.return_value = settings_mock
-            
-            # Execute analysis loop
-            await controller.execute_analysis_loop(sample_context)
-            
-            # Get all calls to generate_response
-            calls = mock_llm_manager.generate_response.call_args_list
-            
-            # All calls should have provider=None
-            providers_used = [call.kwargs.get('provider') for call in calls]
-            assert all(p is None for p in providers_used), \
-                f"Expected all calls to use provider=None (global default), but got: {providers_used}"
+        # Configure agent with forced conclusion enabled
+        sample_context.agent.get_force_conclusion = Mock(return_value=True)
+        
+        # Execute analysis loop
+        await controller.execute_analysis_loop(sample_context)
+        
+        # Get all calls to generate_response
+        calls = mock_llm_manager.generate_response.call_args_list
+        
+        # All calls should have provider=None
+        providers_used = [call.kwargs.get('provider') for call in calls]
+        assert all(p is None for p in providers_used), \
+            f"Expected all calls to use provider=None (global default), but got: {providers_used}"

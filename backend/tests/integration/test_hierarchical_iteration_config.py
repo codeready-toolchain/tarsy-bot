@@ -36,7 +36,7 @@ class TestHierarchicalIterationConfig:
         return MCPServerRegistry(config={}, configured_servers={})
 
     @pytest.fixture
-    def agent_factory(self, mock_llm_manager, mcp_registry):
+    def agent_factory(self, mock_llm_manager, mcp_registry, ensure_integration_test_isolation):
         """Create agent factory with test dependencies."""
         return AgentFactory(
             llm_manager=mock_llm_manager,
@@ -45,7 +45,7 @@ class TestHierarchicalIterationConfig:
         )
 
     def test_agent_respects_max_iterations_override(
-        self, agent_factory, mock_mcp_client, settings
+        self, agent_factory, mock_mcp_client, ensure_integration_test_isolation
     ):
         """Test that agent instance respects max_iterations override."""
         # Create agent with default settings
@@ -54,8 +54,8 @@ class TestHierarchicalIterationConfig:
             mcp_client=mock_mcp_client
         )
         
-        # Should have system default
-        assert agent.max_iterations == 30
+        # Should have mock settings default (3)
+        assert agent.max_iterations == 3
         
         # Override with higher value
         agent_with_override = agent_factory.get_agent(
@@ -67,7 +67,7 @@ class TestHierarchicalIterationConfig:
         assert agent_with_override.max_iterations == 50
 
     def test_agent_respects_force_conclusion_override(
-        self, agent_factory, mock_mcp_client, settings
+        self, agent_factory, mock_mcp_client, ensure_integration_test_isolation
     ):
         """Test that agent instance respects force_conclusion override."""
         # Create agent with default settings
@@ -76,7 +76,7 @@ class TestHierarchicalIterationConfig:
             mcp_client=mock_mcp_client
         )
         
-        # Should have system default
+        # Should have mock settings default (False)
         assert agent.get_force_conclusion() is False
         
         # Override with True
@@ -102,7 +102,7 @@ class TestHierarchicalIterationConfig:
         chain_config = ChainConfigModel(
             chain_id="test-chain",
             alert_types=["test"],
-            stages=[],
+            stages=[ChainStageConfigModel(name="dummy", agent="TestAgent")],
             max_iterations=25
         )
         

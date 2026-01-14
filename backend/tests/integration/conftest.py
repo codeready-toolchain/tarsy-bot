@@ -56,6 +56,7 @@ def mock_settings():
     settings.github_token = "mock-github-token"
     settings.llm_provider = "google-default"  # Updated to match EP-0013
     settings.max_llm_mcp_iterations = 3
+    settings.force_conclusion_at_max_iterations = False  # Default pause behavior
     # Add timeout settings for alert processing
     settings.alert_processing_timeout = 600  # Default 10 minute timeout
     settings.llm_iteration_timeout = 210  # Default 3.5 minute iteration timeout
@@ -119,6 +120,8 @@ def ensure_integration_test_isolation(mock_settings, monkeypatch):
     
     # Force patch the settings globally for every integration test
     monkeypatch.setattr("tarsy.config.settings.get_settings", lambda: mock_settings)
+    # Also patch where it's imported in base_agent
+    monkeypatch.setattr("tarsy.agents.base_agent.get_settings", lambda: mock_settings)
     
     # Also ensure environment variables don't leak from e2e tests
     monkeypatch.delenv("HISTORY_DATABASE_URL", raising=False)
@@ -491,6 +494,7 @@ def mock_chain_registry():
 def mock_agent_factory(mock_llm_manager, mock_mcp_client):
     """Mock agent factory."""
     factory = Mock(spec=AgentFactory)
+    factory.agent_configs = {}  # Empty dict for hierarchical iteration config
     
     # Create a semi-mocked agent that calls dependencies but returns controlled results
     def create_mock_agent(agent_class_name, iteration_strategy=None):
@@ -842,10 +846,10 @@ def mock_agent_factory(mock_llm_manager, mock_mcp_client):
         return mock_agent
     
     # Make get_agent synchronous to match AlertService expectations
-    def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None):
+    def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None, max_iterations=None, force_conclusion=None):
         return create_mock_agent(agent_identifier, iteration_strategy)
     
-    def mock_create_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None):
+    def mock_create_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None, max_iterations=None, force_conclusion=None):
         return create_mock_agent(agent_identifier, iteration_strategy)
     
     factory.get_agent = Mock(side_effect=mock_get_agent)
