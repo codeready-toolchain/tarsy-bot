@@ -80,6 +80,19 @@ class SessionProgressUpdateEvent(BaseEvent):
     session_id: str = Field(description="Session identifier")
     phase: str = Field(description="Processing phase from ProgressPhase enum")
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="Additional phase-specific metadata")
+    # Parallel execution metadata (for per-agent status tracking)
+    stage_execution_id: Optional[str] = Field(
+        default=None, description="Stage execution identifier (child execution ID for parallel stages)"
+    )
+    parent_stage_execution_id: Optional[str] = Field(
+        default=None, description="Parent stage execution ID for parallel child stages"
+    )
+    parallel_index: Optional[int] = Field(
+        default=None, description="Position in parallel group (1-N for parallel children, None for single stages)"
+    )
+    agent_name: Optional[str] = Field(
+        default=None, description="Agent name for this execution"
+    )
 
 
 class SessionCancelRequestedEvent(BaseEvent):

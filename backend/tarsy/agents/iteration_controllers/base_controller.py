@@ -322,10 +322,17 @@ class IterationController(ABC):
         
         # Publish progress update for "Concluding..." status in dashboard
         try:
+            # Get parallel execution metadata from agent if available
+            parallel_meta = getattr(context.agent, '_parallel_metadata', None)
+            
             await publish_session_progress_update(
                 context.session_id,
                 phase=ProgressPhase.CONCLUDING,
-                metadata={"iteration": iteration}
+                metadata={"iteration": iteration},
+                stage_execution_id=getattr(context.agent, '_current_stage_execution_id', None),
+                parent_stage_execution_id=parallel_meta.parent_stage_execution_id if parallel_meta else None,
+                parallel_index=parallel_meta.parallel_index if parallel_meta else None,
+                agent_name=parallel_meta.agent_name if parallel_meta else None
             )
         except Exception as e:
             if logger:

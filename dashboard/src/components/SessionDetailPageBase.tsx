@@ -91,7 +91,7 @@ const TimelineSkeleton = () => (
 
 interface SessionDetailPageBaseProps {
   viewType: 'conversation' | 'technical';
-  timelineComponent: (session: DetailedSession, autoScroll?: boolean, progressStatus?: string) => ReactNode;
+  timelineComponent: (session: DetailedSession, autoScroll?: boolean, progressStatus?: string, agentProgressStatuses?: Map<string, string>) => ReactNode;
   timelineSkeleton?: ReactNode;
   onViewChange?: (newView: 'conversation' | 'technical') => void;
 }
@@ -156,7 +156,9 @@ function SessionDetailPageBase({
   const [shouldExpandChat, setShouldExpandChat] = useState(false);
   
   // Track current progress status message (Investigating/Synthesizing/Summarizing)
+  // For parallel agents, track per-agent status by stage_execution_id
   const [progressStatus, setProgressStatus] = useState<string>(ProgressStatusMessage.PROCESSING);
+  const [agentProgressStatuses, setAgentProgressStatuses] = useState<Map<string, string>>(new Map());
   
   // Track previous session status to detect transitions
   const prevStatusRef = useRef<string | undefined>(undefined);
@@ -405,8 +407,23 @@ function SessionDetailPageBase({
       
       // Update progress status based on event
       if (eventType.startsWith('stage.') || eventType === 'session.progress_update') {
-        const newStatus = mapEventToProgressStatus(update);
-        setProgressStatus(newStatus);
+        // Check if this is a parallel agent progress update
+        if (eventType === 'session.progress_update' && update.stage_execution_id && update.parallel_index) {
+          // Per-agent status update for parallel execution
+          const statusInfo = mapEventToProgressStatus(update, true);
+          if (statusInfo.stageExecutionId) {
+            console.log(`📊 Per-agent status update: ${statusInfo.agentName} (${statusInfo.stageExecutionId}) -> ${statusInfo.status}`);
+            setAgentProgressStatuses(prev => {
+              const newMap = new Map(prev);
+              newMap.set(statusInfo.stageExecutionId!, statusInfo.status);
+              return newMap;
+            });
+          }
+        } else {
+          // Session-level status update (non-parallel or stage events)
+          const newStatus = mapEventToProgressStatus(update);
+          setProgressStatus(newStatus);
+        }
       }
       
       // Handle chat events (EP-0027)
@@ -798,7 +815,7 @@ function SessionDetailPageBase({
             {/* Timeline Content - Conditional based on view type */}
             {session.stages && session.stages.length > 0 ? (
               <Suspense fallback={timelineSkeleton}>
-                {timelineComponent(session, autoScrollEnabled, progressStatus)}
+                {timelineComponent(session, autoScrollEnabled, progressStatus, agentProgressStatuses)}
               </Suspense>
             ) : (
               <Alert severity="error" sx={{ mb: 2 }}>

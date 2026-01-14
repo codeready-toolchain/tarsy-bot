@@ -111,6 +111,7 @@ interface ConversationTimelineProps {
   session: DetailedSession;
   autoScroll?: boolean;
   progressStatus?: string;
+  agentProgressStatuses?: Map<string, string>;
 }
 
 // Extended streaming item for ConversationTimeline
@@ -359,7 +360,8 @@ export function cleanupOldSessionEntries() {
 function ConversationTimeline({ 
   session, 
   autoScroll = true, // Auto-scroll handled by centralized system
-  progressStatus = ProgressStatusMessage.PROCESSING
+  progressStatus = ProgressStatusMessage.PROCESSING,
+  agentProgressStatuses = new Map()
 }: ConversationTimelineProps) {
   // Suppress unused warning - autoScroll is part of the interface but handled centrally
   void autoScroll;
@@ -1337,6 +1339,7 @@ function ConversationTimeline({
                             onToggleItemExpansion={handleToggleItemExpansion}
                             expandAllReasoning={expandAllReasoning}
                             isItemCollapsible={isItemCollapsible}
+                            agentProgressStatuses={agentProgressStatuses}
                           />
                         ) : (
                           <Box sx={{ p: 2, color: 'error.main' }}>

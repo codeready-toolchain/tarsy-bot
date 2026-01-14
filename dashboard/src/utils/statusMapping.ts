@@ -41,37 +41,61 @@ export const ProgressStatusMessage = {
 } as const;
 
 /**
+ * Progress status with optional agent context for parallel execution.
+ */
+export interface ProgressStatusInfo {
+  status: string;
+  stageExecutionId?: string;
+  parentStageExecutionId?: string;
+  parallelIndex?: number;
+  agentName?: string;
+}
+
+/**
  * Maps backend event data to user-friendly progress status messages.
  * Supports regular stages, parallel stages, synthesis, and executive summary.
  * 
  * @param event - WebSocket event data
- * @returns User-friendly status message
+ * @returns User-friendly status message (legacy) or status info with agent context
  */
-export function mapEventToProgressStatus(event: any): string {
+export function mapEventToProgressStatus(event: any): string;
+export function mapEventToProgressStatus(event: any, includeAgentContext: true): ProgressStatusInfo;
+export function mapEventToProgressStatus(event: any, includeAgentContext?: boolean): string | ProgressStatusInfo {
   const eventType = event.type || '';
+  let statusMessage: string = ProgressStatusMessage.PROCESSING;
   
   // Explicit progress update event (e.g., distilling, finalizing)
   if (eventType === 'session.progress_update') {
     const phase = event.phase || event.data?.phase;
-    if (phase === ProgressPhase.CONCLUDING) return ProgressStatusMessage.CONCLUDING;        // Forced conclusion at iteration limit
-    if (phase === ProgressPhase.DISTILLING) return ProgressStatusMessage.DISTILLING;        // MCP tool result summarization
-    if (phase === ProgressPhase.FINALIZING) return ProgressStatusMessage.FINALIZING;        // Executive summary generation
-    if (phase === ProgressPhase.SYNTHESIZING) return ProgressStatusMessage.SYNTHESIZING;
-    if (phase === ProgressPhase.INVESTIGATING) return ProgressStatusMessage.INVESTIGATING;
+    if (phase === ProgressPhase.CONCLUDING) statusMessage = ProgressStatusMessage.CONCLUDING;        // Forced conclusion at iteration limit
+    else if (phase === ProgressPhase.DISTILLING) statusMessage = ProgressStatusMessage.DISTILLING;        // MCP tool result summarization
+    else if (phase === ProgressPhase.FINALIZING) statusMessage = ProgressStatusMessage.FINALIZING;        // Executive summary generation
+    else if (phase === ProgressPhase.SYNTHESIZING) statusMessage = ProgressStatusMessage.SYNTHESIZING;
+    else if (phase === ProgressPhase.INVESTIGATING) statusMessage = ProgressStatusMessage.INVESTIGATING;
   }
   
   // Stage-based detection
-  if (eventType === 'stage.started') {
+  else if (eventType === 'stage.started') {
     const stageName = event.stage_name || event.data?.stage_name;
     
     // Synthesis stage
-    if (stageName === StageName.SYNTHESIS) return ProgressStatusMessage.SYNTHESIZING;
-    
+    if (stageName === StageName.SYNTHESIS) statusMessage = ProgressStatusMessage.SYNTHESIZING;
     // Any other stage (including parallel)
-    return ProgressStatusMessage.INVESTIGATING;
+    else statusMessage = ProgressStatusMessage.INVESTIGATING;
   }
   
-  // Default fallback
-  return ProgressStatusMessage.PROCESSING;
+  // Return with agent context if requested
+  if (includeAgentContext) {
+    return {
+      status: statusMessage,
+      stageExecutionId: event.stage_execution_id,
+      parentStageExecutionId: event.parent_stage_execution_id,
+      parallelIndex: event.parallel_index,
+      agentName: event.agent_name
+    };
+  }
+  
+  // Legacy return: just the status string
+  return statusMessage;
 }
 

@@ -43,6 +43,8 @@ interface ParallelStageReasoningTabsProps {
   onToggleItemExpansion?: (item: ChatFlowItemData) => void;
   expandAllReasoning?: boolean;
   isItemCollapsible?: (item: ChatFlowItemData) => boolean;
+  // Per-agent progress statuses
+  agentProgressStatuses?: Map<string, string>;
 }
 
 interface TabPanelProps {
@@ -109,6 +111,7 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
   onToggleItemExpansion,
   expandAllReasoning = false,
   isItemCollapsible,
+  agentProgressStatuses = new Map(),
 }) => {
   const [selectedTab, setSelectedTab] = useState(0);
   const [cancelingAgents, setCancelingAgents] = useState<Set<string>>(new Set());
@@ -319,6 +322,16 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
                     color={statusColor as any}
                     sx={{ height: 18, fontSize: '0.65rem' }}
                   />
+                  {/* Show per-agent progress status if available (for active agents) */}
+                  {execution.stageExecution.status === 'active' && agentProgressStatuses.has(execution.executionId) && (
+                    <Chip
+                      label={agentProgressStatuses.get(execution.executionId)}
+                      size="small"
+                      color="info"
+                      variant="outlined"
+                      sx={{ height: 18, fontSize: '0.65rem', fontStyle: 'italic' }}
+                    />
+                  )}
                 </Box>
                 
                 {/* Token Usage */}

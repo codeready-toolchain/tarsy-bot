@@ -701,11 +701,16 @@ class BaseAgent(ABC):
                 # Wrap with timeout to catch cases where MCP client's internal timeout fails
                 # MCP client uses a single 60s timeout with no retries, so allow ~10s overhead
                 try:
+                    # Extract parallel metadata for progress updates
+                    parallel_meta = self._parallel_metadata
                     result = await asyncio.wait_for(
                         self.mcp_client.call_tool(
                             server_name, tool_name, tool_params, session_id, 
                             self._current_stage_execution_id, investigation_conversation,
-                            mcp_selection, self._configured_servers
+                            mcp_selection, self._configured_servers,
+                            parallel_meta.parent_stage_execution_id if parallel_meta else None,
+                            parallel_meta.parallel_index if parallel_meta else None,
+                            parallel_meta.agent_name if parallel_meta else None
                         ),
                         timeout=mcp_timeout  # Wraps MCP call (no retries) with ~10s overhead
                     )

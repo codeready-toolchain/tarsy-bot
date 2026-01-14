@@ -655,7 +655,14 @@ class MCPClient:
             logger.debug(f"✗ Failed to initialize {server_id}: {extract_error_details(e)}")
             return False
     
-    async def _set_investigating_status(self, session_id: str) -> None:
+    async def _set_investigating_status(
+        self, 
+        session_id: str,
+        stage_execution_id: Optional[str] = None,
+        parent_stage_execution_id: Optional[str] = None,
+        parallel_index: Optional[int] = None,
+        agent_name: Optional[str] = None
+    ) -> None:
         """
         Set session status to INVESTIGATING (e.g., after distilling completes).
         
@@ -664,6 +671,10 @@ class MCPClient:
         
         Args:
             session_id: Session ID for status update
+            stage_execution_id: Stage execution identifier (for parallel child stages)
+            parent_stage_execution_id: Parent stage execution ID (for parallel child stages)
+            parallel_index: Position in parallel group (1-N for parallel children)
+            agent_name: Agent name for this execution (for parallel agents)
         """
         try:
             from tarsy.models.constants import ProgressPhase
@@ -671,7 +682,11 @@ class MCPClient:
             await publish_session_progress_update(
                 session_id,
                 phase=ProgressPhase.INVESTIGATING,
-                metadata=None
+                metadata=None,
+                stage_execution_id=stage_execution_id,
+                parent_stage_execution_id=parent_stage_execution_id,
+                parallel_index=parallel_index,
+                agent_name=agent_name
             )
         except Exception as e:
             # Non-critical - don't fail the investigation if status update fails
@@ -685,7 +700,10 @@ class MCPClient:
         investigation_conversation: 'LLMConversation',
         session_id: str,
         stage_execution_id: Optional[str] = None,
-        mcp_event_id: Optional[str] = None
+        mcp_event_id: Optional[str] = None,
+        parent_stage_execution_id: Optional[str] = None,
+        parallel_index: Optional[int] = None,
+        agent_name: Optional[str] = None
     ) -> Dict[str, Any]:
         """Apply summarization if result exceeds size threshold.
         
@@ -733,7 +751,11 @@ class MCPClient:
             await publish_session_progress_update(
                 session_id,
                 phase=ProgressPhase.DISTILLING,
-                metadata={"tool": f"{server_name}.{tool_name}", "tokens": estimated_tokens}
+                metadata={"tool": f"{server_name}.{tool_name}", "tokens": estimated_tokens},
+                stage_execution_id=stage_execution_id,
+                parent_stage_execution_id=parent_stage_execution_id,
+                parallel_index=parallel_index,
+                agent_name=agent_name
             )
             
             # Publish immediate placeholder to frontend for instant feedback
@@ -757,7 +779,9 @@ class MCPClient:
                 error_msg = f"Summarization exceeded {summarization_timeout}s timeout for {server_name}.{tool_name}"
                 logger.error(error_msg)
                 # Set back to investigating status on timeout
-                await self._set_investigating_status(session_id)
+                await self._set_investigating_status(
+                    session_id, stage_execution_id, parent_stage_execution_id, parallel_index, agent_name
+                )
                 return {
                     "result": f"Error: Summarization timed out after {summarization_timeout}s. Original result too large ({estimated_tokens} tokens)."
                 }
@@ -765,7 +789,9 @@ class MCPClient:
             logger.info(f"Successfully summarized {server_name}.{tool_name} from {estimated_tokens} to ~{max_summary_tokens} tokens")
             
             # Set back to investigating status
-            await self._set_investigating_status(session_id)
+            await self._set_investigating_status(
+                session_id, stage_execution_id, parent_stage_execution_id, parallel_index, agent_name
+            )
             
             return summarized
             
@@ -773,7 +799,9 @@ class MCPClient:
             error_details = extract_error_details(e)
             logger.error(f"Failed to summarize MCP result {server_name}.{tool_name}: {error_details}")
             # Set back to investigating status on error
-            await self._set_investigating_status(session_id)
+            await self._set_investigating_status(
+                session_id, stage_execution_id, parent_stage_execution_id, parallel_index, agent_name
+            )
             # Return error message as result for graceful degradation
             return {
                 "result": f"Error: Failed to summarize large result ({estimated_tokens} tokens). Summarization error: {str(e)}"
@@ -819,7 +847,10 @@ class MCPClient:
         stage_execution_id: Optional[str] = None, 
         investigation_conversation: Optional['LLMConversation'] = None,
         mcp_selection: Optional['MCPSelectionConfig'] = None,
-        configured_servers: Optional[List[str]] = None
+        configured_servers: Optional[List[str]] = None,
+        parent_stage_execution_id: Optional[str] = None,
+        parallel_index: Optional[int] = None,
+        agent_name: Optional[str] = None
     ) -> Dict[str, Any]:
         """Call a specific tool on an MCP server with optional investigation context for summarization.
         
@@ -837,6 +868,9 @@ class MCPClient:
             investigation_conversation: Optional ReAct conversation for context-aware summarization
             mcp_selection: Optional MCP selection config to validate tool calls against (user override)
             configured_servers: Optional list of agent's configured servers (fallback if no mcp_selection)
+            parent_stage_execution_id: Parent stage execution ID (for parallel child stages)
+            parallel_index: Position in parallel group (1-N for parallel children)
+            agent_name: Agent name for this execution (for parallel agents)
         """
         if not self._initialized:
             await self.initialize()
@@ -976,7 +1010,8 @@ class MCPClient:
         if actual_result and investigation_conversation:
             summarized_result = await self._maybe_summarize_result(
                 server_name, tool_name, actual_result, investigation_conversation, 
-                session_id, stage_execution_id, mcp_event_id
+                session_id, stage_execution_id, mcp_event_id,
+                parent_stage_execution_id, parallel_index, agent_name
             )
             # Return summary for agent conversation
             return summarized_result

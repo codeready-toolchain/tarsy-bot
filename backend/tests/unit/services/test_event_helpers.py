@@ -761,6 +761,49 @@ class TestPublishSessionProgressUpdate:
             # Should not raise
             await publish_session_progress_update("test-session-123", ProgressPhase.INVESTIGATING)
 
+    @pytest.mark.asyncio
+    async def test_publishes_progress_update_with_parallel_metadata(self) -> None:
+        """Test that it includes parallel execution metadata when provided."""
+        mock_session = AsyncMock()
+        mock_session_factory = Mock(return_value=mock_session)
+        mock_session.__aenter__ = AsyncMock(return_value=mock_session)
+        mock_session.__aexit__ = AsyncMock()
+
+        with patch("tarsy.services.events.event_helpers.get_async_session_factory", return_value=mock_session_factory), \
+             patch("tarsy.services.events.event_helpers.publish_event", new_callable=AsyncMock) as mock_publish:
+            await publish_session_progress_update(
+                "test-session-123",
+                ProgressPhase.DISTILLING,
+                metadata={"tool": "kubectl.get_pods", "tokens": 5000},
+                stage_execution_id="child-exec-456",
+                parent_stage_execution_id="parent-exec-123",
+                parallel_index=2,
+                agent_name="KubernetesAgent"
+            )
+
+            # Should publish to both channels
+            assert mock_publish.call_count == 2
+            
+            # Verify parallel metadata is included in first call
+            first_call = mock_publish.call_args_list[0]
+            event = first_call[0][2]
+            assert event.session_id == "test-session-123"
+            assert event.phase == "distilling"
+            assert event.stage_execution_id == "child-exec-456"
+            assert event.parent_stage_execution_id == "parent-exec-123"
+            assert event.parallel_index == 2
+            assert event.agent_name == "KubernetesAgent"
+            
+            # Verify parallel metadata is also included in second call
+            second_call = mock_publish.call_args_list[1]
+            event = second_call[0][2]
+            assert event.session_id == "test-session-123"
+            assert event.phase == "distilling"
+            assert event.stage_execution_id == "child-exec-456"
+            assert event.parent_stage_execution_id == "parent-exec-123"
+            assert event.parallel_index == 2
+            assert event.agent_name == "KubernetesAgent"
+
 
 @pytest.mark.unit
 class TestPublishAgentCancelled:
