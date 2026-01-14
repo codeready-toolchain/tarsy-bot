@@ -240,6 +240,64 @@ class TestAlertServiceAsyncInitialization:
 
 
 @pytest.mark.unit
+class TestChainSelection:
+    """Test chain selection functionality."""
+
+    @pytest.fixture
+    def alert_service(self):
+        """Create AlertService with mocked chain registry."""
+        from tarsy.services.chain_registry import ChainRegistry
+        
+        mock_settings = MockFactory.create_mock_settings()
+        service = AlertService(mock_settings)
+        
+        # Mock chain registry
+        mock_chain_registry = Mock(spec=ChainRegistry)
+        service.chain_registry = mock_chain_registry
+        
+        return service, mock_chain_registry
+
+    def test_get_chain_for_alert_valid_type(self, alert_service):
+        """Test get_chain_for_alert returns chain for valid alert type."""
+        service, mock_registry = alert_service
+        
+        # Arrange
+        expected_chain = ChainConfigModel(
+            chain_id="test-chain",
+            alert_types=["kubernetes"],
+            stages=[
+                ChainStageConfigModel(
+                    name="analysis",
+                    agent="KubernetesAgent"
+                )
+            ]
+        )
+        mock_registry.get_chain_for_alert_type.return_value = expected_chain
+        
+        # Act
+        result = service.get_chain_for_alert("kubernetes")
+        
+        # Assert
+        assert result == expected_chain
+        mock_registry.get_chain_for_alert_type.assert_called_once_with("kubernetes")
+
+    def test_get_chain_for_alert_invalid_type(self, alert_service):
+        """Test get_chain_for_alert raises ValueError for invalid alert type."""
+        service, mock_registry = alert_service
+        
+        # Arrange
+        mock_registry.get_chain_for_alert_type.side_effect = ValueError(
+            "No chain found for alert type 'invalid_type'"
+        )
+        
+        # Act & Assert
+        with pytest.raises(ValueError, match="No chain found for alert type"):
+            service.get_chain_for_alert("invalid_type")
+        
+        mock_registry.get_chain_for_alert_type.assert_called_once_with("invalid_type")
+
+
+@pytest.mark.unit
 class TestAlertProcessing:
     """Test core alert processing functionality."""
     
