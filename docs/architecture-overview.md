@@ -144,6 +144,9 @@ When a stage reaches its maximum iteration limit, the system automatically pause
 
 **Hierarchical Iteration Configuration:** The `max_iterations` limit and pause/force-conclusion behavior (`force_conclusion_at_max_iterations`) are configurable at multiple levels with proper precedence: system settings → agent → chain → stage → parallel agent (highest precedence). This allows fine-grained control over investigation depth and behavior per use case.
 
+- **`max_iterations`**: Maximum investigation cycles allowed before requiring action (default: 30 at system level)
+- **`force_conclusion_at_max_iterations`**: When `true`, forces the agent to provide a final answer with available data at max iterations; when `false`, pauses the session for manual resume (default: `false` - pause behavior). Note: Chat conversations always use forced conclusion regardless of this setting.
+
 **Pause Metadata Fields:** When a session pauses, the following metadata is available in the UI and API responses:
 - `reason`: Why the session paused (currently `"max_iterations_reached"`)
 - `current_iteration`: The iteration count when paused (optional, included for iteration-based pauses)
@@ -238,15 +241,19 @@ The AI combines all four to make intelligent decisions about investigation appro
         - "MemoryPressure" 
         - "DiskSpaceWarning"
       llm_provider: "google-default"                      # Optional: chain-level default provider
+      max_iterations: 20                                  # Optional: chain-level iteration limit (default: 30)
+      force_conclusion_at_max_iterations: false           # Optional: pause instead of forcing conclusion (default: false)
       stages:
         - name: "k8s-data-collection"
           agent: "performance-k8s-data-collector"         # Only k8s MCP Server available for this agent
           iteration_strategy: "react-stage"               # Override default if needed
           llm_provider: "gemini-flash"                    # Optional: fast model for data collection
+          max_iterations: 10                              # Optional: stage-level override (higher precedence than chain)
         - name: "prometheus-metrics-collection"
           agent: "performance-prometheus-data-collector"  # Only prometheus MCP Server available for this agent
           iteration_strategy: "react-stage"
           # Uses chain-level provider (google-default) when not specified
+          # Uses chain-level max_iterations (20) when not specified
         - name: "trend-analysis"
           agent: "performance-analyzer"
           iteration_strategy: "react-final-analysis"
@@ -255,7 +262,9 @@ The AI combines all four to make intelligent decisions about investigation appro
       # Key architectural benefits:
       # - Each stage can have specialized MCP servers (focused expertise)
       # - Each stage can use different LLM providers (cost/performance optimization)
+      # - Hierarchical iteration limits enable fine-grained control (chain → stage → parallel agent)
       # - Chain-level provider serves as default for stages without explicit override
+      # - Chain-level max_iterations serves as default for stages without explicit override
       # - Follow-up chat uses chain-level provider by default (can be overridden in chat config)
       # - Executive summary uses chain-level provider
 
@@ -263,18 +272,24 @@ The AI combines all four to make intelligent decisions about investigation appro
     multi-perspective-investigation-chain:
       alert_types:
         - "ComplexOutage"
+      max_iterations: 25                                  # Optional: chain-level iteration limit
+      force_conclusion_at_max_iterations: true            # Optional: force conclusion instead of pause
       stages:
         - name: "parallel-investigation"
+          max_iterations: 15                              # Optional: stage-level override
           agents:  # Multiple agents run in parallel
             - name: "kubernetes"
               llm_provider: "openai"
+              max_iterations: 12                          # Optional: parallel agent-level override (highest precedence)
             - name: "vm"
               llm_provider: "anthropic"
+              # Uses stage-level max_iterations (15) when not specified
           success_policy: "any"  # Continue if at least one succeeds
           synthesis:
             iteration_strategy: "react-synthesis"  # Automatically synthesizes results
         - name: "recommendations"
           agent: "SynthesisAgent"
+          # Uses chain-level max_iterations (25) when not specified
       description: "Multi-domain parallel investigation with automatic synthesis"
   ```
 - **Integration Points**: Connect with existing monitoring and ticketing systems

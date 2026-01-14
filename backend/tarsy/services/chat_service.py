@@ -404,7 +404,6 @@ class ChatService:
             
             # 11. Resolve iteration configuration for chat agent
             from tarsy.services.iteration_config_resolver import IterationConfigResolver
-            from tarsy.config.settings import get_settings
             
             # Get agent definition if it exists
             agent_def = self.agent_factory.agent_configs.get(chat_agent_name) if self.agent_factory.agent_configs else None
@@ -414,7 +413,7 @@ class ChatService:
             
             # Resolve iteration config (chat uses chain config but no stage/parallel config)
             max_iter, force_conclude = IterationConfigResolver.resolve_iteration_config(
-                system_settings=get_settings(),
+                system_settings=self.settings,
                 agent_config=agent_def,
                 chain_config=chain_definition,
                 stage_config=None,  # Chat doesn't have stage config

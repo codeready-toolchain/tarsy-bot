@@ -361,8 +361,8 @@ Further investigation recommended for comprehensive analysis.""",
                 
             with patch.object(MCPClient, "initialize", mock_initialize), \
                  patch.object(MCPClient, "list_tools", mock_list_tools), \
-                 patch.object(MCPClient, "call_tool", mock_call_tool):
-                with E2ETestUtils.setup_runbook_service_patching("# Test Runbook\nThis is a test runbook for forced conclusion testing."):
+                 patch.object(MCPClient, "call_tool", mock_call_tool), \
+                 E2ETestUtils.setup_runbook_service_patching("# Test Runbook\nThis is a test runbook for forced conclusion testing."):
                     # ============================================================================
                     # STEP 1: Submit alert
                     # ============================================================================
@@ -454,7 +454,7 @@ Further investigation recommended for comprehensive analysis.""",
                     # Both should be completed (not paused)
                     assert k8s_execution["status"] == "completed", f"KubernetesAgent should complete, got: {k8s_execution['status']}"
                     assert log_execution["status"] == "completed", f"LogAgent should complete, got: {log_execution['status']}"
-                    print(f"  ✅ Both agents completed successfully")
+                    print("  ✅ Both agents completed successfully")
                     
                     # ============================================================================
                     # STEP 6: Verify KubernetesAgent forced conclusion
@@ -687,7 +687,7 @@ Further investigation recommended for comprehensive analysis.""",
         - Complete conversation validation (including forced conclusion prompt)
         - Exact token count verification
         """
-        # Note: Chat inherits max_iterations=2 from the chain's stage-level configuration
+        # Note: Chat inherits max_iterations=2 from the chain-level configuration
         # Chats ALWAYS use forced conclusion regardless of force_conclusion_at_max_iterations setting
         
         # Step 1: Check chat availability

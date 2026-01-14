@@ -99,7 +99,6 @@ class ParallelStageExecutor:
         # Normalize iteration_strategy to string to prevent Enum leakage
         # Resolve iteration configuration from hierarchy
         from tarsy.services.iteration_config_resolver import IterationConfigResolver
-        from tarsy.config.settings import get_settings
         
         execution_configs = []
         for agent_config in stage.agents:
@@ -108,7 +107,7 @@ class ParallelStageExecutor:
             
             # Resolve iteration config from hierarchy
             max_iter, force_conclude = IterationConfigResolver.resolve_iteration_config(
-                system_settings=get_settings(),
+                system_settings=self.settings,
                 agent_config=agent_def,
                 chain_config=chain_definition,
                 stage_config=stage,
@@ -154,14 +153,13 @@ class ParallelStageExecutor:
         
         # Resolve iteration configuration from hierarchy for replicas
         from tarsy.services.iteration_config_resolver import IterationConfigResolver
-        from tarsy.config.settings import get_settings
         
         # Get agent definition if it exists
         agent_def = self.agent_factory.agent_configs.get(stage.agent) if self.agent_factory.agent_configs else None
         
         # Resolve iteration config (replicas don't have parallel_agent_config)
         max_iter, force_conclude = IterationConfigResolver.resolve_iteration_config(
-            system_settings=get_settings(),
+            system_settings=self.settings,
             agent_config=agent_def,
             chain_config=chain_definition,
             stage_config=stage,
@@ -681,6 +679,9 @@ class ParallelStageExecutor:
         # 6. Build execution configs for ONLY paused children
         execution_configs = []
         
+        # Import IterationConfigResolver for proper config resolution on resume
+        from tarsy.services.iteration_config_resolver import IterationConfigResolver
+        
         for child in paused_children:
             # Determine agent configuration
             # For multi-agent: look up in stage.agents list
@@ -695,16 +696,50 @@ class ParallelStageExecutor:
                 if not agent_config:
                     raise ValueError(f"Agent config not found for {child.agent}")
                 
+                # Get agent definition if it exists
+                agent_def = (
+                    self.agent_factory.agent_configs.get(agent_config.name)
+                    if getattr(self.agent_factory, "agent_configs", None)
+                    else None
+                )
+                
+                # Resolve iteration config from hierarchy (same as normal execution)
+                max_iter, force_conclude = IterationConfigResolver.resolve_iteration_config(
+                    system_settings=self.settings,
+                    agent_config=agent_def,
+                    chain_config=chain_definition,
+                    stage_config=stage_config,
+                    parallel_agent_config=agent_config,
+                )
+                
                 # Normalize iteration_strategy to string to prevent Enum leakage
                 config = {
                     "agent_name": child.agent,
                     "llm_provider": agent_config.llm_provider or stage_config.llm_provider or chain_definition.llm_provider,
                     "iteration_strategy": self._normalize_iteration_strategy(agent_config.iteration_strategy),
                     "iteration_strategy_original": agent_config.iteration_strategy,  # Keep original for Pydantic validation
+                    "max_iterations": max_iter,
+                    "force_conclusion": force_conclude,
                 }
             else:  # REPLICA
                 # Extract base agent name (e.g., "KubernetesAgent-1" -> "KubernetesAgent")
                 base_agent = stage_config.agent
+                
+                # Get agent definition if it exists
+                agent_def = (
+                    self.agent_factory.agent_configs.get(base_agent)
+                    if getattr(self.agent_factory, "agent_configs", None)
+                    else None
+                )
+                
+                # Resolve iteration config from hierarchy (replicas don't have parallel_agent_config)
+                max_iter, force_conclude = IterationConfigResolver.resolve_iteration_config(
+                    system_settings=self.settings,
+                    agent_config=agent_def,
+                    chain_config=chain_definition,
+                    stage_config=stage_config,
+                    parallel_agent_config=None,  # Replicas don't have individual config
+                )
                 
                 # Normalize iteration_strategy to string to prevent Enum leakage
                 config = {
@@ -713,6 +748,8 @@ class ParallelStageExecutor:
                     "llm_provider": stage_config.llm_provider or chain_definition.llm_provider,
                     "iteration_strategy": self._normalize_iteration_strategy(stage_config.iteration_strategy),
                     "iteration_strategy_original": stage_config.iteration_strategy,  # Keep original for Pydantic validation
+                    "max_iterations": max_iter,
+                    "force_conclusion": force_conclude,
                 }
             
             execution_configs.append(config)
@@ -1042,14 +1079,13 @@ class ParallelStageExecutor:
             
             # Resolve iteration configuration for synthesis agent
             from tarsy.services.iteration_config_resolver import IterationConfigResolver
-            from tarsy.config.settings import get_settings
             
             # Get agent definition if it exists
             agent_def = self.agent_factory.agent_configs.get(synthesis_config.agent) if self.agent_factory.agent_configs else None
             
             # Resolve iteration config (synthesis doesn't have parallel_agent_config)
             max_iter, force_conclude = IterationConfigResolver.resolve_iteration_config(
-                system_settings=get_settings(),
+                system_settings=self.settings,
                 agent_config=agent_def,
                 chain_config=chain_definition,
                 stage_config=stage_config,
