@@ -38,6 +38,7 @@ import { useAdvancedAutoScroll } from '../hooks/useAdvancedAutoScroll';
 import { isTerminalSessionEvent } from '../utils/eventTypes';
 import { isActiveSessionStatus, isTerminalSessionStatus, SESSION_STATUS } from '../utils/statusConstants';
 import { mapEventToProgressStatus, ProgressStatusMessage, StageName, isTerminalProgressStatus } from '../utils/statusMapping';
+import { STAGE_STATUS } from '../utils/statusConstants';
 
 // Lazy load shared components
 const SessionHeader = lazy(() => import('./SessionHeader'));
@@ -184,16 +185,64 @@ function SessionDetailPageBase({
     if (!isActiveSessionStatus(session.status)) return;
     
     // Find the currently active stage
-    const activeStage = session.stages?.find((s: any) => s.status === 'active');
+    const activeStage = session.stages?.find((s: any) => s.status === STAGE_STATUS.ACTIVE);
     if (!activeStage) return;
     
     // Set initial status based on active stage type
     if (activeStage.stage_name === StageName.SYNTHESIS) {
-      console.log(`📊 Initial load: ${StageName.SYNTHESIS} stage active, setting ${ProgressStatusMessage.SYNTHESIZING}`);
       setProgressStatus(ProgressStatusMessage.SYNTHESIZING);
+    } else if (activeStage.parallel_executions && activeStage.parallel_executions.length > 0) {
+      // Parallel stage - set to Processing (we can't know exact per-agent phase from DB)
+      setProgressStatus(ProgressStatusMessage.PROCESSING);
     } else {
-      console.log(`📊 Initial load: ${activeStage.stage_name} stage active, setting ${ProgressStatusMessage.INVESTIGATING}`);
+      // Regular non-parallel stage
       setProgressStatus(ProgressStatusMessage.INVESTIGATING);
+    }
+  }, [session?.session_id, loading]); // Only run when session first loads
+  
+  // Initialize per-agent progress statuses for parallel executions on load
+  useEffect(() => {
+    if (!session || loading) return;
+    
+    // Only initialize if session is actively processing
+    if (!isActiveSessionStatus(session.status)) return;
+    
+    // Find parallel parent stages (active OR pending - might have active children)
+    const parallelStages = session.stages?.filter((s: any) => {
+      const hasParallelExecutions = s.parallel_executions && s.parallel_executions.length > 0;
+      const isRelevantStatus = s.status === STAGE_STATUS.ACTIVE || s.status === STAGE_STATUS.PENDING;
+      return isRelevantStatus && hasParallelExecutions;
+    });
+    
+    if (!parallelStages || parallelStages.length === 0) return;
+    
+    // Build initial Map from parallel executions' current state
+    const initialStatusMap = new Map<string, string>();
+    
+    for (const stage of parallelStages) {
+      if (!stage.parallel_executions) continue;
+      
+      for (const execution of stage.parallel_executions) {
+        // Set status based on execution state
+        if (execution.status === STAGE_STATUS.ACTIVE || execution.status === STAGE_STATUS.PENDING) {
+          // Active/pending parallel agents show Investigating
+          initialStatusMap.set(execution.execution_id, ProgressStatusMessage.INVESTIGATING);
+        } else if (execution.status === STAGE_STATUS.COMPLETED) {
+          // Completed agents get terminal status
+          initialStatusMap.set(execution.execution_id, ProgressStatusMessage.COMPLETED);
+        } else if (execution.status === STAGE_STATUS.FAILED) {
+          // Failed agents get terminal status
+          initialStatusMap.set(execution.execution_id, ProgressStatusMessage.FAILED);
+        } else if (execution.status === STAGE_STATUS.CANCELLED) {
+          // Cancelled agents get terminal status
+          initialStatusMap.set(execution.execution_id, ProgressStatusMessage.CANCELLED);
+        }
+      }
+    }
+    
+    // Only update if we found relevant parallel executions
+    if (initialStatusMap.size > 0) {
+      setAgentProgressStatuses(initialStatusMap);
     }
   }, [session?.session_id, loading]); // Only run when session first loads
   
@@ -434,13 +483,11 @@ function SessionDetailPageBase({
             // Update session-level status when FIRST parallel child update arrives
             const parentId = update.parent_stage_execution_id;
             if (parentId !== undefined && parentId !== null && parentId !== parallelStageStatusUpdated.current) {
-              console.log(`📊 First parallel child update - updating session status`);
               parallelStageStatusUpdated.current = parentId;
               setProgressStatus('Processing...');
             }
             const statusInfo = mapEventToProgressStatus(update, true);
             if (statusInfo.stageExecutionId) {
-              console.log(`📊 Per-agent status update: ${statusInfo.agentName} (${statusInfo.stageExecutionId}) -> ${statusInfo.status}`);
               setAgentProgressStatuses(prev => {
                 const newMap = new Map(prev);
                 newMap.set(statusInfo.stageExecutionId!, statusInfo.status);
@@ -454,7 +501,6 @@ function SessionDetailPageBase({
               // Set terminal status when this specific parallel child stage completes or fails
               // Use executionId (from stage_id or stage_execution_id) to match the key format from mapEventToProgressStatus
               const terminalStatus = eventType === 'stage.completed' ? ProgressStatusMessage.COMPLETED : ProgressStatusMessage.FAILED;
-              console.log(`📊 Setting terminal status for ${terminalStatus.toLowerCase()} stage: ${executionId}`);
               setAgentProgressStatuses(prev => {
                 const newMap = new Map(prev);
                 newMap.set(executionId, terminalStatus);
@@ -463,8 +509,6 @@ function SessionDetailPageBase({
             } else if (update.expected_parallel_count && update.expected_parallel_count > 0 && (update.parent_stage_execution_id === undefined || update.parent_stage_execution_id === null)) {
               // Clear all agent statuses when the parallel parent completes or fails
               // Parent stages have expected_parallel_count > 0 and no parent_stage_execution_id
-              const parentStatus = eventType === 'stage.completed' ? 'completed' : 'failed';
-              console.log(`📊 Parallel parent stage ${parentStatus} - clearing all agent statuses`);
               parallelStageStatusUpdated.current = null;
               setAgentProgressStatuses(new Map());
             }
@@ -870,8 +914,13 @@ function SessionDetailPageBase({
                 {(() => {
                   // Compute display status based on selected agent and parallel execution state
                   const displayStatus = (() => {
+                    // If Map is empty, we're not in parallel execution → use session-level status
+                    if (agentProgressStatuses.size === 0) {
+                      return progressStatus;
+                    }
+                    
                     if (!selectedAgentExecutionId) {
-                      // No agent selected, use session-level status
+                      // No agent selected in parallel context, use session-level status
                       return progressStatus;
                     }
                     
