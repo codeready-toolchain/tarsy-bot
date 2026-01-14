@@ -304,6 +304,40 @@ async def submit_alert(request: Request) -> AlertResponse:
             author=author  # Pass author to context
         )
         
+        # Get chain definition for this alert type to create session record
+        try:
+            chain_definition = alert_service.get_chain_for_alert(processing_alert.alert_type)
+        except ValueError as e:
+            logger.error(f"Chain selection failed: {str(e)}")
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": "Invalid alert type",
+                    "message": str(e),
+                    "field": "alert_type"
+                }
+            ) from e
+        
+        # Create session in database BEFORE returning to client
+        # This ensures the session exists when the frontend tries to fetch it
+        session_created = alert_service.session_manager.create_chain_history_session(
+            alert_context, 
+            chain_definition
+        )
+        
+        if not session_created:
+            logger.error(f"Failed to create session {session_id} in database")
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "error": "Session creation failed",
+                    "message": "Failed to create session record in database",
+                    "support_info": "Please check the server logs or contact support if this persists"
+                }
+            )
+        
+        logger.info(f"Created session {session_id} in database with status PENDING")
+        
         # Start background processing using callback from app state
         # This avoids circular import by accessing the callback through FastAPI app state
         process_callback = request.app.state.process_alert_callback
@@ -311,7 +345,7 @@ async def submit_alert(request: Request) -> AlertResponse:
         
         logger.info(f"Alert submitted with session_id: {session_id}")
         
-        # Return session_id immediately - client can use it right away
+        # Return session_id - session is guaranteed to exist in database
         return AlertResponse(
             session_id=session_id,
             status="queued",

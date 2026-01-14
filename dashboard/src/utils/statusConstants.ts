@@ -68,8 +68,6 @@ export type ChainOverallStatus = typeof CHAIN_OVERALL_STATUS[keyof typeof CHAIN_
 
 export const MANUAL_ALERT_APP_STATE = {
   FORM: 'form',
-  PROCESSING: 'processing',
-  COMPLETED: 'completed',
 } as const;
 
 export type ManualAlertAppState = typeof MANUAL_ALERT_APP_STATE[keyof typeof MANUAL_ALERT_APP_STATE];

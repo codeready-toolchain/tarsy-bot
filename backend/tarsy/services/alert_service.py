@@ -266,6 +266,25 @@ class AlertService:
             logger.error(f"Failed to initialize AlertService: {str(e)}")
             raise
     
+    def get_chain_for_alert(self, alert_type: str) -> "ChainConfigModel":
+        """
+        Get the chain definition for a given alert type.
+        
+        This method encapsulates the chain selection logic and can be called
+        from both the API endpoint (for early session creation) and the
+        background processing task.
+        
+        Args:
+            alert_type: The alert type to find a chain for
+            
+        Returns:
+            ChainConfigModel for the alert type
+            
+        Raises:
+            ValueError: If no chain is found for the alert type
+        """
+        return self.chain_registry.get_chain_for_alert_type(alert_type)
+    
     async def process_alert(
         self, 
         chain_context: ChainContext
@@ -299,7 +318,7 @@ class AlertService:
             
             # Step 3: Get chain for alert type
             try:
-                chain_definition = self.chain_registry.get_chain_for_alert_type(chain_context.processing_alert.alert_type)
+                chain_definition = self.get_chain_for_alert(chain_context.processing_alert.alert_type)
             except ValueError as e:
                 error_msg = str(e)
                 logger.error(f"Chain selection failed: {error_msg}")
@@ -311,11 +330,13 @@ class AlertService:
             
             logger.info(f"Selected chain '{chain_definition.chain_id}' for alert type '{chain_context.processing_alert.alert_type}'")
             
-            # Create history session with chain info
+            # Create history session with chain info (idempotent - skips if already exists)
+            # The session may have been created by the API endpoint before background processing started
             session_created = self.session_manager.create_chain_history_session(chain_context, chain_definition)
             
             # Mark session as being processed by this pod
-            if session_created and self.history_service:
+            # Note: We mark the session even if it wasn't created here (it may have been created by the endpoint)
+            if self.history_service:
                 from tarsy.main import get_pod_id
                 pod_id = get_pod_id()
                 

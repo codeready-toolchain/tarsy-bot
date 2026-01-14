@@ -690,13 +690,10 @@ export interface KeyValuePair {
 }
 
 export interface ManualAlertFormProps {
-  onAlertSubmitted: (alertResponse: AlertSubmissionResponse) => void;
+  // onAlertSubmitted is optional - form navigates directly to session detail page
+  onAlertSubmitted?: (alertResponse: AlertSubmissionResponse) => void;
 }
 
-export interface ProcessingStatusProps {
-  sessionId: string;
-  onComplete?: () => void;
-}
 
 // System Warning types
 export interface SystemWarning {

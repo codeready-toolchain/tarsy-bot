@@ -217,7 +217,7 @@ const isValidRunbookUrl = (url: string | null, approvedRunbooks: string[]): bool
   }
 };
 
-const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) => {
+const ManualAlertForm: React.FC<ManualAlertFormProps> = () => {
   const location = useLocation();
   const navigate = useNavigate();
   
@@ -461,20 +461,11 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
       // Submit alert
       const response = await apiClient.submitAlert(alertData);
       
-      setSuccess(`Alert submitted successfully! 
-        Session ID: ${response.session_id}
-        Status: ${response.status}
-        Message: ${response.message || 'Processing started'}`);
+      console.log(`Alert submitted successfully! Session ID: ${response.session_id}`);
       
-      onAlertSubmitted(response);
-
-      // Clear form on successful submission
-      setKeyValuePairs([
-        { id: generateId(), key: 'cluster', value: '' },
-        { id: generateId(), key: 'namespace', value: '' },
-        { id: generateId(), key: 'message', value: '' }
-      ]);
-      setMcpSelection(undefined);
+      // Navigate directly to session detail page
+      // The session is guaranteed to exist in the database
+      navigate(`/sessions/${response.session_id}`);
 
     } catch (error: any) {
       console.error('Error submitting alert:', error);
@@ -548,17 +539,12 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = ({ onAlertSubmitted }) =
       // Submit alert
       const response = await apiClient.submitAlert(alertData);
       
-      setSuccess(`Alert submitted successfully! 
-        Session ID: ${response.session_id}
-        Status: ${response.status}
-        Message: ${response.message || 'Processing started'}
-        Parsing: ${parsed.success ? 'Structured data extracted' : 'Sent as message field'}`);
+      console.log(`Alert submitted successfully! Session ID: ${response.session_id}`);
+      console.log(`Parsing: ${parsed.success ? 'Structured data extracted' : 'Sent as message field'}`);
       
-      onAlertSubmitted(response);
-
-      // Clear form on successful submission
-      setFreeText('');
-      setMcpSelection(undefined);
+      // Navigate directly to session detail page
+      // The session is guaranteed to exist in the database
+      navigate(`/sessions/${response.session_id}`);
 
     } catch (error: any) {
       console.error('Error submitting alert:', error);
