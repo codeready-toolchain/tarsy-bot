@@ -454,7 +454,9 @@ class TestStageExecutionEventHook:
                     chat_user_message_content=None,
                     chat_user_message_author=None,
                     parallel_type="single",
-                    expected_parallel_count=None
+                    expected_parallel_count=None,
+                    parent_stage_execution_id=None,
+                    parallel_index=0
                 )
                 mock_completed.assert_not_called()
     
@@ -512,7 +514,9 @@ class TestStageExecutionEventHook:
                         chat_user_message_content="What's causing the pod crash?",
                         chat_user_message_author="alice",
                         parallel_type="single",
-                        expected_parallel_count=None
+                        expected_parallel_count=None,
+                        parent_stage_execution_id=None,
+                        parallel_index=0
                     )
                     mock_completed.assert_not_called()
     
@@ -529,7 +533,9 @@ class TestStageExecutionEventHook:
                     stage_id="test-stage-execution-0",
                     stage_name="Test Stage",
                     status="completed",  # Verify it's a string, not enum
-                    chat_id=None
+                    chat_id=None,
+                    parent_stage_execution_id=None,
+                    parallel_index=0
                 )
     
     @pytest.mark.asyncio
@@ -545,7 +551,9 @@ class TestStageExecutionEventHook:
                     stage_id="test-stage-execution-0",
                     stage_name="Test Stage",
                     status="failed",  # Verify it's a string, not enum
-                    chat_id=None
+                    chat_id=None,
+                    parent_stage_execution_id=None,
+                    parallel_index=0
                 )
     
     @pytest.mark.asyncio
@@ -561,5 +569,7 @@ class TestStageExecutionEventHook:
                     stage_id="test-stage-execution-0",
                     stage_name="Test Stage",
                     status="partial",  # Verify it's a string, not enum
-                    chat_id=None
+                    chat_id=None,
+                    parent_stage_execution_id=None,
+                    parallel_index=0
                 )

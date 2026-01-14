@@ -401,7 +401,10 @@ class TestKubernetesAgentMCPIntegration:
             None,
             None,
             None,
-            ["kubernetes-server"]
+            ["kubernetes-server"],
+            None,  # parent_stage_execution_id
+            None,  # parallel_index
+            None   # agent_name
         )
     
     @pytest.mark.asyncio
@@ -414,7 +417,8 @@ class TestKubernetesAgentMCPIntegration:
         async def mock_call_tool_with_validation(
             server_name, tool_name, parameters, session_id=None,
             stage_execution_id=None, investigation_conversation=None,
-            mcp_selection=None, configured_servers=None
+            mcp_selection=None, configured_servers=None,
+            parent_stage_execution_id=None, parallel_index=None, agent_name=None
         ):
             if configured_servers and server_name not in configured_servers:
                 raise ValueError(
@@ -853,7 +857,10 @@ DOMAIN KNOWLEDGE:
             None,
             investigation_conversation,  # Investigation conversation should be passed
             None,
-            ["kubernetes-server"]
+            ["kubernetes-server"],
+            None,  # parent_stage_execution_id
+            None,  # parallel_index
+            None   # agent_name
         )
 
     @pytest.mark.asyncio

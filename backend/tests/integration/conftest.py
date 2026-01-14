@@ -399,7 +399,10 @@ def mock_mcp_client():
         stage_execution_id=None, 
         investigation_conversation=None,
         mcp_selection=None,
-        configured_servers=None
+        configured_servers=None,
+        parent_stage_execution_id=None,
+        parallel_index=None,
+        agent_name=None
     ):
         """Mock tool execution response - synchronous version."""
         # Validate tool call if mcp_selection or configured_servers are provided

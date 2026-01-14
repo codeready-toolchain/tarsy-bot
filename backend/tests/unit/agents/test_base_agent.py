@@ -282,7 +282,8 @@ class TestBaseAgentMCPIntegration:
         async def mock_call_tool_with_validation(
             server_name, tool_name, parameters, session_id=None,
             stage_execution_id=None, investigation_conversation=None,
-            mcp_selection=None, configured_servers=None
+            mcp_selection=None, configured_servers=None,
+            parent_stage_execution_id=None, parallel_index=None, agent_name=None
         ):
             # Validate like MCPClient does
             if mcp_selection is not None:
@@ -700,7 +701,8 @@ class TestBaseAgentMCPIntegration:
         assert results["test-server"][0]["result"] == {"result": "success"}
 
         mock_mcp_client.call_tool.assert_called_once_with(
-            "test-server", "kubectl-get", {"resource": "pods"}, "test-session-123", None, None, None, ["test-server"]
+            "test-server", "kubectl-get", {"resource": "pods"}, "test-session-123", None, None, None, ["test-server"],
+            None, None, None  # parent_stage_execution_id, parallel_index, agent_name
         )
 
     @pytest.mark.unit
@@ -1230,7 +1232,8 @@ class TestBaseAgentSummarization:
         
         # Verify MCP client was called with investigation conversation
         mock_mcp_client.call_tool.assert_called_once_with(
-            "test-server", "kubectl-get", {"resource": "pods"}, "test-session-summarization", None, investigation_conversation, None, ["test-server"]
+            "test-server", "kubectl-get", {"resource": "pods"}, "test-session-summarization", None, investigation_conversation, None, ["test-server"],
+            None, None, None  # parent_stage_execution_id, parallel_index, agent_name
         )
 
     @pytest.mark.asyncio
@@ -1290,7 +1293,8 @@ class TestBaseAgentSummarization:
         
         # Verify MCP client was called without investigation conversation (None)
         mock_mcp_client.call_tool.assert_called_once_with(
-            "test-server", "kubectl-get", {"resource": "nodes"}, "test-session-compat", None, None, None, ["test-server"]
+            "test-server", "kubectl-get", {"resource": "nodes"}, "test-session-compat", None, None, None, ["test-server"],
+            None, None, None  # parent_stage_execution_id, parallel_index, agent_name
         )
 
 
