@@ -290,6 +290,40 @@ describe('statusMapping', () => {
           agentName: 'database-agent',
         });
       });
+
+      it('should use stage_id as fallback when stage_execution_id is missing', () => {
+        const event = {
+          type: 'session.progress_update',
+          phase: 'concluding',
+          stage_id: 'stage-abc-123',
+          parent_stage_execution_id: 'parent-xyz',
+          parallel_index: 1,
+          agent_name: 'kubernetes-agent',
+        };
+        
+        const result = mapEventToProgressStatus(event, true);
+        
+        expect(result).toEqual({
+          status: 'Concluding...',
+          stageExecutionId: 'stage-abc-123', // Falls back to stage_id
+          parentStageExecutionId: 'parent-xyz',
+          parallelIndex: 1,
+          agentName: 'kubernetes-agent',
+        });
+      });
+
+      it('should prefer stage_execution_id over stage_id when both present', () => {
+        const event = {
+          type: 'session.progress_update',
+          phase: 'investigating',
+          stage_execution_id: 'exec-primary',
+          stage_id: 'stage-secondary',
+        };
+        
+        const result = mapEventToProgressStatus(event, true);
+        
+        expect(result).toHaveProperty('stageExecutionId', 'exec-primary');
+      });
     });
   });
 });

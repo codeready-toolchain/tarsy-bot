@@ -111,7 +111,8 @@ export function mapEventToProgressStatus(event: any, includeAgentContext?: boole
   if (includeAgentContext) {
     return {
       status: statusMessage,
-      stageExecutionId: event.stage_execution_id,
+      // Use same fallback logic as completion events: stage_execution_id || stage_id
+      stageExecutionId: event.stage_execution_id || event.stage_id,
       parentStageExecutionId: event.parent_stage_execution_id,
       parallelIndex: event.parallel_index,
       agentName: event.agent_name
