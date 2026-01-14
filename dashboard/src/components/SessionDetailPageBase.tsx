@@ -37,7 +37,7 @@ import type { DetailedSession } from '../types';
 import { useAdvancedAutoScroll } from '../hooks/useAdvancedAutoScroll';
 import { isTerminalSessionEvent } from '../utils/eventTypes';
 import { isActiveSessionStatus, isTerminalSessionStatus, SESSION_STATUS } from '../utils/statusConstants';
-import { mapEventToProgressStatus, ProgressStatusMessage, StageName } from '../utils/statusMapping';
+import { mapEventToProgressStatus, ProgressStatusMessage, StageName, isTerminalProgressStatus } from '../utils/statusMapping';
 
 // Lazy load shared components
 const SessionHeader = lazy(() => import('./SessionHeader'));
@@ -172,11 +172,6 @@ function SessionDetailPageBase({
   
   // Track currently selected agent execution ID for display purposes
   const [selectedAgentExecutionId, setSelectedAgentExecutionId] = useState<string | null>(null);
-  
-  // Helper to check if a status is terminal (agent finished)
-  const isTerminalStatus = (status: string): boolean => {
-    return status === 'Completed' || status === 'Failed' || status === 'Cancelled';
-  };
   
   // Track previous session status to detect transitions
   const prevStatusRef = useRef<string | undefined>(undefined);
@@ -426,8 +421,9 @@ function SessionDetailPageBase({
       // Update progress status based on event
       if (eventType.startsWith('stage.') || eventType === 'session.progress_update') {
         // Check if this is a parallel-related event (child or parent)
-        const isParallelChildUpdate = (eventType === 'session.progress_update' && update.stage_execution_id && update.parallel_index) || 
-                                      (eventType.startsWith('stage.') && update.parent_stage_execution_id);
+        // Use explicit presence checks to handle parallel_index === 0 correctly
+        const isParallelChildUpdate = (eventType === 'session.progress_update' && update.stage_execution_id !== undefined && update.stage_execution_id !== null && update.parallel_index !== undefined && update.parallel_index !== null) || 
+                                      (eventType.startsWith('stage.') && update.parent_stage_execution_id !== undefined && update.parent_stage_execution_id !== null);
         const isParallelParentEvent = eventType.startsWith('stage.') && update.expected_parallel_count && update.expected_parallel_count > 0;
         const isParallelUpdate = isParallelChildUpdate || isParallelParentEvent;
         
@@ -437,7 +433,7 @@ function SessionDetailPageBase({
           if (eventType === 'session.progress_update' && isParallelChildUpdate) {
             // Update session-level status when FIRST parallel child update arrives
             const parentId = update.parent_stage_execution_id;
-            if (parentId && parentId !== parallelStageStatusUpdated.current) {
+            if (parentId !== undefined && parentId !== null && parentId !== parallelStageStatusUpdated.current) {
               console.log(`📊 First parallel child update - updating session status`);
               parallelStageStatusUpdated.current = parentId;
               setProgressStatus('Processing...');
@@ -451,17 +447,22 @@ function SessionDetailPageBase({
                 return newMap;
               });
             }
-          } else if (eventType === 'stage.completed') {
-            if (update.stage_id && isParallelChildUpdate) {
-              // Set terminal status when this specific parallel child stage completes
-              console.log(`📊 Setting terminal status for completed stage: ${update.stage_id}`);
+          } else if (eventType === 'stage.completed' || eventType === 'stage.failed') {
+            if (update.stage_execution_id && isParallelChildUpdate) {
+              // Set terminal status when this specific parallel child stage completes or fails
+              // Use stage_execution_id to match the key format from mapEventToProgressStatus
+              const terminalStatus = eventType === 'stage.completed' ? ProgressStatusMessage.COMPLETED : ProgressStatusMessage.FAILED;
+              console.log(`📊 Setting terminal status for ${terminalStatus.toLowerCase()} stage: ${update.stage_execution_id}`);
               setAgentProgressStatuses(prev => {
                 const newMap = new Map(prev);
-                newMap.set(update.stage_id, 'Completed');
+                newMap.set(update.stage_execution_id, terminalStatus);
                 return newMap;
               });
-            } else if (!update.parent_stage_execution_id && update.parallel_index === 0) {
-              // Clear all agent statuses when the parallel parent completes
+            } else if (update.expected_parallel_count && update.expected_parallel_count > 0 && (update.parent_stage_execution_id === undefined || update.parent_stage_execution_id === null)) {
+              // Clear all agent statuses when the parallel parent completes or fails
+              // Parent stages have expected_parallel_count > 0 and no parent_stage_execution_id
+              const parentStatus = eventType === 'stage.completed' ? 'completed' : 'failed';
+              console.log(`📊 Parallel parent stage ${parentStatus} - clearing all agent statuses`);
               parallelStageStatusUpdated.current = null;
               setAgentProgressStatuses(new Map());
             }
@@ -541,7 +542,7 @@ function SessionDetailPageBase({
           };
           
           handleParallelStageStarted(parentStage);
-        } else if (eventType === 'stage.started' && update.parent_stage_execution_id) {
+        } else if (eventType === 'stage.started' && update.parent_stage_execution_id !== undefined && update.parent_stage_execution_id !== null) {
           console.log('🔄 Parallel child stage starting - will replace placeholder');
           // Child stage starting - will be handled by full refresh which will replace placeholder
         }
@@ -877,14 +878,14 @@ function SessionDetailPageBase({
                     
                     if (!agentStatus) {
                       // Agent hasn't received its first status update yet → starting
-                      return 'Processing...';
-                    }
-                    
-                    if (isTerminalStatus(agentStatus)) {
-                      // Agent has finished (completed/failed/cancelled)
-                      // Check if other agents are still running (have non-terminal statuses)
-                      const otherAgentsRunning = Array.from(agentProgressStatuses.entries())
-                        .some(([id, status]) => id !== selectedAgentExecutionId && !isTerminalStatus(status));
+                    return 'Processing...';
+                  }
+                  
+                  if (isTerminalProgressStatus(agentStatus)) {
+                    // Agent has finished (completed/failed/cancelled)
+                    // Check if other agents are still running (have non-terminal statuses)
+                    const otherAgentsRunning = Array.from(agentProgressStatuses.entries())
+                      .some(([id, status]) => id !== selectedAgentExecutionId && !isTerminalProgressStatus(status));
                       
                       if (otherAgentsRunning) {
                         return 'Waiting for other agents...';

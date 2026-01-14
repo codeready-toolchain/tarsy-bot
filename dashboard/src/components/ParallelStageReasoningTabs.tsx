@@ -22,7 +22,11 @@ import { CHAT_FLOW_ITEM_TYPES } from '../constants/chatFlowItemTypes';
 import ChatFlowItem from './ChatFlowItem';
 import StreamingContentRenderer, { type StreamingItem } from './StreamingContentRenderer';
 import { getParallelStageLabel } from '../utils/parallelStageHelpers';
+import { isTerminalProgressStatus } from '../utils/statusMapping';
 import TokenUsageDisplay from './TokenUsageDisplay';
+
+// Module-level constant to avoid creating new Map on every render
+const EMPTY_AGENT_PROGRESS_MAP = new Map<string, string>();
 
 // Extended streaming item type that includes parallel execution metadata
 interface ParallelStreamingItem extends StreamingItem {
@@ -113,7 +117,7 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
   onToggleItemExpansion,
   expandAllReasoning = false,
   isItemCollapsible,
-  agentProgressStatuses = new Map(),
+  agentProgressStatuses = EMPTY_AGENT_PROGRESS_MAP,
   onSelectedAgentChange,
 }) => {
   const [selectedTab, setSelectedTab] = useState(0);
@@ -338,8 +342,8 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
                     const statusValue = agentProgressStatuses.get(execution.executionId);
                     const hasStatus = statusValue !== undefined;
                     // Only show badge for non-terminal statuses (hide "Completed", "Failed", "Cancelled")
-                    const isTerminalStatus = statusValue === 'Completed' || statusValue === 'Failed' || statusValue === 'Cancelled';
-                    const willRender = hasStatus && !isTerminalStatus;
+                    const isTerminal = statusValue !== undefined && isTerminalProgressStatus(statusValue);
+                    const willRender = hasStatus && !isTerminal;
                     return willRender && (
                       <Chip
                         label={statusValue}

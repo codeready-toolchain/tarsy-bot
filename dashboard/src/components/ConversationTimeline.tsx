@@ -30,6 +30,9 @@ import { CHAT_FLOW_ITEM_TYPES } from '../constants/chatFlowItemTypes';
 import { generateItemKey } from '../utils/chatFlowItemKey';
 // Auto-scroll is now handled by the centralized system in SessionDetailPageBase
 
+// Module-level constant to avoid creating new Map on every render
+const EMPTY_AGENT_PROGRESS_MAP = new Map<string, string>();
+
 interface ProcessingIndicatorProps {
   message?: string;
   centered?: boolean;
@@ -362,7 +365,7 @@ function ConversationTimeline({
   session, 
   autoScroll = true, // Auto-scroll handled by centralized system
   progressStatus = ProgressStatusMessage.PROCESSING,
-  agentProgressStatuses = new Map(),
+  agentProgressStatuses = EMPTY_AGENT_PROGRESS_MAP,
   onSelectedAgentChange
 }: ConversationTimelineProps) {
   // Suppress unused warning - autoScroll is part of the interface but handled centrally

@@ -7,6 +7,8 @@ import { describe, it, expect } from 'vitest';
 import {
   ProgressPhase,
   ProgressStatusMessage,
+  TERMINAL_PROGRESS_STATUSES,
+  isTerminalProgressStatus,
   mapEventToProgressStatus,
 } from '../../utils/statusMapping';
 
@@ -29,6 +31,45 @@ describe('statusMapping', () => {
       expect(ProgressStatusMessage.CONCLUDING).toBe('Concluding...');
       expect(ProgressStatusMessage.FINALIZING).toBe('Finalizing...');
       expect(ProgressStatusMessage.PROCESSING).toBe('Processing...');
+    });
+
+    it('should have terminal status display strings', () => {
+      expect(ProgressStatusMessage.COMPLETED).toBe('Completed');
+      expect(ProgressStatusMessage.FAILED).toBe('Failed');
+      expect(ProgressStatusMessage.CANCELLED).toBe('Cancelled');
+    });
+  });
+
+  describe('TERMINAL_PROGRESS_STATUSES array', () => {
+    it('should contain all terminal progress statuses', () => {
+      expect(TERMINAL_PROGRESS_STATUSES).toEqual([
+        'Completed',
+        'Failed',
+        'Cancelled',
+      ]);
+    });
+  });
+
+  describe('isTerminalProgressStatus', () => {
+    it('should return true for terminal progress statuses', () => {
+      expect(isTerminalProgressStatus('Completed')).toBe(true);
+      expect(isTerminalProgressStatus('Failed')).toBe(true);
+      expect(isTerminalProgressStatus('Cancelled')).toBe(true);
+    });
+
+    it('should return false for non-terminal progress statuses', () => {
+      expect(isTerminalProgressStatus('Investigating...')).toBe(false);
+      expect(isTerminalProgressStatus('Synthesizing...')).toBe(false);
+      expect(isTerminalProgressStatus('Distilling...')).toBe(false);
+      expect(isTerminalProgressStatus('Concluding...')).toBe(false);
+      expect(isTerminalProgressStatus('Finalizing...')).toBe(false);
+      expect(isTerminalProgressStatus('Processing...')).toBe(false);
+    });
+
+    it('should return false for unknown statuses', () => {
+      expect(isTerminalProgressStatus('Unknown Status')).toBe(false);
+      expect(isTerminalProgressStatus('')).toBe(false);
+      expect(isTerminalProgressStatus('completed')).toBe(false); // case-sensitive
     });
   });
 
@@ -176,6 +217,78 @@ describe('statusMapping', () => {
           type: 'stage.completed',
         };
         expect(mapEventToProgressStatus(afterEvent)).toBe('Processing...');
+      });
+    });
+
+    describe('agent context support for parallel execution', () => {
+      it('should return ProgressStatusInfo when includeAgentContext is true', () => {
+        const event = {
+          type: 'session.progress_update',
+          phase: 'investigating',
+          stage_execution_id: 'exec-123',
+          parent_stage_execution_id: 'parent-456',
+          parallel_index: 2,
+          agent_name: 'kubernetes-agent',
+        };
+        
+        const result = mapEventToProgressStatus(event, true);
+        
+        expect(result).toEqual({
+          status: 'Investigating...',
+          stageExecutionId: 'exec-123',
+          parentStageExecutionId: 'parent-456',
+          parallelIndex: 2,
+          agentName: 'kubernetes-agent',
+        });
+      });
+
+      it('should include stageExecutionId for consistent Map key lookups', () => {
+        const event = {
+          type: 'session.progress_update',
+          phase: 'distilling',
+          stage_execution_id: 'exec-789',
+        };
+        
+        const result = mapEventToProgressStatus(event, true);
+        
+        expect(result).toHaveProperty('stageExecutionId', 'exec-789');
+        expect(result).toHaveProperty('status', 'Distilling...');
+      });
+
+      it('should handle missing optional fields gracefully', () => {
+        const event = {
+          type: 'session.progress_update',
+          phase: 'synthesizing',
+        };
+        
+        const result = mapEventToProgressStatus(event, true);
+        
+        expect(result).toEqual({
+          status: 'Synthesizing...',
+          stageExecutionId: undefined,
+          parentStageExecutionId: undefined,
+          parallelIndex: undefined,
+          agentName: undefined,
+        });
+      });
+
+      it('should work with stage.started events', () => {
+        const event = {
+          type: 'stage.started',
+          stage_name: 'investigation',
+          stage_execution_id: 'exec-456',
+          agent_name: 'database-agent',
+        };
+        
+        const result = mapEventToProgressStatus(event, true);
+        
+        expect(result).toEqual({
+          status: 'Investigating...',
+          stageExecutionId: 'exec-456',
+          parentStageExecutionId: undefined,
+          parallelIndex: undefined,
+          agentName: 'database-agent',
+        });
       });
     });
   });

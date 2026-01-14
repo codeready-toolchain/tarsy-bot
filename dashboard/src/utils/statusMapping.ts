@@ -38,7 +38,30 @@ export const ProgressStatusMessage = {
   CONCLUDING: 'Concluding...',        // Forced conclusion at iteration limit
   FINALIZING: 'Finalizing...',        // Executive summary generation
   PROCESSING: 'Processing...',
+  // Terminal status display strings (for UI display in progress cards)
+  COMPLETED: 'Completed',
+  FAILED: 'Failed',
+  CANCELLED: 'Cancelled',
 } as const;
+
+/**
+ * Terminal progress status constants for checking if an agent has finished.
+ * These are the display strings used in the UI progress cards.
+ */
+export const TERMINAL_PROGRESS_STATUSES = [
+  ProgressStatusMessage.COMPLETED,
+  ProgressStatusMessage.FAILED,
+  ProgressStatusMessage.CANCELLED,
+] as const;
+
+/**
+ * Helper to check if a progress status is terminal (agent finished).
+ * @param status - Progress status string to check
+ * @returns True if the status indicates the agent has finished
+ */
+export function isTerminalProgressStatus(status: string): boolean {
+  return TERMINAL_PROGRESS_STATUSES.includes(status as any);
+}
 
 /**
  * Progress status with optional agent context for parallel execution.
