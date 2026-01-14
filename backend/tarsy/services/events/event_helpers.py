@@ -351,6 +351,8 @@ async def publish_stage_started(
     chat_user_message_author: Optional[str] = None,
     parallel_type: Optional[str] = None,
     expected_parallel_count: Optional[int] = None,
+    parent_stage_execution_id: Optional[str] = None,
+    parallel_index: Optional[int] = None,
 ) -> None:
     """
     Publish stage.started event.
@@ -365,6 +367,8 @@ async def publish_stage_started(
         chat_user_message_author: Optional user message author
         parallel_type: Optional parallel execution type ('multi_agent' or 'replica')
         expected_parallel_count: Optional expected number of parallel children
+        parent_stage_execution_id: Optional parent stage execution ID if this is a child of a parallel stage
+        parallel_index: Optional position in parallel group (1-N) if this is a child stage
     """
     try:
         async_session_factory = get_async_session_factory()
@@ -379,6 +383,8 @@ async def publish_stage_started(
                 chat_user_message_author=chat_user_message_author,
                 parallel_type=parallel_type,
                 expected_parallel_count=expected_parallel_count,
+                parent_stage_execution_id=parent_stage_execution_id,
+                parallel_index=parallel_index,
             )
             await publish_event(
                 session, EventChannel.session_details(session_id), event
@@ -389,7 +395,13 @@ async def publish_stage_started(
 
 
 async def publish_stage_completed(
-    session_id: str, stage_id: str, stage_name: str, status: str, chat_id: Optional[str] = None
+    session_id: str, 
+    stage_id: str, 
+    stage_name: str, 
+    status: str, 
+    chat_id: Optional[str] = None,
+    parent_stage_execution_id: Optional[str] = None,
+    parallel_index: Optional[int] = None,
 ) -> None:
     """
     Publish stage.completed event.
@@ -400,6 +412,8 @@ async def publish_stage_completed(
         stage_name: Human-readable stage name
         status: Stage status (completed/failed/partial)
         chat_id: Optional chat ID if this is a chat response stage
+        parent_stage_execution_id: Optional parent stage execution ID if this is a child of a parallel stage
+        parallel_index: Optional position in parallel group (1-N) if this is a child stage
     """
     try:
         async_session_factory = get_async_session_factory()
@@ -410,6 +424,8 @@ async def publish_stage_completed(
                 stage_name=stage_name,
                 status=status,
                 chat_id=chat_id,
+                parent_stage_execution_id=parent_stage_execution_id,
+                parallel_index=parallel_index,
             )
             await publish_event(
                 session, EventChannel.session_details(session_id), event

@@ -91,7 +91,13 @@ const TimelineSkeleton = () => (
 
 interface SessionDetailPageBaseProps {
   viewType: 'conversation' | 'technical';
-  timelineComponent: (session: DetailedSession, autoScroll?: boolean, progressStatus?: string, agentProgressStatuses?: Map<string, string>) => ReactNode;
+  timelineComponent: (
+    session: DetailedSession,
+    autoScroll?: boolean,
+    progressStatus?: string,
+    agentProgressStatuses?: Map<string, string>,
+    onSelectedAgentChange?: (executionId: string | null) => void
+  ) => ReactNode;
   timelineSkeleton?: ReactNode;
   onViewChange?: (newView: 'conversation' | 'technical') => void;
 }
@@ -157,8 +163,20 @@ function SessionDetailPageBase({
   
   // Track current progress status message (Investigating/Synthesizing/Summarizing)
   // For parallel agents, track per-agent status by stage_execution_id
+  // Values can be progress statuses ("Investigating...", "Concluding...") or terminal statuses ("Completed", "Failed", "Cancelled")
   const [progressStatus, setProgressStatus] = useState<string>(ProgressStatusMessage.PROCESSING);
   const [agentProgressStatuses, setAgentProgressStatuses] = useState<Map<string, string>>(new Map());
+  
+  // Track which parallel parent stage we've updated status for (to avoid duplicates)
+  const parallelStageStatusUpdated = useRef<string | null>(null);
+  
+  // Track currently selected agent execution ID for display purposes
+  const [selectedAgentExecutionId, setSelectedAgentExecutionId] = useState<string | null>(null);
+  
+  // Helper to check if a status is terminal (agent finished)
+  const isTerminalStatus = (status: string): boolean => {
+    return status === 'Completed' || status === 'Failed' || status === 'Cancelled';
+  };
   
   // Track previous session status to detect transitions
   const prevStatusRef = useRef<string | undefined>(undefined);
@@ -407,18 +425,49 @@ function SessionDetailPageBase({
       
       // Update progress status based on event
       if (eventType.startsWith('stage.') || eventType === 'session.progress_update') {
-        // Check if this is a parallel agent progress update
-        if (eventType === 'session.progress_update' && update.stage_execution_id && update.parallel_index) {
-          // Per-agent status update for parallel execution
-          const statusInfo = mapEventToProgressStatus(update, true);
-          if (statusInfo.stageExecutionId) {
-            console.log(`📊 Per-agent status update: ${statusInfo.agentName} (${statusInfo.stageExecutionId}) -> ${statusInfo.status}`);
-            setAgentProgressStatuses(prev => {
-              const newMap = new Map(prev);
-              newMap.set(statusInfo.stageExecutionId!, statusInfo.status);
-              return newMap;
-            });
+        // Check if this is a parallel-related event (child or parent)
+        const isParallelChildUpdate = (eventType === 'session.progress_update' && update.stage_execution_id && update.parallel_index) || 
+                                      (eventType.startsWith('stage.') && update.parent_stage_execution_id);
+        const isParallelParentEvent = eventType.startsWith('stage.') && update.expected_parallel_count && update.expected_parallel_count > 0;
+        const isParallelUpdate = isParallelChildUpdate || isParallelParentEvent;
+        
+        if (isParallelUpdate) {
+          
+          // Per-agent status update for parallel execution (child agents only)
+          if (eventType === 'session.progress_update' && isParallelChildUpdate) {
+            // Update session-level status when FIRST parallel child update arrives
+            const parentId = update.parent_stage_execution_id;
+            if (parentId && parentId !== parallelStageStatusUpdated.current) {
+              console.log(`📊 First parallel child update - updating session status`);
+              parallelStageStatusUpdated.current = parentId;
+              setProgressStatus('Processing...');
+            }
+            const statusInfo = mapEventToProgressStatus(update, true);
+            if (statusInfo.stageExecutionId) {
+              console.log(`📊 Per-agent status update: ${statusInfo.agentName} (${statusInfo.stageExecutionId}) -> ${statusInfo.status}`);
+              setAgentProgressStatuses(prev => {
+                const newMap = new Map(prev);
+                newMap.set(statusInfo.stageExecutionId!, statusInfo.status);
+                return newMap;
+              });
+            }
+          } else if (eventType === 'stage.completed') {
+            if (update.stage_id && isParallelChildUpdate) {
+              // Set terminal status when this specific parallel child stage completes
+              console.log(`📊 Setting terminal status for completed stage: ${update.stage_id}`);
+              setAgentProgressStatuses(prev => {
+                const newMap = new Map(prev);
+                newMap.set(update.stage_id, 'Completed');
+                return newMap;
+              });
+            } else if (!update.parent_stage_execution_id && update.parallel_index === 0) {
+              // Clear all agent statuses when the parallel parent completes
+              parallelStageStatusUpdated.current = null;
+              setAgentProgressStatuses(new Map());
+            }
           }
+          // For parallel-related events (child stages and parent stages),
+          // don't update session-level status
         } else {
           // Session-level status update (non-parallel or stage events)
           const newStatus = mapEventToProgressStatus(update);
@@ -815,7 +864,42 @@ function SessionDetailPageBase({
             {/* Timeline Content - Conditional based on view type */}
             {session.stages && session.stages.length > 0 ? (
               <Suspense fallback={timelineSkeleton}>
-                {timelineComponent(session, autoScrollEnabled, progressStatus, agentProgressStatuses)}
+                {(() => {
+                  // Compute display status based on selected agent and parallel execution state
+                  const displayStatus = (() => {
+                    if (!selectedAgentExecutionId) {
+                      // No agent selected, use session-level status
+                      return progressStatus;
+                    }
+                    
+                    // Get the selected agent's status from the map
+                    const agentStatus = agentProgressStatuses.get(selectedAgentExecutionId);
+                    
+                    if (!agentStatus) {
+                      // Agent hasn't received its first status update yet → starting
+                      return 'Processing...';
+                    }
+                    
+                    if (isTerminalStatus(agentStatus)) {
+                      // Agent has finished (completed/failed/cancelled)
+                      // Check if other agents are still running (have non-terminal statuses)
+                      const otherAgentsRunning = Array.from(agentProgressStatuses.entries())
+                        .some(([id, status]) => id !== selectedAgentExecutionId && !isTerminalStatus(status));
+                      
+                      if (otherAgentsRunning) {
+                        return 'Waiting for other agents...';
+                      }
+                      
+                      // All agents are done, use session-level status
+                      return progressStatus;
+                    }
+                    
+                    // Agent is running, show its specific status
+                    return agentStatus;
+                  })();
+                  
+                  return timelineComponent(session, autoScrollEnabled, displayStatus, agentProgressStatuses, setSelectedAgentExecutionId);
+                })()}
               </Suspense>
             ) : (
               <Alert severity="error" sx={{ mb: 2 }}>

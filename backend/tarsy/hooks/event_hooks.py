@@ -152,6 +152,8 @@ class StageExecutionEventHook(BaseHook[StageExecution]):
                 chat_user_message_author=chat_user_message_author,
                 parallel_type=stage_execution.parallel_type,
                 expected_parallel_count=stage_execution.expected_parallel_count,
+                parent_stage_execution_id=stage_execution.parent_stage_execution_id,
+                parallel_index=stage_execution.parallel_index,
             )
         elif stage_execution.status in [StageStatus.COMPLETED.value, StageStatus.FAILED.value, StageStatus.PARTIAL.value]:
             await publish_stage_completed(
@@ -159,5 +161,7 @@ class StageExecutionEventHook(BaseHook[StageExecution]):
                 stage_id=stage_execution.execution_id,
                 stage_name=stage_execution.stage_name,
                 status=stage_execution.status,
-                chat_id=stage_execution.chat_id
+                chat_id=stage_execution.chat_id,
+                parent_stage_execution_id=stage_execution.parent_stage_execution_id,
+                parallel_index=stage_execution.parallel_index,
             )

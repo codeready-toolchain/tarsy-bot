@@ -112,6 +112,7 @@ interface ConversationTimelineProps {
   autoScroll?: boolean;
   progressStatus?: string;
   agentProgressStatuses?: Map<string, string>;
+  onSelectedAgentChange?: (executionId: string | null) => void;
 }
 
 // Extended streaming item for ConversationTimeline
@@ -361,7 +362,8 @@ function ConversationTimeline({
   session, 
   autoScroll = true, // Auto-scroll handled by centralized system
   progressStatus = ProgressStatusMessage.PROCESSING,
-  agentProgressStatuses = new Map()
+  agentProgressStatuses = new Map(),
+  onSelectedAgentChange
 }: ConversationTimelineProps) {
   // Suppress unused warning - autoScroll is part of the interface but handled centrally
   void autoScroll;
@@ -1340,6 +1342,7 @@ function ConversationTimeline({
                             expandAllReasoning={expandAllReasoning}
                             isItemCollapsible={isItemCollapsible}
                             agentProgressStatuses={agentProgressStatuses}
+                            onSelectedAgentChange={onSelectedAgentChange}
                           />
                         ) : (
                           <Box sx={{ p: 2, color: 'error.main' }}>

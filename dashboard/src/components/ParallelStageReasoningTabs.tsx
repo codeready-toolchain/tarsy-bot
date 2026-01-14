@@ -45,6 +45,8 @@ interface ParallelStageReasoningTabsProps {
   isItemCollapsible?: (item: ChatFlowItemData) => boolean;
   // Per-agent progress statuses
   agentProgressStatuses?: Map<string, string>;
+  // Callback when agent tab selection changes
+  onSelectedAgentChange?: (executionId: string | null) => void;
 }
 
 interface TabPanelProps {
@@ -112,6 +114,7 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
   expandAllReasoning = false,
   isItemCollapsible,
   agentProgressStatuses = new Map(),
+  onSelectedAgentChange,
 }) => {
   const [selectedTab, setSelectedTab] = useState(0);
   const [cancelingAgents, setCancelingAgents] = useState<Set<string>>(new Set());
@@ -194,6 +197,14 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
     });
     // NOTE: Do NOT filter by items.length > 0 to avoid tab flickering during streaming
     // Tabs should remain stable even when streaming items are being deduplicated
+
+  // Notify parent when selected tab changes
+  React.useEffect(() => {
+    if (onSelectedAgentChange && executions[selectedTab]) {
+      const executionId = executions[selectedTab].executionId;
+      onSelectedAgentChange(executionId);
+    }
+  }, [selectedTab, executions, onSelectedAgentChange]);
 
   // Safety check - only show alert if there are truly no parallel executions
   if (executions.length === 0 && parallelExecutions.length === 0) {
@@ -322,16 +333,23 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
                     color={statusColor as any}
                     sx={{ height: 18, fontSize: '0.65rem' }}
                   />
-                  {/* Show per-agent progress status if available (for active agents) */}
-                  {execution.stageExecution.status === 'active' && agentProgressStatuses.has(execution.executionId) && (
-                    <Chip
-                      label={agentProgressStatuses.get(execution.executionId)}
-                      size="small"
-                      color="info"
-                      variant="outlined"
-                      sx={{ height: 18, fontSize: '0.65rem', fontStyle: 'italic' }}
-                    />
-                  )}
+                  {/* Show per-agent progress status if available (but not terminal statuses) */}
+                  {(() => {
+                    const statusValue = agentProgressStatuses.get(execution.executionId);
+                    const hasStatus = statusValue !== undefined;
+                    // Only show badge for non-terminal statuses (hide "Completed", "Failed", "Cancelled")
+                    const isTerminalStatus = statusValue === 'Completed' || statusValue === 'Failed' || statusValue === 'Cancelled';
+                    const willRender = hasStatus && !isTerminalStatus;
+                    return willRender && (
+                      <Chip
+                        label={statusValue}
+                        size="small"
+                        color="info"
+                        variant="outlined"
+                        sx={{ height: 18, fontSize: '0.65rem', fontStyle: 'italic' }}
+                      />
+                    );
+                  })()}
                 </Box>
                 
                 {/* Token Usage */}

@@ -198,6 +198,9 @@ class StageStartedEvent(BaseEvent):
     # Parallel execution metadata (for parent parallel stages)
     parallel_type: Optional[str] = Field(default=None, description="Parallel execution type: 'multi_agent' or 'replica'")
     expected_parallel_count: Optional[int] = Field(default=None, description="Expected number of parallel children")
+    # Parallel child metadata (for child stages of parallel execution)
+    parent_stage_execution_id: Optional[str] = Field(default=None, description="Parent stage execution ID if this is a child of a parallel stage")
+    parallel_index: Optional[int] = Field(default=None, description="Position in parallel group (1-N) if this is a child stage")
 
 
 class StageCompletedEvent(BaseEvent):
@@ -209,6 +212,9 @@ class StageCompletedEvent(BaseEvent):
     stage_name: str = Field(description="Human-readable stage name")
     status: str = Field(description="Stage status (completed/failed)")
     chat_id: Optional[str] = Field(default=None, description="Chat ID if this is a chat response stage")
+    # Parallel child metadata (for child stages of parallel execution)
+    parent_stage_execution_id: Optional[str] = Field(default=None, description="Parent stage execution ID if this is a child of a parallel stage")
+    parallel_index: Optional[int] = Field(default=None, description="Position in parallel group (1-N) if this is a child stage")
 
 
 # ===== Transient Streaming Events (not persisted to DB) =====
