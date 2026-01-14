@@ -167,14 +167,12 @@ class IterationController(ABC):
             SessionPaused: If not configured to force conclusion
         """
         from ..exceptions import MaxIterationsFailureError, SessionPaused, ForceConclusion
-        from tarsy.config.settings import get_settings
         
         # Check if this is a chat context
         is_chat = context.chain_context.chat_context is not None
         
-        # Get setting for main sessions
-        settings = get_settings()
-        force_conclusion_enabled = settings.force_conclusion_at_max_iterations
+        # Get force_conclusion setting from agent (respects hierarchy)
+        force_conclusion_enabled = context.agent.get_force_conclusion()
         
         if last_interaction_failed:
             # Always fail if last interaction failed

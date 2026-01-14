@@ -138,7 +138,9 @@ class AgentFactory:
         agent_identifier: str, 
         mcp_client: MCPClient, 
         iteration_strategy: Optional[str] = None,
-        llm_provider: Optional[str] = None
+        llm_provider: Optional[str] = None,
+        max_iterations: Optional[int] = None,
+        force_conclusion: Optional[bool] = None
     ) -> BaseAgent:
         """
         Get agent instance by identifier with optional strategy and provider overrides.
@@ -151,6 +153,8 @@ class AgentFactory:
             mcp_client: Session-scoped MCP client for this agent instance
             iteration_strategy: Strategy to use for this stage (overrides agent default)
             llm_provider: Optional LLM provider name for this agent (overrides global default)
+            max_iterations: Optional max iterations override (from hierarchy resolution)
+            force_conclusion: Optional force conclusion override (from hierarchy resolution)
         
         Returns:
             Agent instance configured with appropriate strategy and provider
@@ -170,6 +174,14 @@ class AgentFactory:
         if llm_provider:
             agent.set_llm_provider(llm_provider)
             logger.debug(f"Agent {agent_identifier} configured with LLM provider: {llm_provider}")
+        
+        # Set max_iterations override if provided
+        if max_iterations is not None:
+            agent.set_max_iterations(max_iterations)
+        
+        # Set force_conclusion override if provided
+        if force_conclusion is not None:
+            agent.set_force_conclusion(force_conclusion)
         
         return agent
     

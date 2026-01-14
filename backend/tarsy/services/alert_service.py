@@ -1453,13 +1453,30 @@ class AlertService:
                         if effective_provider:
                             logger.debug(f"Stage '{stage.name}' using LLM provider: {effective_provider}")
                         
+                        # Resolve iteration configuration from hierarchy
+                        from tarsy.services.iteration_config_resolver import IterationConfigResolver
+                        
+                        # Get agent definition if it exists
+                        agent_def = self.agent_factory.agent_configs.get(stage.agent) if self.agent_factory.agent_configs else None
+                        
+                        # Resolve iteration config
+                        max_iter, force_conclude = IterationConfigResolver.resolve_iteration_config(
+                            system_settings=self.settings,
+                            agent_config=agent_def,
+                            chain_config=chain_definition,
+                            stage_config=stage,
+                            parallel_agent_config=None  # Sequential stages don't have parallel config
+                        )
+                        
                         # Get agent instance with stage-specific strategy and provider
                         # Pass session-scoped MCP client for isolation
                         agent = self.agent_factory.get_agent(
                             agent_identifier=stage.agent,
                             mcp_client=session_mcp_client,
                             iteration_strategy=getattr(stage.iteration_strategy, "value", stage.iteration_strategy),
-                            llm_provider=effective_provider
+                            llm_provider=effective_provider,
+                            max_iterations=max_iter,
+                            force_conclusion=force_conclude
                         )
                         
                         # Set current stage execution ID for interaction tagging

@@ -57,6 +57,18 @@
 # - Different servers may need different thresholds: security data often needs higher thresholds, filesystem operations often disabled
 # - Summarization uses LLM provider's max_tokens parameter for guaranteed length control and cost management
 #
+# HIERARCHICAL ITERATION CONFIGURATION:
+# - max_iterations and force_conclusion_at_max_iterations can be configured at multiple levels
+# - Precedence (highest to lowest):
+#   1. Parallel agent level (within agents list) - highest precedence
+#   2. Stage level (within stages)
+#   3. Chain level (agent_chains section)
+#   4. Agent level (agents section)
+#   5. System level (environment variables/settings.py) - lowest precedence
+# - Each level overrides all lower levels. If not specified, inherits from the level below.
+# - max_iterations: Maximum LLM->MCP iteration loops (default: 30 from system settings)
+# - force_conclusion_at_max_iterations: Force conclusion vs pause when limit reached (default: false)
+#
 
 # =============================================================================
 # MCP SERVER CONFIGURATIONS
@@ -322,10 +334,13 @@ agents:
       - Focus on both immediate resolution and long-term optimization
 
   # Database-focused agent for handling database-related alerts
+  # Example: Agent-level iteration configuration
   database-agent:
     mcp_servers:
       - "kubernetes-server"            # Built-in Kubernetes MCP server only
     # iteration_strategy: "react"      # Optional: defaults to "react" if not specified
+    max_iterations: 25                 # Agent-level override (applies unless overridden by chain/stage/parallel)
+    force_conclusion_at_max_iterations: false  # Agent-level setting
     custom_instructions: |
       You are a database-focused SRE agent specializing in database operations.
       
@@ -398,18 +413,24 @@ agent_chains:
     description: "2-stage security incident investigation and response"
 
   # Advanced 3-stage Kubernetes troubleshooting workflow
+  # Example: Chain-level and stage-level iteration configuration
   kubernetes-deep-troubleshooting:
     alert_types: ["KubernetesCritical", "PodCrashLoop"]
+    max_iterations: 20                   # Chain-level override (applies to all stages unless overridden)
+    force_conclusion_at_max_iterations: true
     stages:
       - name: "system-data-collection"     # Stage 1: Collect system metrics and status
         agent: "performance-agent"
         iteration_strategy: "react-stage" # Focus on gathering comprehensive data and stage analysis
+        max_iterations: 15               # Stage-level override (higher precedence than chain)
       - name: "detailed-analysis"          # Stage 2: Deep dive analysis with tools
         agent: "database-agent"            # Different agent for specialized analysis
         iteration_strategy: "react-stage" # Collect additional data + stage-specific analysis
+        # Uses chain-level iteration config (20 iterations, force_conclusion=true)
       - name: "final-diagnosis"            # Stage 3: Comprehensive diagnosis and recommendations
         agent: "performance-agent"         # Back to performance agent for final analysis
         iteration_strategy: "react-final-analysis" # Pure analysis, no additional data collection
+        force_conclusion_at_max_iterations: false  # Stage-level override for this setting only
     description: "3-stage deep Kubernetes troubleshooting with specialized analysis"
 
   # Multi-stage performance investigation chain
@@ -474,17 +495,23 @@ agent_chains:
 
   # Parallel multi-agent investigation with synthesis
   # Demonstrates parallel execution with configurable synthesis
+  # Example: Parallel agent-level iteration configuration (highest precedence)
   parallel-investigation-with-synthesis:
     alert_types: ["ComplexSystemFailure", "MultiDomainIncident"]
+    max_iterations: 30                    # Chain-level default
     stages:
       - name: "parallel-investigation"
+        max_iterations: 25                # Stage-level override
         agents:
           - name: "KubernetesAgent"
             llm_provider: "google-default"
             iteration_strategy: "react"
+            max_iterations: 20            # Parallel agent-level override (highest precedence)
+            force_conclusion_at_max_iterations: true
           - name: "database-agent"
             llm_provider: "anthropic-default"
             iteration_strategy: "react"
+            # Uses stage-level iteration config (25 iterations)
         # Optional synthesis configuration
         synthesis:
           agent: "SynthesisAgent"                # Optional, defaults to SynthesisAgent
@@ -538,7 +565,6 @@ agent_chains:
       - name: "investigation"
         agent: "KubernetesAgent"
     description: "Chain with default chat configuration (enabled, all defaults)"
-
 # =============================================================================
 # CONFIGURATION VALIDATION NOTES
 # =============================================================================

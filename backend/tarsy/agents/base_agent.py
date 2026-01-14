@@ -88,6 +88,7 @@ class BaseAgent(ABC):
         self.mcp_client = mcp_client
         self.mcp_registry = mcp_registry
         self._max_iterations = get_settings().max_llm_mcp_iterations
+        self._force_conclusion_at_max_iterations = get_settings().force_conclusion_at_max_iterations
         self._configured_servers: Optional[List[str]] = None
         self._prompt_builder = get_prompt_builder()
         
@@ -162,6 +163,36 @@ class BaseAgent(ABC):
     def max_iterations(self) -> int:
         """Get the maximum number of iterations allowed for this agent."""
         return self._max_iterations
+    
+    def set_max_iterations(self, value: int) -> None:
+        """
+        Set the maximum number of iterations for this agent instance.
+        
+        Used by AgentFactory to configure per-stage or per-chain iteration limits.
+        
+        Args:
+            value: Maximum number of iterations (must be >= 1)
+        """
+        if value < 1:
+            raise ValueError(f"max_iterations must be >= 1, got {value}")
+        self._max_iterations = value
+        logger.info(f"Agent {self.__class__.__name__} configured with max_iterations: {value}")
+    
+    def get_force_conclusion(self) -> bool:
+        """Get the force_conclusion_at_max_iterations setting for this agent."""
+        return self._force_conclusion_at_max_iterations
+    
+    def set_force_conclusion(self, value: bool) -> None:
+        """
+        Set the force_conclusion_at_max_iterations setting for this agent instance.
+        
+        Used by AgentFactory to configure per-stage or per-chain behavior.
+        
+        Args:
+            value: Whether to force conclusion at max iterations
+        """
+        self._force_conclusion_at_max_iterations = value
+        logger.info(f"Agent {self.__class__.__name__} configured with force_conclusion_at_max_iterations: {value}")
 
     @classmethod
     @abstractmethod

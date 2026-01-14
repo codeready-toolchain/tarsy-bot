@@ -187,6 +187,15 @@ class AgentConfigModel(BaseModel):
         default=IterationStrategy.REACT,
         description="Iteration strategy for alert processing (REACT, REACT_STAGE, or REACT_FINAL_ANALYSIS)",
     )
+    max_iterations: Optional[int] = Field(
+        default=None,
+        description="Maximum number of LLM->MCP iterative loops (overrides system default if set)",
+        ge=1,
+    )
+    force_conclusion_at_max_iterations: Optional[bool] = Field(
+        default=None,
+        description="Force LLM to conclude when max iterations reached instead of pausing (overrides system default if set)",
+    )
 
 
 class MCPServerConfigModel(BaseModel):
@@ -246,6 +255,15 @@ class ParallelAgentConfig(BaseModel):
     )
     iteration_strategy: Optional[IterationStrategy] = Field(
         None, description="Optional iteration strategy override for this agent"
+    )
+    max_iterations: Optional[int] = Field(
+        default=None,
+        description="Maximum number of iterations for this parallel agent (highest precedence override)",
+        ge=1,
+    )
+    force_conclusion_at_max_iterations: Optional[bool] = Field(
+        default=None,
+        description="Force conclusion at max iterations for this parallel agent (highest precedence override)",
     )
 
 
@@ -322,6 +340,15 @@ class ChainStageConfigModel(BaseModel):
     llm_provider: Optional[str] = Field(
         None,
         description="Optional LLM provider override for this stage (uses chain's provider if not specified)",
+    )
+    max_iterations: Optional[int] = Field(
+        default=None,
+        description="Maximum number of iterations for this stage (overrides chain/agent/system defaults)",
+        ge=1,
+    )
+    force_conclusion_at_max_iterations: Optional[bool] = Field(
+        default=None,
+        description="Force conclusion at max iterations for this stage (overrides chain/agent/system defaults)",
     )
     synthesis: Optional[SynthesisConfig] = Field(
         None, description="Optional synthesis configuration for parallel stages"
@@ -401,6 +428,15 @@ class ChainConfigModel(BaseModel):
     llm_provider: Optional[str] = Field(
         None,
         description="Optional LLM provider for all stages in this chain (uses global default if not specified)",
+    )
+    max_iterations: Optional[int] = Field(
+        default=None,
+        description="Maximum number of iterations for all stages in this chain (overrides agent/system defaults)",
+        ge=1,
+    )
+    force_conclusion_at_max_iterations: Optional[bool] = Field(
+        default=None,
+        description="Force conclusion at max iterations for all stages in this chain (overrides agent/system defaults)",
     )
 
 

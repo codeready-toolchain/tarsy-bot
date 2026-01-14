@@ -212,6 +212,8 @@ agents:
   security-analyst:
     mcp_servers: ["security-scanner", "kubernetes-server"]  # Mix of custom + built-in
     iteration_strategy: "react"
+    max_iterations: 35  # Agent-level iteration config
+    force_conclusion_at_max_iterations: false  # Allow pause/resume
     custom_instructions: "Focus on security implications and threat analysis..."
 
 # Chain definitions
@@ -219,16 +221,24 @@ agent_chains:
   security-incident-chain:
     alert_types: ["SecurityBreach", "SuspiciousActivity"]
     llm_provider: "google-default"  # Optional: chain-level default provider
+    max_iterations: 25  # Chain-level iteration config (overrides agent/system defaults)
+    force_conclusion_at_max_iterations: true  # Force conclusion for security incidents
     stages:
       - name: "evidence-collection"
         agent: "security-analyst"
         iteration_strategy: "react-stage"
         llm_provider: "gemini-flash"  # Optional: stage-level override
+        max_iterations: 15  # Stage-level override for quick collection
       - name: "final-analysis" 
         agent: "security-analyst"
         iteration_strategy: "react-final-analysis"
-        # Uses chain-level provider (google-default) when not specified
+        # Uses chain-level iteration config (25 iterations, force conclusion)
 ```
+
+**Hierarchical Iteration Configuration**:
+- **Precedence**: system → agent → chain → stage → parallel agent (highest)
+- **Options**: `max_iterations` (iteration limit), `force_conclusion_at_max_iterations` (pause vs force)
+- **Use Cases**: Quick checks (low iterations), deep analysis (high iterations), per-agent tuning
 
 **📍 LLM Provider Configuration**: `config/llm_providers.yaml` (optional, see `config/llm_providers.yaml.example`)
 - **Built-in default providers** work out-of-the-box with just API keys
@@ -500,9 +510,9 @@ class ProcessingAlert(BaseModel):
 
 Agents are specialized AI-powered components that analyze alerts using domain expertise and configurable reasoning strategies. The system supports both hardcoded agents (like KubernetesAgent) and YAML-configured agents.
 
-**Pause & Resume Support**: Agents automatically pause when reaching iteration limits (configurable via `max_llm_mcp_iterations`). The complete conversation state, stage context, and processing metadata are preserved, allowing engineers to manually resume processing from the exact point where it paused. Sessions are marked as "paused" (recoverable) only if the last LLM interaction succeeded; otherwise, they fail.
+**Pause & Resume Support**: Agents automatically pause when reaching iteration limits. Both `max_iterations` and `force_conclusion_at_max_iterations` are configurable through a hierarchical system (system → agent → chain → stage → parallel agent), allowing fine-grained control per use case. The complete conversation state, stage context, and processing metadata are preserved, allowing engineers to manually resume processing from the exact point where it paused. Sessions are marked as "paused" (recoverable) only if the last LLM interaction succeeded; otherwise, they fail.
 
-**Parallel Stage Pause Behavior**: When any parallel agent hits max_iterations, the entire stage is marked as PAUSED (pause takes priority over success/failure). Other agents continue naturally, preserving their results. Resume re-executes only paused agents while preserving completed and failed agent results.
+**Parallel Stage Pause Behavior**: When any parallel agent hits max_iterations, the entire stage is marked as PAUSED (pause takes priority over success/failure). Other agents continue naturally, preserving their results. Resume re-executes only paused agents while preserving completed and failed agent results. Each parallel agent can have its own iteration configuration.
 
 #### Agent Framework Architecture
 

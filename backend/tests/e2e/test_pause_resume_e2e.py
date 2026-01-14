@@ -245,6 +245,9 @@ class TestPauseResumeE2E:
         print("🔧 _execute_test started")
 
         # Override max_iterations to 2 for quick pause
+        # Note: This test directly modifies system settings for precise control.
+        # In production, use hierarchical configuration (agent/chain/stage/parallel levels)
+        # via config/agents.yaml for proper precedence resolution.
         from tarsy.config.settings import get_settings
         settings = get_settings()
         original_max_iterations = settings.max_llm_mcp_iterations
