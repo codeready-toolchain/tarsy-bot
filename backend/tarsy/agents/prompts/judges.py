@@ -3,8 +3,10 @@ Judge prompts for scoring alert analysis sessions.
 
 This module contains hardcoded prompts for the LLM judge that evaluates
 TARSy alert analysis quality. Supports placeholder substitution for:
-- {{SESSION_CONVERSATION}}: Full conversation from History Service
-- {{ALERT_DATA}}: Original alert data
+- {{ALERT_DATA}}: Original alert data (JSON)
+- {{FINAL_ANALYSIS}}: Agent's final analysis text (markdown)
+- {{LLM_CONVERSATION}}: Complete LLM conversation with MCP tool interactions (JSON)
+- {{CHAT_CONVERSATION}}: Follow-up chat conversation if exists (JSON, or "No chat conversation")
 - {{OUTPUT_SCHEMA}}: Format instructions (injected by code)
 
 The SHA256 hash of both prompts combined provides criteria versioning.
@@ -12,9 +14,10 @@ The SHA256 hash of both prompts combined provides criteria versioning.
 
 import hashlib
 
-# Prompt 1: Main scoring evaluation
-JUDGE_PROMPT_SCORE = """You are a computer security expert specializing in DevOps and Kubernetes security operations.
+JUDGE_SYSTEM_PROMPT = """You are a computer security expert specializing in DevOps and Kubernetes security operations."""
 
+# Prompt 1: Main scoring evaluation
+JUDGE_PROMPT_SCORE = """
 Your role is to evaluate SRE investigations with EXTREME CRITICAL RIGOR. You are a methodology-focused perfectionist who:
 - Demands optimal investigation paths, not just successful outcomes
 - Penalizes ANY logical shortcuts, premature conclusions, or incomplete exploration
@@ -188,13 +191,19 @@ Include **new tool suggestions** that would have:
 
 ## SESSION DATA
 
-Below is the complete conversation from the alert analysis session.
-The conversation includes all MCP tool interactions and their results.
-
-{{SESSION_CONVERSATION}}
-
-Original Alert:
+### Original Alert
 {{ALERT_DATA}}
+
+### Final Analysis
+The agent's final conclusions and analysis:
+{{FINAL_ANALYSIS}}
+
+### Investigation Conversation
+Complete LLM conversation history including all MCP tool interactions and their results:
+{{LLM_CONVERSATION}}
+
+### Follow-up Chat (if any)
+{{CHAT_CONVERSATION}}
 
 ## YOUR TASK NOW
 
@@ -302,6 +311,11 @@ Include **new tool suggestions** that would have:
 
 If no critical tools are missing, simply state "No critical missing tools identified.\""""
 
+JUDGE_PROMPT_SCORE_REMINDER = """
+I failed to parse your answer according to my instructions. Respond solely with your score according to the following instructions:
+
+{{OUTPUT_SCHEMA}}
+"""
 
 def get_current_prompt_hash() -> str:
     """
@@ -317,10 +331,11 @@ def get_current_prompt_hash() -> str:
     combined_prompts = JUDGE_PROMPT_SCORE + JUDGE_PROMPT_FOLLOWUP_MISSING_TOOLS
 
     # Compute SHA256 hash
-    hash_obj = hashlib.sha256(combined_prompts.encode('utf-8'))
+    hash_obj = hashlib.sha256(combined_prompts.encode("utf-8"))
 
     return hash_obj.hexdigest()
 
 
 # Compute hash once at module load time for reuse
 CURRENT_PROMPT_HASH = get_current_prompt_hash()
+
