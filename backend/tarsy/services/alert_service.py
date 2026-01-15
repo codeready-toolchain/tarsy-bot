@@ -1687,17 +1687,44 @@ class AlertService:
         """
         error_messages = []
         
+        # Import ParallelStageResult for type checking
+        from tarsy.models.agent_execution_result import ParallelStageResult
+        
         # Collect errors from stage outputs (keys are execution_ids, extract stage_name from result)
         for stage_result in chain_context.stage_outputs.values():
             if hasattr(stage_result, 'status') and stage_result.status == StageStatus.FAILED:
-                stage_name = getattr(stage_result, 'stage_name', 'unknown')
-                stage_agent = getattr(stage_result, 'agent_name', 'unknown')
-                stage_error = getattr(stage_result, 'error_message', None)
-                
-                if stage_error:
-                    error_messages.append(f"Stage '{stage_name}' (agent: {stage_agent}): {stage_error}")
+                # Check if this is a ParallelStageResult
+                if isinstance(stage_result, ParallelStageResult):
+                    # Extract errors from individual parallel agent results
+                    # Include both FAILED and CANCELLED agents (both contribute to parallel stage failure)
+                    stage_name = stage_result.stage_name
+                    failed_agents = []
+                    
+                    for agent_result in stage_result.results:
+                        if agent_result.status in (StageStatus.FAILED, StageStatus.CANCELLED):
+                            agent_name = agent_result.agent_name or 'unknown'
+                            error_msg = agent_result.error_message or 'No error message'
+                            status_label = "cancelled" if agent_result.status == StageStatus.CANCELLED else "failed"
+                            failed_agents.append(f"{agent_name} ({status_label}): {error_msg}")
+                    
+                    if failed_agents:
+                        if len(failed_agents) == 1:
+                            error_messages.append(f"Parallel stage '{stage_name}' failed - {failed_agents[0]}")
+                        else:
+                            agents_summary = "; ".join(failed_agents)
+                            error_messages.append(f"Parallel stage '{stage_name}' failed - {len(failed_agents)} agents: {agents_summary}")
+                    else:
+                        error_messages.append(f"Parallel stage '{stage_name}' failed with no specific error details")
                 else:
-                    error_messages.append(f"Stage '{stage_name}' (agent: {stage_agent}): Failed with no error message")
+                    # Regular AgentExecutionResult
+                    stage_name = getattr(stage_result, 'stage_name', 'unknown')
+                    stage_agent = getattr(stage_result, 'agent_name', 'unknown')
+                    stage_error = getattr(stage_result, 'error_message', None)
+                    
+                    if stage_error:
+                        error_messages.append(f"Stage '{stage_name}' (agent: {stage_agent}): {stage_error}")
+                    else:
+                        error_messages.append(f"Stage '{stage_name}' (agent: {stage_agent}): Failed with no error message")
         
         # If we have specific error messages, format them nicely
         if error_messages:
