@@ -797,24 +797,30 @@ class TestGeminiNativeThinkingClientGenerate:
         mock_native_client.aio.models.generate_content_stream.assert_called_once()
         
     @pytest.mark.asyncio
+    @patch("tarsy.integrations.llm.gemini_client.asyncio.sleep", new_callable=AsyncMock)
     @patch("tarsy.integrations.llm.gemini_client.genai")
     @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
     async def test_generate_handles_empty_response(
         self,
         mock_context: MagicMock,
         mock_genai: MagicMock,
+        mock_sleep: AsyncMock,
         client: GeminiNativeThinkingClient,
         sample_conversation: LLMConversation
     ) -> None:
-        """Test handling response with no candidates."""
+        """Test handling response with no candidates (retries and injects error message)."""
         empty_response = MagicMock()
         empty_response.candidates = []
         empty_response.function_calls = None
         empty_response.usage_metadata = None
         
+        async def empty_stream():
+            yield empty_response
+        
         mock_native_client = MagicMock()
+        # Return empty response for all 4 attempts (1 + 3 retries)
         mock_native_client.aio.models.generate_content_stream = AsyncMock(
-            return_value=mock_stream_response(empty_response)
+            side_effect=[empty_stream() for _ in range(4)]
         )
         mock_genai.Client.return_value = mock_native_client
         
@@ -832,9 +838,14 @@ class TestGeminiNativeThinkingClientGenerate:
             mcp_tools=[]
         )
         
-        # Should handle gracefully with empty content
-        assert result.content == ""
+        # Should inject error message after retries
+        assert "LLM Response Error" in result.content
+        assert "empty responses after 4 attempts" in result.content
         assert result.is_final is True  # No tool calls = final
+        
+        # Verify retries occurred
+        assert mock_sleep.call_count == 3  # 3 retries
+        assert mock_native_client.aio.models.generate_content_stream.call_count == 4
 
 
 @pytest.mark.unit
@@ -1102,4 +1113,341 @@ class TestGeminiNativeThinkingStreaming:
         )
         
         assert result.content == "Response text."
+
+
+@pytest.mark.unit
+class TestGeminiNativeThinkingRetryLogic:
+    """Tests for retry logic when handling empty LLM responses."""
+    
+    @pytest.fixture
+    def client(self) -> GeminiNativeThinkingClient:
+        """Create a client for testing."""
+        config = LLMProviderConfig(
+            type=LLMProviderType.GOOGLE,
+            model="gemini-2.5-flash",
+            api_key_env="GOOGLE_API_KEY",
+            api_key="test-api-key",
+            temperature=0.7
+        )
+        return GeminiNativeThinkingClient(config, "test-provider")
+    
+    @pytest.fixture
+    def sample_conversation(self) -> LLMConversation:
+        """Create a sample conversation for testing."""
+        return LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="You are an assistant."),
+            LLMMessage(role=MessageRole.USER, content="Analyze this alert."),
+        ])
+    
+    @pytest.mark.asyncio
+    @patch("tarsy.integrations.llm.gemini_client.asyncio.sleep", new_callable=AsyncMock)
+    @patch("tarsy.integrations.llm.gemini_client.genai")
+    @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
+    async def test_empty_response_retries_and_succeeds(
+        self,
+        mock_context: MagicMock,
+        mock_genai: MagicMock,
+        mock_sleep: AsyncMock,
+        client: GeminiNativeThinkingClient,
+        sample_conversation: LLMConversation
+    ) -> None:
+        """Test that empty response on first attempt retries and succeeds on second attempt."""
+        # First response: empty (should trigger retry)
+        empty_response = MagicMock()
+        empty_response.candidates = []
+        empty_response.function_calls = None
+        empty_response.usage_metadata = None
+        
+        # Second response: valid content
+        valid_response = MagicMock()
+        valid_part = MagicMock()
+        valid_part.thought = False
+        valid_part.text = "Analysis complete."
+        valid_part.thought_signature = None
+        valid_response.candidates = [MagicMock(content=MagicMock(parts=[valid_part]))]
+        valid_response.function_calls = None
+        valid_response.usage_metadata = None
+        
+        call_count = 0
+        async def stream_responses():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                yield empty_response
+            else:
+                yield valid_response
+        
+        mock_native_client = MagicMock()
+        mock_native_client.aio.models.generate_content_stream = AsyncMock(
+            side_effect=[stream_responses(), stream_responses()]
+        )
+        mock_genai.Client.return_value = mock_native_client
+        
+        mock_ctx = MagicMock()
+        mock_ctx.interaction = MagicMock()
+        mock_ctx.complete_success = AsyncMock()
+        mock_context_cm = MagicMock()
+        mock_context_cm.__aenter__ = AsyncMock(return_value=mock_ctx)
+        mock_context_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_context.return_value = mock_context_cm
+        
+        result = await client.generate(
+            conversation=sample_conversation,
+            session_id="test-session",
+            mcp_tools=[]
+        )
+        
+        # Should succeed on retry
+        assert result.content == "Analysis complete."
+        assert result.is_final is True
+        
+        # Verify sleep was called once (3 second delay between attempts)
+        assert mock_sleep.call_count == 1
+        mock_sleep.assert_called_with(3)
+        
+        # Verify generate_content_stream was called twice (original + 1 retry)
+        assert mock_native_client.aio.models.generate_content_stream.call_count == 2
+    
+    @pytest.mark.asyncio
+    @patch("tarsy.integrations.llm.gemini_client.asyncio.sleep", new_callable=AsyncMock)
+    @patch("tarsy.integrations.llm.gemini_client.genai")
+    @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
+    async def test_empty_response_all_attempts_injects_error(
+        self,
+        mock_context: MagicMock,
+        mock_genai: MagicMock,
+        mock_sleep: AsyncMock,
+        client: GeminiNativeThinkingClient,
+        sample_conversation: LLMConversation
+    ) -> None:
+        """Test that persistent empty responses inject error message after max retries."""
+        # All responses: empty
+        empty_response = MagicMock()
+        empty_response.candidates = []
+        empty_response.function_calls = None
+        empty_response.usage_metadata = None
+        
+        async def empty_stream():
+            yield empty_response
+        
+        mock_native_client = MagicMock()
+        mock_native_client.aio.models.generate_content_stream = AsyncMock(
+            side_effect=[empty_stream() for _ in range(4)]  # 4 attempts (1 + 3 retries)
+        )
+        mock_genai.Client.return_value = mock_native_client
+        
+        mock_ctx = MagicMock()
+        mock_ctx.interaction = MagicMock()
+        mock_ctx.complete_success = AsyncMock()
+        mock_context_cm = MagicMock()
+        mock_context_cm.__aenter__ = AsyncMock(return_value=mock_ctx)
+        mock_context_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_context.return_value = mock_context_cm
+        
+        result = await client.generate(
+            conversation=sample_conversation,
+            session_id="test-session",
+            mcp_tools=[]
+        )
+        
+        # Should inject error message
+        assert "LLM Response Error" in result.content
+        assert "empty responses after 4 attempts" in result.content
+        assert "gemini-2.5-flash" in result.content
+        
+        # Verify sleep was called 3 times (between attempts)
+        assert mock_sleep.call_count == 3
+        
+        # Verify generate_content_stream was called 4 times
+        assert mock_native_client.aio.models.generate_content_stream.call_count == 4
+    
+    @pytest.mark.asyncio
+    @patch("tarsy.integrations.llm.gemini_client.genai")
+    @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
+    async def test_thinking_only_response_retries(
+        self,
+        mock_context: MagicMock,
+        mock_genai: MagicMock,
+        client: GeminiNativeThinkingClient,
+        sample_conversation: LLMConversation
+    ) -> None:
+        """Test that thinking content only (no actual content, no tool calls) triggers retry."""
+        # First response: only thinking, no content
+        thinking_only_response = MagicMock()
+        thinking_part = MagicMock()
+        thinking_part.thought = True
+        thinking_part.text = "Let me think about this..."
+        thinking_part.thought_signature = None
+        thinking_only_response.candidates = [MagicMock(content=MagicMock(parts=[thinking_part]))]
+        thinking_only_response.function_calls = None
+        thinking_only_response.usage_metadata = None
+        
+        # Second response: valid content
+        valid_response = MagicMock()
+        valid_part = MagicMock()
+        valid_part.thought = False
+        valid_part.text = "Analysis complete."
+        valid_part.thought_signature = None
+        valid_response.candidates = [MagicMock(content=MagicMock(parts=[valid_part]))]
+        valid_response.function_calls = None
+        valid_response.usage_metadata = None
+        
+        async def thinking_stream():
+            yield thinking_only_response
+        
+        async def valid_stream():
+            yield valid_response
+        
+        mock_native_client = MagicMock()
+        mock_native_client.aio.models.generate_content_stream = AsyncMock(
+            side_effect=[thinking_stream(), valid_stream()]
+        )
+        mock_genai.Client.return_value = mock_native_client
+        
+        mock_ctx = MagicMock()
+        mock_ctx.interaction = MagicMock()
+        mock_ctx.complete_success = AsyncMock()
+        mock_context_cm = MagicMock()
+        mock_context_cm.__aenter__ = AsyncMock(return_value=mock_ctx)
+        mock_context_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_context.return_value = mock_context_cm
+        
+        with patch("tarsy.integrations.llm.gemini_client.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            result = await client.generate(
+                conversation=sample_conversation,
+                session_id="test-session",
+                mcp_tools=[]
+            )
+        
+        # Should succeed on retry with valid content
+        assert result.content == "Analysis complete."
+        
+        # Verify retry occurred (sleep called once)
+        assert mock_sleep.call_count == 1
+        
+        # Verify two attempts were made
+        assert mock_native_client.aio.models.generate_content_stream.call_count == 2
+    
+    @pytest.mark.asyncio
+    @patch("tarsy.integrations.llm.gemini_client.genai")
+    @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
+    async def test_empty_content_with_tool_calls_does_not_retry(
+        self,
+        mock_context: MagicMock,
+        mock_genai: MagicMock,
+        client: GeminiNativeThinkingClient,
+        sample_conversation: LLMConversation
+    ) -> None:
+        """Test that empty content with tool calls is considered valid (no retry)."""
+        # Response with tool call but no text content
+        response = MagicMock()
+        response.candidates = []  # No text content
+        response.usage_metadata = None
+        
+        # Add function call
+        function_call = MagicMock()
+        function_call.name = "kubernetes__get_pods"
+        function_call.args = {"namespace": "default"}
+        response.function_calls = [function_call]
+        
+        async def tool_call_stream():
+            yield response
+        
+        mock_native_client = MagicMock()
+        mock_native_client.aio.models.generate_content_stream = AsyncMock(
+            return_value=tool_call_stream()
+        )
+        mock_genai.Client.return_value = mock_native_client
+        
+        mock_ctx = MagicMock()
+        mock_ctx.interaction = MagicMock()
+        mock_ctx.complete_success = AsyncMock()
+        mock_context_cm = MagicMock()
+        mock_context_cm.__aenter__ = AsyncMock(return_value=mock_ctx)
+        mock_context_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_context.return_value = mock_context_cm
+        
+        result = await client.generate(
+            conversation=sample_conversation,
+            session_id="test-session",
+            mcp_tools=[
+                ToolWithServer(
+                    server="kubernetes",
+                    tool=Tool(name="get_pods", description="Get pods", inputSchema={})
+                )
+            ]
+        )
+        
+        # Should not retry (tool calls are actionable)
+        assert result.has_tool_calls is True
+        assert result.is_final is False
+        assert len(result.tool_calls) == 1
+        
+        # Verify only one attempt was made (no retry)
+        assert mock_native_client.aio.models.generate_content_stream.call_count == 1
+    
+    @pytest.mark.asyncio
+    @patch("tarsy.integrations.llm.gemini_client.genai")
+    @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
+    async def test_whitespace_only_response_retries(
+        self,
+        mock_context: MagicMock,
+        mock_genai: MagicMock,
+        client: GeminiNativeThinkingClient,
+        sample_conversation: LLMConversation
+    ) -> None:
+        """Test that whitespace-only response triggers retry."""
+        # First response: whitespace only
+        whitespace_response = MagicMock()
+        whitespace_part = MagicMock()
+        whitespace_part.thought = False
+        whitespace_part.text = "   \n\t  "  # Only whitespace
+        whitespace_part.thought_signature = None
+        whitespace_response.candidates = [MagicMock(content=MagicMock(parts=[whitespace_part]))]
+        whitespace_response.function_calls = None
+        whitespace_response.usage_metadata = None
+        
+        # Second response: valid content
+        valid_response = MagicMock()
+        valid_part = MagicMock()
+        valid_part.thought = False
+        valid_part.text = "Valid content."
+        valid_part.thought_signature = None
+        valid_response.candidates = [MagicMock(content=MagicMock(parts=[valid_part]))]
+        valid_response.function_calls = None
+        valid_response.usage_metadata = None
+        
+        async def whitespace_stream():
+            yield whitespace_response
+        
+        async def valid_stream():
+            yield valid_response
+        
+        mock_native_client = MagicMock()
+        mock_native_client.aio.models.generate_content_stream = AsyncMock(
+            side_effect=[whitespace_stream(), valid_stream()]
+        )
+        mock_genai.Client.return_value = mock_native_client
+        
+        mock_ctx = MagicMock()
+        mock_ctx.interaction = MagicMock()
+        mock_ctx.complete_success = AsyncMock()
+        mock_context_cm = MagicMock()
+        mock_context_cm.__aenter__ = AsyncMock(return_value=mock_ctx)
+        mock_context_cm.__aexit__ = AsyncMock(return_value=None)
+        mock_context.return_value = mock_context_cm
+        
+        with patch("tarsy.integrations.llm.gemini_client.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+            result = await client.generate(
+                conversation=sample_conversation,
+                session_id="test-session",
+                mcp_tools=[]
+            )
+        
+        # Should succeed on retry
+        assert result.content == "Valid content."
+        
+        # Verify retry occurred
+        assert mock_sleep.call_count == 1
+        assert mock_native_client.aio.models.generate_content_stream.call_count == 2
 
