@@ -36,6 +36,8 @@ import {
 import { PARALLEL_TYPE } from '../utils/parallelConstants';
 import TokenUsageDisplay from './TokenUsageDisplay';
 import InteractionCard from './InteractionCard';
+import CopyButton from './CopyButton';
+import { formatStageForCopy } from '../utils/timelineHelpers';
 
 interface ParallelStageExecutionTabsProps {
   stage: StageExecution;
@@ -91,6 +93,40 @@ const getStatusColor = (status: string) => {
     default:
       return 'default';
   }
+};
+
+/**
+ * Format a single execution for copying to clipboard
+ * Uses shared formatting function from timelineHelpers for consistency
+ */
+const formatExecutionForCopy = (
+  execution: StageExecution,
+  executionIndex: number
+): string => {
+  // Convert interactions to TimelineItem format for the shared formatter
+  const llmInteractions = (execution.llm_interactions || []).map(interaction => ({
+    event_id: interaction.event_id,
+    type: 'llm' as const,
+    timestamp_us: interaction.timestamp_us,
+    step_description: interaction.step_description,
+    duration_ms: interaction.duration_ms,
+    details: interaction.details
+  }));
+  
+  const mcpInteractions = (execution.mcp_communications || []).map(interaction => ({
+    event_id: interaction.event_id,
+    type: 'mcp' as const,
+    timestamp_us: interaction.timestamp_us,
+    step_description: interaction.step_description,
+    duration_ms: interaction.duration_ms,
+    details: interaction.details
+  }));
+  
+  const allInteractions = [...llmInteractions, ...mcpInteractions]
+    .sort((a, b) => a.timestamp_us - b.timestamp_us);
+  
+  // Use shared formatting function for consistency with single agent stages
+  return formatStageForCopy(execution, executionIndex, allInteractions);
 };
 
 /**
@@ -324,9 +360,17 @@ const ParallelStageExecutionTabs: React.FC<ParallelStageExecutionTabsProps> = ({
             <CardContent>
               {/* Execution Details */}
               <Box mb={2}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Execution Details
-                </Typography>
+                <Box display="flex" justifyContent="space-between" alignItems="center" mb={1}>
+                  <Typography variant="subtitle2">
+                    Execution Details
+                  </Typography>
+                  <CopyButton
+                    text={formatExecutionForCopy(execution, index)}
+                    variant="icon"
+                    size="small"
+                    tooltip="Copy execution details and timeline to clipboard"
+                  />
+                </Box>
                 <Box
                   sx={{
                     p: 1.5,

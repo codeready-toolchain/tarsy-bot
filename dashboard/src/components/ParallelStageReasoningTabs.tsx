@@ -24,6 +24,7 @@ import StreamingContentRenderer, { type StreamingItem } from './StreamingContent
 import { getParallelStageLabel } from '../utils/parallelStageHelpers';
 import { isTerminalProgressStatus } from '../utils/statusMapping';
 import TokenUsageDisplay from './TokenUsageDisplay';
+import CopyButton from './CopyButton';
 
 // Module-level constant to avoid creating new Map on every render
 const EMPTY_AGENT_PROGRESS_MAP = new Map<string, string>();
@@ -101,6 +102,72 @@ const getStatusLabel = (status: string) => {
   if (status === 'paused') return 'Paused';
   if (status === 'active') return 'Running';
   return 'Pending';
+};
+
+/**
+ * Format a single agent's conversation for copying to clipboard
+ */
+const formatAgentConversationForCopy = (
+  execution: { 
+    executionId: string; 
+    stageExecution: StageExecution; 
+    index: number; 
+    items: ChatFlowItemData[] 
+  },
+  parallelType: string | undefined,
+  stageName: string
+): string => {
+  const label = getParallelStageLabel(execution.stageExecution, execution.index, parallelType);
+  const llmInteractions = execution.stageExecution.llm_interactions || [];
+  const modelName = llmInteractions.length > 0 ? llmInteractions[0].details.model_name : 'Unknown';
+  const iterationStrategy = execution.stageExecution.iteration_strategy || 'Unknown';
+  
+  let content = `=== Stage: ${stageName} - ${label} ===\n`;
+  content += `Agent: ${execution.stageExecution.agent}\n`;
+  content += `Status: ${getStatusLabel(execution.stageExecution.status)}\n`;
+  content += `Model: ${modelName}\n`;
+  content += `Strategy: ${iterationStrategy}\n`;
+  content += `Execution ID: ${execution.executionId}\n`;
+  content += '\n--- Reasoning Flow ---\n\n';
+  
+  execution.items.forEach((item) => {
+    if (item.type === CHAT_FLOW_ITEM_TYPES.THOUGHT) {
+      content += `💭 Thought:\n${item.content}\n\n`;
+    } else if (item.type === CHAT_FLOW_ITEM_TYPES.NATIVE_THINKING) {
+      content += `🧠 Native Thinking:\n${item.content}\n\n`;
+    } else if (item.type === CHAT_FLOW_ITEM_TYPES.TOOL_CALL) {
+      content += `🔧 Tool Call: ${item.toolName}\n`;
+      content += `   Server: ${item.serverName}\n`;
+      content += `   Arguments: ${JSON.stringify(item.toolArguments, null, 2)}\n`;
+      if (item.success) {
+        content += `   Result: ${typeof item.toolResult === 'string' ? item.toolResult : JSON.stringify(item.toolResult, null, 2)}\n`;
+      } else {
+        content += `   Error: ${item.errorMessage}\n`;
+      }
+      content += '\n';
+    } else if (item.type === CHAT_FLOW_ITEM_TYPES.SUMMARIZATION) {
+      content += `📋 Tool Result Summary:\n${item.content}\n\n`;
+    } else if (item.type === CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER) {
+      content += `🎯 Final Answer:\n${item.content}\n\n`;
+    } else if (item.type === CHAT_FLOW_ITEM_TYPES.FORCED_CONCLUSION) {
+      content += `🎯 Final Answer (⚠️Max Iterations):\n${item.content}\n\n`;
+    }
+  });
+  
+  // Add token usage if available
+  if (execution.stageExecution.stage_total_tokens !== null) {
+    content += `--- Token Usage ---\n`;
+    content += `Total: ${execution.stageExecution.stage_total_tokens}`;
+    if (execution.stageExecution.stage_input_tokens !== null) {
+      content += ` (${execution.stageExecution.stage_input_tokens} input`;
+    }
+    if (execution.stageExecution.stage_output_tokens !== null) {
+      content += `, ${execution.stageExecution.stage_output_tokens} output`;
+    }
+    content += `)\n`;
+  }
+  
+  return content;
 };
 
 /**
@@ -429,6 +496,34 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
                 <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
                   No reasoning steps available for this agent
                 </Typography>
+              )}
+
+              {/* Copy Agent Conversation Button */}
+              {(hasDbItems || hasStreamingItems) && (
+                <Box 
+                  sx={{ 
+                    mt: 3, 
+                    pt: 2,
+                    borderTop: 1,
+                    borderColor: 'divider',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}
+                >
+                  <CopyButton
+                    text={formatAgentConversationForCopy(
+                      execution,
+                      stage.parallel_type,
+                      stage.stage_name
+                    )}
+                    variant="button"
+                    buttonVariant="outlined"
+                    size="small"
+                    label="Copy Agent Conversation"
+                    tooltip="Copy this agent's reasoning flow to clipboard"
+                  />
+                </Box>
               )}
 
               {/* Agent-Level Cancel Button - Only for paused agents */}
