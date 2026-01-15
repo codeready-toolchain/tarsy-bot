@@ -146,6 +146,26 @@ const FinalAnalysisCard = forwardRef<HTMLDivElement, FinalAnalysisCardProps>(({ 
     }
   };
 
+  // Format combined document with both summary and analysis
+  const getCombinedDocument = () => {
+    let document = '';
+    
+    if (summary) {
+      document += '# Executive Summary\n\n';
+      document += summary;
+      document += '\n\n';
+    }
+    
+    if (displayAnalysis) {
+      if (summary) {
+        document += '# Full Detailed Analysis\n\n';
+      }
+      document += displayAnalysis;
+    }
+    
+    return document;
+  };
+
   // Handle snackbar close
   const handleSnackbarClose = () => {
     setCopySuccess(false);
@@ -239,7 +259,7 @@ const FinalAnalysisCard = forwardRef<HTMLDivElement, FinalAnalysisCardProps>(({ 
               size="small"
               onClick={(e) => {
                 e.stopPropagation();
-                handleCopyAnalysis(displayAnalysis);
+                handleCopyAnalysis(getCombinedDocument());
               }}
             >
               Copy {isFakeAnalysis ? 'Message' : 'Analysis'}
@@ -309,20 +329,28 @@ const FinalAnalysisCard = forwardRef<HTMLDivElement, FinalAnalysisCardProps>(({ 
                 borderRadius: '4px 0 0 4px'
               }
             }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
-                <AutoAwesome sx={{ color: 'success.main', fontSize: 20 }} />
-                <Typography 
-                  variant="subtitle2" 
-                  sx={{ 
-                    fontWeight: 700,
-                    color: 'success.main',
-                    textTransform: 'uppercase',
-                    letterSpacing: 0.5,
-                    fontSize: '0.8rem'
-                  }}
-                >
-                  Executive Summary
-                </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <AutoAwesome sx={{ color: 'success.main', fontSize: 20 }} />
+                  <Typography 
+                    variant="subtitle2" 
+                    sx={{ 
+                      fontWeight: 700,
+                      color: 'success.main',
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.5,
+                      fontSize: '0.8rem'
+                    }}
+                  >
+                    Executive Summary
+                  </Typography>
+                </Box>
+                <CopyButton
+                  text={summary}
+                  variant="icon"
+                  size="small"
+                  tooltip="Copy summary"
+                />
               </Box>
               <Box sx={{
                 // Ensure markdown content renders inline properly
@@ -429,6 +457,16 @@ const FinalAnalysisCard = forwardRef<HTMLDivElement, FinalAnalysisCardProps>(({ 
                 bgcolor: 'grey.100'
               }}
             >
+              {/* Analysis header with copy button */}
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+                <CopyButton
+                  text={displayAnalysis}
+                  variant="icon"
+                  size="small"
+                  tooltip="Copy analysis"
+                />
+              </Box>
+              
               <ReactMarkdown
                 urlTransform={defaultUrlTransform}
                 components={{
