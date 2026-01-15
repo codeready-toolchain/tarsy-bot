@@ -5,16 +5,13 @@ Tests that the submit_alert endpoint creates the session in the database
 before returning the response to the client, eliminating race conditions.
 """
 
-import uuid
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import Session
 
 from tarsy.main import app
 from tarsy.models.agent_config import ChainConfigModel, ChainStageConfigModel
-from tarsy.models.db_models import AlertSession
 
 
 @pytest.mark.unit
@@ -64,15 +61,31 @@ class TestAlertSubmissionSessionCreation:
             mock_service.session_manager = Mock()
             yield mock_service
 
+    @pytest.fixture
+    def mock_process_alert_callback(self):
+        """Mock process_alert_callback with automatic cleanup."""
+        # Save original value if it exists
+        original = getattr(app.state, "process_alert_callback", None)
+        
+        # Set mock
+        mock_callback = AsyncMock()
+        app.state.process_alert_callback = mock_callback
+        
+        yield mock_callback
+        
+        # Restore original value
+        if original is None:
+            if hasattr(app.state, "process_alert_callback"):
+                delattr(app.state, "process_alert_callback")
+        else:
+            app.state.process_alert_callback = original
+
     def test_submit_alert_creates_session_before_response(
-        self, client, valid_alert_data, mock_alert_service, mock_chain_definition
+        self, client, valid_alert_data, mock_alert_service, mock_chain_definition, mock_process_alert_callback
     ):
         """Test that session is created in database before API response is returned."""
         # Arrange - Mock session creation to return True
         mock_alert_service.session_manager.create_chain_history_session.return_value = True
-        
-        # Mock background processing
-        app.state.process_alert_callback = AsyncMock()
         
         # Act
         response = client.post("/api/v1/alerts", json=valid_alert_data)
@@ -97,7 +110,7 @@ class TestAlertSubmissionSessionCreation:
         assert chain_def == mock_chain_definition
         
         # Verify background task was started
-        app.state.process_alert_callback.assert_called_once()
+        mock_process_alert_callback.assert_called_once()
 
     def test_submit_alert_returns_400_for_invalid_alert_type(
         self, client, valid_alert_data, mock_alert_service
