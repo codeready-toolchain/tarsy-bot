@@ -147,6 +147,8 @@ const formatAgentConversationForCopy = (
       content += '\n';
     } else if (item.type === CHAT_FLOW_ITEM_TYPES.SUMMARIZATION) {
       content += `📋 Tool Result Summary:\n${item.content}\n\n`;
+    } else if (item.type === CHAT_FLOW_ITEM_TYPES.INTERMEDIATE_RESPONSE) {
+      content += `💬 Intermediate Response:\n${item.content}\n\n`;
     } else if (item.type === CHAT_FLOW_ITEM_TYPES.FINAL_ANSWER) {
       content += `🎯 Final Answer:\n${item.content}\n\n`;
     } else if (item.type === CHAT_FLOW_ITEM_TYPES.FORCED_CONCLUSION) {
@@ -498,8 +500,8 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
                 </Typography>
               )}
 
-              {/* Copy Agent Conversation Button */}
-              {(hasDbItems || hasStreamingItems) && (
+              {/* Copy Agent Conversation Button - Only show when DB items are available */}
+              {hasDbItems && (
                 <Box 
                   sx={{ 
                     mt: 3, 

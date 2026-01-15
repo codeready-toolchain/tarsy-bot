@@ -126,6 +126,11 @@ const FinalAnalysisCard = forwardRef<HTMLDivElement, FinalAnalysisCardProps>(({ 
     }
   }, [analysis, prevAnalysis, sessionStatus]);
 
+  // Determine the actual analysis to display
+  // For terminal sessions without analysis, generate a fake one
+  const displayAnalysis = analysis || 
+    (isTerminalSessionStatus(sessionStatus) ? generateFakeAnalysis(sessionStatus, errorMessage) : null);
+
   // Handle copy to clipboard
   const handleCopyAnalysis = async (textToCopy: string) => {
     if (!textToCopy) return;
@@ -170,11 +175,6 @@ const FinalAnalysisCard = forwardRef<HTMLDivElement, FinalAnalysisCardProps>(({ 
   const handleSnackbarClose = () => {
     setCopySuccess(false);
   };
-
-  // Determine the actual analysis to display
-  // For terminal sessions without analysis, generate a fake one
-  const displayAnalysis = analysis || 
-    (isTerminalSessionStatus(sessionStatus) ? generateFakeAnalysis(sessionStatus, errorMessage) : null);
   
   // If session is still active and no analysis yet, hide the card
   if (!displayAnalysis) {
