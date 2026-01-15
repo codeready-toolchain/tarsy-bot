@@ -962,7 +962,16 @@ function SessionDetailPageBase({
                   return timelineComponent(session, autoScrollEnabled, displayStatus, agentProgressStatuses, setSelectedAgentExecutionId);
                 })()}
               </Suspense>
+            ) : session.status === SESSION_STATUS.PENDING ? (
+              // Session is pending and stages haven't been created yet - show loading state
+              <Box sx={{ py: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                <CircularProgress size={48} />
+                <Typography variant="body1" color="text.secondary">
+                  Initializing investigation...
+                </Typography>
+              </Box>
             ) : (
+              // Session is not pending but has no stages - this is an error
               <Alert severity="error" sx={{ mb: 2 }}>
                 <Typography variant="h6" gutterBottom>
                   Backend Chain Execution Error
