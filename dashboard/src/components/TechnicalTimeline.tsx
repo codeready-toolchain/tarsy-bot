@@ -38,10 +38,9 @@ function TechnicalTimeline({
   autoScroll = true,
   progressStatus = ProgressStatusMessage.PROCESSING
 }: TechnicalTimelineProps) {
-  
   if (!session.stages || session.stages.length === 0) {
-    // If session is pending, stages haven't been created yet - show loading state
-    if (session.status === SESSION_STATUS.PENDING) {
+    // If session is active (pending or in_progress), stages may not be created yet - show loading state
+    if (session.status === SESSION_STATUS.PENDING || session.status === SESSION_STATUS.IN_PROGRESS) {
       return (
         <Box sx={{ py: 8, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
           <CircularProgress size={48} />
@@ -52,7 +51,7 @@ function TechnicalTimeline({
       );
     }
     
-    // Session is not pending but has no stages - this is an error
+    // Session is terminal or inactive but has no stages - this is an error
     return (
       <Alert severity="error" sx={{ mb: 2 }}>
         <Typography variant="h6" gutterBottom>
