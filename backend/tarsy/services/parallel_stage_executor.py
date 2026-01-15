@@ -230,6 +230,59 @@ class ParallelStageExecutor:
             # ANY policy: at least one must succeed (all failures/cancellations = stage failure)
             return StageStatus.COMPLETED if completed_count > 0 else StageStatus.FAILED
     
+    def _aggregate_parallel_stage_errors(
+        self,
+        metadatas: list[AgentExecutionMetadata],
+        parallel_type: str,
+        success_policy: SuccessPolicy
+    ) -> str:
+        """
+        Aggregate error messages from failed/cancelled agents in a parallel stage.
+        
+        Creates a detailed error message listing each failed/cancelled agent with their specific error.
+        
+        Args:
+            metadatas: List of agent execution metadata
+            parallel_type: Type of parallel execution (e.g., "multi_agent", "replica")
+            success_policy: Success policy that was applied
+            
+        Returns:
+            Detailed error message with individual agent failures
+        """
+        failed_agents = []
+        cancelled_agents = []
+        
+        for metadata in metadatas:
+            agent_name = metadata.agent_name or 'unknown'
+            error_msg = metadata.error_message or 'No error message'
+            
+            if metadata.status == StageStatus.FAILED:
+                failed_agents.append(f"  - {agent_name} (failed): {error_msg}")
+            elif metadata.status == StageStatus.CANCELLED:
+                cancelled_agents.append(f"  - {agent_name} (cancelled): {error_msg}")
+        
+        # Count totals
+        failed_count = len(failed_agents)
+        cancelled_count = len(cancelled_agents)
+        total_agents = len(metadatas)
+        
+        # Build header
+        error_parts = [
+            f"{parallel_type.capitalize()} stage failed: {failed_count + cancelled_count}/{total_agents} executions failed (policy: {success_policy})"
+        ]
+        
+        # Add detailed agent errors
+        if failed_agents:
+            error_parts.append("\nFailed agents:")
+            error_parts.extend(failed_agents)
+        
+        if cancelled_agents:
+            error_parts.append("\nCancelled agents:")
+            error_parts.extend(cancelled_agents)
+        
+        return "\n".join(error_parts)
+    
+    
     async def _execute_parallel_stage(
         self,
         stage: "ChainStageConfigModel",
@@ -565,7 +618,12 @@ class ParallelStageExecutor:
                 f"{paused_count} agents paused, {completed_count} completed, {failed_count} failed"
             )
         else:  # FAILED
-            error_msg = f"{parallel_type.capitalize()} stage failed: {failed_count}/{len(metadatas)} executions failed (policy: {stage.success_policy})"
+            # Build detailed error message showing all failed/cancelled agents
+            error_msg = self._aggregate_parallel_stage_errors(
+                metadatas=metadatas,
+                parallel_type=parallel_type,
+                success_policy=stage.success_policy
+            )
             await self.stage_manager.update_stage_execution_failed(parent_stage_execution_id, error_msg)
         
         return parallel_result

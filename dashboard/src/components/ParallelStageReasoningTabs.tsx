@@ -396,15 +396,6 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
         return (
           <TabPanel key={execution.executionId} value={selectedTab} index={index}>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
-              {/* Show error message for failed executions */}
-              {hasError && (
-                <Alert severity="error" sx={{ mb: 2 }}>
-                  <Typography variant="body2">
-                    <strong>Execution Failed:</strong> {execution.stageExecution.error_message}
-                  </Typography>
-                </Alert>
-              )}
-              
               {/* Render DB items */}
               {execution.items.map((item) => (
                 <ChatFlowItem
@@ -429,6 +420,15 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
                 <Typography variant="body2" color="text.secondary" sx={{ textAlign: 'center', py: 4 }}>
                   No reasoning steps available for this agent
                 </Typography>
+              )}
+
+              {/* Show error message for failed executions at the end of the timeline */}
+              {hasError && (
+                <Alert severity="error" sx={{ mt: 2 }}>
+                  <Typography variant="body2">
+                    <strong>Execution Failed:</strong> {execution.stageExecution.error_message}
+                  </Typography>
+                </Alert>
               )}
 
               {/* Agent-Level Cancel Button - Only for paused agents */}
