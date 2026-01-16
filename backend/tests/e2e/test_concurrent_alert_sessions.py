@@ -70,17 +70,16 @@ class TestConcurrentAlertSessions:
                 # Simple response for each session
                 response_content = f"Final Answer: Analysis completed for concurrent session {interaction_count}"
                 
-                # Create mock streaming response
-                mock_chunk = Mock()
-                mock_chunk.choices = [Mock()]
-                mock_chunk.choices[0].delta = Mock()
-                mock_chunk.choices[0].delta.content = response_content
-                mock_chunk.usage = Mock()
-                mock_chunk.usage.prompt_tokens = 100
-                mock_chunk.usage.completion_tokens = 50
-                mock_chunk.usage.total_tokens = 150
+                # Create usage metadata
+                usage_metadata = {
+                    'input_tokens': 100,
+                    'output_tokens': 50,
+                    'total_tokens': 150
+                }
                 
-                return create_mock_stream([mock_chunk])
+                # Yield chunks from create_mock_stream
+                async for chunk in create_mock_stream(response_content, usage_metadata):
+                    yield chunk
                 
             return mock_astream
         
