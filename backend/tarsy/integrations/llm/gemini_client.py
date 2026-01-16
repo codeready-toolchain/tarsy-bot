@@ -285,82 +285,97 @@ class GeminiNativeThinkingClient:
         if native_tools_override is not None:
             logger.info(f"[{request_id}] Applied session-level native tools override")
         
+        # Create native Google client once (before retry loop)
+        # Any exceptions from client creation are surfaced immediately
+        try:
+            native_client = genai.Client(api_key=self.config.api_key)
+        except Exception as e:
+            logger.error(f"[{request_id}] Failed to create native Google client: {e}")
+            raise
+        
+        # Convert conversation to native Google format once (before retry loop)
+        # Any exceptions from conversion are surfaced immediately
+        try:
+            contents = self._convert_conversation_to_native_format(conversation)
+        except Exception as e:
+            logger.error(f"[{request_id}] Failed to convert conversation to native format: {e}")
+            raise
+        
+        # If we have a thought signature from previous turn, include it for reasoning continuity.
+        #
+        # NOTE: This implementation deviates from Google's documentation which states that
+        # thought_signature must be attached to its original Part (functionCall, text, etc.),
+        # not as a standalone Part. However, our simplified LLMConversation model doesn't
+        # preserve the full Part structure needed for proper signature placement, and
+        # refactoring would break pause/resume functionality (which relies on serializing
+        # LLMConversation to the database).
+        #
+        # Empirical testing shows this approach still improves reasoning continuity compared
+        # to omitting the signature entirely. A proper fix would require extending
+        # LLMConversation to store function calls with their signatures.
+        #
+        # TODO: Consider proper implementation per Google docs if issues arise.
+        if thought_signature:
+            contents.append(google_genai_types.Content(
+                role="model",
+                parts=[google_genai_types.Part(thought_signature=thought_signature)]
+            ))
+            logger.debug(f"[{request_id}] Attached thought_signature for reasoning continuity")
+        
+        # Convert MCP tools to native function declarations once (before retry loop)
+        try:
+            mcp_functions = self._convert_mcp_tools_to_functions(mcp_tools)
+        except Exception as e:
+            logger.error(f"[{request_id}] Failed to convert MCP tools to native functions: {e}")
+            raise
+        
+        # Build tools list once (before retry loop)
+        # NOTE: Standard generateContent API doesn't support multi-tool use
+        # (combining function calling with google_search/url_context/code_execution).
+        # When MCP tools are provided, we use those exclusively.
+        tools = []
+        
+        if mcp_functions:
+            tools.append(google_genai_types.Tool(function_declarations=mcp_functions))
+            logger.info(f"[{request_id}] Bound {len(mcp_functions)} MCP tools as native functions")
+        else:
+            # Only add native Google tools when no MCP function calling is needed
+            # Use shared helper to build tool list from effective config
+            native_tools_list = NativeToolsHelper.build_tool_list(
+                native_tools_config,
+                provider_name=self.provider_name
+            )
+            tools.extend(native_tools_list)
+            
+            if native_tools_list:
+                enabled_names = [name for name, enabled in native_tools_config.items() if enabled]
+                logger.info(f"[{request_id}] Bound native Google tools: {enabled_names}")
+        
+        # Configure thinking with include_thoughts=True to get reasoning content
+        thinking_budget = 24576 if thinking_level == "high" else 4096
+        thinking_config = google_genai_types.ThinkingConfig(
+            thinking_budget=thinking_budget,
+            include_thoughts=True  # This enables access to thinking content!
+        )
+        
+        # Build generation config once (before retry loop)
+        # temperature=None lets the model use its default (varies by model)
+        gen_config = google_genai_types.GenerateContentConfig(
+            temperature=self.temperature,
+            max_output_tokens=max_tokens,
+            thinking_config=thinking_config,
+            tools=tools if tools else None,
+            # Disable automatic function calling - we handle it manually
+            automatic_function_calling=google_genai_types.AutomaticFunctionCallingConfig(
+                disable=True
+            ) if tools else None
+        )
+        
         # Create interaction context for audit
         # Retry logic for empty responses (matching LLMClient behavior)
         async with llm_interaction_context(session_id, request_data, stage_execution_id, native_tools_config) as ctx:
             for attempt in range(max_retries + 1):
                 try:
-                    # Create native Google client
-                    native_client = genai.Client(api_key=self.config.api_key)
-                    
-                    # Convert conversation to native Google format
-                    contents = self._convert_conversation_to_native_format(conversation)
-                    
-                    # If we have a thought signature from previous turn, include it for reasoning continuity.
-                    #
-                    # NOTE: This implementation deviates from Google's documentation which states that
-                    # thought_signature must be attached to its original Part (functionCall, text, etc.),
-                    # not as a standalone Part. However, our simplified LLMConversation model doesn't
-                    # preserve the full Part structure needed for proper signature placement, and
-                    # refactoring would break pause/resume functionality (which relies on serializing
-                    # LLMConversation to the database).
-                    #
-                    # Empirical testing shows this approach still improves reasoning continuity compared
-                    # to omitting the signature entirely. A proper fix would require extending
-                    # LLMConversation to store function calls with their signatures.
-                    #
-                    # TODO: Consider proper implementation per Google docs if issues arise.
-                    if thought_signature:
-                        contents.append(google_genai_types.Content(
-                            role="model",
-                            parts=[google_genai_types.Part(thought_signature=thought_signature)]
-                        ))
-                        logger.debug(f"[{request_id}] Attached thought_signature for reasoning continuity")
-                    
-                    # Convert MCP tools to native function declarations
-                    mcp_functions = self._convert_mcp_tools_to_functions(mcp_tools)
-                    
-                    # Build tools list
-                    # NOTE: Standard generateContent API doesn't support multi-tool use
-                    # (combining function calling with google_search/url_context/code_execution).
-                    # When MCP tools are provided, we use those exclusively.
-                    tools = []
-                    
-                    if mcp_functions:
-                        tools.append(google_genai_types.Tool(function_declarations=mcp_functions))
-                        logger.info(f"[{request_id}] Bound {len(mcp_functions)} MCP tools as native functions")
-                    else:
-                        # Only add native Google tools when no MCP function calling is needed
-                        # Use shared helper to build tool list from effective config
-                        native_tools_list = NativeToolsHelper.build_tool_list(
-                            native_tools_config,
-                            provider_name=self.provider_name
-                        )
-                        tools.extend(native_tools_list)
-                        
-                        if native_tools_list:
-                            enabled_names = [name for name, enabled in native_tools_config.items() if enabled]
-                            logger.info(f"[{request_id}] Bound native Google tools: {enabled_names}")
-                    
-                    # Configure thinking with include_thoughts=True to get reasoning content
-                    thinking_budget = 24576 if thinking_level == "high" else 4096
-                    thinking_config = google_genai_types.ThinkingConfig(
-                        thinking_budget=thinking_budget,
-                        include_thoughts=True  # This enables access to thinking content!
-                    )
-                    
-                    # Build generation config
-                    # temperature=None lets the model use its default (varies by model)
-                    gen_config = google_genai_types.GenerateContentConfig(
-                        temperature=self.temperature,
-                        max_output_tokens=max_tokens,
-                        thinking_config=thinking_config,
-                        tools=tools if tools else None,
-                        # Disable automatic function calling - we handle it manually
-                        automatic_function_calling=google_genai_types.AutomaticFunctionCallingConfig(
-                            disable=True
-                        ) if tools else None
-                    )
                     
                     # Make the API call with timeout using streaming
                     accumulated_content = ""
