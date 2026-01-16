@@ -603,10 +603,12 @@ class TestScoringInitiation:
     @pytest.mark.asyncio
     async def test_initiate_scoring_session_not_found(self, scoring_service):
         """Test error when session not found."""
+        from tarsy.services.scoring_service import SessionNotFoundError
+
         with patch.object(
             scoring_service.history_service, "get_session", return_value=None
         ):
-            with pytest.raises(ValueError, match="Session .* not found"):
+            with pytest.raises(SessionNotFoundError, match="Session .* was not found"):
                 await scoring_service.initiate_scoring(
                     "nonexistent-session", "test-user"
                 )
@@ -616,6 +618,8 @@ class TestScoringInitiation:
         self, scoring_service, mock_session_completed
     ):
         """Test error when session is not completed."""
+        from tarsy.services.scoring_service import SessionNotCompletedError
+
         mock_session_completed.status = AlertSessionStatus.IN_PROGRESS.value
 
         with patch.object(
@@ -623,7 +627,7 @@ class TestScoringInitiation:
             "get_session",
             return_value=mock_session_completed,
         ):
-            with pytest.raises(ValueError, match="Session must be completed"):
+            with pytest.raises(SessionNotCompletedError, match="Session must be completed"):
                 await scoring_service.initiate_scoring("test-session-123", "test-user")
 
     @pytest.mark.asyncio
@@ -694,7 +698,7 @@ class TestScoringInitiation:
             patch.object(
                 scoring_service, "_get_latest_score", return_value=existing_score
             ),
-            pytest.raises(ValueError, match="Cannot force rescore while scoring"),
+            pytest.raises(ValueError, match="Cannot force rescore while an already existing scoring"),
         ):
             await scoring_service.initiate_scoring(
                 "test-session-123", "test-user", force_rescore=True
