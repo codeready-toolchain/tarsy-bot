@@ -1107,7 +1107,7 @@ class ParallelStageExecutor:
                 agent=synthesis_config.agent,
                 iteration_strategy=synthesis_config.iteration_strategy,
                 llm_provider=synthesis_config.llm_provider or stage_config.llm_provider,
-                mcp_servers=synthesis_config.mcp_servers  # Include synthesis MCP override
+                mcp_servers=None  # Synthesis doesn't use tools/MCP servers
             )
             
             # Resolve unified execution config (synthesis doesn't have parallel_agent_config)
