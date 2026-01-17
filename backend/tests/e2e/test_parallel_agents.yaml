@@ -100,7 +100,8 @@ agent_chains:
     description: "Parallel stage with automatic synthesis followed by regular stage | MCP: stage-level"
   
   # Test chain 4: Multi-agent parallel with success_policy: any (for cancel tests)
-  # MCP Config Test: Chain + Stage levels (stage overrides chain)
+  # MCP Config Test: Chain + Stage levels (structural test - both use same server for simplicity)
+  # Note: Precedence verification is handled by unit tests in test_mcp_config_resolver.py
   multi-agent-cancel-test-chain:
     alert_types:
       - "test-cancel-agent-execution"
@@ -109,7 +110,7 @@ agent_chains:
     stages:
       - name: "investigation"
         mcp_servers:
-          - "kubernetes-server"  # Stage-level: Overrides chain for this stage
+          - "kubernetes-server"  # Stage-level: Tests structural validity (same value for test simplicity)
         agents:
           - name: "KubernetesAgent"
             llm_provider: "google-default"
@@ -125,7 +126,8 @@ agent_chains:
     description: "Multi-agent parallel with success_policy: any for per-agent cancellation tests | MCP: chain+stage-level"
 
   # Test chain 5: Multi-agent parallel (3 agents) with success_policy: any (for cancel tests)
-  # MCP Config Test: Mixed levels - Chain + parallel-agent overrides (tests precedence)
+  # MCP Config Test: Mixed levels - Chain + parallel-agent (structural test - both use same server for simplicity)
+  # Note: Precedence verification is handled by unit tests in test_mcp_config_resolver.py
   multi-agent-cancel-three-agent-test-chain:
     alert_types:
       - "test-cancel-agent-execution-three-agents"
@@ -142,7 +144,7 @@ agent_chains:
             llm_provider: "anthropic-default"
             iteration_strategy: "react"
             mcp_servers:
-              - "kubernetes-server"  # Parallel-agent-level: Explicit override (highest priority)
+              - "kubernetes-server"  # Parallel-agent-level: Tests structural validity (same value for test simplicity)
           - name: "CommandAgent"
             llm_provider: "anthropic-default"
             iteration_strategy: "react"

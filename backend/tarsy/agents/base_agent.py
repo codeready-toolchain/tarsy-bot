@@ -431,7 +431,7 @@ class BaseAgent(ABC):
         instructions.append(self._get_general_instructions())
         
         # Tier 2: MCP server instructions
-        mcp_server_ids = self.mcp_servers()
+        mcp_server_ids = self._get_effective_mcp_servers()
         server_configs = self.mcp_registry.get_server_configs(mcp_server_ids)
         
         for server_config in server_configs:

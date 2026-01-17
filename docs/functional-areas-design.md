@@ -1092,10 +1092,13 @@ agent_chains:
 ```
 
 **Resolution Flow**:
-1. **Configuration resolution** → `ExecutionConfigResolver.resolve_config()` determines effective servers
+1. **Configuration resolution** → `ExecutionConfigResolver.resolve_config()` determines base effective servers from configuration hierarchy
 2. **Agent initialization** → `BaseAgent.set_mcp_servers_override()` applies resolved configuration
-3. **Tool discovery** → `client.list_tools(session_id, server_name)` uses effective servers
-4. **Tool execution** → `client.call_tool(server, tool, params)` validates against resolved servers
+3. **Runtime overrides** → Alert-level overrides (via `ChainContext.mcp`) or chat-level overrides (via `ChatService`) may further modify servers before tool operations
+4. **Tool discovery** → `client.list_tools(session_id, server_name)` uses final effective servers (potentially modified by step 3)
+5. **Tool execution** → `client.call_tool(server, tool, params)` validates against final effective servers (potentially modified by step 3)
+
+**Note**: The final servers used by `client.list_tools()` and `client.call_tool()` can differ from the initial configuration resolved in step 1, as alert-level and chat-level overrides take precedence.
 
 **📍 Resolution Services**:
 - `backend/tarsy/services/mcp_config_resolver.py` - Hierarchical MCP server resolution

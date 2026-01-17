@@ -2,8 +2,11 @@
 Configuration resolution service for hierarchical MCP server settings.
 
 This module provides centralized logic for resolving mcp_servers settings across
-the configuration hierarchy: system → agent → chain → stage → parallel agent
+the configuration hierarchy: agent → chain → stage → parallel agent
 (highest precedence).
+
+The resolve_mcp_servers() function in mcp_config_resolver.py implements this
+hierarchy, where each level can override settings from lower-precedence levels.
 
 NOTE: Alert-level MCP override (ChainContext.mcp / MCPSelectionConfig) is handled
 separately in BaseAgent._get_available_tools() and takes precedence over ALL

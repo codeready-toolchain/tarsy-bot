@@ -718,9 +718,6 @@ class ParallelStageExecutor:
         # 6. Build execution configs for ONLY paused children
         execution_configs = []
         
-        # Import IterationConfigResolver for proper config resolution on resume
-        from tarsy.services.iteration_config_resolver import IterationConfigResolver
-        
         for child in paused_children:
             # Determine agent configuration
             # For multi-agent: look up in stage.agents list

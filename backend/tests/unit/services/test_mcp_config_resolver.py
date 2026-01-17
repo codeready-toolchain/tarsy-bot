@@ -146,8 +146,12 @@ class TestMCPConfigResolver:
         )
         assert result == ["server-1", "server-2", "server-3"]
     
-    def test_resolve_none_when_all_none(self):
-        """Test that None is returned when all levels are None."""
+    def test_resolve_agent_servers_when_chain_and_stage_none(self):
+        """Test that agent-level MCP servers are used when chain and stage are None.
+        
+        Verifies that when chain_config.mcp_servers and stage_config.mcp_servers
+        are both None, the resolver falls back to agent-level MCP servers.
+        """
         agent_config = AgentConfigModel(
             mcp_servers=["agent-server"],
             custom_instructions="test"

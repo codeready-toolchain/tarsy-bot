@@ -175,7 +175,8 @@ class ConfigurationLoader:
                                     "llm_provider": agent.llm_provider,
                                     "iteration_strategy": agent.iteration_strategy,
                                     "max_iterations": agent.max_iterations,
-                                    "force_conclusion_at_max_iterations": agent.force_conclusion_at_max_iterations
+                                    "force_conclusion_at_max_iterations": agent.force_conclusion_at_max_iterations,
+                                    "mcp_servers": agent.mcp_servers
                                 }
                                 for agent in stage.agents
                             ] if stage.agents else None,
@@ -185,6 +186,7 @@ class ConfigurationLoader:
                             "llm_provider": stage.llm_provider,
                             "max_iterations": stage.max_iterations,
                             "force_conclusion_at_max_iterations": stage.force_conclusion_at_max_iterations,
+                            "mcp_servers": stage.mcp_servers,
                             "synthesis": {
                                 "agent": stage.synthesis.agent,
                                 "iteration_strategy": stage.synthesis.iteration_strategy,
@@ -197,11 +199,13 @@ class ConfigurationLoader:
                     "llm_provider": chain_config.llm_provider,
                     "max_iterations": chain_config.max_iterations,
                     "force_conclusion_at_max_iterations": chain_config.force_conclusion_at_max_iterations,
+                    "mcp_servers": chain_config.mcp_servers,
                     "chat": {
                         "enabled": chain_config.chat.enabled,
                         "agent": chain_config.chat.agent,
                         "iteration_strategy": chain_config.chat.iteration_strategy,
-                        "llm_provider": chain_config.chat.llm_provider
+                        "llm_provider": chain_config.chat.llm_provider,
+                        "mcp_servers": chain_config.chat.mcp_servers
                     } if chain_config.chat else None
                 }
             
@@ -299,21 +303,8 @@ class ConfigurationLoader:
                                     logger.error(error_msg)
                                     raise ConfigurationError(error_msg)
                 
-                # Validate synthesis config MCP servers
-                if stage.synthesis and stage.synthesis.mcp_servers:
-                    logger.debug(
-                        f"Validating chain '{chain_id}' stage '{stage.name}' "
-                        f"synthesis agent MCP servers: {stage.synthesis.mcp_servers}"
-                    )
-                    for server_id in stage.synthesis.mcp_servers:
-                        if server_id not in available_servers:
-                            error_msg = (
-                                f"Chain '{chain_id}' stage '{stage.name}' "
-                                f"synthesis config references unknown MCP server '{server_id}'. "
-                                f"Available servers: {sorted(available_servers)}"
-                            )
-                            logger.error(error_msg)
-                            raise ConfigurationError(error_msg)
+                # Note: Synthesis config validation for MCP servers not needed
+                # SynthesisAgent performs pure analysis and doesn't use MCP tools
             
             # Validate chat config MCP servers
             if chain_config.chat and chain_config.chat.mcp_servers:
@@ -501,6 +492,7 @@ class ConfigurationLoader:
         }
         
         if disabled_servers:
+            # Check agent-level references
             for agent_name, agent_config in config.agents.items():
                 referenced_disabled = set(agent_config.mcp_servers) & disabled_servers
                 if referenced_disabled:
@@ -508,6 +500,51 @@ class ConfigurationLoader:
                         f"Agent '{agent_name}' references disabled MCP servers: {referenced_disabled}. "
                         f"This may cause runtime failures when processing alerts."
                     )
+            
+            # Check chain/stage/parallel/synthesis/chat-level references
+            for chain_id, chain_config in config.agent_chains.items():
+                # Check chain-level MCP servers
+                if chain_config.mcp_servers:
+                    referenced_disabled = set(chain_config.mcp_servers) & disabled_servers
+                    if referenced_disabled:
+                        logger.warning(
+                            f"Chain '{chain_id}' references disabled MCP servers: {referenced_disabled}. "
+                            f"This may cause runtime failures when processing alerts."
+                        )
+                
+                # Check stage-level MCP servers
+                for stage in chain_config.stages:
+                    if stage.mcp_servers:
+                        referenced_disabled = set(stage.mcp_servers) & disabled_servers
+                        if referenced_disabled:
+                            logger.warning(
+                                f"Chain '{chain_id}' stage '{stage.name}' references disabled MCP servers: "
+                                f"{referenced_disabled}. This may cause runtime failures when processing alerts."
+                            )
+                    
+                    # Check parallel-agent level MCP servers
+                    if stage.agents:
+                        for agent_config in stage.agents:
+                            if agent_config.mcp_servers:
+                                referenced_disabled = set(agent_config.mcp_servers) & disabled_servers
+                                if referenced_disabled:
+                                    logger.warning(
+                                        f"Chain '{chain_id}' stage '{stage.name}' parallel agent "
+                                        f"'{agent_config.name}' references disabled MCP servers: "
+                                        f"{referenced_disabled}. "
+                                        f"This may cause runtime failures when processing alerts."
+                                    )
+                    
+                    # Note: Synthesis config doesn't use MCP servers (pure analysis)
+                
+                # Check chat config MCP servers
+                if chain_config.chat and chain_config.chat.mcp_servers:
+                    referenced_disabled = set(chain_config.chat.mcp_servers) & disabled_servers
+                    if referenced_disabled:
+                        logger.warning(
+                            f"Chain '{chain_id}' chat config references disabled MCP servers: "
+                            f"{referenced_disabled}. This may cause runtime failures when processing alerts."
+                        )
         
         logger.debug("Configuration completeness validation passed")
     

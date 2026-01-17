@@ -289,11 +289,6 @@ class SynthesisConfig(BaseModel):
         None,
         description="Optional LLM provider for synthesis (uses stage/chain/system default if not specified)",
     )
-    mcp_servers: Optional[List[str]] = Field(
-        None,
-        description="Optional MCP server override for synthesis agent (highest configuration precedence)",
-        min_length=1,
-    )
 
 
 class ChatConfig(BaseModel):
