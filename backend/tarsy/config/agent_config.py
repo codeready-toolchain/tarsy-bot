@@ -298,6 +298,22 @@ class ConfigurationLoader:
                                     )
                                     logger.error(error_msg)
                                     raise ConfigurationError(error_msg)
+                
+                # Validate synthesis config MCP servers
+                if stage.synthesis and stage.synthesis.mcp_servers:
+                    logger.debug(
+                        f"Validating chain '{chain_id}' stage '{stage.name}' "
+                        f"synthesis agent MCP servers: {stage.synthesis.mcp_servers}"
+                    )
+                    for server_id in stage.synthesis.mcp_servers:
+                        if server_id not in available_servers:
+                            error_msg = (
+                                f"Chain '{chain_id}' stage '{stage.name}' "
+                                f"synthesis config references unknown MCP server '{server_id}'. "
+                                f"Available servers: {sorted(available_servers)}"
+                            )
+                            logger.error(error_msg)
+                            raise ConfigurationError(error_msg)
         
         logger.debug("All MCP server references validated successfully at all levels")
     

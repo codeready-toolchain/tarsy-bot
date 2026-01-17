@@ -52,9 +52,12 @@ agent_chains:
     description: "Multi-agent parallel stage with automatic synthesis (final stage)"
   
   # Test chain 2: Replica parallel stage with automatic synthesis
+  # MCP Config Test: Chain-level configuration
   replica-parallel-chain:
     alert_types:
       - "test-replica-execution"
+    mcp_servers:
+      - "kubernetes-server"  # Chain-level: All stages inherit this
     stages:
       - name: "analysis"
         agent: "KubernetesAgent"
@@ -67,14 +70,17 @@ agent_chains:
           agent: "SynthesisAgent"
           iteration_strategy: "synthesis"
           llm_provider: "anthropic-default"
-    description: "Replica parallel stage (3 replicas) with automatic synthesis"
+    description: "Replica parallel stage (3 replicas) with automatic synthesis | MCP: chain-level"
   
   # Test chain 3: Parallel stage with auto-synthesis followed by regular stage
+  # MCP Config Test: Stage-level configuration
   parallel-then-regular-chain:
     alert_types:
       - "test-parallel-regular-execution"
     stages:
       - name: "investigation"
+        mcp_servers:
+          - "kubernetes-server"  # Stage-level: Applies to all agents in this stage
         agents:
           - name: "KubernetesAgent"
             llm_provider: "google-default"
@@ -89,14 +95,21 @@ agent_chains:
         agent: "CommandAgent"
         iteration_strategy: "react-final-analysis"
         llm_provider: "google-default"
-    description: "Parallel stage with automatic synthesis followed by regular stage"
+        mcp_servers:
+          - "kubernetes-server"  # Stage-level: For regular stage
+    description: "Parallel stage with automatic synthesis followed by regular stage | MCP: stage-level"
   
   # Test chain 4: Multi-agent parallel with success_policy: any (for cancel tests)
+  # MCP Config Test: Chain + Stage levels (stage overrides chain)
   multi-agent-cancel-test-chain:
     alert_types:
       - "test-cancel-agent-execution"
+    mcp_servers:
+      - "kubernetes-server"  # Chain-level: Baseline
     stages:
       - name: "investigation"
+        mcp_servers:
+          - "kubernetes-server"  # Stage-level: Overrides chain for this stage
         agents:
           - name: "KubernetesAgent"
             llm_provider: "google-default"
@@ -109,32 +122,40 @@ agent_chains:
           agent: "SynthesisAgent"
           iteration_strategy: "synthesis-native-thinking"
           llm_provider: "google-default"
-    description: "Multi-agent parallel with success_policy: any for per-agent cancellation tests"
+    description: "Multi-agent parallel with success_policy: any for per-agent cancellation tests | MCP: chain+stage-level"
 
   # Test chain 5: Multi-agent parallel (3 agents) with success_policy: any (for cancel tests)
+  # MCP Config Test: Mixed levels - Chain + parallel-agent overrides (tests precedence)
   multi-agent-cancel-three-agent-test-chain:
     alert_types:
       - "test-cancel-agent-execution-three-agents"
+    mcp_servers:
+      - "kubernetes-server"  # Chain-level: Baseline for all
     stages:
       - name: "investigation"
         agents:
           - name: "KubernetesAgent"
             llm_provider: "google-default"
             iteration_strategy: "native-thinking"
+            # No MCP override - inherits chain-level
           - name: "LogAgent"
             llm_provider: "anthropic-default"
             iteration_strategy: "react"
+            mcp_servers:
+              - "kubernetes-server"  # Parallel-agent-level: Explicit override (highest priority)
           - name: "CommandAgent"
             llm_provider: "anthropic-default"
             iteration_strategy: "react"
+            # No MCP override - inherits chain-level
         success_policy: "any"
         synthesis:
           agent: "SynthesisAgent"
           iteration_strategy: "synthesis-native-thinking"
           llm_provider: "google-default"
-    description: "3-agent parallel stage with success_policy: any for per-agent cancellation tests"
+    description: "3-agent parallel stage with success_policy: any for per-agent cancellation tests | MCP: chain+parallel-agent-level"
   
   # Test chain 6: Multi-agent parallel with forced conclusion (for forced conclusion tests)
+  # MCP Config Test: Parallel-agent-level configuration (highest precedence)
   multi-agent-forced-conclusion-chain:
     alert_types:
       - "test-forced-conclusion-parallel"
@@ -146,13 +167,19 @@ agent_chains:
           - name: "KubernetesAgent"
             llm_provider: "google-default"
             iteration_strategy: "native-thinking"
+            mcp_servers:
+              - "kubernetes-server"  # Parallel-agent-level: Per-agent MCP config
           - name: "LogAgent"
             llm_provider: "anthropic-default"
             iteration_strategy: "react"
+            mcp_servers:
+              - "kubernetes-server"  # Parallel-agent-level: Per-agent MCP config
         success_policy: "all"
         synthesis:
           agent: "SynthesisAgent"
           iteration_strategy: "synthesis-native-thinking"
           llm_provider: "google-default"
-    description: "Multi-agent parallel with mixed iteration strategies for forced conclusion tests (chain-level iteration config)"
+          mcp_servers:
+            - "kubernetes-server"  # Parallel-agent-level: Synthesis agent MCP config
+    description: "Multi-agent parallel with mixed iteration strategies for forced conclusion tests | MCP: parallel-agent-level"
   

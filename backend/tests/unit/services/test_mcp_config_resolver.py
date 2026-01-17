@@ -172,3 +172,26 @@ class TestMCPConfigResolver:
             stage_config=stage_config
         )
         assert result == ["agent-server"]
+    
+    def test_synthesis_config_mcp_servers(self):
+        """Test that SynthesisConfig can have mcp_servers field."""
+        from tarsy.models.agent_config import SynthesisConfig
+        
+        # Test that synthesis config accepts mcp_servers
+        synthesis_config = SynthesisConfig(
+            agent="SynthesisAgent",
+            iteration_strategy="synthesis",
+            llm_provider="google-default",
+            mcp_servers=["kubernetes-server", "monitoring-server"]
+        )
+        
+        assert synthesis_config.mcp_servers == ["kubernetes-server", "monitoring-server"]
+        assert synthesis_config.agent == "SynthesisAgent"
+        
+        # Test that synthesis config works without mcp_servers (optional)
+        synthesis_config_no_mcp = SynthesisConfig(
+            agent="SynthesisAgent",
+            iteration_strategy="synthesis"
+        )
+        
+        assert synthesis_config_no_mcp.mcp_servers is None
