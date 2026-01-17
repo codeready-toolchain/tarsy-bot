@@ -150,7 +150,8 @@ class ChainRegistry:
                             agent=chain_data["chat"].get("agent"),
                             iteration_strategy=chain_data["chat"].get("iteration_strategy"),
                             llm_provider=chain_data["chat"].get("llm_provider"),
-                            mcp_servers=chain_data["chat"].get("mcp_servers")
+                            mcp_servers=chain_data["chat"].get("mcp_servers"),
+                            max_iterations=chain_data["chat"].get("max_iterations")
                         ) if chain_data.get("chat") else None
                     )
                     yaml_chains[chain_id] = chain_def

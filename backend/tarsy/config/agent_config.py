@@ -205,7 +205,8 @@ class ConfigurationLoader:
                         "agent": chain_config.chat.agent,
                         "iteration_strategy": chain_config.chat.iteration_strategy,
                         "llm_provider": chain_config.chat.llm_provider,
-                        "mcp_servers": chain_config.chat.mcp_servers
+                        "mcp_servers": chain_config.chat.mcp_servers,
+                        "max_iterations": chain_config.chat.max_iterations
                     } if chain_config.chat else None
                 }
             
