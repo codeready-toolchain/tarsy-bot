@@ -332,9 +332,9 @@ class TestAlertProcessing:
         # Create service
         service = AlertService(mock_settings)
         
-        # Initialize agent factory with get_agent method
+        # Initialize agent factory with get_agent_with_config method
         service.agent_factory = Mock()
-        service.agent_factory.get_agent = Mock()
+        service.agent_factory.get_agent_with_config = Mock()
         
         # Create mock history service for proper testing
         from tarsy.services.history_service import HistoryService
@@ -422,7 +422,7 @@ class TestAlertProcessing:
             description='Test chain'
         )
         service.agent_factory.create_agent.return_value = mock_agent
-        service.agent_factory.get_agent.return_value = mock_agent
+        service.agent_factory.get_agent_with_config.return_value = mock_agent
         
         # Mock runbook download
         dependencies['runbook'].download_runbook = AsyncMock(return_value="Mock runbook content")
@@ -541,7 +541,7 @@ class TestAlertProcessing:
         dependencies['llm_manager'].is_available.return_value = True
         dependencies['runbook'].download_runbook = AsyncMock(return_value="Mock runbook")
         service.agent_factory.create_agent.return_value = mock_agent
-        service.agent_factory.get_agent.return_value = mock_agent
+        service.agent_factory.get_agent_with_config.return_value = mock_agent
         
         chain_context = alert_to_api_format(sample_alert)
         chain_context.session_id = str(uuid.uuid4())
@@ -1273,7 +1273,7 @@ class TestEnhancedChainExecution:
         )
         
         # Mock get_agent to return appropriate agents
-        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None, max_iterations=None, force_conclusion=None):
+        def mock_get_agent(agent_identifier, mcp_client, execution_config):
             if agent_identifier == 'DataAgent':
                 agent = successful_agent
             elif agent_identifier == 'AnalysisAgent': 
@@ -1284,7 +1284,7 @@ class TestEnhancedChainExecution:
             agent.set_current_stage_execution_id = Mock()
             return agent
         
-        service.agent_factory.get_agent.side_effect = mock_get_agent
+        service.agent_factory.get_agent_with_config.side_effect = mock_get_agent
         
         # Create mock session MCP client
         session_mcp_client = AsyncMock()
@@ -1301,7 +1301,7 @@ class TestEnhancedChainExecution:
         assert result.final_analysis is None  # Should be None for failed chains
         
         # Verify only first two stages were called (data-collection succeeded, analysis failed)
-        assert service.agent_factory.get_agent.call_count == 2  # DataAgent and AnalysisAgent only
+        assert service.agent_factory.get_agent_with_config.call_count == 2  # DataAgent and AnalysisAgent only
     
     @pytest.mark.asyncio
     async def test_execute_chain_stages_all_success_returns_analysis(self, initialized_service):
@@ -1345,12 +1345,12 @@ class TestEnhancedChainExecution:
             final_analysis="All systems operational"
         )
         
-        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None, max_iterations=None, force_conclusion=None):
+        def mock_get_agent(agent_identifier, mcp_client, execution_config):
             agent = successful_agent
             agent.set_current_stage_execution_id = Mock()
             return agent
         
-        service.agent_factory.get_agent.side_effect = mock_get_agent
+        service.agent_factory.get_agent_with_config.side_effect = mock_get_agent
         
         # Create mock session MCP client
         session_mcp_client = AsyncMock()
@@ -1396,12 +1396,12 @@ class TestEnhancedChainExecution:
         failing_agent = AsyncMock()
         failing_agent.process_alert.side_effect = Exception("Unexpected agent failure")
         
-        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None, max_iterations=None, force_conclusion=None):
+        def mock_get_agent(agent_identifier, mcp_client, execution_config):
             agent = failing_agent
             agent.set_current_stage_execution_id = Mock()
             return agent
         
-        service.agent_factory.get_agent.side_effect = mock_get_agent
+        service.agent_factory.get_agent_with_config.side_effect = mock_get_agent
         
         # Create mock session MCP client
         session_mcp_client = AsyncMock()
@@ -1472,10 +1472,10 @@ class TestEnhancedChainExecution:
         cancelled_agent.process_alert.side_effect = _raise_cancel
         cancelled_agent.set_current_stage_execution_id = Mock()
 
-        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None, max_iterations=None, force_conclusion=None):
+        def mock_get_agent(agent_identifier, mcp_client, execution_config):
             return cancelled_agent
 
-        service.agent_factory.get_agent.side_effect = mock_get_agent
+        service.agent_factory.get_agent_with_config.side_effect = mock_get_agent
 
         session_mcp_client = AsyncMock()
 
@@ -1611,7 +1611,7 @@ class TestFullErrorPropagation:
             error_message="API rate limit exceeded"
         )
         
-        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None, max_iterations=None, force_conclusion=None):
+        def mock_get_agent(agent_identifier, mcp_client, execution_config):
             if agent_identifier == 'Agent1':
                 agent = failing_agent_1
             else:  # Agent2
@@ -1620,7 +1620,7 @@ class TestFullErrorPropagation:
             agent.set_current_stage_execution_id = Mock()
             return agent
         
-        service.agent_factory.get_agent.side_effect = mock_get_agent
+        service.agent_factory.get_agent_with_config.side_effect = mock_get_agent
         
         # Create chain context with runbook URL
         from tarsy.models.alert import ProcessingAlert
@@ -1660,7 +1660,7 @@ class TestFullErrorPropagation:
         assert "Database connection lost" in error_message
         
         # Verify only first agent was called (chain stopped at first failure)
-        assert service.agent_factory.get_agent.call_count == 1
+        assert service.agent_factory.get_agent_with_config.call_count == 1
     
     @pytest.mark.asyncio
     async def test_process_alert_single_stage_failure_formatting(self, service_with_failing_stages):
@@ -1691,12 +1691,12 @@ class TestFullErrorPropagation:
             error_message="Critical system error detected"
         )
         
-        def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None, max_iterations=None, force_conclusion=None):
+        def mock_get_agent(agent_identifier, mcp_client, execution_config):
             agent = failing_agent
             agent.set_current_stage_execution_id = Mock()
             return agent
         
-        service.agent_factory.get_agent.side_effect = mock_get_agent
+        service.agent_factory.get_agent_with_config.side_effect = mock_get_agent
         
         # Create chain context with runbook URL
         from tarsy.models.alert import ProcessingAlert

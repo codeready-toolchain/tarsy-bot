@@ -294,12 +294,15 @@ class TestExecutionConfigGeneration:
         stage = SimpleNamespace(
             name="test-stage",
             agents=[
-                SimpleNamespace(name="agent1", llm_provider="openai", iteration_strategy="react", max_iterations=None, force_conclusion_at_max_iterations=None),
-                SimpleNamespace(name="agent2", llm_provider="anthropic", iteration_strategy="native-thinking", max_iterations=None, force_conclusion_at_max_iterations=None)
+                SimpleNamespace(name="agent1", llm_provider="openai", iteration_strategy="react", max_iterations=None, force_conclusion_at_max_iterations=None, mcp_servers=None),
+                SimpleNamespace(name="agent2", llm_provider="anthropic", iteration_strategy="native-thinking", max_iterations=None, force_conclusion_at_max_iterations=None, mcp_servers=None)
             ],
             success_policy=SuccessPolicy.ANY,
+            llm_provider=None,
+            iteration_strategy=None,
             max_iterations=None,
-            force_conclusion_at_max_iterations=None
+            force_conclusion_at_max_iterations=None,
+            mcp_servers=None
         )
         
         # Create ProcessingAlert from Alert
@@ -322,7 +325,8 @@ class TestExecutionConfigGeneration:
         chain_def = SimpleNamespace(
             llm_provider="default-provider",
             max_iterations=None,
-            force_conclusion_at_max_iterations=None
+            force_conclusion_at_max_iterations=None,
+            mcp_servers=None
         )
         
         await executor.execute_parallel_agents(
@@ -339,9 +343,9 @@ class TestExecutionConfigGeneration:
         
         assert len(configs) == 2
         assert configs[0]["agent_name"] == "agent1"
-        assert configs[0]["llm_provider"] == "openai"
+        assert configs[0]["execution_config"].llm_provider == "openai"
         assert configs[1]["agent_name"] == "agent2"
-        assert configs[1]["llm_provider"] == "anthropic"
+        assert configs[1]["execution_config"].llm_provider == "anthropic"
     
     @pytest.mark.asyncio
     async def test_execute_replicated_agent_builds_configs(self):
@@ -393,7 +397,8 @@ class TestExecutionConfigGeneration:
             iteration_strategy="react",
             success_policy=SuccessPolicy.ALL,
             max_iterations=None,
-            force_conclusion_at_max_iterations=None
+            force_conclusion_at_max_iterations=None,
+            mcp_servers=None
         )
         
         # Create ProcessingAlert from Alert
@@ -416,7 +421,8 @@ class TestExecutionConfigGeneration:
         chain_def = SimpleNamespace(
             llm_provider=None,
             max_iterations=None,
-            force_conclusion_at_max_iterations=None
+            force_conclusion_at_max_iterations=None,
+            mcp_servers=None
         )
         
         await executor.execute_replicated_agent(
@@ -481,7 +487,7 @@ class TestParallelStageExecutorCancellationHandling:
         def _get_agent(*, agent_identifier, **_kwargs):  # noqa: ANN001
             return agent_cancel if agent_identifier == "agent-1" else agent_ok
 
-        agent_factory.get_agent = Mock(side_effect=_get_agent)
+        agent_factory.get_agent_with_config = Mock(side_effect=_get_agent)
 
         executor = ParallelStageExecutor(
             agent_factory=agent_factory,
@@ -504,9 +510,30 @@ class TestParallelStageExecutorCancellationHandling:
 
         stage = SimpleNamespace(name="test-stage", success_policy=SuccessPolicy.ANY, iteration_strategy="react")
 
+        from tarsy.models.agent_execution_config import AgentExecutionConfig
         execution_configs = [
-            {"agent_name": "agent-1", "llm_provider": "openai", "iteration_strategy": "react"},
-            {"agent_name": "agent-2", "llm_provider": "openai", "iteration_strategy": "react"},
+            {
+                "agent_name": "agent-1",
+                "execution_config": AgentExecutionConfig(
+                    llm_provider="openai",
+                    iteration_strategy="react",
+                    max_iterations=None,
+                    force_conclusion=None,
+                    mcp_servers=None
+                ),
+                "iteration_strategy_original": "react"
+            },
+            {
+                "agent_name": "agent-2",
+                "execution_config": AgentExecutionConfig(
+                    llm_provider="openai",
+                    iteration_strategy="react",
+                    max_iterations=None,
+                    force_conclusion=None,
+                    mcp_servers=None
+                ),
+                "iteration_strategy_original": "react"
+            },
         ]
 
         result = await executor._execute_parallel_stage(

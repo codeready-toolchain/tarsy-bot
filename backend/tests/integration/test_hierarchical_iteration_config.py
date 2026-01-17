@@ -138,8 +138,8 @@ class TestHierarchicalIterationConfig:
 
     def test_agent_setter_methods(self, agent_factory, mock_mcp_client):
         """Test that agent setter methods work correctly."""
-        agent = agent_factory.get_agent(
-            agent_identifier="KubernetesAgent",
+        agent = agent_factory.create_agent(
+            agent_name="KubernetesAgent",
             mcp_client=mock_mcp_client
         )
         
@@ -159,18 +159,24 @@ class TestHierarchicalIterationConfig:
         self, agent_factory, mock_mcp_client
     ):
         """Test that multiple agent instances have independent configurations."""
-        agent1 = agent_factory.get_agent(
+        from tarsy.models.agent_execution_config import AgentExecutionConfig
+        
+        agent1 = agent_factory.get_agent_with_config(
             agent_identifier="KubernetesAgent",
             mcp_client=mock_mcp_client,
-            max_iterations=10,
-            force_conclusion=True
+            execution_config=AgentExecutionConfig(
+                max_iterations=10,
+                force_conclusion=True
+            )
         )
         
-        agent2 = agent_factory.get_agent(
+        agent2 = agent_factory.get_agent_with_config(
             agent_identifier="KubernetesAgent",
             mcp_client=mock_mcp_client,
-            max_iterations=50,
-            force_conclusion=False
+            execution_config=AgentExecutionConfig(
+                max_iterations=50,
+                force_conclusion=False
+            )
         )
         
         # Each agent should have its own configuration
