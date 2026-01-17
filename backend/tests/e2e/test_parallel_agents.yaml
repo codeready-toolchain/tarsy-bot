@@ -181,7 +181,5 @@ agent_chains:
           agent: "SynthesisAgent"
           iteration_strategy: "synthesis-native-thinking"
           llm_provider: "google-default"
-          mcp_servers:
-            - "kubernetes-server"  # Parallel-agent-level: Synthesis agent MCP config
-    description: "Multi-agent parallel with mixed iteration strategies for forced conclusion tests | MCP: parallel-agent-level"
+    description: "Multi-agent parallel with mixed iteration strategies for forced conclusion tests | MCP: parallel-agent-level (synthesis doesn't use MCP tools)"
   
