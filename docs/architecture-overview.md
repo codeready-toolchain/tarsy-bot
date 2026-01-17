@@ -241,37 +241,47 @@ The AI combines all four to make intelligent decisions about investigation appro
         - "MemoryPressure" 
         - "DiskSpaceWarning"
       llm_provider: "google-default"                      # Optional: chain-level default provider
+      mcp_servers: ["kubernetes-server", "prometheus-server"]  # Optional: chain-level MCP config (overrides agent defaults)
       max_iterations: 20                                  # Optional: chain-level iteration limit (default: 30)
       force_conclusion_at_max_iterations: false           # Optional: pause instead of forcing conclusion (default: false)
       stages:
         - name: "k8s-data-collection"
-          agent: "performance-k8s-data-collector"         # Only k8s MCP Server available for this agent
+          agent: "performance-k8s-data-collector"
           iteration_strategy: "react-stage"               # Override default if needed
           llm_provider: "gemini-flash"                    # Optional: fast model for data collection
+          mcp_servers: ["kubernetes-server"]              # Optional: stage-level MCP override (restrict to k8s only)
           max_iterations: 10                              # Optional: stage-level override (higher precedence than chain)
         - name: "prometheus-metrics-collection"
-          agent: "performance-prometheus-data-collector"  # Only prometheus MCP Server available for this agent
+          agent: "performance-prometheus-data-collector"
           iteration_strategy: "react-stage"
+          mcp_servers: ["prometheus-server"]              # Optional: stage-level MCP override (restrict to prometheus only)
           # Uses chain-level provider (google-default) when not specified
           # Uses chain-level max_iterations (20) when not specified
         - name: "trend-analysis"
           agent: "performance-analyzer"
           iteration_strategy: "react-final-analysis"
           llm_provider: "openai-default"                  # Optional: different provider for final analysis
+          # Uses chain-level MCP servers when not specified
+      chat:
+        mcp_servers: ["kubernetes-server"]                # Optional: chat-level MCP override (restrict chat to k8s tools)
+        max_iterations: 15                                # Optional: chat-level iteration limit (prevents runaway conversations)
       description: "Multi-stage performance investigation workflow"
       # Key architectural benefits:
+      # - Hierarchical MCP configuration (agent → chain → stage → parallel agent → chat → alert)
       # - Each stage can have specialized MCP servers (focused expertise)
       # - Each stage can use different LLM providers (cost/performance optimization)
-      # - Hierarchical iteration limits enable fine-grained control (chain → stage → parallel agent)
+      # - Hierarchical iteration limits enable fine-grained control (chain → stage → parallel agent → chat)
       # - Chain-level provider serves as default for stages without explicit override
       # - Chain-level max_iterations serves as default for stages without explicit override
-      # - Follow-up chat uses chain-level provider by default (can be overridden in chat config)
+      # - Chat-level MCP servers restrict tools available for follow-up conversations
+      # - Chat-level max_iterations prevents runaway chat conversations
       # - Executive summary uses chain-level provider
 
     # Parallel execution example
     multi-perspective-investigation-chain:
       alert_types:
         - "ComplexOutage"
+      mcp_servers: ["kubernetes-server", "vm-server"]     # Optional: chain-level MCP config
       max_iterations: 25                                  # Optional: chain-level iteration limit
       force_conclusion_at_max_iterations: true            # Optional: force conclusion instead of pause
       stages:
@@ -280,16 +290,19 @@ The AI combines all four to make intelligent decisions about investigation appro
           agents:  # Multiple agents run in parallel
             - name: "kubernetes"
               llm_provider: "openai"
+              mcp_servers: ["kubernetes-server"]          # Optional: parallel agent-level MCP override (highest precedence)
               max_iterations: 12                          # Optional: parallel agent-level override (highest precedence)
             - name: "vm"
               llm_provider: "anthropic"
+              mcp_servers: ["vm-server"]                  # Optional: parallel agent-level MCP override
               # Uses stage-level max_iterations (15) when not specified
           success_policy: "any"  # Continue if at least one succeeds
           synthesis:
             iteration_strategy: "react-synthesis"  # Automatically synthesizes results
+            mcp_servers: []                               # Optional: synthesis uses no MCP tools (analysis only)
         - name: "recommendations"
           agent: "SynthesisAgent"
-          # Uses chain-level max_iterations (25) when not specified
+          # Uses chain-level MCP servers and max_iterations when not specified
       description: "Multi-domain parallel investigation with automatic synthesis"
   ```
 - **Integration Points**: Connect with existing monitoring and ticketing systems
