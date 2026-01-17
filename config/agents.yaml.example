@@ -73,10 +73,11 @@
 # - mcp_servers can be configured at multiple levels (NEW FEATURE)
 # - Precedence (highest to lowest):
 #   1. Alert level (via API mcp field) - HIGHEST PRIORITY, overrides everything
-#   2. Parallel agent level (within agents list) - highest configuration priority
-#   3. Stage level (within stages)
-#   4. Chain level (agent_chains section)
-#   5. Agent level (agents section) - lowest configuration priority
+#   2. Chat level (chat.mcp_servers in chain config) - for chat agents only
+#   3. Parallel agent level (within agents list) - highest configuration priority
+#   4. Stage level (within stages)
+#   5. Chain level (agent_chains section)
+#   6. Agent level (agents section) - lowest configuration priority
 # - Each level overrides all lower levels. If not specified, inherits from the level below.
 # - Alert-level MCP override (via API) takes precedence over ALL configuration levels
 # - This allows fine-grained control: define defaults at chain level, override per-stage, or per-agent
@@ -84,7 +85,21 @@
 #   * Chain-level: Set common MCP servers for all stages (e.g., kubernetes-server)
 #   * Stage-level: Add monitoring servers for specific investigation stage
 #   * Parallel-agent: Each agent in parallel uses different MCP servers
+#   * Chat-level: Restrict chat agent to specific MCP servers (e.g., only kubernetes, no destructive ops)
 #   * Alert-level: Ad-hoc override via API for specific alert (with optional tool filtering)
+#
+# CHAT CONFIGURATION:
+# - Chat can be configured at chain level with the "chat" section
+# - Chat configuration options:
+#   * enabled: true/false (default: true) - Enable/disable chat for this chain
+#   * agent: "ChatAgent" (default) - Which agent to use for chat conversations
+#   * iteration_strategy: Optional strategy override (defaults to last stage's strategy)
+#   * llm_provider: Optional LLM provider override (defaults to chain/system provider)
+#   * mcp_servers: Optional MCP server list (overrides chain-level for chat only)
+#   * max_iterations: Optional iteration limit for chat (overrides chain/agent defaults)
+# - Chat agents inherit chain-level configuration but can override specific settings
+# - Use chat.mcp_servers to restrict chat capabilities (e.g., read-only access)
+# - Use chat.max_iterations to prevent runaway chat conversations
 #
 
 # =============================================================================
@@ -555,15 +570,18 @@ agent_chains:
   custom-chat-config-chain:
     alert_types: ["CustomChatExample"]
     llm_provider: "anthropic-default"  # Chain default
+    mcp_servers: ["kubernetes-server", "monitoring-server"]  # Chain-level MCP servers
     chat:
       enabled: true                         # Optional, defaults to true
       agent: "ChatAgent"                    # Optional, defaults to ChatAgent
       iteration_strategy: "native-thinking" # Optional, determined from last stage if not set
       llm_provider: "google-default"        # Optional, uses chain/system default if not set
+      mcp_servers: ["kubernetes-server"]    # Optional, chat-level MCP override (overrides chain-level)
+      max_iterations: 10                    # Optional, chat-level iteration limit (overrides chain/agent defaults)
     stages:
       - name: "investigation"
         agent: "KubernetesAgent"
-    description: "Chain with custom chat configuration (agent, strategy, provider)"
+    description: "Chain with custom chat configuration (agent, strategy, provider, MCP servers, max iterations)"
 
   chat-disabled-chain:
     alert_types: ["NoChatExample"]

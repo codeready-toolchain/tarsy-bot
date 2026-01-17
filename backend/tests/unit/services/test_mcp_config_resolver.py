@@ -195,3 +195,30 @@ class TestMCPConfigResolver:
         )
         
         assert synthesis_config_no_mcp.mcp_servers is None
+    
+    def test_chat_config_mcp_servers_and_max_iterations(self):
+        """Test that ChatConfig can have mcp_servers and max_iterations fields."""
+        from tarsy.models.agent_config import ChatConfig
+        
+        # Test that chat config accepts mcp_servers and max_iterations
+        chat_config = ChatConfig(
+            enabled=True,
+            agent="ChatAgent",
+            iteration_strategy="react",
+            llm_provider="google-default",
+            mcp_servers=["kubernetes-server", "monitoring-server"],
+            max_iterations=5
+        )
+        
+        assert chat_config.mcp_servers == ["kubernetes-server", "monitoring-server"]
+        assert chat_config.max_iterations == 5
+        assert chat_config.agent == "ChatAgent"
+        
+        # Test that chat config works without mcp_servers and max_iterations (optional)
+        chat_config_no_overrides = ChatConfig(
+            enabled=True,
+            agent="ChatAgent"
+        )
+        
+        assert chat_config_no_overrides.mcp_servers is None
+        assert chat_config_no_overrides.max_iterations is None

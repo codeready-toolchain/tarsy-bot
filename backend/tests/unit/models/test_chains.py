@@ -233,7 +233,7 @@ class TestChainConfigModel:
                 {'name': 'stage2', 'agent': 'Agent2', 'agents': None, 'replicas': 1, 'success_policy': SuccessPolicy.ANY, 'iteration_strategy': 'react', 'llm_provider': None, 'max_iterations': None, 'force_conclusion_at_max_iterations': None, 'mcp_servers': None, 'synthesis': None}
             ],
             'description': 'Test serialization',
-            'chat': {'enabled': True, 'agent': 'ChatAgent', 'iteration_strategy': None, 'llm_provider': None},
+            'chat': {'enabled': True, 'agent': 'ChatAgent', 'iteration_strategy': None, 'llm_provider': None, 'mcp_servers': None, 'max_iterations': None},
             'llm_provider': None,
             'max_iterations': None,
             'force_conclusion_at_max_iterations': None,
@@ -259,7 +259,7 @@ class TestChainConfigModel:
                 {'name': 'test-stage', 'agent': 'TestAgent', 'agents': None, 'replicas': 1, 'success_policy': SuccessPolicy.ANY, 'iteration_strategy': None, 'llm_provider': None, 'max_iterations': None, 'force_conclusion_at_max_iterations': None, 'mcp_servers': None, 'synthesis': None}
             ],
             'description': None,
-            'chat': {'enabled': True, 'agent': 'ChatAgent', 'iteration_strategy': None, 'llm_provider': None},
+            'chat': {'enabled': True, 'agent': 'ChatAgent', 'iteration_strategy': None, 'llm_provider': None, 'mcp_servers': None, 'max_iterations': None},
             'llm_provider': None,
             'max_iterations': None,
             'force_conclusion_at_max_iterations': None,
@@ -336,7 +336,7 @@ class TestChainConfigModel:
                 {'name': 'stage2', 'agent': 'Agent2', 'agents': None, 'replicas': 1, 'success_policy': SuccessPolicy.ANY, 'iteration_strategy': None, 'llm_provider': None, 'max_iterations': None, 'force_conclusion_at_max_iterations': None, 'mcp_servers': None, 'synthesis': None}
             ],
             'description': None,
-            'chat': {'enabled': True, 'agent': 'ChatAgent', 'iteration_strategy': None, 'llm_provider': None},
+            'chat': {'enabled': True, 'agent': 'ChatAgent', 'iteration_strategy': None, 'llm_provider': None, 'mcp_servers': None, 'max_iterations': None},
             'llm_provider': 'google-default',
             'max_iterations': None,
             'force_conclusion_at_max_iterations': None,

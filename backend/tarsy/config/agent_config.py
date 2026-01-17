@@ -314,6 +314,21 @@ class ConfigurationLoader:
                             )
                             logger.error(error_msg)
                             raise ConfigurationError(error_msg)
+            
+            # Validate chat config MCP servers
+            if chain_config.chat and chain_config.chat.mcp_servers:
+                logger.debug(
+                    f"Validating chain '{chain_id}' chat config MCP servers: "
+                    f"{chain_config.chat.mcp_servers}"
+                )
+                for server_id in chain_config.chat.mcp_servers:
+                    if server_id not in available_servers:
+                        error_msg = (
+                            f"Chain '{chain_id}' chat config references unknown MCP server '{server_id}'. "
+                            f"Available servers: {sorted(available_servers)}"
+                        )
+                        logger.error(error_msg)
+                        raise ConfigurationError(error_msg)
         
         logger.debug("All MCP server references validated successfully at all levels")
     

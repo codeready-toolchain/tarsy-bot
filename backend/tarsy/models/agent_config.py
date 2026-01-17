@@ -315,6 +315,16 @@ class ChatConfig(BaseModel):
         None,
         description="LLM provider for chat (uses chain/system default if not specified)",
     )
+    mcp_servers: Optional[List[str]] = Field(
+        None,
+        description="Optional MCP server override for chat (overrides chain-level MCP config)",
+        min_length=1,
+    )
+    max_iterations: Optional[int] = Field(
+        default=None,
+        description="Maximum number of iterations for chat agent (overrides chain/agent defaults)",
+        ge=1,
+    )
 
 
 class ChainStageConfigModel(BaseModel):
