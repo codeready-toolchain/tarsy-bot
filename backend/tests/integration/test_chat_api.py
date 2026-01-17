@@ -74,8 +74,8 @@ class TestChatAPIIntegration:
             final_analysis="Test analysis response",
             timestamp_us=now_us()
         ))
-        # ChatService uses get_agent(), not create_agent()
-        mock_factory.get_agent.return_value = mock_agent
+        # ChatService uses get_agent_with_config() (updated in EP-0031)
+        mock_factory.get_agent_with_config.return_value = mock_agent
         return mock_factory
 
     @pytest.fixture

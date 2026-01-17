@@ -241,8 +241,8 @@ class TestErrorHandlingScenarios:
         progress_callback_mock
     ):
         """Test handling when agent creation fails."""
-        # Arrange - Mock agent factory to raise error (use get_agent which is the async method actually called)
-        with patch.object(alert_service.agent_factory, 'get_agent', side_effect=ValueError("Agent not found")):
+        # Arrange - Mock agent factory to raise error (use get_agent_with_config which is the method actually called)
+        with patch.object(alert_service.agent_factory, 'get_agent_with_config', side_effect=ValueError("Agent not found")):
             # Act
             chain_context = alert_to_api_format(sample_alert)
             result = await alert_service.process_alert(chain_context)
@@ -814,10 +814,11 @@ data:
             )
         
         mock_agent = AsyncMock()
-        mock_agent.process_alert.side_effect = capture_agent_data
+        mock_agent.process_alert = AsyncMock(side_effect=capture_agent_data)
+        mock_agent.set_current_stage_execution_id = Mock()
         
-        # Override the factory's get_agent method directly (synchronous method used by AlertService)
-        alert_service.agent_factory.get_agent = Mock(return_value=mock_agent)
+        # Override the factory's get_agent_with_config method (used by AlertService after EP-0031)
+        alert_service.agent_factory.get_agent_with_config = Mock(return_value=mock_agent)
         
         # Convert to API format
         chain_context = flexible_alert_to_api_format(monitoring_alert_with_nested_data)

@@ -621,7 +621,7 @@ def mock_agent_factory(mock_llm_manager, mock_mcp_client):
                     final_analysis=analysis_text  # Set final_analysis so alert service can extract it
                 )
             
-            mock_agent.process_alert.side_effect = mock_kubernetes_process_alert
+            mock_agent.process_alert = AsyncMock(side_effect=mock_kubernetes_process_alert)
             
         elif agent_class_name == "BaseAgent":
             from tarsy.agents.base_agent import BaseAgent
@@ -837,29 +837,33 @@ def mock_agent_factory(mock_llm_manager, mock_mcp_client):
                     final_analysis=analysis_content  # Set final_analysis so alert service can extract it
                 )
             
-            mock_agent.process_alert.side_effect = mock_base_process_alert
+            mock_agent.process_alert = AsyncMock(side_effect=mock_base_process_alert)
         
         else:
             # Default mock agent
             mock_agent = Mock()
-            mock_agent.process_alert.return_value = AgentExecutionResult(
+            mock_agent.process_alert = AsyncMock(return_value=AgentExecutionResult(
                 status=StageStatus.COMPLETED,
                 agent_name=agent_class_name,
                 timestamp_us=now_us(),
                 result_summary=f"Analysis completed by {agent_class_name}",
                 final_analysis=f"Analysis completed by {agent_class_name}"  # Set final_analysis so alert service can extract it
-            )
+            ))
         
         return mock_agent
     
-    # Make get_agent synchronous to match AlertService expectations
-    def mock_get_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None, max_iterations=None, force_conclusion=None):
+    # Make get_agent_with_config to match NEW AgentFactory signature
+    def mock_get_agent_with_config(agent_identifier, mcp_client, execution_config):
+        """Mock get_agent_with_config that uses AgentExecutionConfig."""
+        # Extract iteration_strategy from execution_config for backward compatibility
+        iteration_strategy = execution_config.iteration_strategy if execution_config else None
         return create_mock_agent(agent_identifier, iteration_strategy)
     
-    def mock_create_agent(agent_identifier, mcp_client, iteration_strategy=None, llm_provider=None, max_iterations=None, force_conclusion=None):
-        return create_mock_agent(agent_identifier, iteration_strategy)
+    def mock_create_agent(agent_identifier, mcp_client):
+        """Mock create_agent with simplified signature."""
+        return create_mock_agent(agent_identifier, None)
     
-    factory.get_agent = Mock(side_effect=mock_get_agent)
+    factory.get_agent_with_config = Mock(side_effect=mock_get_agent_with_config)
     factory.create_agent = Mock(side_effect=mock_create_agent)
     factory.progress_callback = None
     return factory
