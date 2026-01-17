@@ -69,6 +69,23 @@
 # - max_iterations: Maximum LLM->MCP iteration loops (default: 30 from system settings)
 # - force_conclusion_at_max_iterations: Force conclusion vs pause when limit reached (default: false)
 #
+# HIERARCHICAL MCP SERVER CONFIGURATION:
+# - mcp_servers can be configured at multiple levels (NEW FEATURE)
+# - Precedence (highest to lowest):
+#   1. Alert level (via API mcp field) - HIGHEST PRIORITY, overrides everything
+#   2. Parallel agent level (within agents list) - highest configuration priority
+#   3. Stage level (within stages)
+#   4. Chain level (agent_chains section)
+#   5. Agent level (agents section) - lowest configuration priority
+# - Each level overrides all lower levels. If not specified, inherits from the level below.
+# - Alert-level MCP override (via API) takes precedence over ALL configuration levels
+# - This allows fine-grained control: define defaults at chain level, override per-stage, or per-agent
+# - Example use cases:
+#   * Chain-level: Set common MCP servers for all stages (e.g., kubernetes-server)
+#   * Stage-level: Add monitoring servers for specific investigation stage
+#   * Parallel-agent: Each agent in parallel uses different MCP servers
+#   * Alert-level: Ad-hoc override via API for specific alert (with optional tool filtering)
+#
 
 # =============================================================================
 # MCP SERVER CONFIGURATIONS
@@ -565,6 +582,49 @@ agent_chains:
       - name: "investigation"
         agent: "KubernetesAgent"
     description: "Chain with default chat configuration (enabled, all defaults)"
+  
+  # ===========================================================================
+  # HIERARCHICAL MCP CONFIGURATION EXAMPLE
+  # ===========================================================================
+  # Demonstrates the new MCP server hierarchy feature
+  hierarchical-mcp-example:
+    alert_types: ["MCPHierarchyExample"]
+    # Chain-level MCP servers: Default for all stages unless overridden
+    mcp_servers: ["kubernetes-server"]  # All stages use kubernetes-server by default
+    stages:
+      - name: "initial-investigation"
+        agent: "KubernetesAgent"
+        # This stage inherits chain-level mcp_servers: ["kubernetes-server"]
+      
+      - name: "detailed-analysis"
+        agent: "KubernetesAgent"
+        # Stage-level override: Add monitoring server for this stage only
+        mcp_servers: ["kubernetes-server", "monitoring-server"]
+      
+      - name: "parallel-deep-dive"
+        # Parallel agents with different MCP servers
+        agents:
+          - name: "KubernetesAgent"
+            # Parallel-agent override: Highest config priority
+            mcp_servers: ["kubernetes-server"]  # K8s agent uses only k8s-server
+          - name: "performance-agent"
+            mcp_servers: ["monitoring-server"]  # Performance agent uses only monitoring
+    description: "Demonstrates hierarchical MCP server configuration at chain/stage/parallel-agent levels"
+    
+    # NOTE: Alert-level MCP override (via API) would take precedence over ALL of the above.
+    # Example API call with alert-level override (highest priority):
+    # POST /api/v1/alerts
+    # {
+    #   "alert_type": "MCPHierarchyExample",
+    #   "data": {"pod": "my-pod"},
+    #   "mcp": {
+    #     "servers": [
+    #       {"name": "kubernetes-server", "tools": ["get_pod_logs"]},
+    #       {"name": "custom-server"}
+    #     ]
+    #   }
+    # }
+    # This alert-level mcp would override ALL chain/stage/parallel-agent mcp_servers above
 # =============================================================================
 # CONFIGURATION VALIDATION NOTES
 # =============================================================================

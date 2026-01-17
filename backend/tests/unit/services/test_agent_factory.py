@@ -12,6 +12,7 @@ import pytest
 
 from tarsy.integrations.llm.manager import LLMManager
 from tarsy.integrations.mcp.client import MCPClient
+from tarsy.models.agent_execution_config import AgentExecutionConfig
 from tarsy.services.agent_factory import AgentFactory
 from tarsy.services.mcp_server_registry import MCPServerRegistry
 from tests.utils import AgentServiceFactory
@@ -901,7 +902,7 @@ class TestAgentFactoryLLMProvider:
     
     @patch('tarsy.agents.kubernetes_agent.KubernetesAgent')
     def test_get_agent_without_provider(self, mock_kubernetes_agent, mock_dependencies):
-        """Test get_agent without LLM provider uses default."""
+        """Test get_agent_with_config without LLM provider uses default."""
         factory = AgentFactory(
             llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
@@ -911,9 +912,10 @@ class TestAgentFactoryLLMProvider:
         mock_agent_instance.set_llm_provider = Mock()
         mock_kubernetes_agent.return_value = mock_agent_instance
         
-        agent = factory.get_agent(
+        agent = factory.get_agent_with_config(
             agent_identifier="KubernetesAgent",
-            mcp_client=mock_dependencies['mcp_client']
+            mcp_client=mock_dependencies['mcp_client'],
+            execution_config=AgentExecutionConfig()
         )
         
         # Should not call set_llm_provider when no provider is specified
@@ -922,7 +924,7 @@ class TestAgentFactoryLLMProvider:
     
     @patch('tarsy.agents.kubernetes_agent.KubernetesAgent')
     def test_get_agent_with_provider(self, mock_kubernetes_agent, mock_dependencies):
-        """Test get_agent with LLM provider override."""
+        """Test get_agent_with_config with LLM provider override."""
         factory = AgentFactory(
             llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
@@ -932,10 +934,10 @@ class TestAgentFactoryLLMProvider:
         mock_agent_instance.set_llm_provider = Mock()
         mock_kubernetes_agent.return_value = mock_agent_instance
         
-        agent = factory.get_agent(
+        agent = factory.get_agent_with_config(
             agent_identifier="KubernetesAgent",
             mcp_client=mock_dependencies['mcp_client'],
-            llm_provider="google-default"
+            execution_config=AgentExecutionConfig(llm_provider="google-default")
         )
         
         # Should call set_llm_provider with the specified provider
@@ -944,7 +946,7 @@ class TestAgentFactoryLLMProvider:
     
     @patch('tarsy.agents.kubernetes_agent.KubernetesAgent')
     def test_get_agent_with_provider_and_strategy(self, mock_kubernetes_agent, mock_dependencies):
-        """Test get_agent with both LLM provider and iteration strategy overrides."""
+        """Test get_agent_with_config with both LLM provider and iteration strategy overrides."""
         from tarsy.models.constants import IterationStrategy
         
         factory = AgentFactory(
@@ -957,11 +959,13 @@ class TestAgentFactoryLLMProvider:
         mock_agent_instance.set_iteration_strategy = Mock()
         mock_kubernetes_agent.return_value = mock_agent_instance
         
-        agent = factory.get_agent(
+        agent = factory.get_agent_with_config(
             agent_identifier="KubernetesAgent",
             mcp_client=mock_dependencies['mcp_client'],
-            iteration_strategy="react-stage",
-            llm_provider="openai-default"
+            execution_config=AgentExecutionConfig(
+                iteration_strategy="react-stage",
+                llm_provider="openai-default"
+            )
         )
         
         # Both should be called
@@ -971,7 +975,7 @@ class TestAgentFactoryLLMProvider:
     
     @patch('tarsy.agents.kubernetes_agent.KubernetesAgent')
     def test_get_agent_with_none_provider(self, mock_kubernetes_agent, mock_dependencies):
-        """Test get_agent with explicit None provider (uses global default)."""
+        """Test get_agent_with_config with explicit None provider (uses global default)."""
         factory = AgentFactory(
             llm_manager=mock_dependencies['llm_manager'],
             mcp_registry=mock_dependencies['mcp_registry']
@@ -981,10 +985,10 @@ class TestAgentFactoryLLMProvider:
         mock_agent_instance.set_llm_provider = Mock()
         mock_kubernetes_agent.return_value = mock_agent_instance
         
-        agent = factory.get_agent(
+        agent = factory.get_agent_with_config(
             agent_identifier="KubernetesAgent",
             mcp_client=mock_dependencies['mcp_client'],
-            llm_provider=None
+            execution_config=AgentExecutionConfig(llm_provider=None)
         )
         
         # Should not call set_llm_provider when None is explicitly passed
@@ -1004,10 +1008,10 @@ class TestAgentFactoryLLMProvider:
             mock_kubernetes_agent.return_value = mock_agent_instance
             
             with caplog.at_level("DEBUG"):
-                factory.get_agent(
+                factory.get_agent_with_config(
                     agent_identifier="KubernetesAgent",
                     mcp_client=mock_dependencies['mcp_client'],
-                    llm_provider="gemini-flash"
+                    execution_config=AgentExecutionConfig(llm_provider="gemini-flash")
                 )
             
             # Should log the provider override

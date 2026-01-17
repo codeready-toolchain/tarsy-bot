@@ -412,7 +412,10 @@ class ChatService:
             chain_definition = session.chain_config if session else None
             
             # Resolve iteration config (chat uses chain config but no stage/parallel config)
-            max_iter, force_conclude = IterationConfigResolver.resolve_iteration_config(
+            # 12. Resolve unified execution configuration for chat agent
+            from tarsy.services.execution_config_resolver import ExecutionConfigResolver
+            
+            execution_config = ExecutionConfigResolver.resolve_config(
                 system_settings=self.settings,
                 agent_config=agent_def,
                 chain_config=chain_definition,
@@ -420,14 +423,16 @@ class ChatService:
                 parallel_agent_config=None  # Chat doesn't have parallel config
             )
             
-            # 12. Create chat agent with iteration strategy and LLM provider from parent session
-            chat_agent = self.agent_factory.get_agent(
+            # Override iteration_strategy and llm_provider from parent session/chat config
+            # These take precedence over resolved config for chat continuity
+            execution_config.iteration_strategy = iteration_strategy
+            execution_config.llm_provider = llm_provider
+            
+            # Create chat agent with unified execution config
+            chat_agent = self.agent_factory.get_agent_with_config(
                 agent_identifier=chat_agent_name,
                 mcp_client=chat_mcp_client,
-                iteration_strategy=iteration_strategy,
-                llm_provider=llm_provider,
-                max_iterations=max_iter,
-                force_conclusion=force_conclude
+                execution_config=execution_config
             )
             
             # Set stage execution ID for interaction tagging

@@ -12,6 +12,7 @@ from tarsy.models.agent_config import (
     ChainStageConfigModel,
     ParallelAgentConfig,
 )
+from tarsy.models.agent_execution_config import AgentExecutionConfig
 from tarsy.services.agent_factory import AgentFactory
 from tarsy.services.iteration_config_resolver import IterationConfigResolver
 from tarsy.services.mcp_server_registry import MCPServerRegistry
@@ -48,20 +49,21 @@ class TestHierarchicalIterationConfig:
         self, agent_factory, mock_mcp_client, ensure_integration_test_isolation
     ):
         """Test that agent instance respects max_iterations override."""
-        # Create agent with default settings
-        agent = agent_factory.get_agent(
+        # Create agent with default settings (no overrides)
+        agent = agent_factory.get_agent_with_config(
             agent_identifier="KubernetesAgent",
-            mcp_client=mock_mcp_client
+            mcp_client=mock_mcp_client,
+            execution_config=AgentExecutionConfig()
         )
         
         # Should have mock settings default (3)
         assert agent.max_iterations == 3
         
         # Override with higher value
-        agent_with_override = agent_factory.get_agent(
+        agent_with_override = agent_factory.get_agent_with_config(
             agent_identifier="KubernetesAgent",
             mcp_client=mock_mcp_client,
-            max_iterations=50
+            execution_config=AgentExecutionConfig(max_iterations=50)
         )
         
         assert agent_with_override.max_iterations == 50
@@ -70,20 +72,21 @@ class TestHierarchicalIterationConfig:
         self, agent_factory, mock_mcp_client, ensure_integration_test_isolation
     ):
         """Test that agent instance respects force_conclusion override."""
-        # Create agent with default settings
-        agent = agent_factory.get_agent(
+        # Create agent with default settings (no overrides)
+        agent = agent_factory.get_agent_with_config(
             agent_identifier="KubernetesAgent",
-            mcp_client=mock_mcp_client
+            mcp_client=mock_mcp_client,
+            execution_config=AgentExecutionConfig()
         )
         
         # Should have mock settings default (False)
         assert agent.get_force_conclusion() is False
         
         # Override with True
-        agent_with_override = agent_factory.get_agent(
+        agent_with_override = agent_factory.get_agent_with_config(
             agent_identifier="KubernetesAgent",
             mcp_client=mock_mcp_client,
-            force_conclusion=True
+            execution_config=AgentExecutionConfig(force_conclusion=True)
         )
         
         assert agent_with_override.get_force_conclusion() is True

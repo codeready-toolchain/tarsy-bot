@@ -105,6 +105,11 @@ class BaseAgent(ABC):
         # When None, uses the global default provider from settings
         self._llm_provider_name: Optional[str] = None
         
+        # MCP servers override from configuration hierarchy (chain/stage/parallel-agent level)
+        # When None, uses agent's default mcp_servers() method
+        # When set, completely overrides agent default (unless alert-level override is present)
+        self._override_mcp_servers: Optional[List[str]] = None
+        
         # Create appropriate iteration controller based on configuration
         self._iteration_controller: IterationController = self._create_iteration_controller(iteration_strategy)
         # Cache the iteration strategy to avoid redundant imports in property getter
@@ -193,6 +198,51 @@ class BaseAgent(ABC):
         """
         self._force_conclusion_at_max_iterations = value
         logger.info(f"Agent {self.__class__.__name__} configured with force_conclusion_at_max_iterations: {value}")
+    
+    def set_mcp_servers_override(self, mcp_servers: List[str]) -> None:
+        """
+        Set MCP servers override from configuration hierarchy.
+        
+        This override applies when configuration (chain/stage/parallel-agent level)
+        specifies MCP servers. It takes precedence over agent default mcp_servers()
+        but is still superseded by alert-level override (ChainContext.mcp).
+        
+        Args:
+            mcp_servers: List of MCP server IDs to use for this agent instance
+        """
+        self._override_mcp_servers = mcp_servers
+        logger.info(
+            f"Agent {self.__class__.__name__} configured with MCP servers override: "
+            f"{mcp_servers}"
+        )
+    
+    def _get_effective_mcp_servers(self) -> List[str]:
+        """
+        Get effective MCP servers for this agent instance.
+        
+        Returns configuration hierarchy override if set, otherwise agent default.
+        This method is used internally by _configure_mcp_client().
+        
+        Priority:
+        1. Configuration hierarchy override (_override_mcp_servers) if set
+        2. Agent default (mcp_servers() method)
+        
+        NOTE: Alert-level override (ChainContext.mcp) is handled separately in
+        _get_available_tools() and takes precedence over both of these.
+        
+        Returns:
+            List of MCP server IDs to use
+        """
+        if self._override_mcp_servers is not None:
+            logger.debug(
+                f"Using MCP servers override for {self.__class__.__name__}: "
+                f"{self._override_mcp_servers}"
+            )
+            return self._override_mcp_servers
+        
+        # Fall back to agent default (calls classmethod for built-in agents,
+        # instance method for ConfigurableAgent)
+        return self.mcp_servers()
 
     @classmethod
     @abstractmethod
@@ -471,8 +521,13 @@ class BaseAgent(ABC):
         return self._llm_provider_name
     
     async def _configure_mcp_client(self):
-        """Configure MCP client with agent-specific server subset and summarizer."""
-        mcp_server_ids = self.mcp_servers()
+        """
+        Configure MCP client with agent-specific server subset and summarizer.
+        
+        Uses _get_effective_mcp_servers() which respects configuration hierarchy
+        overrides (chain/stage/parallel-agent level) if present.
+        """
+        mcp_server_ids = self._get_effective_mcp_servers()
         
         # Get configurations for this agent's servers
         server_configs = self.mcp_registry.get_server_configs(mcp_server_ids)

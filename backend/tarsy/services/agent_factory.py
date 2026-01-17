@@ -19,6 +19,7 @@ from tarsy.config.builtin_config import (
 )
 from tarsy.integrations.llm.manager import LLMManager
 from tarsy.integrations.mcp.client import MCPClient
+from tarsy.models.agent_execution_config import AgentExecutionConfig
 from tarsy.models.constants import IterationStrategy
 from tarsy.utils.logger import get_module_logger
 
@@ -133,55 +134,63 @@ class AgentFactory:
             logger.error(f"Failed to create agent '{agent_name}': {e}")
             raise
 
-    def get_agent(
-        self, 
-        agent_identifier: str, 
-        mcp_client: MCPClient, 
-        iteration_strategy: Optional[str] = None,
-        llm_provider: Optional[str] = None,
-        max_iterations: Optional[int] = None,
-        force_conclusion: Optional[bool] = None
+    def get_agent_with_config(
+        self,
+        agent_identifier: str,
+        mcp_client: MCPClient,
+        execution_config: AgentExecutionConfig
     ) -> BaseAgent:
         """
-        Get agent instance by identifier with optional strategy and provider overrides.
+        Get agent instance with aggregated execution configuration.
         
-        All agent usage is chain-based (single-agent flows are chains with one stage).
-        Always creates a unique instance to prevent race conditions between stages.
+        This is the preferred method for creating agents with configuration hierarchy
+        resolution. Uses AgentExecutionConfig which aggregates all execution parameters.
         
         Args:
             agent_identifier: Agent name (e.g., "KubernetesAgent" for builtin or "ArgoCDAgent" for configured)
             mcp_client: Session-scoped MCP client for this agent instance
-            iteration_strategy: Strategy to use for this stage (overrides agent default)
-            llm_provider: Optional LLM provider name for this agent (overrides global default)
-            max_iterations: Optional max iterations override (from hierarchy resolution)
-            force_conclusion: Optional force conclusion override (from hierarchy resolution)
+            execution_config: Resolved execution configuration from ExecutionConfigResolver
         
         Returns:
-            Agent instance configured with appropriate strategy and provider
+            Agent instance configured with all settings from execution_config
         """
         # Create agent using existing create_agent method with session-scoped client
         agent = self.create_agent(agent_identifier, mcp_client)
         
-        # Override strategy if provided
-        if iteration_strategy:
+        # Apply iteration strategy if provided
+        if execution_config.iteration_strategy:
             try:
-                strategy_enum = IterationStrategy(iteration_strategy)
+                strategy_enum = IterationStrategy(execution_config.iteration_strategy)
                 agent.set_iteration_strategy(strategy_enum)
             except ValueError:
-                logger.warning(f"Invalid iteration strategy '{iteration_strategy}', using agent default")
+                logger.warning(
+                    f"Invalid iteration strategy '{execution_config.iteration_strategy}', "
+                    f"using agent default"
+                )
         
-        # Set LLM provider override if provided
-        if llm_provider:
-            agent.set_llm_provider(llm_provider)
-            logger.debug(f"Agent {agent_identifier} configured with LLM provider: {llm_provider}")
+        # Apply LLM provider if provided
+        if execution_config.llm_provider:
+            agent.set_llm_provider(execution_config.llm_provider)
+            logger.debug(
+                f"Agent {agent_identifier} configured with LLM provider: "
+                f"{execution_config.llm_provider}"
+            )
         
-        # Set max_iterations override if provided
-        if max_iterations is not None:
-            agent.set_max_iterations(max_iterations)
+        # Apply max_iterations if provided
+        if execution_config.max_iterations is not None:
+            agent.set_max_iterations(execution_config.max_iterations)
         
-        # Set force_conclusion override if provided
-        if force_conclusion is not None:
-            agent.set_force_conclusion(force_conclusion)
+        # Apply force_conclusion if provided
+        if execution_config.force_conclusion is not None:
+            agent.set_force_conclusion(execution_config.force_conclusion)
+        
+        # Apply MCP servers override if provided
+        if execution_config.mcp_servers is not None:
+            agent.set_mcp_servers_override(execution_config.mcp_servers)
+            logger.debug(
+                f"Agent {agent_identifier} configured with MCP servers override: "
+                f"{execution_config.mcp_servers}"
+            )
         
         return agent
     

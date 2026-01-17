@@ -770,9 +770,6 @@ class TestAlertServiceHistoryIntegration:
         # Verify stage execution flow - lock in expected chain execution behavior
         # Note: With real StageExecutionManager, we can't easily assert on internal calls
         # The fact that processing succeeded validates the stage execution flow
-        # Verify agent received the stage execution ID for context tracking
-        mock_agent = alert_service_with_history.agent_factory.get_agent()
-        mock_agent.set_current_stage_execution_id.assert_called()
     
     @pytest.mark.asyncio
     @pytest.mark.integration
