@@ -206,21 +206,27 @@ class MCPServerConfigModel(BaseModel):
     Supports stdio, HTTP, and SSE transports via discriminated unions.
     """
 
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
 
-    server_id: str = Field(
-        ...,
-        description="Unique server identifier used in agent configurations",
-        min_length=1,
+    # DEPRECATED FIELDS - maintained for backward compatibility only
+    # These fields are ignored and will be removed in a future version
+    server_id: Optional[str] = Field(
+        default=None,
+        deprecated=True,
+        description="DEPRECATED: Server ID is now inferred from YAML dictionary key",
     )
-    server_type: str = Field(
-        ...,
-        description="Server type categorization (e.g., 'security', 'monitoring', 'kubernetes')",
-        min_length=1,
+    server_type: Optional[str] = Field(
+        default=None,
+        deprecated=True,
+        description="DEPRECATED: Server type categorization is no longer used",
     )
-    enabled: bool = Field(
-        default=True, description="Whether this server is enabled for use"
+    enabled: Optional[bool] = Field(
+        default=None,
+        deprecated=True,
+        description="DEPRECATED: To disable a server, comment it out or remove from config",
     )
+    
+    # Active configuration fields
     transport: TransportConfig = Field(
         ...,
         description="Transport-specific configuration (stdio, HTTP, or SSE)",
@@ -238,6 +244,30 @@ class MCPServerConfigModel(BaseModel):
         default_factory=lambda: SummarizationConfig(),
         description="Summarization configuration for large results",
     )
+    
+    @model_validator(mode="after")
+    def warn_deprecated_fields(self) -> "MCPServerConfigModel":
+        """Log warnings for deprecated fields that should be removed."""
+        from ..utils.logger import get_module_logger
+        
+        logger = get_module_logger(__name__)
+        
+        deprecated_fields = []
+        if self.server_id is not None:
+            deprecated_fields.append("server_id")
+        if self.server_type is not None:
+            deprecated_fields.append("server_type")
+        if self.enabled is not None:
+            deprecated_fields.append("enabled")
+        
+        if deprecated_fields:
+            logger.warning(
+                f"MCP server configuration uses deprecated fields: {', '.join(deprecated_fields)}. "
+                "These fields are ignored and will be removed in a future version. "
+                "Please remove them from your agents.yaml configuration."
+            )
+        
+        return self
 
 
 class ParallelAgentConfig(BaseModel):
@@ -558,12 +588,3 @@ class CombinedConfigModel(BaseModel):
                 )
         return self
 
-    @model_validator(mode="after")
-    def validate_server_ids(self) -> "CombinedConfigModel":
-        """Validate that MCP server IDs in configs match their dictionary keys."""
-        for server_id, server_config in self.mcp_servers.items():
-            if server_config.server_id != server_id:
-                raise ValueError(
-                    f"MCP server key '{server_id}' does not match server_id '{server_config.server_id}'"
-                )
-        return self

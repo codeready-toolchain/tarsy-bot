@@ -36,7 +36,7 @@ Analyze alerts thoroughly and provide actionable insights based on:
 Always be specific, reference actual data, and provide clear next steps.
 Focus on root cause analysis and sustainable solutions.
 
-## Kubernetes Server Instructions
+## kubernetes-server Instructions
 
 For Kubernetes operations:
 - **IMPORTANT: In multi-cluster environments** (when the 'configuration_contexts_list' tool is available):
@@ -129,7 +129,7 @@ Analyze alerts thoroughly and provide actionable insights based on:
 Always be specific, reference actual data, and provide clear next steps.
 Focus on root cause analysis and sustainable solutions.
 
-## Kubernetes Server Instructions
+## kubernetes-server Instructions
 
 For Kubernetes operations:
 - **IMPORTANT: In multi-cluster environments** (when the 'configuration_contexts_list' tool is available):
@@ -427,7 +427,7 @@ Analyze alerts thoroughly and provide actionable insights based on:
 Always be specific, reference actual data, and provide clear next steps.
 Focus on root cause analysis and sustainable solutions.
 
-## Kubernetes Server Instructions
+## kubernetes-server Instructions
 
 For Kubernetes operations:
 - **IMPORTANT: In multi-cluster environments** (when the 'configuration_contexts_list' tool is available):
@@ -520,7 +520,7 @@ Analyze alerts thoroughly and provide actionable insights based on:
 Always be specific, reference actual data, and provide clear next steps.
 Focus on root cause analysis and sustainable solutions.
 
-## Kubernetes Server Instructions
+## kubernetes-server Instructions
 
 For Kubernetes operations:
 - **IMPORTANT: In multi-cluster environments** (when the 'configuration_contexts_list' tool is available):
@@ -613,7 +613,7 @@ Analyze alerts thoroughly and provide actionable insights based on:
 Always be specific, reference actual data, and provide clear next steps.
 Focus on root cause analysis and sustainable solutions.
 
-## Kubernetes Server Instructions
+## kubernetes-server Instructions
 
 For Kubernetes operations:
 - **IMPORTANT: In multi-cluster environments** (when the 'configuration_contexts_list' tool is available):
@@ -839,7 +839,7 @@ Analyze alerts thoroughly and provide actionable insights based on:
 Always be specific, reference actual data, and provide clear next steps.
 Focus on root cause analysis and sustainable solutions.
 
-## Kubernetes Server Instructions
+## kubernetes-server Instructions
 
 For Kubernetes operations:
 - **IMPORTANT: In multi-cluster environments** (when the 'configuration_contexts_list' tool is available):
@@ -933,7 +933,7 @@ Analyze alerts thoroughly and provide actionable insights based on:
 Always be specific, reference actual data, and provide clear next steps.
 Focus on root cause analysis and sustainable solutions.
 
-## Kubernetes Server Instructions
+## kubernetes-server Instructions
 
 For Kubernetes operations:
 - **IMPORTANT: In multi-cluster environments** (when the 'configuration_contexts_list' tool is available):

@@ -89,9 +89,7 @@ async def get_mcp_servers(_request: Request) -> MCPServersResponse:
                 total_tools += len(tools)
                 
                 servers_info.append(MCPServerInfo(
-                    server_id=server_config.server_id,
-                    server_type=server_config.server_type,
-                    enabled=server_config.enabled,
+                    server_id=server_id,
                     tools=tools
                 ))
                 
@@ -102,11 +100,10 @@ async def get_mcp_servers(_request: Request) -> MCPServersResponse:
                 logger.error(f"Failed to process server '{server_id}': {e}")
                 # Include server in response but with no tools
                 try:
-                    server_config = alert_service.mcp_server_registry.get_server_config(server_id)
+                    # Just verify server exists in registry
+                    alert_service.mcp_server_registry.get_server_config(server_id)
                     servers_info.append(MCPServerInfo(
-                        server_id=server_config.server_id,
-                        server_type=server_config.server_type,
-                        enabled=server_config.enabled,
+                        server_id=server_id,
                         tools=[]
                     ))
                 except Exception:
@@ -168,9 +165,7 @@ async def _get_mcp_servers_direct(alert_service, server_ids: list[str]) -> MCPSe
                 total_tools += len(tools)
                 
                 servers_info.append(MCPServerInfo(
-                    server_id=server_config.server_id,
-                    server_type=server_config.server_type,
-                    enabled=server_config.enabled,
+                    server_id=server_id,
                     tools=tools
                 ))
                 
@@ -181,11 +176,10 @@ async def _get_mcp_servers_direct(alert_service, server_ids: list[str]) -> MCPSe
                 logger.error(f"Failed to query server '{server_id}': {e}")
                 # Include server in response but with no tools
                 try:
-                    server_config = alert_service.mcp_server_registry.get_server_config(server_id)
+                    # Just verify server exists in registry
+                    alert_service.mcp_server_registry.get_server_config(server_id)
                     servers_info.append(MCPServerInfo(
-                        server_id=server_config.server_id,
-                        server_type=server_config.server_type,
-                        enabled=server_config.enabled,
+                        server_id=server_id,
                         tools=[]
                     ))
                 except Exception:
@@ -298,10 +292,10 @@ async def get_default_tools(
         mcp_servers = []
         for server_id in sorted(server_names):
             try:
-                server_config = alert_service.mcp_server_registry.get_server_config(server_id)
+                # Just verify server exists in registry
+                alert_service.mcp_server_registry.get_server_config(server_id)
                 mcp_servers.append({
-                    "server_id": server_config.server_id,
-                    "server_type": server_config.server_type,
+                    "server_id": server_id,
                 })
             except Exception as e:
                 logger.warning(f"Failed to get config for server '{server_id}': {e}")

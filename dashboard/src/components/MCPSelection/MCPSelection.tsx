@@ -630,18 +630,9 @@ const MCPSelection: React.FC<MCPSelectionProps> = ({ value, onChange, disabled =
                                 />
                               }
                               label={
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                  <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                                    {server.server_id}
-                                  </Typography>
-                                  <Chip 
-                                    label={server.server_type}
-                                    size="small"
-                                    color="primary"
-                                    variant="outlined"
-                                    sx={{ height: 20, fontSize: '0.7rem' }}
-                                  />
-                                </Box>
+                                <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                                  {server.server_id}
+                                </Typography>
                               }
                               sx={{ m: 0, flex: 1 }}
                             />

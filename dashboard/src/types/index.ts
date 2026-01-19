@@ -735,8 +735,6 @@ export interface MCPToolInfo {
 
 export interface MCPServerInfo {
   server_id: string;
-  server_type: string;
-  enabled: boolean;
   tools: MCPToolInfo[];
 }
 

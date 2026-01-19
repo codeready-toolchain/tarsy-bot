@@ -306,13 +306,11 @@ class MCPClient:
         
         for server_id in all_server_ids:
             server_config = self.mcp_registry.get_server_config_safe(server_id)
-            if not server_config or not server_config.enabled:
+            if not server_config:
                 continue
                 
             try:
                 logger.debug("Initializing MCP server '%s' with configuration:", server_id)
-                logger.debug("  Server type: %s", server_config.server_type)
-                logger.debug("  Enabled: %s", server_config.enabled)
                 logger.debug("  Transport type: %s", server_config.transport.type)
                 logger.debug("  Command: %s", getattr(server_config.transport, 'command', 'N/A'))
                 logger.debug("  Args: %s", getattr(server_config.transport, 'args', []))
@@ -624,8 +622,8 @@ class MCPClient:
         """
         try:
             server_config = self.mcp_registry.get_server_config_safe(server_id)
-            if not server_config or not server_config.enabled:
-                logger.debug(f"Cannot initialize {server_id}: no config or disabled")
+            if not server_config:
+                logger.debug(f"Cannot initialize {server_id}: no config found")
                 return False
             
             # Create session with timeout (health monitor shouldn't wait forever)

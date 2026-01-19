@@ -427,7 +427,7 @@ class APIClient {
       const params = alertType ? `?alert_type=${encodeURIComponent(alertType)}` : '';
       const response = await this.client.get<{
         alert_type: string;
-        mcp_servers: Array<{ server_id: string; server_type: string }>;
+        mcp_servers: Array<{ server_id: string }>;
         native_tools: { [key: string]: boolean };
       }>(`/api/v1/system/default-tools${params}`);
       

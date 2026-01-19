@@ -24,8 +24,6 @@ class MCPServerInfo(BaseModel):
     """Information about an MCP server and its available tools."""
     
     server_id: str = Field(..., description="Unique server identifier")
-    server_type: str = Field(..., description="Server type (e.g., 'kubernetes', 'argocd')")
-    enabled: bool = Field(..., description="Whether server is enabled")
     tools: List[MCPToolInfo] = Field(
         default_factory=list, 
         description="Available tools from this server"

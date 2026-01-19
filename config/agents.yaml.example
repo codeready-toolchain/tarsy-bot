@@ -43,7 +43,7 @@
 # - Built-in pattern groups: "basic" (api_key, password), "secrets" (basic + token), "security" (all + certificate), "kubernetes" (kubernetes_secret + basic), "all" (all patterns)
 # - Custom patterns can be defined with regex pattern, replacement text, and description
 # - Masking is applied to MCP server responses before reaching the LLM or logs
-# - Set enabled: false to disable masking for specific servers
+# - Set data_masking.enabled: false to disable masking for specific servers
 #
 # RESULT SUMMARIZATION
 # - MCP servers can include optional summarization configuration to handle large tool outputs
@@ -131,9 +131,6 @@ mcp_servers:
   # Uncomment this section to enable the override:
   #
   # kubernetes-server:
-  #   server_id: "kubernetes-server"
-  #   server_type: "kubernetes"
-  #   enabled: true
   #   transport:
   #     type: "stdio"
   #     command: "npx"
@@ -162,9 +159,6 @@ mcp_servers:
   
   # Security-focused MCP server for threat analysis and security operations
   security-server:
-    server_id: "security-server"
-    server_type: "security"
-    enabled: true
     transport:
       type: "stdio"  # Required discriminator field
       # Example: Custom security MCP server command with templated arguments
@@ -203,9 +197,6 @@ mcp_servers:
 
   # Monitoring and observability MCP server for performance analysis
   monitoring-server:
-    server_id: "monitoring-server"
-    server_type: "monitoring"
-    enabled: true
     transport:
       type: "stdio"  # Required discriminator field  
       command: "npx"
@@ -232,10 +223,7 @@ mcp_servers:
       summary_max_token_limit: 800     # Concise summaries for metrics and performance data
 
   # HTTP MCP server example (using HTTP transport)
-  http-mcp-server:
-    server_id: "http-mcp-server"
-    server_type: "http-based"
-    enabled: false  # Disabled by default - enable when HTTP endpoint is configured
+    http-mcp-server:
     transport:
       type: "http"  # HTTP transport type
       url: "https://mcp-api.example.com/mcp"  # MCP endpoint URL
@@ -261,9 +249,6 @@ mcp_servers:
 
   # SSE MCP server example (using Server-Sent Events transport)
   sse-mcp-server:
-    server_id: "sse-mcp-server"
-    server_type: "streaming"
-    enabled: false  # Disabled by default - enable when SSE endpoint is configured
     transport:
       type: "sse"  # SSE transport type
       url: "https://streaming-mcp.example.com/sse"  # SSE endpoint URL (supports endpoint discovery)
@@ -291,9 +276,6 @@ mcp_servers:
 
   # Custom cloud provider MCP server (example for AWS-specific operations)
   aws-server:
-    server_id: "aws-server"
-    server_type: "cloud"
-    enabled: false  # Disabled by default - enable when AWS credentials are configured
     transport:
       type: "stdio"  # Required discriminator field
       command: "/usr/local/bin/aws-mcp-server"
@@ -662,12 +644,12 @@ agent_chains:
 #
 # 3. MCP SERVER REFERENCES:
 #    - All MCP servers referenced by agents must exist (built-in or configured)
-#    - MCP servers can be temporarily disabled (enabled: false) but still referenced
+#    - To disable a server, comment it out or remove it from the configuration
 #    - Agents will fail to initialize if they reference non-existent MCP servers
 #
 # 4. REQUIRED FIELDS:
 #    - Agents must have at least one alert_type and one mcp_server
-#    - MCP servers must have server_id, server_type, and transport (with type field)
+#    - MCP servers must have transport (with type field)
 #    - All fields marked as required in the Pydantic models must be present
 #
 # 5. AGENT CHAIN VALIDATION:

@@ -434,9 +434,9 @@ class BaseAgent(ABC):
         mcp_server_ids = self._get_effective_mcp_servers()
         server_configs = self.mcp_registry.get_server_configs(mcp_server_ids)
         
-        for server_config in server_configs:
+        for server_id, server_config in zip(mcp_server_ids, server_configs):
             if hasattr(server_config, 'instructions') and server_config.instructions:
-                instructions.append(f"## {server_config.server_type.title()} Server Instructions")
+                instructions.append(f"## {server_id} Instructions")
                 instructions.append(server_config.instructions)
         
         # Tier 3: Custom instructions

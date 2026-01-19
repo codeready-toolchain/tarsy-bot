@@ -110,9 +110,6 @@ BUILTIN_CHAIN_DEFINITIONS: Dict[str, Dict[str, Any]] = {
 # Format: "server-id" -> configuration_dict
 BUILTIN_MCP_SERVERS: Dict[str, Dict[str, Any]] = {
     "kubernetes-server": {
-        "server_id": "kubernetes-server",
-        "server_type": "kubernetes",
-        "enabled": True,
         "transport": {
             "type": TRANSPORT_STDIO,
             "command": "npx",
@@ -150,9 +147,6 @@ BUILTIN_MCP_SERVERS: Dict[str, Dict[str, Any]] = {
     },
     # Future MCP servers will be added here:
     # "argocd-server": {
-    #     "server_id": "argocd-server", 
-    #     "server_type": "argocd",
-    #     "enabled": True,
     #     "transport": {
     #         "type": TRANSPORT_STDIO,
     #         "command": "npx",

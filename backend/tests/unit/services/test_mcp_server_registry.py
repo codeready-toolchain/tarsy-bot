@@ -31,18 +31,12 @@ class TestMCPServerRegistryInitialization:
         # Check kubernetes-server configuration
         k8s_config = registry.static_servers["kubernetes-server"]
         assert isinstance(k8s_config, MCPServerConfigModel)
-        assert k8s_config.server_id == "kubernetes-server"
-        assert k8s_config.server_type == "kubernetes"
-        assert k8s_config.enabled is True
     
     def test_initialization_with_custom_config(self):
         """Test initialization with custom server configurations."""
         custom_config = {
             "test-server": MCPServerFactory.create_test_server(),
-            "another-server": MCPServerFactory.create_disabled_server(
-                server_id="another-server",
-                server_type="another"
-            )
+            "another-server": MCPServerFactory.create_test_server()
         }
         
         registry = MCPServerRegistry(config=custom_config)
@@ -56,8 +50,6 @@ class TestMCPServerRegistryInitialization:
         # Verify server configs are properly converted
         test_config = registry.static_servers["test-server"]
         assert isinstance(test_config, MCPServerConfigModel)
-        assert test_config.server_id == "test-server"
-        assert test_config.enabled is True
     
     def test_initialization_with_empty_config(self):
         """Test initialization with empty configuration falls back to defaults."""
@@ -73,7 +65,6 @@ class TestMCPServerRegistryInitialization:
         
         # Should use default configurations
         assert "kubernetes-server" in registry.static_servers
-        assert registry.static_servers["kubernetes-server"].server_type == "kubernetes"
     
     def test_static_servers_isolation(self):
         """Test that different registry instances have isolated server stores."""
@@ -97,11 +88,8 @@ class TestMCPServerRegistryInitialization:
             
             registry = MCPServerRegistry(config=custom_config)
             
-            # Verify MCPServerConfigModel was called with correct parameters
+            # Verify MCPServerConfigModel was called with correct parameters (deprecated fields removed)
             mock_mcp_config.assert_called_once_with(
-                server_id="test-server",
-                server_type="test",
-                enabled=True,
                 transport={"type": "stdio", "command": "test", "args": ["--test"], "env": {}},
                 instructions="Test MCP server for testing"
             )
@@ -119,7 +107,7 @@ class TestServerConfigRetrieval:
         return MCPServerRegistry(config={
             "kubernetes-server": MCPServerFactory.create_kubernetes_server(),
             "docker-server": MCPServerFactory.create_docker_server(),
-            "disabled-server": MCPServerFactory.create_disabled_server()
+            "test-server": MCPServerFactory.create_test_server()
         })
     
     def test_get_server_config_existing_server(self, sample_registry):
@@ -127,14 +115,9 @@ class TestServerConfigRetrieval:
         k8s_config = sample_registry.get_server_config("kubernetes-server")
         assert k8s_config is not None
         assert isinstance(k8s_config, MCPServerConfigModel)
-        assert k8s_config.server_id == "kubernetes-server"
-        assert k8s_config.server_type == "kubernetes"
-        assert k8s_config.enabled is True
         
         docker_config = sample_registry.get_server_config("docker-server")
         assert docker_config is not None
-        assert docker_config.server_id == "docker-server"
-        assert docker_config.enabled is True
     
     def test_get_server_config_non_existing_server(self, sample_registry):
         """Test getting configuration for non-existing servers raises ValueError."""
@@ -184,10 +167,7 @@ class TestServerConfigRetrieval:
         
         assert len(configs) == 2
         assert all(isinstance(config, MCPServerConfigModel) for config in configs)
-        
-        # Check order is preserved
-        assert configs[0].server_id == "kubernetes-server"
-        assert configs[1].server_id == "docker-server"
+
     
     def test_get_server_configs_mixed_existing_non_existing(self, sample_registry):
         """Test getting configurations with mix of existing and non-existing servers."""
@@ -196,8 +176,6 @@ class TestServerConfigRetrieval:
         
         # Should only return existing servers
         assert len(configs) == 2
-        assert configs[0].server_id == "kubernetes-server"
-        assert configs[1].server_id == "docker-server"
     
     def test_get_server_configs_all_non_existing(self, sample_registry):
         """Test getting configurations for all non-existing servers."""
@@ -221,9 +199,6 @@ class TestServerConfigRetrieval:
         
         # Should include duplicates
         assert len(configs) == 3
-        assert configs[0].server_id == "kubernetes-server"
-        assert configs[1].server_id == "docker-server"
-        assert configs[2].server_id == "kubernetes-server"
         
         # Should be same instance
         assert configs[0] is configs[2]
@@ -232,7 +207,7 @@ class TestServerConfigRetrieval:
         """Test getting all configured server IDs."""
         server_ids = sample_registry.get_all_server_ids()
         
-        expected_ids = ["kubernetes-server", "docker-server", "disabled-server"]
+        expected_ids = ["kubernetes-server", "docker-server", "test-server"]
         assert set(server_ids) == set(expected_ids)
         assert len(server_ids) == 3
         assert isinstance(server_ids, list)
@@ -265,8 +240,7 @@ class TestDefaultConfigurations:
         # Should have kubernetes-server in defaults
         assert "kubernetes-server" in registry.static_servers
         k8s_config = registry.static_servers["kubernetes-server"]
-        assert k8s_config.server_type == "kubernetes"
-        assert k8s_config.enabled is True
+        assert k8s_config is not None
     
     def test_default_configurations_structure(self):
         """Test the structure of default server configurations."""
@@ -303,9 +277,6 @@ class TestDefaultConfigurations:
         registry = MCPServerRegistry()
         k8s_config = registry.static_servers["kubernetes-server"]
         
-        assert k8s_config.server_id == "kubernetes-server"
-        assert k8s_config.server_type == "kubernetes"
-        assert k8s_config.enabled is True
         assert k8s_config.transport is not None
         assert k8s_config.transport.command is not None
         assert k8s_config.transport.args is not None
@@ -320,10 +291,10 @@ class TestEdgeCases:
     def test_registry_with_special_character_server_ids(self):
         """Test registry with special characters in server IDs."""
         special_config = {
-            "server-with-dashes": MCPServerFactory.create_test_server(server_id="server-with-dashes"),
-            "server_with_underscores": MCPServerFactory.create_test_server(server_id="server_with_underscores"),
-            "server.with.dots": MCPServerFactory.create_test_server(server_id="server.with.dots"),
-            "server/with/slashes": MCPServerFactory.create_test_server(server_id="server/with/slashes")
+            "server-with-dashes": MCPServerFactory.create_test_server(),
+            "server_with_underscores": MCPServerFactory.create_test_server(),
+            "server.with.dots": MCPServerFactory.create_test_server(),
+            "server/with/slashes": MCPServerFactory.create_test_server()
         }
         
         registry = MCPServerRegistry(config=special_config)
@@ -376,23 +347,7 @@ class TestEdgeCases:
         registry = MCPServerRegistry(config=long_config)
         assert registry.get_server_config(long_server_id) is not None
     
-    def test_registry_with_empty_string_server_id(self):
-        """Test registry rejects empty string server ID due to validation."""
-        empty_config = {
-            "": {
-                "server_id": "",
-                "server_type": "empty",
-                "enabled": True,
-                 "transport": {"type": "stdio", "command": "test", "args": []}
-            }
-        }
-        
-        # Should raise ValidationError due to min_length=1 constraint on server_id
-        with pytest.raises(ValidationError) as exc_info:
-            MCPServerRegistry(config=empty_config)
-        
-        assert "string_too_short" in str(exc_info.value)
-    
+   
     def test_get_server_config_with_non_string_input(self):
         """Test get_server_config with non-string inputs."""
         registry = MCPServerRegistry()
@@ -419,7 +374,6 @@ class TestEdgeCases:
         
         # Should only return the valid string server that exists
         assert len(configs) == 1
-        assert configs[0].server_id == "kubernetes-server"
 
 
 @pytest.mark.unit
@@ -444,8 +398,8 @@ class TestRegistryLogging:
     def test_initialization_logging_with_custom_config(self, caplog):
         """Test logging with custom server configuration."""
         custom_config = {
-            "server1": {"server_id": "server1", "server_type": "test", "enabled": True, "transport": {"type": "stdio", "command": "test", "args": []}},
-            "server2": {"server_id": "server2", "server_type": "test", "enabled": True, "transport": {"type": "stdio", "command": "test", "args": []}}
+            "server1": {"transport": {"type": "stdio", "command": "test", "args": []}},
+            "server2": {"transport": {"type": "stdio", "command": "test", "args": []}}
         }
         
         with caplog.at_level("INFO"):
@@ -481,12 +435,12 @@ class TestServerConfigObjectIntegration:
         """Test that created MCPServerConfigModel objects have expected attributes."""
         registry = MCPServerRegistry()
         
-        for server_id, config in registry.static_servers.items():
+        for config in registry.static_servers.values():
             assert isinstance(config, MCPServerConfigModel)
+            # Deprecated fields exist but should be None
             assert hasattr(config, 'server_id')
             assert hasattr(config, 'server_type') 
             assert hasattr(config, 'enabled')
-            assert config.server_id == server_id
     
     def test_server_config_objects_maintain_data_integrity(self):
         """Test that MCPServerConfigModel objects maintain data integrity."""

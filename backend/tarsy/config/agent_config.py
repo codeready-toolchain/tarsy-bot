@@ -486,67 +486,6 @@ class ConfigurationLoader:
                     f"Each MCP server must have transport configuration."
                 )
         
-        # Warn about disabled MCP servers that are still referenced
-        disabled_servers = {
-            server_id for server_id, server_config in config.mcp_servers.items()
-            if not server_config.enabled
-        }
-        
-        if disabled_servers:
-            # Check agent-level references
-            for agent_name, agent_config in config.agents.items():
-                referenced_disabled = set(agent_config.mcp_servers) & disabled_servers
-                if referenced_disabled:
-                    logger.warning(
-                        f"Agent '{agent_name}' references disabled MCP servers: {referenced_disabled}. "
-                        f"This may cause runtime failures when processing alerts."
-                    )
-            
-            # Check chain/stage/parallel/synthesis/chat-level references
-            for chain_id, chain_config in config.agent_chains.items():
-                # Check chain-level MCP servers
-                if chain_config.mcp_servers:
-                    referenced_disabled = set(chain_config.mcp_servers) & disabled_servers
-                    if referenced_disabled:
-                        logger.warning(
-                            f"Chain '{chain_id}' references disabled MCP servers: {referenced_disabled}. "
-                            f"This may cause runtime failures when processing alerts."
-                        )
-                
-                # Check stage-level MCP servers
-                for stage in chain_config.stages:
-                    if stage.mcp_servers:
-                        referenced_disabled = set(stage.mcp_servers) & disabled_servers
-                        if referenced_disabled:
-                            logger.warning(
-                                f"Chain '{chain_id}' stage '{stage.name}' references disabled MCP servers: "
-                                f"{referenced_disabled}. This may cause runtime failures when processing alerts."
-                            )
-                    
-                    # Check parallel-agent level MCP servers
-                    if stage.agents:
-                        for agent_config in stage.agents:
-                            if agent_config.mcp_servers:
-                                referenced_disabled = set(agent_config.mcp_servers) & disabled_servers
-                                if referenced_disabled:
-                                    logger.warning(
-                                        f"Chain '{chain_id}' stage '{stage.name}' parallel agent "
-                                        f"'{agent_config.name}' references disabled MCP servers: "
-                                        f"{referenced_disabled}. "
-                                        f"This may cause runtime failures when processing alerts."
-                                    )
-                    
-                    # Note: Synthesis config doesn't use MCP servers (pure analysis)
-                
-                # Check chat config MCP servers
-                if chain_config.chat and chain_config.chat.mcp_servers:
-                    referenced_disabled = set(chain_config.chat.mcp_servers) & disabled_servers
-                    if referenced_disabled:
-                        logger.warning(
-                            f"Chain '{chain_id}' chat config references disabled MCP servers: "
-                            f"{referenced_disabled}. This may cause runtime failures when processing alerts."
-                        )
-        
         logger.debug("Configuration completeness validation passed")
     
     def _validate_parallel_stage_configurations(self, config: CombinedConfigModel) -> None:

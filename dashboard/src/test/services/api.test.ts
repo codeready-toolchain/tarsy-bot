@@ -759,8 +759,8 @@ describe('API Client Default Tools Configuration', () => {
       data: {
         alert_type: 'PodCrashLooping',
         mcp_servers: [
-          { server_id: 'kubernetes', server_type: 'kubectl' },
-          { server_id: 'github', server_type: 'runbook' }
+          { server_id: 'kubernetes' },
+          { server_id: 'github' }
         ],
         native_tools: {
           google_search: true,
@@ -797,7 +797,7 @@ describe('API Client Default Tools Configuration', () => {
       data: {
         alert_type: 'PodCrashLooping',
         mcp_servers: [
-          { server_id: 'kubernetes', server_type: 'kubectl' }
+          { server_id: 'kubernetes' }
         ]
         // native_tools field is missing
       },
@@ -824,7 +824,7 @@ describe('API Client Default Tools Configuration', () => {
       data: {
         alert_type: 'PodCrashLooping',
         mcp_servers: [
-          { server_id: 'kubernetes', server_type: 'kubectl' }
+          { server_id: 'kubernetes' }
         ],
         native_tools: null // Explicitly null
       },
@@ -851,7 +851,7 @@ describe('API Client Default Tools Configuration', () => {
       data: {
         alert_type: 'DefaultAlert',
         mcp_servers: [
-          { server_id: 'kubernetes', server_type: 'kubectl' }
+          { server_id: 'kubernetes' }
         ],
         native_tools: {
           google_search: true,

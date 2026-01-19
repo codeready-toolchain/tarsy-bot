@@ -61,7 +61,7 @@ Analyze alerts thoroughly and provide actionable insights based on:
 Always be specific, reference actual data, and provide clear next steps.
 Focus on root cause analysis and sustainable solutions.
 
-## Kubernetes Server Instructions
+## kubernetes-server Instructions
 
 For Kubernetes operations:
 - **IMPORTANT: In multi-cluster environments** (when the 'configuration_contexts_list' tool is available):
@@ -74,7 +74,7 @@ For Kubernetes operations:
   * Cluster-scoped resources (Namespace, Node, ClusterRole, PersistentVolume) should NOT have a namespace parameter
   * Namespace-scoped resources (Pod, Deployment, Service, ConfigMap) REQUIRE a namespace parameter
 
-## Custom Server Instructions
+## custom-server Instructions
 
 Simple data collection server for testing - provides system information gathering tools
 
@@ -358,7 +358,7 @@ Analyze alerts thoroughly and provide actionable insights based on:
 Always be specific, reference actual data, and provide clear next steps.
 Focus on root cause analysis and sustainable solutions.
 
-## Kubernetes Server Instructions
+## kubernetes-server Instructions
 
 For Kubernetes operations:
 - **IMPORTANT: In multi-cluster environments** (when the 'configuration_contexts_list' tool is available):
@@ -371,7 +371,7 @@ For Kubernetes operations:
   * Cluster-scoped resources (Namespace, Node, ClusterRole, PersistentVolume) should NOT have a namespace parameter
   * Namespace-scoped resources (Pod, Deployment, Service, ConfigMap) REQUIRE a namespace parameter
 
-## Custom Server Instructions
+## custom-server Instructions
 
 Simple data collection server for testing - provides system information gathering tools
 
@@ -602,7 +602,7 @@ Analyze alerts thoroughly and provide actionable insights based on:
 Always be specific, reference actual data, and provide clear next steps.
 Focus on root cause analysis and sustainable solutions.
 
-## Kubernetes Server Instructions
+## kubernetes-server Instructions
 
 For Kubernetes operations:
 - **IMPORTANT: In multi-cluster environments** (when the 'configuration_contexts_list' tool is available):

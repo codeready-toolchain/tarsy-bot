@@ -165,8 +165,7 @@ class MCPServerRegistry:
             logger.error("MCP server '%s' not found. Available: %s", server_id, available_list)
             raise ValueError(error_msg)
         
-        logger.debug("Found MCP server config for '%s' (type: %s, enabled: %s)", 
-                     server_id, server_config.server_type, server_config.enabled)
+        logger.debug("Found MCP server config for '%s'", server_id)
         return server_config
     
     def get_server_config_safe(self, server_id: str) -> Optional[MCPServerConfig]:
@@ -206,9 +205,7 @@ class MCPServerRegistry:
             Sanitized configuration summary safe for logging
         """
         summary = {
-            "server_id": server_id,
-            "server_type": config.get("server_type", "unknown"),
-            "enabled": config.get("enabled", True)
+            "server_id": server_id
         }
         
         # Safely include transport configuration without sensitive data
