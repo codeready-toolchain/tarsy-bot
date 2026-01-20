@@ -290,18 +290,17 @@ class TestCombinedConfigModelTransport:
         config_data = {
             "mcp_servers": {
                 "test-server": {
-                    "server_id": "wrong-id",  # Should cause validation error
-                    "server_type": "test",
                     "transport": {
-                        "type": "stdio",  # Add missing type field
+                        "type": "stdio",
                         "command": "test-command"
                     }
                 }
             }
         }
         
-        with pytest.raises(ValidationError, match="does not match server_id"):
-            CombinedConfigModel(**config_data)
+        # Should not raise any validation errors
+        config = CombinedConfigModel(**config_data)
+        assert "test-server" in config.mcp_servers
 
 
 @pytest.mark.unit

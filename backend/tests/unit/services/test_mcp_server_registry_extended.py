@@ -17,22 +17,13 @@ class TestMCPServerRegistryExtended:
         """Sample MCP server configurations for testing."""
         return {
             "security-tools": MCPServerConfigModel(
-                server_id="security-tools",
-                server_type="security",
-                enabled=True,
                 transport={"type": "stdio", "command": "test", "env": {"HOST": "localhost", "PORT": "8080"}},
                 instructions="Security analysis tools"
             ),
             "monitoring-server": MCPServerConfigModel(
-                server_id="monitoring-server",
-                server_type="monitoring",
-                enabled=True,
                 transport={"type": "stdio", "command": "monitoring", "env": {"ENDPOINT": "http://monitoring.local"}}
             ),
             "disabled-server": MCPServerConfigModel(
-                server_id="disabled-server",
-                server_type="test",
-                enabled=False,
                 transport={"type": "stdio", "command": "/usr/bin/test-server"}
             )
         }
@@ -71,9 +62,6 @@ class TestMCPServerRegistryExtended:
         """Test conversion of MCPServerConfigModel to internal format."""
         configured_servers = {
             "security-tools": MCPServerConfigModel(
-                server_id="security-tools",
-                server_type="security",
-                enabled=True,
                 transport={"type": "stdio", "command": "test", "env": {"HOST": "localhost"}},
                 instructions="Security tools"
             )
@@ -84,8 +72,6 @@ class TestMCPServerRegistryExtended:
         # Check that configured server is available
         server_config = registry.get_server_config("security-tools")
         
-        assert server_config.server_type == "security"
-        assert server_config.enabled is True
         assert server_config.transport.env == {"HOST": "localhost"}
         assert server_config.instructions == "Security tools"
 
@@ -96,22 +82,17 @@ class TestMCPServerRegistryExtended:
         
         # Check security-tools server
         security_config = registry.get_server_config("security-tools")
-        assert security_config.server_type == "security"
-        assert security_config.enabled is True
         assert security_config.transport.env == {"HOST": "localhost", "PORT": "8080"}
         assert security_config.instructions == "Security analysis tools"
         
         # Check monitoring-server
         monitoring_config = registry.get_server_config("monitoring-server")
-        assert monitoring_config.server_type == "monitoring"
-        assert monitoring_config.enabled is True
         assert monitoring_config.transport.env == {"ENDPOINT": "http://monitoring.local"}
         assert monitoring_config.instructions == ""  # Default empty string, not None
         
         # Check disabled server
         disabled_config = registry.get_server_config("disabled-server")
-        assert disabled_config.server_type == "test"
-        assert disabled_config.enabled is False
+        assert disabled_config is not None
 
     @patch('tarsy.config.builtin_config.BUILTIN_MCP_SERVERS', {'kubernetes-server': {'server_type': 'kubernetes', 'enabled': True}})
     def test_server_merge_built_in_only(self):
@@ -120,17 +101,13 @@ class TestMCPServerRegistryExtended:
         
         # Should be able to get built-in server
         server_config = registry.get_server_config("kubernetes-server")
-        assert server_config.server_type == "kubernetes"
-        assert server_config.enabled is True
+        assert server_config is not None
 
     @patch('tarsy.config.builtin_config.BUILTIN_MCP_SERVERS', {'kubernetes-server': {'server_type': 'kubernetes', 'enabled': True}})
     def test_server_merge_configured_only(self):
         """Test server lookup with configured servers only."""
         configured_servers = {
             "security-tools": MCPServerConfigModel(
-                server_id="security-tools",
-                server_type="security",
-                enabled=True,
                 transport={"type": "stdio", "command": "/usr/bin/security-server"}
             )
         }
@@ -139,11 +116,11 @@ class TestMCPServerRegistryExtended:
         
         # Should be able to get configured server
         server_config = registry.get_server_config("security-tools")
-        assert server_config.server_type == "security"
+        assert server_config is not None
         
         # Should still be able to get built-in server
         server_config = registry.get_server_config("kubernetes-server")
-        assert server_config.server_type == "kubernetes"
+        assert server_config is not None
 
     @patch('tarsy.config.builtin_config.BUILTIN_MCP_SERVERS', {'kubernetes-server': {'server_type': 'kubernetes', 'enabled': True}})
     def test_server_merge_mixed_servers(self, sample_mcp_server_configs):
@@ -151,21 +128,18 @@ class TestMCPServerRegistryExtended:
         registry = MCPServerRegistry(configured_servers=sample_mcp_server_configs)
         
         # Should be able to get configured servers
-        assert registry.get_server_config("security-tools").server_type == "security"
-        assert registry.get_server_config("monitoring-server").server_type == "monitoring"
-        assert registry.get_server_config("disabled-server").server_type == "test"
+        assert registry.get_server_config("security-tools") is not None
+        assert registry.get_server_config("monitoring-server") is not None
+        assert registry.get_server_config("disabled-server") is not None
         
         # Should still be able to get built-in server
-        assert registry.get_server_config("kubernetes-server").server_type == "kubernetes"
+        assert registry.get_server_config("kubernetes-server") is not None
 
     @patch('tarsy.config.builtin_config.BUILTIN_MCP_SERVERS', {'kubernetes-server': {'server_type': 'kubernetes', 'enabled': True}})
     def test_configured_servers_override_built_in(self):
         """Test that configured servers override built-in servers with same ID."""
         configured_servers = {
             "kubernetes-server": MCPServerConfigModel(
-                server_id="kubernetes-server",
-                server_type="custom-kubernetes",  # Different from built-in
-                enabled=False,  # Different from built-in
                 transport={"type": "stdio", "command": "/usr/bin/custom-k8s-server"},
                 instructions="Custom Kubernetes server"
             )
@@ -175,8 +149,7 @@ class TestMCPServerRegistryExtended:
         
         # Configured server should override built-in
         server_config = registry.get_server_config("kubernetes-server")
-        assert server_config.server_type == "custom-kubernetes"
-        assert server_config.enabled is False
+        assert server_config is not None
         assert server_config.instructions == "Custom Kubernetes server"
 
     @patch('tarsy.config.builtin_config.BUILTIN_MCP_SERVERS', {'kubernetes-server': {'server_type': 'kubernetes', 'enabled': True}})
@@ -206,7 +179,6 @@ class TestMCPServerRegistryExtended:
         
         server_config = registry.get_server_config_safe("kubernetes-server")
         assert server_config is not None
-        assert server_config.server_type == "kubernetes"
 
     @patch('tarsy.config.builtin_config.BUILTIN_MCP_SERVERS', {'kubernetes-server': {'server_type': 'kubernetes', 'enabled': True}})
     def test_get_server_config_with_configured_servers_safe(self, sample_mcp_server_configs):
@@ -216,12 +188,10 @@ class TestMCPServerRegistryExtended:
         # Should return configured server
         server_config = registry.get_server_config_safe("security-tools")
         assert server_config is not None
-        assert server_config.server_type == "security"
         
         # Should return built-in server
         server_config = registry.get_server_config_safe("kubernetes-server")
         assert server_config is not None
-        assert server_config.server_type == "kubernetes"
         
         # Should return None for unknown
         server_config = registry.get_server_config_safe("unknown")
@@ -251,9 +221,6 @@ class TestMCPServerRegistryExtended:
         """Test scenario with only configured servers (no built-in servers)."""
         configured_servers = {
             "only-server": MCPServerConfigModel(
-                server_id="only-server",
-                server_type="custom",
-                enabled=True,
                 transport={"type": "stdio", "command": "/usr/bin/only-server"}
             )
         }
@@ -262,7 +229,7 @@ class TestMCPServerRegistryExtended:
         
         # Should work with configured server
         server_config = registry.get_server_config("only-server")
-        assert server_config.server_type == "custom"
+        assert server_config is not None
         
         # Should fail for unknown server
         with pytest.raises(ValueError) as exc_info:
@@ -280,7 +247,7 @@ class TestMCPServerRegistryExtended:
         
         # Should work with built-in server
         server_config = registry.get_server_config("kubernetes-server")
-        assert server_config.server_type == "kubernetes"
+        assert server_config is not None
         
         # Should fail for unknown server
         with pytest.raises(ValueError) as exc_info:
@@ -300,16 +267,13 @@ class TestMCPServerRegistryExtended:
         
         # Test that the registry still works correctly
         server_config = registry.get_server_config("security-tools")
-        assert server_config.server_type == "security"
+        assert server_config is not None
 
     @patch('tarsy.config.builtin_config.BUILTIN_MCP_SERVERS', {'kubernetes-server': {'server_type': 'kubernetes', 'enabled': True}})
     def test_case_sensitivity_server_ids(self):
         """Test that server ID lookups are case-sensitive."""
         configured_servers = {
             "Security-Tools": MCPServerConfigModel(  # Capital letters
-                server_id="Security-Tools",
-                server_type="security",
-                enabled=True,
                 transport={"type": "stdio", "command": "/usr/bin/Security-Tools"}
             )
         }
@@ -318,7 +282,7 @@ class TestMCPServerRegistryExtended:
         
         # Should work with exact case match
         server_config = registry.get_server_config("Security-Tools")
-        assert server_config.server_type == "security"
+        assert server_config is not None
         
         # Should fail with different case
         with pytest.raises(ValueError):
@@ -329,8 +293,6 @@ class TestMCPServerRegistryExtended:
         """Test server configuration with only required fields."""
         configured_servers = {
             "minimal-server": MCPServerConfigModel(
-                server_id="minimal-server",
-                server_type="minimal",
                 transport={"type": "stdio", "command": "test"}  # Minimal transport
             )
         }
@@ -338,8 +300,7 @@ class TestMCPServerRegistryExtended:
         registry = MCPServerRegistry(configured_servers=configured_servers)
         
         server_config = registry.get_server_config("minimal-server")
-        assert server_config.server_type == "minimal"
-        assert server_config.enabled is True  # Default value
+        assert server_config is not None
         assert server_config.transport.command == "test"  # Has basic transport
         assert server_config.instructions == ""  # Default value (empty string, not None)
 
@@ -348,9 +309,6 @@ class TestMCPServerRegistryExtended:
         """Test server configuration with all possible fields."""
         configured_servers = {
             "full-server": MCPServerConfigModel(
-                server_id="full-server",
-                server_type="comprehensive",
-                enabled=True,
                 transport={
                     "type": "stdio", 
                     "command": "test",
@@ -368,8 +326,7 @@ class TestMCPServerRegistryExtended:
         registry = MCPServerRegistry(configured_servers=configured_servers)
         
         server_config = registry.get_server_config("full-server")
-        assert server_config.server_type == "comprehensive"
-        assert server_config.enabled is True
+        assert server_config is not None
         assert server_config.transport.env["HOST"] == "example.com"
         assert server_config.transport.env["PORT"] == "9090"
         assert server_config.transport.env["SSL"] == "True"
@@ -381,9 +338,6 @@ class TestMCPServerRegistryExtended:
         """Test that complex server IDs work correctly in registry."""
         configured_servers = {
             "complex-server_v2.0-beta": MCPServerConfigModel(
-                server_id="complex-server_v2.0-beta",
-                server_type="complex",
-                enabled=True,
                 transport={"type": "stdio", "command": "/usr/bin/complex-server_v2.0-beta"}
             )
         }
@@ -391,7 +345,7 @@ class TestMCPServerRegistryExtended:
         registry = MCPServerRegistry(configured_servers=configured_servers)
         
         server_config = registry.get_server_config("complex-server_v2.0-beta")
-        assert server_config.server_type == "complex"
+        assert server_config is not None
 
     def test_builtin_kubernetes_server_default_summarization_config(self):
         """Test that built-in kubernetes server gets correct default summarization configuration."""
@@ -402,9 +356,7 @@ class TestMCPServerRegistryExtended:
         server_config = registry.get_server_config("kubernetes-server")
         
         # Verify the server is configured correctly
-        assert server_config.server_id == "kubernetes-server"
-        assert server_config.server_type == "kubernetes"
-        assert server_config.enabled is True
+        assert server_config is not None
         
         # Verify summarization gets the expected default configuration
         assert server_config.summarization is not None, "Summarization config should be present"

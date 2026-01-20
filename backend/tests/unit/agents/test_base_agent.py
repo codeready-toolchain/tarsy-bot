@@ -214,7 +214,7 @@ class TestBaseAgentInstructionComposition:
 
         # Should contain all three tiers
         assert "General SRE instructions" in instructions
-        assert "## kubernetes-server Instructions" in instructions
+        assert "## test-server Instructions" in instructions
         assert "Use kubectl commands for troubleshooting" in instructions
         assert "## Agent-Specific Instructions" in instructions
         assert "Test instructions" in instructions

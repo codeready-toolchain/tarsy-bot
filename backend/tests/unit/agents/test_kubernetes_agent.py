@@ -304,7 +304,7 @@ class TestKubernetesAgentInheritedFunctionality:
         # Check that it includes general SRE instructions
         assert "## General SRE Agent Instructions" in instructions
         # Check that it includes kubernetes-server specific instructions
-        assert "Kubernetes Server Instructions" in instructions
+        assert "## kubernetes-server Instructions" in instructions
         assert "K8s instructions" in instructions  # From the mock server config
     
 

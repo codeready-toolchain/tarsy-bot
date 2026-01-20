@@ -148,14 +148,8 @@ async def test_get_mcp_servers_success_with_cache(client: TestClient) -> None:
     
     # Mock server configs
     k8s_config = Mock()
-    k8s_config.server_id = "kubernetes-server"
-    k8s_config.server_type = "kubernetes"
-    k8s_config.enabled = True
     
     argocd_config = Mock()
-    argocd_config.server_id = "argocd-server"
-    argocd_config.server_type = "argocd"
-    argocd_config.enabled = True
     
     def mock_get_server_config(server_id):
         if server_id == "kubernetes-server":
@@ -180,16 +174,12 @@ async def test_get_mcp_servers_success_with_cache(client: TestClient) -> None:
     
     # Verify kubernetes-server
     k8s_server = next(s for s in data["servers"] if s["server_id"] == "kubernetes-server")
-    assert k8s_server["server_type"] == "kubernetes"
-    assert k8s_server["enabled"] is True
     assert len(k8s_server["tools"]) == 2
     assert any(t["name"] == "kubectl-get" for t in k8s_server["tools"])
     assert any(t["name"] == "kubectl-describe" for t in k8s_server["tools"])
     
     # Verify argocd-server
     argocd_server = next(s for s in data["servers"] if s["server_id"] == "argocd-server")
-    assert argocd_server["server_type"] == "argocd"
-    assert argocd_server["enabled"] is True
     assert len(argocd_server["tools"]) == 1
     assert argocd_server["tools"][0]["name"] == "get-application"
     
@@ -304,70 +294,6 @@ async def test_get_mcp_servers_empty_registry(client: TestClient) -> None:
     data = response.json()
     assert "servers" in data
     assert len(data["servers"]) == 0
-
-
-@pytest.mark.unit
-@pytest.mark.asyncio
-async def test_get_mcp_servers_with_disabled_server(client: TestClient) -> None:
-    """Test retrieving MCP servers including disabled ones."""
-    from unittest.mock import Mock, patch
-
-    from mcp.types import Tool
-    
-    mock_alert_service = Mock()
-    
-    # Mock health monitor with cached tools
-    mock_health_monitor = Mock()
-    cached_tools = {
-        "enabled-server": [
-            Tool(name="enabled-server-tool", description="Test tool", inputSchema={})
-        ],
-        "disabled-server": [
-            Tool(name="disabled-server-tool", description="Test tool", inputSchema={})
-        ]
-    }
-    mock_health_monitor.get_cached_tools.return_value = cached_tools
-    mock_alert_service.mcp_health_monitor = mock_health_monitor
-    
-    mock_registry = Mock()
-    mock_registry.get_all_server_ids.return_value = ["enabled-server", "disabled-server"]
-    
-    # Mock configs with one disabled
-    enabled_config = Mock()
-    enabled_config.server_id = "enabled-server"
-    enabled_config.server_type = "test"
-    enabled_config.enabled = True
-    
-    disabled_config = Mock()
-    disabled_config.server_id = "disabled-server"
-    disabled_config.server_type = "test"
-    disabled_config.enabled = False
-    
-    def mock_get_server_config(server_id):
-        if server_id == "enabled-server":
-            return enabled_config
-        elif server_id == "disabled-server":
-            return disabled_config
-        raise ValueError(f"Server {server_id} not found")
-    
-    mock_registry.get_server_config.side_effect = mock_get_server_config
-    mock_alert_service.mcp_server_registry = mock_registry
-    
-    with patch("tarsy.main.alert_service", mock_alert_service):
-        response = client.get("/api/v1/system/mcp-servers")
-    
-    assert response.status_code == 200
-    data = response.json()
-    
-    # Both servers should be returned
-    assert len(data["servers"]) == 2
-    
-    # Verify enabled status
-    enabled_server = next(s for s in data["servers"] if s["server_id"] == "enabled-server")
-    assert enabled_server["enabled"] is True
-    
-    disabled_server = next(s for s in data["servers"] if s["server_id"] == "disabled-server")
-    assert disabled_server["enabled"] is False
 
 
 @pytest.mark.unit

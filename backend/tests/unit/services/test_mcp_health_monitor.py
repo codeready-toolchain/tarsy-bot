@@ -70,31 +70,6 @@ class TestMCPHealthMonitor:
         await health_monitor.stop()
 
     @pytest.mark.asyncio
-    async def test_check_server_disabled(
-        self,
-        health_monitor: MCPHealthMonitor,
-        mock_mcp_client: MagicMock,
-        mock_warnings_service: MagicMock,
-    ) -> None:
-        """Test checking a server that is disabled - should skip checks and clear warnings."""
-        # Mock a disabled server config
-        mock_config = MagicMock()
-        mock_config.enabled = False
-        mock_mcp_client.mcp_registry.get_server_config_safe.return_value = mock_config
-
-        is_healthy = await health_monitor._check_server("disabled_server")
-
-        assert is_healthy is False
-        # Should not attempt to ping or initialize
-        mock_mcp_client.ping.assert_not_called()
-        mock_mcp_client.try_initialize_server.assert_not_called()
-        # Should clear any stale warnings
-        mock_warnings_service.clear_warning_by_server_id.assert_called_once_with(
-            category=WarningCategory.MCP_INITIALIZATION,
-            server_id="disabled_server",
-        )
-
-    @pytest.mark.asyncio
     async def test_check_server_missing_config(
         self,
         health_monitor: MCPHealthMonitor,

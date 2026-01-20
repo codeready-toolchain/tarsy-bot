@@ -533,7 +533,12 @@ class BaseAgent(ABC):
         server_configs = self.mcp_registry.get_server_configs(mcp_server_ids)
         
         # Validate that all required servers are available
-        available_server_ids = [config.server_id for config in server_configs]
+        # Note: get_server_configs only returns configs for servers that exist in the registry
+        # So if the lengths don't match, some servers are missing
+        available_server_ids = [
+            server_id for server_id in mcp_server_ids
+            if server_id in self.mcp_registry.get_all_server_ids()
+        ]
         missing_servers = set(mcp_server_ids) - set(available_server_ids)
         if missing_servers:
             missing_list = list(missing_servers)

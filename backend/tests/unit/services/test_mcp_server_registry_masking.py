@@ -28,7 +28,6 @@ class TestMCPServerRegistryMaskingIntegration:
         
         assert config is not None
         assert isinstance(config, MCPServerConfigModel)
-        assert config.server_id == "kubernetes-server"
         # Built-in kubernetes server has masking configuration
         assert config.data_masking is not None
         assert config.data_masking.enabled is True

@@ -217,7 +217,7 @@ For Kubernetes operations:
   * Cluster-scoped resources (Namespace, Node, ClusterRole, PersistentVolume) should NOT have a namespace parameter
   * Namespace-scoped resources (Pod, Deployment, Service, ConfigMap) REQUIRE a namespace parameter
 
-## custom-server Instructions
+## test-data-server Instructions
 
 Simple data collection server for testing - provides system information gathering tools
 
