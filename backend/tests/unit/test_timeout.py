@@ -38,9 +38,16 @@ class TestMarkSessionAsFailedFunction:
         mock_session_manager = Mock()
         mock_session_manager.update_session_error = Mock()
         mock_alert_service.session_manager = mock_session_manager
+        mock_alert_service.settings = Mock()
+        mock_alert_service.settings.alert_processing_timeout = 900
+        
+        # Mock history service
+        mock_history_service = Mock()
+        mock_history_service.fail_active_stages_on_timeout = AsyncMock(return_value=0)
         
         # Mock the event publisher inside tarsy.main
         with patch('tarsy.main.alert_service', mock_alert_service), \
+             patch('tarsy.services.history_service.get_history_service', return_value=mock_history_service), \
              patch('tarsy.services.events.event_helpers.publish_session_failed', new_callable=AsyncMock) as mock_publish:
             
             # Call mark_session_as_failed
@@ -124,12 +131,17 @@ class TestTimeoutErrorHandlingInMain:
         mock_session_manager.update_session_error = Mock()
         mock_alert_service.session_manager = mock_session_manager
         
+        # Mock history service
+        mock_history_service = Mock()
+        mock_history_service.fail_active_stages_on_timeout = AsyncMock(return_value=0)
+        
         # Mock the event publisher
         with patch('tarsy.main.alert_service', mock_alert_service), \
              patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)), \
              patch('tarsy.main.get_settings') as mock_get_settings, \
              patch('tarsy.main.active_tasks_lock', asyncio.Lock()), \
              patch('tarsy.main.active_tasks', {}), \
+             patch('tarsy.services.history_service.get_history_service', return_value=mock_history_service), \
              patch('tarsy.services.events.event_helpers.publish_session_failed', new_callable=AsyncMock) as mock_publish:
             
             # Configure settings with short timeout
@@ -182,11 +194,16 @@ class TestTimeoutErrorHandlingInMain:
         mock_session_manager.update_session_error = Mock()
         mock_alert_service.session_manager = mock_session_manager
         
+        # Mock history service
+        mock_history_service = Mock()
+        mock_history_service.fail_active_stages_on_timeout = AsyncMock(return_value=0)
+        
         with patch('tarsy.main.alert_service', mock_alert_service), \
              patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)), \
              patch('tarsy.main.get_settings') as mock_get_settings, \
              patch('tarsy.main.active_tasks_lock', asyncio.Lock()), \
              patch('tarsy.main.active_tasks', {}), \
+             patch('tarsy.services.history_service.get_history_service', return_value=mock_history_service), \
              patch('tarsy.services.events.event_helpers.publish_session_failed', new_callable=AsyncMock) as mock_publish:
             
             settings = Mock()

@@ -411,6 +411,33 @@ class HistoryRepository:
         except Exception as e:
             logger.error(f"Failed to get parallel stage children for parent {parent_execution_id}: {str(e)}")
             raise
+    
+    def get_active_stages_for_session(self, session_id: str) -> List[StageExecution]:
+        """
+        Get all active or pending stage executions for a session.
+        
+        Args:
+            session_id: Session ID to query
+            
+        Returns:
+            List of StageExecution objects with status ACTIVE or PENDING
+        """
+        from tarsy.models.constants import StageStatus
+        
+        try:
+            stmt = (
+                select(StageExecution)
+                .where(StageExecution.session_id == session_id)
+                .where(StageExecution.status.in_([
+                    StageStatus.PENDING.value,
+                    StageStatus.ACTIVE.value
+                ]))
+                .order_by(asc(StageExecution.stage_index))
+            )
+            return list(self.session.exec(stmt).all())
+        except Exception as e:
+            logger.error(f"Failed to get active stages for session {session_id}: {str(e)}")
+            raise
 
     def get_alert_sessions(
         self,

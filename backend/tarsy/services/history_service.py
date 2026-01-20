@@ -689,90 +689,80 @@ class HistoryService:
             Number of stages updated
         """
         from tarsy.models.constants import StageStatus
-        from tarsy.models.db_models import StageExecution
-        from sqlmodel import select
         from tarsy.utils.timeout_utils import create_stage_timeout_message
         
-        repo = self._get_repo()
-        if not repo:
-            logger.error("Repository not available for failing active stages")
-            return 0
-        
-        try:
-            # Find all active/pending stages for this session
-            stages_stmt = (
-                select(StageExecution)
-                .where(StageExecution.session_id == session_id)
-                .where(StageExecution.status.in_([
-                    StageStatus.PENDING.value,
-                    StageStatus.ACTIVE.value
-                ]))
-            )
-            active_stages = repo.session.exec(stages_stmt).all()
-            
-            if not active_stages:
-                logger.debug(f"No active stages to fail for timed-out session {session_id}")
+        with self.get_repository() as repo:
+            if not repo:
+                logger.error("Repository not available for failing active stages")
                 return 0
             
-            # Get session to calculate timing offsets
-            session = self.get_session(session_id)
-            if not session:
-                logger.warning(f"Session {session_id} not found, using basic error messages")
-                session_started_at_us = None
-            else:
-                session_started_at_us = session.started_at_us
-            
-            updated_count = 0
-            current_time_us = now_us()
-            
-            for stage in active_stages:
-                try:
-                    # Create detailed error message with timing context
-                    if session_started_at_us and stage.started_at_us:
-                        error_message = create_stage_timeout_message(
-                            stage_name=stage.stage_name,
-                            stage_started_at_us=stage.started_at_us,
-                            session_started_at_us=session_started_at_us,
-                            timeout_seconds=timeout_seconds
-                        )
-                    else:
-                        # Fallback if timing info not available
-                        error_message = f"{stage.stage_name} stage failed due to session timeout ({timeout_seconds}s)"
-                    
-                    # Update stage to failed
-                    stage.status = StageStatus.FAILED.value
-                    stage.error_message = error_message
-                    stage.completed_at_us = current_time_us
-                    
-                    # Calculate duration if stage was started
-                    if stage.started_at_us:
-                        stage.duration_ms = int((current_time_us - stage.started_at_us) / 1000)
-                    
-                    # Update in database
-                    success = repo.update_stage_execution(stage)
-                    if success:
-                        updated_count += 1
-                        logger.info(
-                            f"Marked stage '{stage.stage_name}' (index {stage.stage_index}) as failed "
-                            f"for timed-out session {session_id}: {error_message}"
-                        )
-                    else:
-                        logger.warning(
-                            f"Failed to update stage '{stage.stage_name}' for timed-out session {session_id}"
-                        )
+            try:
+                # Find all active/pending stages for this session
+                active_stages = repo.get_active_stages_for_session(session_id)
+                
+                if not active_stages:
+                    logger.debug(f"No active stages to fail for timed-out session {session_id}")
+                    return 0
+                
+                # Get session to calculate timing offsets
+                session = self.get_session(session_id)
+                if not session:
+                    logger.warning(f"Session {session_id} not found, using basic error messages")
+                    session_started_at_us = None
+                else:
+                    session_started_at_us = session.started_at_us
+                
+                updated_count = 0
+                current_time_us = now_us()
+                
+                for stage in active_stages:
+                    try:
+                        # Create detailed error message with timing context
+                        if session_started_at_us and stage.started_at_us:
+                            error_message = create_stage_timeout_message(
+                                stage_name=stage.stage_name,
+                                stage_started_at_us=stage.started_at_us,
+                                session_started_at_us=session_started_at_us,
+                                timeout_seconds=timeout_seconds
+                            )
+                        else:
+                            # Fallback if timing info not available
+                            error_message = f"{stage.stage_name} stage failed due to session timeout ({timeout_seconds}s)"
                         
-                except Exception as stage_update_error:
-                    logger.error(
-                        f"Error updating stage '{stage.stage_name}' for timed-out session {session_id}: "
-                        f"{str(stage_update_error)}"
-                    )
-                    continue
-            
-            return updated_count
-            
-        except Exception as e:
-            logger.error(f"Failed to fail active stages for timed-out session {session_id}: {str(e)}")
-            return 0
+                        # Update stage to failed
+                        stage.status = StageStatus.FAILED.value
+                        stage.error_message = error_message
+                        stage.completed_at_us = current_time_us
+                        
+                        # Calculate duration if stage was started
+                        if stage.started_at_us:
+                            stage.duration_ms = int((current_time_us - stage.started_at_us) / 1000)
+                        
+                        # Update in database
+                        success = repo.update_stage_execution(stage)
+                        if success:
+                            updated_count += 1
+                            logger.info(
+                                f"Marked stage '{stage.stage_name}' (index {stage.stage_index}) as failed "
+                                f"for timed-out session {session_id}: {error_message}"
+                            )
+                        else:
+                            logger.warning(
+                                f"Failed to update stage '{stage.stage_name}' for timed-out session {session_id}"
+                            )
+                            
+                    except Exception as stage_update_error:
+                        logger.error(
+                            f"Error updating stage '{stage.stage_name}' for timed-out session {session_id}: "
+                            f"{str(stage_update_error)}"
+                        )
+                        continue
+                
+                return updated_count
+                
+            except Exception as e:
+                logger.error(f"Failed to fail active stages for timed-out session {session_id}: {str(e)}")
+                return 0
     
     # LLM Interaction Logging
     def store_llm_interaction(self, interaction: LLMInteraction) -> bool:
