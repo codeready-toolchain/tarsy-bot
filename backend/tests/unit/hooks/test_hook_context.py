@@ -434,6 +434,57 @@ class TestInteractionHookContextCompletion:
         assert context.interaction.error_message == "Test error"
         assert context.interaction.duration_ms is not None
     
+    @pytest.mark.asyncio
+    async def test_context_manager_handles_cancelled_error_with_timing(self, hook_manager):
+        """Test that CancelledError generates descriptive error message with timing context."""
+        import asyncio
+        
+        interaction = LLMInteraction(
+            session_id="test_session",
+            provider="openai",
+            model_name="gpt-4",
+            success=True  # Will be set to False on cancellation
+        )
+        context = InteractionHookContext(interaction, hook_manager)
+        
+        # Enter context and advance time to simulate some duration
+        await context.__aenter__()
+        
+        # Simulate a CancelledError (e.g., from session timeout)
+        test_exception = asyncio.CancelledError()
+        
+        result = await context.__aexit__(asyncio.CancelledError, test_exception, None)
+        
+        assert result is False  # Don't suppress exception
+        assert context.interaction.success is False
+        assert context.interaction.error_message is not None
+        # Error message should include timing context
+        assert "Operation cancelled after" in context.interaction.error_message
+        assert "likely due to session timeout or shutdown" in context.interaction.error_message
+        assert context.interaction.duration_ms is not None
+    
+    @pytest.mark.asyncio
+    async def test_context_manager_handles_empty_error_message(self, hook_manager):
+        """Test that exceptions with empty string messages get a meaningful error message."""
+        interaction = LLMInteraction(
+            session_id="test_session",
+            provider="openai",
+            model_name="gpt-4",
+            success=True
+        )
+        context = InteractionHookContext(interaction, hook_manager)
+        
+        # Create an exception with empty message
+        test_exception = ValueError("")
+        
+        result = await context.__aexit__(ValueError, test_exception, None)
+        
+        assert result is False
+        assert context.interaction.success is False
+        # Should get a meaningful error message instead of empty string
+        assert context.interaction.error_message == "ValueError: Operation failed"
+        assert context.interaction.duration_ms is not None
+    
     @pytest.mark.asyncio 
     async def test_trigger_appropriate_hooks_llm(self, hook_manager):
         """Test triggering LLM hooks."""
