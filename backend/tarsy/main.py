@@ -704,16 +704,35 @@ async def mark_session_as_failed(alert: Optional[ChainContext], error_msg: str) 
     """
     Mark a session as failed if alert context is available.
     
+    Also updates any active stage executions with detailed error messages
+    including timing context.
+    
     Args:
         alert: Alert context containing session_id
         error_msg: Error message describing the failure
     """
     if alert and hasattr(alert, 'session_id') and alert_service:
+        session_id = alert.session_id
+        
         # Update session status to failed
-        alert_service.session_manager.update_session_error(alert.session_id, error_msg)
+        alert_service.session_manager.update_session_error(session_id, error_msg)
+        
+        # Update any active stages with detailed timeout messages
+        # This ensures stages don't remain in "active" state
+        from tarsy.services.history_service import get_history_service
+        history_service = get_history_service()
+        if history_service:
+            # Cancel/fail all active stages with timing context
+            updated_count = await history_service.fail_active_stages_on_timeout(
+                session_id=session_id,
+                timeout_seconds=alert_service.settings.alert_processing_timeout if alert_service else 600
+            )
+            if updated_count > 0:
+                logger.info(f"Updated {updated_count} active stage(s) to failed for timed-out session {session_id}")
+        
         # Publish session.failed event
         from tarsy.services.events.event_helpers import publish_session_failed
-        await publish_session_failed(alert.session_id)
+        await publish_session_failed(session_id)
 
 async def process_alert_background(session_id: str, alert: ChainContext) -> None:
     """Background task to process an alert with comprehensive error handling and concurrency control."""

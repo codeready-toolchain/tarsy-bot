@@ -277,7 +277,19 @@ class InteractionHookContext(Generic[TInteraction]):
         if exc_type is not None:
             # Handle errors
             self.interaction.success = False
-            self.interaction.error_message = str(exc_val)
+            
+            # Create contextual error message with timing information
+            if exc_type == asyncio.CancelledError:
+                # CancelledError often has no message - provide context with timing
+                stage_duration_s = self.interaction.duration_ms / 1000 if self.interaction.duration_ms else 0
+                error_msg = f"Operation cancelled after {stage_duration_s:.1f}s (likely due to session timeout or shutdown)"
+            elif str(exc_val):
+                error_msg = str(exc_val)
+            else:
+                # Exception with empty message - use exception type
+                error_msg = f"{exc_type.__name__}: Operation failed"
+            
+            self.interaction.error_message = error_msg
             await self._trigger_appropriate_hooks()
         
         return False  # Don't suppress exceptions

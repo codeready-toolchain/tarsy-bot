@@ -58,7 +58,7 @@ def mock_settings():
     settings.max_llm_mcp_iterations = 3
     settings.force_conclusion_at_max_iterations = False  # Default pause behavior
     # Add timeout settings for alert processing
-    settings.alert_processing_timeout = 600  # Default 10 minute timeout
+    settings.alert_processing_timeout = 900  # Default 15 minute timeout
     settings.llm_iteration_timeout = 210  # Default 3.5 minute iteration timeout
     settings.mcp_tool_call_timeout = 70  # Default 70 second tool timeout
     settings.log_level = "INFO"

@@ -1146,6 +1146,54 @@ class ParallelStageExecutor:
             logger.info(f"{synthesis_config.agent} synthesis completed successfully")
             return (synthesis_stage_execution_id, synthesis_result)
             
+        except asyncio.CancelledError as e:
+            # Cancellation during synthesis (typically session timeout or shutdown)
+            from tarsy.utils.agent_execution_utils import extract_cancellation_reason
+            from tarsy.utils.timeout_utils import create_stage_timeout_message
+            from tarsy.services.history_service import get_history_service
+            
+            reason = extract_cancellation_reason(e)
+            
+            # Try to get timing context for detailed error message
+            history_service = get_history_service()
+            if history_service:
+                session = history_service.get_session(chain_context.session_id)
+                stage_exec = await history_service.get_stage_execution(synthesis_stage_execution_id)
+                
+                if session and stage_exec and stage_exec.started_at_us:
+                    # Create detailed timeout message with timing context
+                    error_msg = create_stage_timeout_message(
+                        stage_name="synthesis",
+                        stage_started_at_us=stage_exec.started_at_us,
+                        session_started_at_us=session.started_at_us,
+                        timeout_seconds=self.settings.alert_processing_timeout
+                    )
+                else:
+                    # Fallback if we can't get timing
+                    error_msg = f"{synthesis_config.agent} synthesis cancelled: {reason}"
+            else:
+                error_msg = f"{synthesis_config.agent} synthesis cancelled: {reason}"
+            
+            logger.warning(error_msg)
+            
+            # Update synthesis stage as cancelled
+            await self.stage_manager.update_stage_execution_cancelled(
+                synthesis_stage_execution_id,
+                reason
+            )
+            
+            # Create cancelled result with detailed error message
+            cancelled_result = AgentExecutionResult(
+                status=StageStatus.CANCELLED,
+                agent_name=synthesis_config.agent,
+                stage_name="synthesis",
+                timestamp_us=now_us(),
+                result_summary=f"Synthesis cancelled: {reason}",
+                error_message=error_msg
+            )
+            
+            return (synthesis_stage_execution_id, cancelled_result)
+            
         except Exception as e:
             error_msg = f"{synthesis_config.agent} synthesis failed: {str(e)}"
             logger.error(error_msg, exc_info=True)
