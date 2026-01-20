@@ -213,6 +213,7 @@ class NativeThinkingController(IterationController):
         
         # 2. Track last interaction success for failure detection
         last_interaction_failed = False
+        last_error_message: Optional[str] = None  # Track actual error message for better diagnostics
         consecutive_timeout_failures = 0  # Track consecutive timeout failures
         
         # Main iteration loop
@@ -337,6 +338,10 @@ class NativeThinkingController(IterationController):
                 consecutive_timeout_failures += 1
                 self.logger.warning(f"Iteration timeout ({consecutive_timeout_failures} consecutive)")
                 
+                # Mark this interaction as failed and capture error message
+                last_interaction_failed = True
+                last_error_message = error_msg
+                
                 # Check if we should stop
                 if consecutive_timeout_failures >= 2:
                     error_msg = _create_consecutive_timeout_error(consecutive_timeout_failures, "iteration")
@@ -357,8 +362,9 @@ class NativeThinkingController(IterationController):
                 self.logger.error(error_msg)
                 self.logger.error(f"Full traceback:\n{traceback.format_exc()}")
                 
-                # Mark this interaction as failed
+                # Mark this interaction as failed and capture error message
                 last_interaction_failed = True
+                last_error_message = str(e)  # Capture the raw exception message
                 
                 # Check if it's a timeout-related failure using exception type only
                 is_timeout = isinstance(e, (TimeoutError, asyncio.TimeoutError))
@@ -383,7 +389,8 @@ class NativeThinkingController(IterationController):
                 last_interaction_failed=last_interaction_failed,
                 conversation=conversation,
                 context=context,
-                logger=self.logger
+                logger=self.logger,
+                last_error_message=last_error_message
             )
         except ForceConclusion as e:
             return await self._force_conclusion(

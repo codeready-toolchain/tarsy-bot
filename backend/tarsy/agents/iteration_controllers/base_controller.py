@@ -143,7 +143,8 @@ class IterationController(ABC):
         last_interaction_failed: bool,
         conversation: LLMConversation,
         context: 'StageContext',
-        logger=None
+        logger=None,
+        last_error_message: Optional[str] = None
     ) -> None:
         """
         Handle max iterations: fail if error, conclude if configured/chat, otherwise pause.
@@ -160,6 +161,7 @@ class IterationController(ABC):
             conversation: Current conversation state (for resume)
             context: StageContext containing stage processing data
             logger: Optional logger for messages
+            last_error_message: Optional error message from the last failed interaction
             
         Raises:
             MaxIterationsFailureError: If last interaction failed
@@ -176,10 +178,16 @@ class IterationController(ABC):
         
         if last_interaction_failed:
             # Always fail if last interaction failed
+            # Include the underlying error message if available
+            if last_error_message:
+                error_msg = f"Stage failed: reached maximum iterations ({max_iterations}) and last LLM interaction failed. Last error: {last_error_message}"
+            else:
+                error_msg = f"Stage failed: reached maximum iterations ({max_iterations}) and last LLM interaction failed"
+            
             if logger:
-                logger.error(f"Stage failed: reached maximum iterations ({max_iterations}) with failed last interaction")
+                logger.error(error_msg)
             raise MaxIterationsFailureError(
-                f"Stage failed: reached maximum iterations ({max_iterations}) and last LLM interaction failed",
+                error_msg,
                 max_iterations=max_iterations,
                 context={
                     "session_id": context.session_id,

@@ -61,6 +61,7 @@ class ReactController(IterationController):
         
         # 2. Track last interaction success for failure detection
         last_interaction_failed = False
+        last_error_message: Optional[str] = None  # Track actual error message for better diagnostics
         consecutive_timeout_failures = 0  # Track consecutive timeout failures specifically
         
         # 3. ReAct iteration loop with timeout protection  
@@ -196,6 +197,10 @@ class ReactController(IterationController):
                 consecutive_timeout_failures += 1
                 self.logger.warning(f"Iteration timeout ({consecutive_timeout_failures} consecutive)")
                 
+                # Mark this interaction as failed and capture error message
+                last_interaction_failed = True
+                last_error_message = error_msg
+                
                 # Check if we should stop
                 if consecutive_timeout_failures >= 2:
                     raise Exception(f"Stopping after {consecutive_timeout_failures} consecutive iteration timeouts") from None
@@ -211,8 +216,9 @@ class ReactController(IterationController):
                     f"session_id={context.session_id}, stage_execution_id={stage_execution_id}",
                     exc_info=True
                 )
-                # Mark this interaction as failed
+                # Mark this interaction as failed and capture error message
                 last_interaction_failed = True
+                last_error_message = str(e)  # Capture the raw exception message
                 
                 # Check if it's a timeout-related failure
                 error_str = str(e).lower()
@@ -243,7 +249,8 @@ class ReactController(IterationController):
                 last_interaction_failed=last_interaction_failed,
                 conversation=conversation,
                 context=context,
-                logger=self.logger
+                logger=self.logger,
+                last_error_message=last_error_message
             )
         except ForceConclusion as e:
             # Force conclusion was requested
