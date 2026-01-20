@@ -201,8 +201,7 @@ The AI combines all four to make intelligent decisions about investigation appro
   ```yaml
   mcp_servers:
     prometheus-server:
-      server_id: "prometheus-server"
-      enabled: true
+      # Server ID comes from YAML key
       transport:
         type: "stdio"
         command: "npx"

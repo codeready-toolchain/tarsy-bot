@@ -190,10 +190,8 @@ BUILTIN_AGENTS = {
 **Example YAML Configuration**:
 ```yaml
 mcp_servers:
-  # Custom MCP server
+  # Custom MCP server (server ID comes from YAML key)
   security-scanner:
-    server_id: "security-scanner"
-    enabled: true
     transport:
       type: "stdio"
       command: "npx"
@@ -201,8 +199,6 @@ mcp_servers:
   
   # Override built-in kubernetes-server with custom kubeconfig
   kubernetes-server:
-    server_id: "kubernetes-server"
-    enabled: true
     transport:
       type: "stdio"
       command: "npx"
@@ -804,12 +800,10 @@ Response:
   "alert_type": "NamespaceAlertK8s",
   "mcp_servers": [
     {
-      "server_id": "kubernetes-server",
-      "server_type": "kubernetes"
+      "server_id": "kubernetes-server"
     },
     {
-      "server_id": "argocd-server",
-      "server_type": "argocd"
+      "server_id": "argocd-server"
     }
   ],
   "native_tools": {
@@ -973,9 +967,8 @@ async with mcp_interaction_context(session_id, server_name, tool_name, parameter
 **Stdio Transport (Built-in)**:
 ```python
 # From builtin_config.py - Traditional command-line MCP server
+# Note: Server ID comes from dictionary key
 "kubernetes-server": {
-    "server_id": "kubernetes-server",
-    "enabled": True,
     "transport": {
         "type": "stdio",
         "command": "npx",
@@ -993,11 +986,9 @@ async with mcp_interaction_context(session_id, server_name, tool_name, parameter
 
 **HTTP Transport Configuration**:
 ```yaml
-# In agents.yaml - HTTP endpoint MCP server
+# In agents.yaml - HTTP endpoint MCP server (server ID from YAML key)
 mcp_servers:
   http-api-server:
-    server_id: "http-api-server"
-    enabled: true
     transport:
       type: "http"
       url: "https://api.example.com/mcp"
@@ -1014,11 +1005,9 @@ mcp_servers:
 
 **SSE Transport Configuration**:
 ```yaml
-# In agents.yaml - Server-Sent Events MCP server  
+# In agents.yaml - Server-Sent Events MCP server (server ID from YAML key)
 mcp_servers:
   streaming-server:
-    server_id: "streaming-server"
-    enabled: true
     transport:
       type: "sse"
       url: "https://streaming-api.example.com/sse"
@@ -2154,7 +2143,7 @@ BUILTIN_CODE_MASKERS = {
 ```yaml
 mcp_servers:
   security-scanner:
-    server_id: "security-scanner"
+    # Server ID comes from YAML key
     # ... connection config ...
     data_masking:
       enabled: true
