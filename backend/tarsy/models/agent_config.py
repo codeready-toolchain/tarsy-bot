@@ -163,6 +163,9 @@ class SummarizationConfig(BaseModel):
 # AGENT CONFIGURATION MODELS
 # =============================================================================
 
+# Module-level tracking for deprecation warnings to prevent log noise
+_warned_deprecated: set = set()
+
 
 class AgentConfigModel(BaseModel):
     """Configuration model for a single agent.
@@ -247,7 +250,12 @@ class MCPServerConfigModel(BaseModel):
     
     @model_validator(mode="after")
     def warn_deprecated_fields(self) -> "MCPServerConfigModel":
-        """Log warnings for deprecated fields that should be removed."""
+        """Log warnings for deprecated fields that should be removed.
+        
+        Uses module-level tracking to warn only once per unique combination of
+        deprecated fields, preventing log noise when multiple servers have the
+        same deprecated fields.
+        """
         from ..utils.logger import get_module_logger
         
         logger = get_module_logger(__name__)
@@ -260,7 +268,10 @@ class MCPServerConfigModel(BaseModel):
         if self.enabled is not None:
             deprecated_fields.append("enabled")
         
-        if deprecated_fields:
+        # Create a hashable key for this combination of deprecated fields
+        warning_key = tuple(sorted(deprecated_fields))
+        if deprecated_fields and warning_key not in _warned_deprecated:
+            _warned_deprecated.add(warning_key)
             logger.warning(
                 f"MCP server configuration uses deprecated fields: {', '.join(deprecated_fields)}. "
                 "These fields are ignored and will be removed in a future version. "

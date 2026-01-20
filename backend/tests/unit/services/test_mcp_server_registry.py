@@ -347,7 +347,6 @@ class TestEdgeCases:
         registry = MCPServerRegistry(config=long_config)
         assert registry.get_server_config(long_server_id) is not None
     
-   
     def test_get_server_config_with_non_string_input(self):
         """Test get_server_config with non-string inputs."""
         registry = MCPServerRegistry()

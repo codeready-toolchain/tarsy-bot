@@ -223,7 +223,7 @@ mcp_servers:
       summary_max_token_limit: 800     # Concise summaries for metrics and performance data
 
   # HTTP MCP server example (using HTTP transport)
-    http-mcp-server:
+  http-mcp-server:
     transport:
       type: "http"  # HTTP transport type
       url: "https://mcp-api.example.com/mcp"  # MCP endpoint URL

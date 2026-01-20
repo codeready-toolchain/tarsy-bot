@@ -82,7 +82,8 @@ class TestMCPHealthMonitor:
 
         is_healthy = await health_monitor._check_server("missing_server")
 
-        assert is_healthy is False
+        # Returns True to indicate "no warning needed" (not that server is healthy)
+        assert is_healthy is True
         # Should not attempt to ping or initialize
         mock_mcp_client.ping.assert_not_called()
         mock_mcp_client.try_initialize_server.assert_not_called()

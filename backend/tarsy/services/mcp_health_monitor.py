@@ -220,7 +220,7 @@ class MCPHealthMonitor:
             # Server config is missing - clear any stale warnings and skip health checks
             logger.debug(f"Skipping health check for {server_id}: config missing")
             self._clear_warning(server_id)
-            return False
+            return True  # No warning needed for missing config
         
         # Case 1: Server has a session - ping it (and cache tools if successful)
         has_session = server_id in self._mcp_client.sessions

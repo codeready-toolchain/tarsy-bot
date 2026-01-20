@@ -319,9 +319,6 @@ class TestKubernetesAgentLLMIntegration:
         
         # Mock server config
         server_config = MCPServerConfigModel(
-            server_id="kubernetes-server",
-            server_type="kubernetes",
-            enabled=True,
             transport={"type": "stdio", "command": "test"},
             instructions="Test K8s instructions"
         )
@@ -351,9 +348,6 @@ class TestKubernetesAgentMCPIntegration:
         mock_registry = Mock(spec=MCPServerRegistry)
         
         server_config = MCPServerConfigModel(
-            server_id="kubernetes-server",
-            server_type="kubernetes",
-            enabled=True,
             transport={"type": "stdio", "command": "test"},
             instructions="K8s instructions"
         )

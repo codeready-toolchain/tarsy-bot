@@ -146,8 +146,14 @@ class TestMCPServerConfigModel:
         assert config.transport.args == []  # Default value
         assert config.instructions == ""
 
-    def test_deprecated_fields_ignored_with_warning(self):
+    def test_deprecated_fields_ignored_with_warning(self, caplog):
         """Test that deprecated fields are ignored and log warnings."""
+        import logging
+        import tarsy.models.agent_config as agent_config_module
+        
+        # Reset the warned_deprecated set to ensure clean test state
+        agent_config_module._warned_deprecated.clear()
+        
         config_data = {
             "server_id": "deprecated-server",
             "server_type": "monitoring",
@@ -155,12 +161,89 @@ class TestMCPServerConfigModel:
             "transport": {"type": "stdio", "command": "test"}
         }
         
-        config = MCPServerConfigModel(**config_data)
+        with caplog.at_level(logging.WARNING):
+            config = MCPServerConfigModel(**config_data)
         
-        # Deprecated fields are kept but should trigger warning (checked in logs)
+        # Deprecated fields are kept but should trigger warning
         assert config.server_id == "deprecated-server"
         assert config.server_type == "monitoring"
         assert config.enabled is False
+        
+        # Verify warning was logged
+        assert len(caplog.records) == 1
+        assert "deprecated fields" in caplog.text.lower()
+        assert "server_id" in caplog.text
+        assert "server_type" in caplog.text
+        assert "enabled" in caplog.text
+    
+    def test_deprecated_fields_warning_deduplication(self, caplog):
+        """Test that deprecation warnings are only logged once per unique field combination."""
+        import logging
+        import tarsy.models.agent_config as agent_config_module
+        
+        # Reset the warned_deprecated set to ensure clean test state
+        agent_config_module._warned_deprecated.clear()
+        
+        config_data = {
+            "server_id": "deprecated-server",
+            "server_type": "monitoring",
+            "enabled": False,
+            "transport": {"type": "stdio", "command": "test"}
+        }
+        
+        with caplog.at_level(logging.WARNING):
+            # Create multiple instances with same deprecated fields
+            config1 = MCPServerConfigModel(**config_data)
+            config2 = MCPServerConfigModel(**config_data)
+            config3 = MCPServerConfigModel(**config_data)
+        
+        # All configs should be valid
+        assert config1.server_id == "deprecated-server"
+        assert config2.server_id == "deprecated-server"
+        assert config3.server_id == "deprecated-server"
+        
+        # But warning should only appear once
+        warning_records = [r for r in caplog.records if "deprecated fields" in r.message.lower()]
+        assert len(warning_records) == 1, "Warning should only be logged once for same field combination"
+        
+    def test_deprecated_fields_warning_different_combinations(self, caplog):
+        """Test that different combinations of deprecated fields generate separate warnings."""
+        import logging
+        import tarsy.models.agent_config as agent_config_module
+        
+        # Reset the warned_deprecated set to ensure clean test state
+        agent_config_module._warned_deprecated.clear()
+        
+        with caplog.at_level(logging.WARNING):
+            # First combination: all three deprecated fields
+            config1 = MCPServerConfigModel(
+                server_id="test1",
+                server_type="monitoring",
+                enabled=True,
+                transport={"type": "stdio", "command": "test"}
+            )
+            
+            # Second combination: only server_id
+            config2 = MCPServerConfigModel(
+                server_id="test2",
+                transport={"type": "stdio", "command": "test"}
+            )
+            
+            # Third combination: only server_type and enabled
+            config3 = MCPServerConfigModel(
+                server_type="security",
+                enabled=False,
+                transport={"type": "stdio", "command": "test"}
+            )
+        
+        # Verify all configs are valid
+        assert config1.server_id == "test1"
+        assert config2.server_id == "test2"
+        assert config3.server_type == "security"
+        
+        # Should have three separate warnings for three different combinations
+        warning_records = [r for r in caplog.records if "deprecated fields" in r.message.lower()]
+        assert len(warning_records) == 3, "Different field combinations should generate separate warnings"
 
     def test_serialization_roundtrip(self, model_test_helpers):
         """Test that MCP server config can be serialized and deserialized correctly."""
