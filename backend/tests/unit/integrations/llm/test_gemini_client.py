@@ -860,8 +860,13 @@ class TestGeminiNativeThinkingClientThinkingLevel:
         client: GeminiNativeThinkingClient,
     ) -> None:
         """Test that 'high' thinking level uses larger thinking budget."""
+        # Create a valid response to avoid triggering retry logic
         response = MagicMock()
-        response.candidates = []
+        part = MagicMock()
+        part.thought = False
+        part.text = "Test response"
+        part.thought_signature = None
+        response.candidates = [MagicMock(content=MagicMock(parts=[part]))]
         response.function_calls = None
         response.usage_metadata = None
 
@@ -910,8 +915,13 @@ class TestGeminiNativeThinkingClientThinkingLevel:
         client: GeminiNativeThinkingClient,
     ) -> None:
         """Test that 'low' thinking level uses smaller thinking budget."""
+        # Create a valid response to avoid triggering retry logic
         response = MagicMock()
-        response.candidates = []
+        part = MagicMock()
+        part.thought = False
+        part.text = "Test response"
+        part.thought_signature = None
+        response.candidates = [MagicMock(content=MagicMock(parts=[part]))]
         response.function_calls = None
         response.usage_metadata = None
 
