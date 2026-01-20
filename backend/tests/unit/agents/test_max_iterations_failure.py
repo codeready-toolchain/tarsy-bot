@@ -319,3 +319,226 @@ class TestReactFinalAnalysisControllerFailureDetection:
         assert exc_info.value is original_error
         assert exc_info.value.max_iterations == 5
 
+
+@pytest.mark.unit
+class TestEnhancedErrorMessagePropagation:
+    """Test that underlying LLM errors are surfaced in stage failure messages."""
+    
+    @pytest.fixture
+    def mock_llm_manager(self):
+        """Create mock LLM manager."""
+        return Mock()
+    
+    @pytest.fixture
+    def mock_prompt_builder(self):
+        """Create mock prompt builder."""
+        builder = Mock()
+        builder.get_enhanced_react_system_message.return_value = "System message"
+        builder.build_standard_react_prompt.return_value = "User prompt"
+        return builder
+    
+    @pytest.fixture
+    def mock_agent(self):
+        """Create mock agent."""
+        agent = Mock()
+        agent.max_iterations = 2
+        agent.force_conclusion_at_max_iterations = False
+        agent.get_force_conclusion.return_value = False
+        agent.get_current_stage_execution_id.return_value = "stage-enhanced-test"
+        agent.get_native_system_instructions.return_value = "System instructions"
+        agent.get_general_instructions.return_value = "General instructions"
+        agent.custom_instructions.return_value = "Custom instructions"
+        agent.get_parallel_execution_metadata.return_value = None
+        return agent
+    
+    @pytest.fixture
+    def sample_context(self, mock_agent):
+        """Create sample stage context."""
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.utils.timestamp import now_us
+        
+        processing_alert = ProcessingAlert(
+            alert_type="test",
+            severity="critical",
+            timestamp=now_us(),
+            environment="production",
+            alert_data={"alert": "TestAlert"}
+        )
+        chain_context = ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="session-enhanced-test",
+            current_stage_name="analysis"
+        )
+        return StageContext(
+            chain_context=chain_context,
+            available_tools=AvailableTools(tools=[]),
+            agent=mock_agent
+        )
+    
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "llm_error_message,expected_in_error",
+        [
+            (
+                "gemini-2.5-flash API error: No generation chunks were returned | Details: Type=ValueError | Message=No generation chunks were returned",
+                "Last error: gemini-2.5-flash API error: No generation chunks were returned"
+            ),
+            (
+                "Rate limit exceeded: 429 Too Many Requests",
+                "Last error: Rate limit exceeded: 429 Too Many Requests"
+            ),
+            (
+                "LLM service unavailable: 503 Service Unavailable",
+                "Last error: LLM service unavailable: 503 Service Unavailable"
+            ),
+        ],
+    )
+    async def test_react_controller_includes_llm_error_in_stage_failure(
+        self, 
+        mock_llm_manager, 
+        mock_prompt_builder, 
+        sample_context, 
+        llm_error_message: str,
+        expected_in_error: str
+    ):
+        """Test that ReAct controller includes underlying LLM error in MaxIterationsFailureError message."""
+        controller = SimpleReActController(mock_llm_manager, mock_prompt_builder)
+        
+        # Mock LLM to fail with specific error message
+        mock_llm_manager.generate_response.side_effect = Exception(llm_error_message)
+        
+        with pytest.raises(MaxIterationsFailureError) as exc_info:
+            await controller.execute_analysis_loop(sample_context)
+        
+        error = exc_info.value
+        error_msg = str(error)
+        
+        # Verify the generic part is present
+        assert "Stage failed: reached maximum iterations (2) and last LLM interaction failed" in error_msg
+        
+        # Verify the underlying error is included
+        assert expected_in_error in error_msg
+        assert llm_error_message in error_msg
+        
+        # Verify error metadata
+        assert error.max_iterations == 2
+        assert error.context["session_id"] == "session-enhanced-test"
+    
+    @pytest.mark.asyncio
+    async def test_react_controller_backward_compatibility_without_error_message(
+        self,
+        mock_llm_manager,
+        mock_prompt_builder,
+        sample_context
+    ):
+        """Test that ReAct controller handles cases where error message is not captured (backward compatibility)."""
+        controller = SimpleReActController(mock_llm_manager, mock_prompt_builder)
+        
+        # This shouldn't happen in practice, but ensures backward compatibility
+        mock_llm_manager.generate_response.side_effect = Exception()
+        
+        with pytest.raises(MaxIterationsFailureError) as exc_info:
+            await controller.execute_analysis_loop(sample_context)
+        
+        error = exc_info.value
+        error_msg = str(error)
+        
+        # Should still have the generic message
+        assert "Stage failed: reached maximum iterations (2) and last LLM interaction failed" in error_msg
+        
+        # Should not crash even without detailed error message
+        assert error.max_iterations == 2
+    
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "last_error_message,expected_error_format",
+        [
+            (
+                "gemini-2.5-flash API error: No generation chunks were returned",
+                "Stage failed: reached maximum iterations (5) and last LLM interaction failed. Last error: gemini-2.5-flash API error: No generation chunks were returned"
+            ),
+            (
+                "Native thinking API error: Request quota exceeded",
+                "Stage failed: reached maximum iterations (5) and last LLM interaction failed. Last error: Native thinking API error: Request quota exceeded"
+            ),
+            (
+                None,
+                "Stage failed: reached maximum iterations (5) and last LLM interaction failed"
+            ),
+        ],
+    )
+    async def test_base_controller_raise_max_iterations_exception_with_error_message(
+        self,
+        sample_context,
+        last_error_message: str | None,
+        expected_error_format: str
+    ):
+        """Test that _raise_max_iterations_exception includes underlying error when provided."""
+        from tarsy.agents.iteration_controllers.base_controller import IterationController
+        from tarsy.models.unified_interactions import LLMConversation
+        
+        # Create a minimal concrete implementation for testing
+        class TestController(IterationController):
+            def needs_mcp_tools(self) -> bool:
+                return False
+            
+            async def execute_analysis_loop(self, context):
+                pass
+            
+            def _get_forced_conclusion_prompt(self, iteration: int) -> str:
+                return "Please conclude"
+        
+        from tarsy.models.unified_interactions import LLMMessage, MessageRole
+        
+        controller = TestController()
+        conversation = LLMConversation(messages=[
+            LLMMessage(role=MessageRole.SYSTEM, content="system"),
+            LLMMessage(role=MessageRole.USER, content="test")
+        ])
+        
+        # Test that the method raises MaxIterationsFailureError with the expected message
+        with pytest.raises(MaxIterationsFailureError) as exc_info:
+            controller._raise_max_iterations_exception(
+                max_iterations=5,
+                last_interaction_failed=True,
+                conversation=conversation,
+                context=sample_context,
+                logger=None,
+                last_error_message=last_error_message
+            )
+        
+        error = exc_info.value
+        assert str(error) == expected_error_format
+        assert error.max_iterations == 5
+    
+    @pytest.mark.asyncio
+    async def test_error_message_preserved_across_iterations(
+        self,
+        mock_llm_manager,
+        mock_prompt_builder,
+        sample_context
+    ):
+        """Test that error message from the LAST failed iteration is captured, not earlier ones."""
+        controller = SimpleReActController(mock_llm_manager, mock_prompt_builder)
+        
+        # First iteration fails with one error, second fails with different error
+        call_count = 0
+        async def mock_generate_with_different_errors(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise Exception("First iteration error: transient network issue")
+            else:
+                raise Exception("Second iteration error: API rate limit")
+        
+        mock_llm_manager.generate_response.side_effect = mock_generate_with_different_errors
+        
+        with pytest.raises(MaxIterationsFailureError) as exc_info:
+            await controller.execute_analysis_loop(sample_context)
+        
+        error = exc_info.value
+        error_msg = str(error)
+        
+        # Should contain the LAST error (second iteration), not the first
+        assert "Last error: Second iteration error: API rate limit" in error_msg
+        assert "First iteration error" not in error_msg
