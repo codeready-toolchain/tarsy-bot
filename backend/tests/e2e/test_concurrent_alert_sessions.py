@@ -47,8 +47,6 @@ class TestConcurrentAlertSessions:
         # Test MCP server configuration (matches e2e pattern)
         test_mcp_servers = {
             "kubernetes-server": {
-                "server_type": "stdio",
-                "enabled": True,
                 "transport": {
                     "type": "stdio",
                     "command": "kubectl-mcp-server",

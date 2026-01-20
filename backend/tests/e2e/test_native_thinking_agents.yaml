@@ -40,9 +40,6 @@ agents:
 # We use the built-in kubernetes-server for simplicity in testing
 mcp_servers:
   test-data-server:
-    server_id: "test-data-server"
-    server_type: "custom"
-    enabled: true
     transport:
       type: "stdio"
       command: "echo"

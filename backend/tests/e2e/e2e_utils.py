@@ -321,9 +321,6 @@ class E2ETestUtils:
         if command_args is None:
             command_args = ["test"]
         return {
-            "server_id": "kubernetes-server",
-            "server_type": "test",
-            "enabled": True,
             "transport": {
                 "type": "stdio",
                 "command": "echo",
@@ -348,9 +345,6 @@ class E2ETestUtils:
         if command_args is None:
             command_args = ["test"]
         return {
-            "server_id": "test-data-server",
-            "server_type": "test",
-            "enabled": True,
             "transport": {
                 "type": "stdio",
                 "command": "echo",
