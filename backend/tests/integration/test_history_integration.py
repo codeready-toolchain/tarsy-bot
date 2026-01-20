@@ -1169,7 +1169,7 @@ class TestDuplicatePreventionIntegration:
         # Note: Duplicate prevention is handled at the repository level by session_id
         # Each unique session_id creates a separate session in the database
     
-    def test_concurrent_session_creation_same_session_id(self, history_service_with_test_db, sample_alert_data):
+    def test_sequential_session_creation_unique_session_ids(self, history_service_with_test_db, sample_alert_data):
         """
         Test sequential session creation with unique session_ids (mirrors production behavior).
         
@@ -1190,7 +1190,7 @@ class TestDuplicatePreventionIntegration:
         
         # Create multiple sessions sequentially with unique IDs (like production)
         for i in range(5):
-            unique_session_id = f"test-session-concurrent-{uuid.uuid4()}"
+            unique_session_id = f"test-session-sequential-{uuid.uuid4()}"
             
             chain_context, chain_definition = create_test_context_and_chain(
                 alert_type="TestAlert",
