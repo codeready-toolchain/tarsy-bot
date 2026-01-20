@@ -46,13 +46,11 @@ class TestKubernetesAgentInitialization:
         """Create mock MCP registry."""
         registry = Mock(spec=MCPServerRegistry)
         server_config = MCPServerConfigModel(
-            server_id="kubernetes-server",
-            server_type="kubernetes",
-            enabled=True,
             transport={"type": "stdio", "command": "npx", "args": ["-y", "kubernetes-mcp-server@latest"]},
             instructions="Kubernetes server instructions"
         )
         registry.get_server_configs.return_value = [server_config]
+        registry.get_all_server_ids.return_value = ["kubernetes-server"]
         return registry
     
     def test_initialization_with_required_dependencies(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
@@ -212,13 +210,11 @@ class TestKubernetesAgentInheritedFunctionality:
         
         mock_registry = Mock(spec=MCPServerRegistry)
         server_config = MCPServerConfigModel(
-            server_id="kubernetes-server",
-            server_type="kubernetes",
-            enabled=True,
             transport={"type": "stdio", "command": "npx"},
             instructions="K8s instructions"
         )
         mock_registry.get_server_configs.return_value = [server_config]
+        mock_registry.get_all_server_ids.return_value = ["kubernetes-server"]
         
         return mock_llm, mock_mcp, mock_registry
     
@@ -264,6 +260,7 @@ class TestKubernetesAgentInheritedFunctionality:
     async def test_configure_mcp_client_missing_server_config(self, kubernetes_agent):
         """Test error handling when kubernetes-server config is missing."""
         kubernetes_agent.mcp_registry.get_server_configs.return_value = []
+        kubernetes_agent.mcp_registry.get_all_server_ids.return_value = []
         
         with pytest.raises(ConfigurationError, match="Required MCP servers not configured"):
             await kubernetes_agent._configure_mcp_client()
@@ -501,13 +498,11 @@ class TestKubernetesAgentIntegrationScenarios:
         
         # Configure MCP registry with kubernetes-server
         server_config = MCPServerConfigModel(
-            server_id="kubernetes-server",
-            server_type="kubernetes", 
-            enabled=True,
             transport={"type": "stdio", "command": "npx", "args": ["-y", "kubernetes-mcp-server@latest"]},
             instructions="Prioritize namespace-level resources for troubleshooting."
         )
         mock_registry.get_server_configs.return_value = [server_config]
+        mock_registry.get_all_server_ids.return_value = ["kubernetes-server"]
         
         # Configure MCP client with available tools
         mock_tools = [
@@ -573,6 +568,7 @@ class TestKubernetesAgentIntegrationScenarios:
         mock_config.server_type = "kubernetes"
         mock_config.instructions = "Use kubectl tools for analysis"
         agent.mcp_registry.get_server_configs.return_value = [mock_config]
+        agent.mcp_registry.get_all_server_ids.return_value = ["kubernetes-server"]
         
         # Create pod crash alert
         pod_crash_alert = Alert(
@@ -664,6 +660,7 @@ class TestKubernetesAgentIntegrationScenarios:
         mock_config.server_type = "kubernetes"
         mock_config.instructions = "Use kubectl tools for analysis"
         agent.mcp_registry.get_server_configs.return_value = [mock_config]
+        agent.mcp_registry.get_all_server_ids.return_value = ["kubernetes-server"]
         
         pod_crash_alert = Alert(
             alert_type="kubernetes",
@@ -731,6 +728,7 @@ class TestKubernetesAgentIntegrationScenarios:
         mock_config.server_type = "kubernetes"
         mock_config.instructions = "Use kubectl tools for analysis"
         agent.mcp_registry.get_server_configs.return_value = [mock_config]
+        agent.mcp_registry.get_all_server_ids.return_value = ["kubernetes-server"]
         
         pod_crash_alert = Alert(
             alert_type="kubernetes",
@@ -783,13 +781,11 @@ class TestKubernetesAgentSummarization:
         
         mock_mcp_registry = Mock(spec=MCPServerRegistry)
         server_config = MCPServerConfigModel(
-            server_id="kubernetes-server",
-            server_type="kubernetes",
-            enabled=True,
             transport={"type": "stdio", "command": "npx", "args": ["-y", "kubernetes-mcp-server@latest"]},
             instructions="Kubernetes server instructions"
         )
         mock_mcp_registry.get_server_configs.return_value = [server_config]
+        mock_mcp_registry.get_all_server_ids.return_value = ["kubernetes-server"]
         
         agent = KubernetesAgent(mock_llm_manager, mock_mcp_client, mock_mcp_registry)
         return agent, mock_llm_manager, mock_mcp_client, mock_mcp_registry

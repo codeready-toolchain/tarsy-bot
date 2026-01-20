@@ -73,6 +73,7 @@ class TestBaseAgentAbstractInterface:
         mock_config.server_type = "test"
         mock_config.instructions = "Test server instructions"
         registry.get_server_configs.return_value = [mock_config]
+        registry.get_all_server_ids.return_value = ["test-server"]
         return registry
 
     @pytest.mark.unit
@@ -145,6 +146,7 @@ class TestBaseAgentUtilityMethods:
         mock_config.server_type = "kubernetes"
         mock_config.instructions = "Kubernetes server instructions"
         registry.get_server_configs.return_value = [mock_config]
+        registry.get_all_server_ids.return_value = ["test-server"]
         return registry
 
     @pytest.fixture
@@ -190,6 +192,7 @@ class TestBaseAgentInstructionComposition:
         mock_config.server_type = "kubernetes"
         mock_config.instructions = "Use kubectl commands for troubleshooting"
         registry.get_server_configs.return_value = [mock_config]
+        registry.get_all_server_ids.return_value = ["test-server"]
         return registry
 
     @pytest.fixture
@@ -320,6 +323,7 @@ class TestBaseAgentMCPIntegration:
         mock_config.server_type = "kubernetes"
         mock_config.instructions = "Test instructions"
         registry.get_server_configs.return_value = [mock_config]
+        registry.get_all_server_ids.return_value = ["test-server"]
         return registry
 
     @pytest.fixture
@@ -344,6 +348,9 @@ class TestBaseAgentMCPIntegration:
         base_agent.mcp_registry.get_server_configs.return_value = (
             []
         )  # No configs returned
+        base_agent.mcp_registry.get_all_server_ids.return_value = (
+            []
+        )  # No servers available
 
         with pytest.raises(
             ConfigurationError, match="Required MCP servers not configured"
@@ -771,7 +778,14 @@ class TestBaseAgentErrorHandling:
 
     @pytest.fixture
     def mock_mcp_registry(self):
-        return Mock(spec=MCPServerRegistry)
+        registry = Mock(spec=MCPServerRegistry)
+        mock_config = Mock()
+        mock_config.server_id = "test-server"
+        mock_config.server_type = "test"
+        mock_config.instructions = "Test instructions"
+        registry.get_server_configs.return_value = [mock_config]
+        registry.get_all_server_ids.return_value = ["test-server"]
+        return registry
 
     @pytest.fixture
     def base_agent(self, mock_llm_manager, mock_mcp_client, mock_mcp_registry):
@@ -837,6 +851,7 @@ class TestBaseAgentErrorHandling:
         mock_config.server_type = "test"
         mock_config.instructions = "Test instructions"
         base_agent.mcp_registry.get_server_configs.return_value = [mock_config]
+        base_agent.mcp_registry.get_all_server_ids.return_value = ["test-server"]
 
         # Mock prompt builder methods
         base_agent.determine_mcp_tools = AsyncMock(return_value=[])
@@ -935,6 +950,7 @@ class TestBaseAgent:
         mock_config.server_type = "test"
         mock_config.instructions = "Test server instructions"
         base_agent.mcp_registry.get_server_configs.return_value = [mock_config]
+        base_agent.mcp_registry.get_all_server_ids.return_value = ["test-server"]
 
         # Mock prompt builder methods
         base_agent.determine_mcp_tools = AsyncMock(return_value=[])
@@ -980,6 +996,7 @@ class TestBaseAgent:
         mock_config.server_type = "test"
         mock_config.instructions = "Test server instructions"
         base_agent.mcp_registry.get_server_configs.return_value = [mock_config]
+        base_agent.mcp_registry.get_all_server_ids.return_value = ["test-server"]
 
         # Mock prompt builder methods
         base_agent.determine_mcp_tools = AsyncMock(return_value=[])
@@ -1049,6 +1066,7 @@ class TestPhase3ProcessAlertOverload:
         mock_config.server_type = "test"
         mock_config.instructions = "Test instructions"
         agent.mcp_registry.get_server_configs.return_value = [mock_config]
+        agent.mcp_registry.get_all_server_ids.return_value = ["test-server"]
         return agent
 
     @pytest.mark.asyncio
@@ -1196,6 +1214,7 @@ class TestBaseAgentSummarization:
         mock_config.server_type = "test"
         mock_config.instructions = "Test server instructions"
         registry.get_server_configs.return_value = [mock_config]
+        registry.get_all_server_ids.return_value = ["test-server"]
         return registry
     
     @pytest.mark.asyncio
@@ -1323,6 +1342,7 @@ class TestBaseAgentTimeoutProtection:
         mock_config.server_type = "test"
         mock_config.instructions = "Test instructions"
         registry.get_server_configs.return_value = [mock_config]
+        registry.get_all_server_ids.return_value = ["test-server"]
         return registry
     
     @pytest.mark.asyncio

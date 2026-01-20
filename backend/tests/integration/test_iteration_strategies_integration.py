@@ -84,6 +84,7 @@ class TestIterationStrategiesIntegration:
         mock_config.instructions = "Kubernetes troubleshooting tools"
         registry.get_server_configs.return_value = [mock_config]
         registry.get_server_config.return_value = mock_config
+        registry.get_all_server_ids.return_value = ["kubernetes-server"]
         return registry
     
     @pytest.mark.asyncio
