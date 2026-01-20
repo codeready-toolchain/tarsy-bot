@@ -209,7 +209,7 @@ class MCPServerConfigModel(BaseModel):
     Supports stdio, HTTP, and SSE transports via discriminated unions.
     """
 
-    model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
     # DEPRECATED FIELDS - maintained for backward compatibility only
     # These fields are ignored and will be removed in a future version
