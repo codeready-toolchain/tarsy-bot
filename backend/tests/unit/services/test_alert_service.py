@@ -733,6 +733,30 @@ class TestHistorySessionManagement:
             pause_metadata=None
         )
     
+    def test_update_session_completed_with_executive_summary_error(self, alert_service_with_history):
+        """Test marking session as completed with executive summary error."""
+        service = alert_service_with_history
+        analysis = "# Alert Analysis\n\nSuccessfully resolved the issue."
+        error_msg = "Executive summary generation timed out after 180s"
+        
+        service.session_manager.update_session_status(
+            "session_123", 
+            "completed", 
+            final_analysis=analysis, 
+            final_analysis_summary=None,
+            executive_summary_error=error_msg
+        )
+        
+        service.history_service.update_session_status.assert_called_once_with(
+            session_id="session_123",
+            status="completed",
+            error_message=None,
+            final_analysis=analysis,
+            final_analysis_summary=None,
+            executive_summary_error=error_msg,
+            pause_metadata=None
+        )
+    
     def test_update_session_error_success(self, alert_service_with_history):
         """Test marking session as failed with error."""
         service = alert_service_with_history

@@ -454,6 +454,66 @@ class TestUpdateStageExecutionCancelled:
 
 
 @pytest.mark.unit
+class TestUpdateStageExecutionTimedOut:
+    """Test updating stage execution to timed_out status."""
+
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_timed_out(self):
+        """Test marking stage as timed out with a reason."""
+        stage_exec = SimpleNamespace(
+            session_id="session-1",
+            stage_index=0,
+            stage_id="stage-id",
+            status=StageStatus.ACTIVE.value,
+            started_at_us=1000000,
+            completed_at_us=None,
+            duration_ms=None,
+        )
+
+        history_service = Mock()
+        history_service.get_stage_execution = AsyncMock(return_value=stage_exec)
+
+        manager = StageExecutionManager(history_service=history_service)
+
+        with patch('tarsy.hooks.hook_context.stage_execution_context') as mock_context:
+            mock_context.return_value.__aenter__ = AsyncMock()
+            mock_context.return_value.__aexit__ = AsyncMock()
+
+            from tarsy.models.constants import CancellationReason
+
+            await manager.update_stage_execution_timed_out("exec-123", CancellationReason.TIMEOUT.value)
+
+            assert stage_exec.status == StageStatus.TIMED_OUT.value
+            assert stage_exec.error_message == "timeout"
+            assert stage_exec.stage_output is None
+            assert stage_exec.completed_at_us is not None
+            assert stage_exec.duration_ms is not None
+
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_timed_out_fails_when_history_disabled(self):
+        """Test that update fails when history service is disabled."""
+        manager = StageExecutionManager(history_service=None)
+
+        with pytest.raises(RuntimeError, match="History service is unavailable"):
+            from tarsy.models.constants import CancellationReason
+
+            await manager.update_stage_execution_timed_out("exec-123", CancellationReason.TIMEOUT.value)
+
+    @pytest.mark.asyncio
+    async def test_update_stage_execution_timed_out_fails_when_not_found(self):
+        """Test that update fails when stage execution is not found."""
+        history_service = Mock()
+        history_service.get_stage_execution = AsyncMock(return_value=None)
+
+        manager = StageExecutionManager(history_service=history_service)
+
+        with pytest.raises(RuntimeError, match="not found in database"):
+            from tarsy.models.constants import CancellationReason
+
+            await manager.update_stage_execution_timed_out("exec-123", CancellationReason.TIMEOUT.value)
+
+
+@pytest.mark.unit
 class TestUpdateStageExecutionPaused:
     """Test updating stage execution to paused status."""
     

@@ -1192,6 +1192,36 @@ class TestHistoryRepository:
         assert "Test issue detected" in result.final_analysis_summary
     
     @pytest.mark.unit
+    def test_get_session_details_with_executive_summary_error(self, repository):
+        """Test that get_session_details includes executive_summary_error field."""
+        # Create completed session with final analysis but executive summary generation failed
+        session_with_error = AlertSession(
+            session_id="session-with-error",
+            alert_data={"test": "data"},
+            agent_type="TestAgent",
+            alert_type="test",
+            status="completed",
+            started_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
+            completed_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
+            chain_id="test-chain-error",
+            final_analysis="**Root Cause:** Test issue detected.\n\n**Resolution:** Apply fix.",
+            final_analysis_summary=None,
+            executive_summary_error="Executive summary generation timed out after 180s"
+        )
+        
+        repository.create_alert_session(session_with_error)
+        
+        # Get session details
+        result = repository.get_session_details("session-with-error")
+        
+        assert result is not None
+        assert result.final_analysis is not None
+        assert result.final_analysis_summary is None
+        assert result.executive_summary_error is not None
+        assert result.executive_summary_error == "Executive summary generation timed out after 180s"
+        assert "timed out" in result.executive_summary_error
+    
+    @pytest.mark.unit
     def test_get_session_details_extracts_session_level_interactions(self, repository, sample_alert_session):
         """Test that interactions without stage_execution_id are extracted as session-level interactions."""
         from tarsy.models.constants import LLMInteractionType

@@ -154,6 +154,56 @@ class TestUpdateSessionStatus:
             pause_metadata=None
         )
     
+    def test_update_session_status_with_executive_summary_error(self):
+        """Test updating session status with executive summary error."""
+        history_service = Mock()
+        history_service.update_session_status = Mock()
+        
+        manager = SessionManager(history_service=history_service)
+        
+        manager.update_session_status(
+            session_id="session-1",
+            status=AlertSessionStatus.COMPLETED.value,
+            final_analysis="Analysis complete",
+            final_analysis_summary=None,
+            executive_summary_error="Executive summary generation timed out after 180s"
+        )
+        
+        history_service.update_session_status.assert_called_once_with(
+            session_id="session-1",
+            status=AlertSessionStatus.COMPLETED.value,
+            error_message=None,
+            final_analysis="Analysis complete",
+            final_analysis_summary=None,
+            executive_summary_error="Executive summary generation timed out after 180s",
+            pause_metadata=None
+        )
+    
+    def test_update_session_status_with_both_summary_and_error(self):
+        """Test that both summary and error can be provided (error should be None if summary exists)."""
+        history_service = Mock()
+        history_service.update_session_status = Mock()
+        
+        manager = SessionManager(history_service=history_service)
+        
+        manager.update_session_status(
+            session_id="session-1",
+            status=AlertSessionStatus.COMPLETED.value,
+            final_analysis="Analysis complete",
+            final_analysis_summary="Summary text",
+            executive_summary_error=None
+        )
+        
+        history_service.update_session_status.assert_called_once_with(
+            session_id="session-1",
+            status=AlertSessionStatus.COMPLETED.value,
+            error_message=None,
+            final_analysis="Analysis complete",
+            final_analysis_summary="Summary text",
+            executive_summary_error=None,
+            pause_metadata=None
+        )
+    
     def test_update_session_status_to_paused(self):
         """Test updating session status to PAUSED with metadata."""
         history_service = Mock()
