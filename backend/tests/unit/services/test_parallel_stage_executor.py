@@ -7,7 +7,7 @@ replicated agent execution, and result aggregation.
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -523,16 +523,19 @@ class TestSynthesisParallelResultsCancellationHandling:
             mcp_servers=None
         )
 
-        # Execute synthesis - should raise CancelledError
-        with pytest.raises(asyncio.CancelledError):
-            exec_id, result = await executor.synthesize_parallel_results(
-                parallel_result=parallel_result,
-                chain_context=chain_context,
-                session_mcp_client=Mock(),
-                stage_config=stage_config,
-                chain_definition=chain_def,
-                current_stage_index=1
-            )
+        # Mock the cancellation tracker to indicate timeout (not user cancellation)
+        # This ensures deterministic test behavior regardless of shared state
+        with patch('tarsy.services.cancellation_tracker.is_user_cancel', return_value=False):
+            # Execute synthesis - should raise CancelledError
+            with pytest.raises(asyncio.CancelledError):
+                exec_id, result = await executor.synthesize_parallel_results(
+                    parallel_result=parallel_result,
+                    chain_context=chain_context,
+                    session_mcp_client=Mock(),
+                    stage_config=stage_config,
+                    chain_definition=chain_def,
+                    current_stage_index=1
+                )
 
         # Verify stage was marked as timed out with formatted error message
         stage_manager.update_stage_execution_timed_out.assert_called_once_with(
@@ -616,17 +619,15 @@ class TestSynthesisParallelResultsCancellationHandling:
 
         # Mock the cancellation tracker to indicate user cancellation
         from unittest.mock import patch
-        with patch('tarsy.services.cancellation_tracker.is_user_cancel', return_value=True):
-            # Execute synthesis - should raise CancelledError
-            with pytest.raises(asyncio.CancelledError):
-                exec_id, result = await executor.synthesize_parallel_results(
-                    parallel_result=parallel_result,
-                    chain_context=chain_context,
-                    session_mcp_client=Mock(),
-                    stage_config=stage_config,
-                    chain_definition=chain_def,
-                    current_stage_index=1
-                )
+        with patch('tarsy.services.cancellation_tracker.is_user_cancel', return_value=True), pytest.raises(asyncio.CancelledError):
+            await executor.synthesize_parallel_results(
+                parallel_result=parallel_result,
+                chain_context=chain_context,
+                session_mcp_client=Mock(),
+                stage_config=stage_config,
+                chain_definition=chain_def,
+                current_stage_index=1
+            )
 
         # Verify stage was marked as cancelled with formatted error message
         stage_manager.update_stage_execution_cancelled.assert_called_once_with(

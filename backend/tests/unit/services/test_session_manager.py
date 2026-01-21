@@ -179,8 +179,8 @@ class TestUpdateSessionStatus:
             pause_metadata=None
         )
     
-    def test_update_session_status_with_both_summary_and_error(self):
-        """Test that both summary and error can be provided (error should be None if summary exists)."""
+    def test_update_session_status_completed_with_summary_explicit_none_error(self):
+        """Test successful completion with summary and explicitly passing None for error field."""
         history_service = Mock()
         history_service.update_session_status = Mock()
         

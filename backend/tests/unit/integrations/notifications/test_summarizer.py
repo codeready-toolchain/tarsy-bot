@@ -276,23 +276,28 @@ class TestExecutiveSummaryAgent:
 class TestExecutiveSummaryAgentCancellationHandling:
     """Test CancelledError handling in ExecutiveSummaryAgent.generate_executive_summary."""
     
+    @pytest.fixture
+    def cancellation_mock_settings(self):
+        """Create mock settings with standard timeout for cancellation tests."""
+        settings = Mock()
+        settings.llm_iteration_timeout = 180
+        return settings
+    
+    @pytest.fixture
+    def cancelled_error_agent(self, cancellation_mock_settings):
+        """Create agent factory for CancelledError testing."""
+        def create(side_effect):
+            mock_client = Mock()
+            mock_client.generate_response = AsyncMock(side_effect=side_effect)
+            return ExecutiveSummaryAgent(llm_manager=mock_client, settings=cancellation_mock_settings)
+        return create
+    
     @pytest.mark.asyncio
-    async def test_cancelled_error_with_timeout_reason_returns_error(self):
+    async def test_cancelled_error_with_timeout_reason_returns_error(self, cancelled_error_agent):
         """Test that CancelledError with timeout reason returns result with error."""
         import asyncio
         
-        mock_llm_client = Mock()
-        mock_llm_client.generate_response = AsyncMock(
-            side_effect=asyncio.CancelledError("timeout")
-        )
-        
-        mock_settings = Mock()
-        mock_settings.llm_iteration_timeout = 180
-        
-        summary_agent = ExecutiveSummaryAgent(
-            llm_manager=mock_llm_client,
-            settings=mock_settings
-        )
+        summary_agent = cancelled_error_agent(asyncio.CancelledError("timeout"))
         
         result = await summary_agent.generate_executive_summary(
             content="Analysis content",
@@ -304,22 +309,11 @@ class TestExecutiveSummaryAgentCancellationHandling:
         assert "timeout" in result.error.lower()
     
     @pytest.mark.asyncio
-    async def test_cancelled_error_with_user_cancel_reason_returns_error(self):
+    async def test_cancelled_error_with_user_cancel_reason_returns_error(self, cancelled_error_agent):
         """Test that CancelledError with user_cancel reason returns result with error."""
         import asyncio
         
-        mock_llm_client = Mock()
-        mock_llm_client.generate_response = AsyncMock(
-            side_effect=asyncio.CancelledError("user_cancel")
-        )
-        
-        mock_settings = Mock()
-        mock_settings.llm_iteration_timeout = 180
-        
-        summary_agent = ExecutiveSummaryAgent(
-            llm_manager=mock_llm_client,
-            settings=mock_settings
-        )
+        summary_agent = cancelled_error_agent(asyncio.CancelledError("user_cancel"))
         
         result = await summary_agent.generate_executive_summary(
             content="Analysis content",
@@ -330,22 +324,11 @@ class TestExecutiveSummaryAgentCancellationHandling:
         assert "user_cancel" in result.error.lower()
     
     @pytest.mark.asyncio
-    async def test_cancelled_error_without_args_returns_error(self):
+    async def test_cancelled_error_without_args_returns_error(self, cancelled_error_agent):
         """Test that CancelledError without args returns result with error."""
         import asyncio
         
-        mock_llm_client = Mock()
-        mock_llm_client.generate_response = AsyncMock(
-            side_effect=asyncio.CancelledError()
-        )
-        
-        mock_settings = Mock()
-        mock_settings.llm_iteration_timeout = 180
-        
-        summary_agent = ExecutiveSummaryAgent(
-            llm_manager=mock_llm_client,
-            settings=mock_settings
-        )
+        summary_agent = cancelled_error_agent(asyncio.CancelledError())
         
         result = await summary_agent.generate_executive_summary(
             content="Analysis content",
@@ -357,22 +340,11 @@ class TestExecutiveSummaryAgentCancellationHandling:
         assert "cancelled" in result.error.lower()
     
     @pytest.mark.asyncio
-    async def test_cancelled_error_does_not_propagate(self):
+    async def test_cancelled_error_does_not_propagate(self, cancelled_error_agent):
         """Test that CancelledError does not propagate and is handled gracefully."""
         import asyncio
         
-        mock_llm_client = Mock()
-        mock_llm_client.generate_response = AsyncMock(
-            side_effect=asyncio.CancelledError("timeout")
-        )
-        
-        mock_settings = Mock()
-        mock_settings.llm_iteration_timeout = 180
-        
-        summary_agent = ExecutiveSummaryAgent(
-            llm_manager=mock_llm_client,
-            settings=mock_settings
-        )
+        summary_agent = cancelled_error_agent(asyncio.CancelledError("timeout"))
         
         # Should not raise CancelledError
         try:

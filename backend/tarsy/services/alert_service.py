@@ -402,11 +402,12 @@ class AlertService:
                 # Check tracker: if user requested cancel → CANCELLED, otherwise → TIMED_OUT
                 from tarsy.services.cancellation_tracker import is_user_cancel
                 if is_user_cancel(chain_context.session_id):
-                    # User requested cancellation
+                    # User requested cancellation - override error_msg with cancellation message
+                    error_msg = "Session cancelled by user"
                     self.session_manager.update_session_status(
                         chain_context.session_id,
                         AlertSessionStatus.CANCELLED.value,
-                        error_message="Session cancelled by user"
+                        error_message=error_msg
                     )
                     from tarsy.services.events.event_helpers import publish_session_cancelled
                     await publish_session_cancelled(chain_context.session_id)

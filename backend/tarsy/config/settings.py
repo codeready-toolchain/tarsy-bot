@@ -24,7 +24,7 @@ def is_testing() -> bool:
         "pytest" in os.environ.get("_", "") or
         "PYTEST_CURRENT_TEST" in os.environ or
         os.environ.get("TESTING", "").lower() == "true" or
-        "test" in sys.argv[0].lower() if len(sys.argv) > 0 else False
+        ("test" in sys.argv[0].lower() if len(sys.argv) > 0 else False)
     )
 
 

@@ -1863,3 +1863,201 @@ class TestAlertServicePausedWithNoneFinalAnalysis:
                 if 'status' in call.kwargs:
                     assert call.kwargs['status'] != 'completed'
 
+
+@pytest.mark.unit
+class TestAlertServiceTimeoutWithCancellation:
+    """Test AlertService handles timeout with user cancellation correctly."""
+    
+    @pytest.mark.asyncio
+    async def test_process_alert_timeout_with_user_cancellation(self):
+        """Test that timeout with user cancellation uses cancellation message in response."""
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.constants import AlertSessionStatus
+        
+        # Create mock settings
+        mock_settings = MockFactory.create_mock_settings(
+            agent_config_path=None,
+            alert_processing_timeout=0.1  # Short timeout for testing
+        )
+        
+        # Create service with mocked dependencies
+        with patch('tarsy.services.alert_service.RunbookService') as mock_runbook, \
+             patch('tarsy.services.alert_service.get_history_service') as mock_history, \
+             patch('tarsy.services.alert_service.ChainRegistry') as mock_chain_registry, \
+             patch('tarsy.services.alert_service.MCPServerRegistry') as mock_mcp_registry, \
+             patch('tarsy.services.alert_service.MCPClient') as mock_mcp_client, \
+             patch('tarsy.services.mcp_client_factory.MCPClientFactory') as mock_mcp_factory, \
+             patch('tarsy.services.alert_service.LLMManager') as mock_llm_manager, \
+             patch('tarsy.services.alert_service.AgentFactory') as mock_agent_factory, \
+             patch('tarsy.services.alert_service.ParallelStageExecutor') as mock_parallel_executor, \
+             patch('tarsy.services.alert_service.ExecutiveSummaryAgent') as mock_executive_summary:
+            
+            service = AlertService(mock_settings)
+            
+            # Initialize service
+            service.agent_factory = mock_agent_factory.return_value
+            service.parallel_executor = mock_parallel_executor.return_value
+            service.final_analysis_summarizer = mock_executive_summary.return_value
+            
+            # Mock LLM manager availability
+            service.llm_manager.is_available = Mock(return_value=True)
+            
+            # Mock history service methods
+            service.history_service.start_session_processing = AsyncMock()
+            
+            # Mock MCP client factory
+            mock_session_mcp_client = AsyncMock()
+            mock_session_mcp_client.close = AsyncMock()
+            service.mcp_client_factory.create_client = AsyncMock(return_value=mock_session_mcp_client)
+            
+            # Mock chain registry to return a valid chain
+            mock_chain = ChainConfigModel(
+                chain_id="test-chain",
+                alert_types=["kubernetes"],
+                stages=[ChainStageConfigModel(name="analysis", agent="TestAgent")]
+            )
+            service.chain_registry.get_chain_for_alert_type = Mock(return_value=mock_chain)
+            
+            # Mock session manager methods
+            service.session_manager.create_chain_history_session = Mock(return_value=True)
+            service.session_manager.update_session_status = Mock()
+            service.session_manager.update_session_timed_out = Mock()
+            
+            # Mock runbook service
+            service.runbook_service.download_runbook = AsyncMock(return_value="Test runbook")
+            
+            # Create test alert context
+            processing_alert = ProcessingAlert(
+                alert_type="kubernetes",
+                timestamp=now_us(),
+                alert_data={"test": "data"}
+            )
+            chain_context = ChainContext.from_processing_alert(
+                processing_alert=processing_alert,
+                session_id="test-timeout-cancel"
+            )
+            
+            # Mock _execute_chain_stages to raise TimeoutError
+            async def slow_execute(*args, **kwargs):
+                await asyncio.sleep(10)  # Sleep longer than timeout
+            
+            service._execute_chain_stages = AsyncMock(side_effect=slow_execute)
+            
+            # Test user cancellation scenario
+            with patch('tarsy.services.cancellation_tracker.is_user_cancel', return_value=True), \
+                 patch('tarsy.services.events.event_helpers.publish_session_created', new_callable=AsyncMock), \
+                 patch('tarsy.services.events.event_helpers.publish_session_started', new_callable=AsyncMock), \
+                 patch('tarsy.services.events.event_helpers.publish_session_cancelled', new_callable=AsyncMock) as mock_publish_cancelled:
+                
+                result = await service.process_alert(chain_context)
+                
+                # Verify session was marked as CANCELLED (not TIMED_OUT)
+                service.session_manager.update_session_status.assert_called_with(
+                    "test-timeout-cancel",
+                    AlertSessionStatus.CANCELLED.value,
+                    error_message="Session cancelled by user"
+                )
+                
+                # Verify cancel event was published
+                mock_publish_cancelled.assert_called_once_with("test-timeout-cancel")
+                
+                # Verify response contains cancellation message, NOT timeout message
+                assert "Session cancelled by user" in result
+                assert "timeout" not in result.lower()
+    
+    @pytest.mark.asyncio
+    async def test_process_alert_timeout_without_user_cancellation(self):
+        """Test that timeout without user cancellation uses timeout message in response."""
+        from tarsy.models.alert import ProcessingAlert
+        from tarsy.models.constants import AlertSessionStatus
+        
+        # Create mock settings
+        mock_settings = MockFactory.create_mock_settings(
+            agent_config_path=None,
+            alert_processing_timeout=0.1  # Short timeout for testing
+        )
+        
+        # Create service with mocked dependencies
+        with patch('tarsy.services.alert_service.RunbookService') as mock_runbook, \
+             patch('tarsy.services.alert_service.get_history_service') as mock_history, \
+             patch('tarsy.services.alert_service.ChainRegistry') as mock_chain_registry, \
+             patch('tarsy.services.alert_service.MCPServerRegistry') as mock_mcp_registry, \
+             patch('tarsy.services.alert_service.MCPClient') as mock_mcp_client, \
+             patch('tarsy.services.mcp_client_factory.MCPClientFactory') as mock_mcp_factory, \
+             patch('tarsy.services.alert_service.LLMManager') as mock_llm_manager, \
+             patch('tarsy.services.alert_service.AgentFactory') as mock_agent_factory, \
+             patch('tarsy.services.alert_service.ParallelStageExecutor') as mock_parallel_executor, \
+             patch('tarsy.services.alert_service.ExecutiveSummaryAgent') as mock_executive_summary:
+            
+            service = AlertService(mock_settings)
+            
+            # Initialize service
+            service.agent_factory = mock_agent_factory.return_value
+            service.parallel_executor = mock_parallel_executor.return_value
+            service.final_analysis_summarizer = mock_executive_summary.return_value
+            
+            # Mock LLM manager availability
+            service.llm_manager.is_available = Mock(return_value=True)
+            
+            # Mock history service methods
+            service.history_service.start_session_processing = AsyncMock()
+            
+            # Mock MCP client factory
+            mock_session_mcp_client = AsyncMock()
+            mock_session_mcp_client.close = AsyncMock()
+            service.mcp_client_factory.create_client = AsyncMock(return_value=mock_session_mcp_client)
+            
+            # Mock chain registry to return a valid chain
+            mock_chain = ChainConfigModel(
+                chain_id="test-chain",
+                alert_types=["kubernetes"],
+                stages=[ChainStageConfigModel(name="analysis", agent="TestAgent")]
+            )
+            service.chain_registry.get_chain_for_alert_type = Mock(return_value=mock_chain)
+            
+            # Mock session manager methods
+            service.session_manager.create_chain_history_session = Mock(return_value=True)
+            service.session_manager.update_session_status = Mock()
+            service.session_manager.update_session_timed_out = Mock()
+            
+            # Mock runbook service
+            service.runbook_service.download_runbook = AsyncMock(return_value="Test runbook")
+            
+            # Create test alert context
+            processing_alert = ProcessingAlert(
+                alert_type="kubernetes",
+                timestamp=now_us(),
+                alert_data={"test": "data"}
+            )
+            chain_context = ChainContext.from_processing_alert(
+                processing_alert=processing_alert,
+                session_id="test-timeout-system"
+            )
+            
+            # Mock _execute_chain_stages to raise TimeoutError
+            async def slow_execute(*args, **kwargs):
+                await asyncio.sleep(10)  # Sleep longer than timeout
+            
+            service._execute_chain_stages = AsyncMock(side_effect=slow_execute)
+            
+            # Test system timeout scenario (no user cancellation)
+            with patch('tarsy.services.cancellation_tracker.is_user_cancel', return_value=False), \
+                 patch('tarsy.services.events.event_helpers.publish_session_created', new_callable=AsyncMock), \
+                 patch('tarsy.services.events.event_helpers.publish_session_started', new_callable=AsyncMock), \
+                 patch('tarsy.services.events.event_helpers.publish_session_timed_out', new_callable=AsyncMock) as mock_publish_timed_out:
+                
+                result = await service.process_alert(chain_context)
+                
+                # Verify session was marked as TIMED_OUT (not CANCELLED)
+                service.session_manager.update_session_timed_out.assert_called_once()
+                call_args = service.session_manager.update_session_timed_out.call_args[0]
+                assert call_args[0] == "test-timeout-system"
+                assert "timeout" in call_args[1].lower()
+                
+                # Verify timeout event was published
+                mock_publish_timed_out.assert_called_once_with("test-timeout-system")
+                
+                # Verify response contains timeout message, NOT cancellation message
+                assert "timeout" in result.lower()
+                assert "cancelled by user" not in result.lower()
+

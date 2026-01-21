@@ -576,3 +576,96 @@ class TestStageExecutionEventHook:
                     parallel_index=0,
                     error_message=None
                 )
+    
+    @pytest.mark.asyncio
+    async def test_execute_timed_out_status_publishes_completed_with_error(self, event_hook):
+        """Test that TIMED_OUT status publishes stage.completed with error_message."""
+        timed_out_stage = StageExecution(
+            execution_id="test-stage-execution-0",
+            session_id="test-session",
+            stage_id="test-stage-0",
+            stage_index=0,
+            stage_name="Test Stage",
+            agent="KubernetesAgent",
+            status=StageStatus.TIMED_OUT.value,
+            started_at_us=1640995200000000,
+            error_message="Session timed out after 300s"
+        )
+        
+        with patch("tarsy.services.events.event_helpers.publish_stage_started", new_callable=AsyncMock) as mock_started:
+            with patch("tarsy.services.events.event_helpers.publish_stage_completed", new_callable=AsyncMock) as mock_completed:
+                await event_hook.execute(timed_out_stage)
+                
+                mock_started.assert_not_called()
+                mock_completed.assert_called_once_with(
+                    session_id="test-session",
+                    stage_id="test-stage-execution-0",
+                    stage_name="Test Stage",
+                    status="timed_out",  # Verify it's a string, not enum
+                    chat_id=None,
+                    parent_stage_execution_id=None,
+                    parallel_index=0,
+                    error_message="Session timed out after 300s"
+                )
+    
+    @pytest.mark.asyncio
+    async def test_execute_cancelled_status_publishes_completed_with_error(self, event_hook):
+        """Test that CANCELLED status publishes stage.completed with error_message."""
+        cancelled_stage = StageExecution(
+            execution_id="test-stage-execution-0",
+            session_id="test-session",
+            stage_id="test-stage-0",
+            stage_index=0,
+            stage_name="Test Stage",
+            agent="KubernetesAgent",
+            status=StageStatus.CANCELLED.value,
+            started_at_us=1640995200000000,
+            error_message="Stage cancelled by user"
+        )
+        
+        with patch("tarsy.services.events.event_helpers.publish_stage_started", new_callable=AsyncMock) as mock_started:
+            with patch("tarsy.services.events.event_helpers.publish_stage_completed", new_callable=AsyncMock) as mock_completed:
+                await event_hook.execute(cancelled_stage)
+                
+                mock_started.assert_not_called()
+                mock_completed.assert_called_once_with(
+                    session_id="test-session",
+                    stage_id="test-stage-execution-0",
+                    stage_name="Test Stage",
+                    status="cancelled",  # Verify it's a string, not enum
+                    chat_id=None,
+                    parent_stage_execution_id=None,
+                    parallel_index=0,
+                    error_message="Stage cancelled by user"
+                )
+    
+    @pytest.mark.asyncio
+    async def test_execute_failed_status_with_error_message(self, event_hook):
+        """Test that FAILED status publishes stage.completed with error_message when present."""
+        failed_stage_with_error = StageExecution(
+            execution_id="test-stage-execution-0",
+            session_id="test-session",
+            stage_id="test-stage-0",
+            stage_index=0,
+            stage_name="Test Stage",
+            agent="KubernetesAgent",
+            status=StageStatus.FAILED.value,
+            started_at_us=1640995200000000,
+            error_message="Connection to database failed: timeout after 30s"
+        )
+        
+        with patch("tarsy.services.events.event_helpers.publish_stage_started", new_callable=AsyncMock) as mock_started:
+            with patch("tarsy.services.events.event_helpers.publish_stage_completed", new_callable=AsyncMock) as mock_completed:
+                await event_hook.execute(failed_stage_with_error)
+                
+                mock_started.assert_not_called()
+                mock_completed.assert_called_once_with(
+                    session_id="test-session",
+                    stage_id="test-stage-execution-0",
+                    stage_name="Test Stage",
+                    status="failed",
+                    chat_id=None,
+                    parent_stage_execution_id=None,
+                    parallel_index=0,
+                    error_message="Connection to database failed: timeout after 30s"
+                )
