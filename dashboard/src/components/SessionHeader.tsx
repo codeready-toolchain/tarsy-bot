@@ -16,8 +16,9 @@ import {
   Alert,
   AlertTitle,
 } from '@mui/material';
-import { CancelOutlined, Replay as ReplayIcon, PlayArrow, PauseCircle, CallSplit } from '@mui/icons-material';
+import { CancelOutlined, Replay as ReplayIcon, PlayArrow, PauseCircle, CallSplit, Assessment } from '@mui/icons-material';
 import StatusBadge from './StatusBadge';
+import ScoreBadge from './ScoreBadge';
 import ProgressIndicator from './ProgressIndicator';
 import TokenUsageDisplay from './TokenUsageDisplay';
 import { formatTimestamp } from '../utils/timestamp';
@@ -80,9 +81,9 @@ const MAX_SUMMARY_LENGTH = 300;
 /**
  * Renders session summary with proper statistics display or fallback to JSON
  */
-function SessionSummary({ summary, sessionStatus, sessionTokens, mcpSelection, stages }: { 
-  summary: any, 
-  sessionStatus: string, 
+function SessionSummary({ summary, sessionStatus, sessionTokens, mcpSelection, stages }: {
+  summary: any,
+  sessionStatus: string,
   sessionTokens?: { input_tokens?: number; output_tokens?: number; total_tokens?: number },
   mcpSelection?: any,
   stages?: any[]
@@ -357,7 +358,7 @@ function SessionSummary({ summary, sessionStatus, sessionTokens, mcpSelection, s
            
            {/* EP-0009: Token usage badge */}
            {sessionTokens && (sessionTokens.total_tokens || sessionTokens.input_tokens || sessionTokens.output_tokens) && (
-             <Box sx={(theme) => ({ 
+             <Box sx={(theme) => ({
                display: 'flex',
                alignItems: 'center',
                gap: 0.5,
@@ -430,7 +431,7 @@ function SessionSummary({ summary, sessionStatus, sessionTokens, mcpSelection, s
  * SessionHeader component - Phase 3
  * Displays session metadata including status, timing, and summary information
  */
-function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
+function SessionHeader({ session, onRefresh, onScoreClick }: SessionHeaderProps) {
   const navigate = useNavigate();
   
   const isInProgress =
@@ -451,6 +452,12 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
   // Resume state
   const [isResuming, setIsResuming] = useState(false);
   const [resumeError, setResumeError] = useState<string | null>(null);
+
+  // EP-0028: Scoring state
+  const [isScoring, setIsScoring] = useState(false);
+  const [scoringError, setScoringError] = useState<string | null>(null);
+  const [scoringSuccess, setScoringSuccess] = useState<string | null>(null);
+  const [showRescoreDialog, setShowRescoreDialog] = useState(false);
   
   // Detect status changes from in_progress to completed and trigger refresh
   useEffect(() => {
@@ -564,6 +571,64 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
     });
   };
 
+  // EP-0028: Handle score session button click
+  const handleScoreSession = () => {
+    // Check if session already has a completed score
+    if (session.score_status === 'completed') {
+      // Show confirmation dialog for rescoring
+      setShowRescoreDialog(true);
+    } else {
+      // No existing score, proceed with scoring
+      performScoring(false);
+    }
+  };
+
+  // EP-0028: Perform the actual scoring API call
+  const performScoring = async (forceRescore: boolean) => {
+    setIsScoring(true);
+    setScoringError(null);
+    setScoringSuccess(null);
+
+    try {
+      const result = await apiClient.scoreSession(
+        session.session_id,
+        forceRescore ? { force_rescore: true } : undefined
+      );
+
+      // Show success message based on whether scoring was initiated or already exists
+      if (result.status === 'completed') {
+        setScoringSuccess('Score already exists for this session.');
+      } else if (result.status === 'pending' || result.status === 'in_progress') {
+        setScoringSuccess('Scoring initiated successfully! Check the Score tab for progress.');
+      } else if (result.status === 'failed') {
+        setScoringError('Previous scoring attempt failed. Try again.');
+      }
+
+      // Refresh session data to show updated score
+      if (onRefresh) {
+        setTimeout(() => onRefresh(), 500);
+      }
+    } catch (error) {
+      const errorMessage = handleAPIError(error);
+      setScoringError(errorMessage);
+    } finally {
+      setIsScoring(false);
+    }
+  };
+
+  // EP-0028: Handle rescore dialog close
+  const handleRescoreDialogClose = () => {
+    if (!isScoring) {
+      setShowRescoreDialog(false);
+    }
+  };
+
+  // EP-0028: Handle rescore confirmation
+  const handleConfirmRescore = async () => {
+    setShowRescoreDialog(false);
+    await performScoring(true);
+  };
+
   return (
     <Paper 
       elevation={2} 
@@ -606,7 +671,17 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
               <Box sx={{ transform: 'scale(1.1)' }}>
                 <StatusBadge status={session.status} />
               </Box>
-              
+
+              {/* Session Score Badge - prominently positioned next to status */}
+              <Box sx={{ transform: 'scale(1.1)' }}>
+                <ScoreBadge
+                  score={session.score_total ?? null}
+                  status={session.score_status}
+                  size="small"
+                  onClick={onScoreClick}
+                />
+              </Box>
+
               {/* Parallel Agents indicator - positioned prominently next to status */}
               {session.stages && sessionHasParallelStages(session.stages) && (
                 <Tooltip 
@@ -881,39 +956,95 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
               
               {/* Re-submit Button - Only for terminal sessions */}
               {isTerminalStatus && (
-                <Tooltip title="Submit a new alert with the same data" placement="left">
-                  <Button
-                    variant="outlined"
-                    size="large"
-                    onClick={handleResubmit}
-                    sx={{
-                      minWidth: 180,
-                      textTransform: 'none',
-                      fontWeight: 600,
-                      fontSize: '0.95rem',
-                      py: 1,
-                      px: 2.5,
-                      backgroundColor: 'white',
-                      color: 'info.main',
-                      borderColor: 'info.main',
-                      borderWidth: 1.5,
-                      '&:hover': {
-                        backgroundColor: 'info.main',
+                <Box sx={{ display: 'flex', gap: 1.5, width: '100%' }}>
+                  <Tooltip title="Submit a new alert with the same data" placement="left">
+                    <Button
+                      variant="outlined"
+                      size="large"
+                      onClick={handleResubmit}
+                      sx={{
+                        flex: 1,
+                        minWidth: 180,
+                        textTransform: 'none',
+                        fontWeight: 600,
+                        fontSize: '0.95rem',
+                        py: 1,
+                        px: 2.5,
+                        backgroundColor: 'white',
+                        color: 'info.main',
                         borderColor: 'info.main',
-                        color: 'white',
-                      },
-                      transition: 'all 0.2s ease-in-out',
-                    }}
-                  >
-                    <ReplayIcon 
-                      sx={{ 
-                        mr: 1,
-                        fontSize: '1.2rem',
-                      }} 
-                    />
-                    RE-SUBMIT ALERT
-                  </Button>
-                </Tooltip>
+                        borderWidth: 1.5,
+                        '&:hover': {
+                          backgroundColor: 'info.main',
+                          borderColor: 'info.main',
+                          color: 'white',
+                        },
+                        transition: 'all 0.2s ease-in-out',
+                      }}
+                    >
+                      <ReplayIcon
+                        sx={{
+                          mr: 1,
+                          fontSize: '1.2rem',
+                        }}
+                      />
+                      RE-SUBMIT ALERT
+                    </Button>
+                  </Tooltip>
+
+                  {/* EP-0028: Score Session Button */}
+                  <Tooltip title="Evaluate investigation quality using LLM judge" placement="right">
+                    <Button
+                      variant="outlined"
+                      size="large"
+                      onClick={handleScoreSession}
+                      disabled={isScoring}
+                      sx={{
+                        flex: 1,
+                        minWidth: 180,
+                        textTransform: 'none',
+                        fontWeight: 600,
+                        fontSize: '0.95rem',
+                        py: 1,
+                        px: 2.5,
+                        backgroundColor: 'white',
+                        color: 'warning.main',
+                        borderColor: 'warning.main',
+                        borderWidth: 1.5,
+                        '&:hover': {
+                          backgroundColor: 'warning.main',
+                          borderColor: 'warning.main',
+                          color: 'white',
+                        },
+                        transition: 'all 0.2s ease-in-out',
+                      }}
+                    >
+                      {isScoring ? (
+                        <CircularProgress size={16} sx={{ mr: 1 }} />
+                      ) : (
+                        <Assessment
+                          sx={{
+                            mr: 1,
+                            fontSize: '1.2rem',
+                          }}
+                        />
+                      )}
+                      {isScoring ? 'SCORING...' : 'SCORE SESSION'}
+                    </Button>
+                  </Tooltip>
+                </Box>
+              )}
+
+              {/* EP-0028: Scoring success/error messages */}
+              {isTerminalStatus && scoringSuccess && (
+                <Alert severity="success" onClose={() => setScoringSuccess(null)}>
+                  {scoringSuccess}
+                </Alert>
+              )}
+              {isTerminalStatus && scoringError && (
+                <Alert severity="error" onClose={() => setScoringError(null)}>
+                  {scoringError}
+                </Alert>
               )}
             </Box>
           </Box>
@@ -935,21 +1066,55 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
             <ErrorAlert error={cancelError} sx={{ mt: 2, p: 2 }} />
           </DialogContent>
           <DialogActions sx={{ px: 3, pb: 2 }}>
-            <Button 
-              onClick={handleDialogClose} 
+            <Button
+              onClick={handleDialogClose}
               disabled={isCanceling}
               color="inherit"
             >
               Cancel
             </Button>
-            <Button 
-              onClick={handleConfirmCancel} 
-              variant="contained" 
+            <Button
+              onClick={handleConfirmCancel}
+              variant="contained"
               color="warning"
               disabled={isCanceling}
               startIcon={isCanceling ? <CircularProgress size={16} color="inherit" /> : undefined}
             >
               {isCanceling ? 'CANCELING...' : 'CONFIRM CANCELLATION'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* EP-0028: Rescore Confirmation Dialog */}
+        <Dialog
+          open={showRescoreDialog}
+          onClose={handleRescoreDialogClose}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle>Re-score Session?</DialogTitle>
+          <DialogContent>
+            <DialogContentText>
+              This session already has a completed score. Are you sure you want to re-score it?
+              This will create a new score and the previous score will be replaced.
+            </DialogContentText>
+          </DialogContent>
+          <DialogActions sx={{ px: 3, pb: 2 }}>
+            <Button
+              onClick={handleRescoreDialogClose}
+              disabled={isScoring}
+              color="inherit"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmRescore}
+              variant="contained"
+              color="warning"
+              disabled={isScoring}
+              startIcon={isScoring ? <CircularProgress size={16} color="inherit" /> : undefined}
+            >
+              {isScoring ? 'SCORING...' : 'CONFIRM RE-SCORE'}
             </Button>
           </DialogActions>
         </Dialog>
@@ -960,7 +1125,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
             session.status === SESSION_STATUS.IN_PROGRESS ||
             session.status === SESSION_STATUS.PENDING ||
             session.status === SESSION_STATUS.CANCELING) && (
-            <SessionSummary 
+            <SessionSummary
               summary={{
                 total_interactions: session.total_interactions,
                 llm_interactions: session.llm_interaction_count,
@@ -971,7 +1136,7 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
                   completed_stages: session.completed_stages || 0,
                   failed_stages: session.failed_stages || 0
                 } : undefined
-              }} 
+              }}
               sessionStatus={session.status}
               sessionTokens={{
                 input_tokens: session.session_input_tokens ?? undefined,

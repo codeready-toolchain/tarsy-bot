@@ -1779,6 +1779,10 @@ class TestHistoryControllerResponseFormat:
             "has_parallel_stages",
             # Slack message fingerprint for notification threading
             "slack_message_fingerprint"
+            # session scores
+            "score_total",
+            "score_status",
+
         }
         actual_fields = set(session.keys())
         assert required_fields.issubset(actual_fields)

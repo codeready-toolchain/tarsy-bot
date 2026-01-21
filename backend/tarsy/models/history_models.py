@@ -228,7 +228,11 @@ class SessionOverview(BaseModel):
     slack_message_fingerprint: Optional[str] = None
     
     chat_message_count: Optional[int] = None  # Number of user messages in follow-up chat (if chat exists)
-    
+
+    # Session scoring fields (optional, populated when score exists)
+    score_total: Optional[int] = None  # 0-100, NULL if not scored or scoring incomplete
+    score_status: Optional[str] = None  # pending|in_progress|completed|failed
+
     # Calculated properties
     @computed_field
     @property
@@ -433,9 +437,12 @@ class DetailedSession(BaseModel):
     
     # Token usage aggregations
     session_input_tokens: Optional[int] = None
-    session_output_tokens: Optional[int] = None  
+    session_output_tokens: Optional[int] = None
     session_total_tokens: Optional[int] = None
-    
+
+    score_total: Optional[int] = None  # 0-100, NULL if not scored or scoring incomplete
+    score_status: Optional[str] = None  # pending|in_progress|completed|failed
+
     # Complete stage executions with all their interactions
     stages: List[DetailedStage] = Field(default_factory=list)  # Each stage contains its full interaction timeline
     

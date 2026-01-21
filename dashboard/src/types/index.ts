@@ -25,12 +25,12 @@ export interface Session {
   duration_ms: number | null; // Computed property from backend
   error_message: string | null;
   pause_metadata: PauseMetadata | null;
-  
+
   // Interaction counts (now always present)
   llm_interaction_count: number;
   mcp_communication_count: number;
   total_interactions: number;
-  
+
   // Chain information (now always present since all sessions are chains)
   chain_id: string;
   total_stages: number | null;
@@ -38,10 +38,10 @@ export interface Session {
   failed_stages: number;
   current_stage_index: number | null;
   has_parallel_stages: boolean; // Indicates if session has any stages with parallel execution
-  
+
   // Session-level token aggregations
   session_input_tokens: number | null;
-  session_output_tokens: number | null;  
+  session_output_tokens: number | null;
   session_total_tokens: number | null;
   
   // Slack integration
@@ -50,8 +50,12 @@ export interface Session {
   // Final analysis and summary
   final_analysis?: string | null;
   final_analysis_summary?: string | null;
-  
+
   chat_message_count?: number; // Number of user messages in follow-up chat (if chat exists)
+
+  // EP-0028: Optional score fields (included when session has been scored)
+  score_total?: number | null; // Total score (0-100), NULL if not scored or scoring not completed
+  score_status?: ScoringStatus; // Scoring status (pending/in_progress/completed/failed)
 }
 
 // Phase 5: Interaction summary for stages
@@ -395,6 +399,7 @@ export interface AlertListProps {
 export interface AlertListItemProps {
   session: Session;
   onClick?: (sessionId: string) => void;
+  onScoreClick?: (sessionId: string) => void;
   // Phase 4: Search highlighting
   searchTerm?: string;
 }
@@ -422,6 +427,7 @@ export interface HistoricalAlertsListProps {
   error?: string | null;
   onRefresh?: () => void;
   onSessionClick?: (sessionId: string) => void;
+  onScoreClick?: (sessionId: string) => void;
   // Phase 4: Filter-related props
   filters?: SessionFilter;
   filteredCount?: number;
@@ -438,6 +444,7 @@ export interface DashboardLayoutProps {
   onRefreshActive?: () => void;
   onRefreshHistorical?: () => void;
   onSessionClick?: (sessionId: string) => void;
+  onScoreClick?: (sessionId: string) => void;
   // Phase 4: Filter-related props
   filters?: SessionFilter;
   filteredCount?: number;
@@ -458,6 +465,7 @@ export interface SessionDetailPageProps {
 export interface SessionHeaderProps {
   session: DetailedSession;
   onRefresh?: () => void;
+  onScoreClick?: () => void;
 }
 
 // Phase 3: Original alert card props
@@ -789,5 +797,75 @@ export interface ChatUserMessageEvent {
   message_id: string;
   content: string;
   author: string;
+  timestamp_us: number;
+}
+
+// EP-0028: Session Scoring types
+
+export type ScoringStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
+
+export interface SessionScore {
+  score_id: string;
+  session_id: string;
+  status: ScoringStatus;
+  prompt_hash: string;
+  total_score: number | null; // 0-100, NULL if status != completed
+  score_analysis: string | null; // Freeform text, NULL if status != completed
+  missing_tools_analysis: string | null; // Freeform text, NULL if status != completed
+  error_message: string | null; // Set when status = failed
+  score_triggered_by: string;
+  started_at_us: number;
+  completed_at_us: number | null; // NULL if not terminal
+  current_prompt_used: boolean; // Computed field - true if prompt_hash matches current criteria
+}
+
+export interface ScoreSessionRequest {
+  force_rescore?: boolean; // Optional: re-score even if score exists
+}
+
+export interface ScoreSessionResponse {
+  score_id: string;
+  session_id: string;
+  status: ScoringStatus;
+  prompt_hash?: string;
+  total_score?: number | null;
+  score_analysis?: string | null;
+  missing_tools_analysis?: string | null;
+  error_message?: string | null;
+  score_triggered_by?: string;
+  started_at_us?: number;
+  completed_at_us?: number | null;
+  current_prompt_used?: boolean;
+}
+
+// WebSocket events for scoring
+export interface ScoringStartedEvent {
+  type: 'scoring.started';
+  score_id: string;
+  session_id: string;
+  timestamp_us: number;
+}
+
+export interface ScoringProgressEvent {
+  type: 'scoring.progress';
+  score_id: string;
+  session_id: string;
+  phase: string; // e.g., 'analyzing_methodology', 'identifying_missing_tools'
+  timestamp_us: number;
+}
+
+export interface ScoringCompletedEvent {
+  type: 'scoring.completed';
+  score_id: string;
+  session_id: string;
+  total_score: number;
+  timestamp_us: number;
+}
+
+export interface ScoringFailedEvent {
+  type: 'scoring.failed';
+  score_id: string;
+  session_id: string;
+  error_message: string;
   timestamp_us: number;
 }
