@@ -625,8 +625,11 @@ class TestAlertServiceHistoryIntegration:
         # Create AlertService directly with mock settings
         service = AlertService(mock_settings)
 
+        from tarsy.integrations.notifications.summarizer import ExecutiveSummaryResult
         mock_summary = AsyncMock()
-        mock_summary.generate_executive_summary.return_value = "Test analysis"
+        mock_summary.generate_executive_summary.return_value = ExecutiveSummaryResult(
+            summary="Test analysis", error=None
+        )
         service.final_analysis_summarizer = mock_summary
         
         # Mock LLM manager to appear available

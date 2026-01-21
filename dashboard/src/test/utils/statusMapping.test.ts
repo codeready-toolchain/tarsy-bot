@@ -48,6 +48,7 @@ describe('statusMapping', () => {
         'Completed',
         'Failed',
         'Cancelled',
+        'Timed Out',
       ]);
     });
   });
@@ -57,6 +58,7 @@ describe('statusMapping', () => {
       expect(isTerminalProgressStatus('Completed')).toBe(true);
       expect(isTerminalProgressStatus('Failed')).toBe(true);
       expect(isTerminalProgressStatus('Cancelled')).toBe(true);
+      expect(isTerminalProgressStatus('Timed Out')).toBe(true);
     });
 
     it('should return false for non-terminal progress statuses', () => {
