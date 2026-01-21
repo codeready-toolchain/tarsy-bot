@@ -8,7 +8,7 @@ import {
   HourglassEmpty,
   Cancel,
   PauseCircle,
-  TimerOff
+  AccessAlarm
 } from '@mui/icons-material';
 import { SESSION_STATUS } from '../utils/statusConstants';
 import type { StatusBadgeProps } from '../types';
@@ -65,7 +65,7 @@ const getStatusConfig = (status: string): {
     case SESSION_STATUS.TIMED_OUT:
       return {
         color: 'error',
-        icon: <TimerOff sx={{ fontSize: 16 }} />,
+        icon: <AccessAlarm sx={{ fontSize: 16 }} />,
         label: 'Timed Out'
       };
     default: 

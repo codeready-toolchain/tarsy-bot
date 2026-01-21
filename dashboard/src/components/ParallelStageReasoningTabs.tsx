@@ -14,7 +14,6 @@ import {
   CallSplit,
   CancelOutlined,
   PauseCircle,
-  TimerOff,
 } from '@mui/icons-material';
 import type { ChatFlowItemData } from '../utils/chatFlowParser';
 import type { StageExecution } from '../types';
@@ -83,7 +82,7 @@ const getStatusIcon = (status: string) => {
     case STAGE_STATUS.FAILED:
       return <ErrorIcon fontSize="small" />;
     case STAGE_STATUS.TIMED_OUT:
-      return <TimerOff fontSize="small" />;
+      return <ErrorIcon fontSize="small" />;
     case STAGE_STATUS.COMPLETED:
       return <CheckCircle fontSize="small" />;
     case STAGE_STATUS.CANCELLED:

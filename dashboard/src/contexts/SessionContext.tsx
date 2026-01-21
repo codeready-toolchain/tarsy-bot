@@ -1,8 +1,8 @@
-import { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { apiClient, handleAPIError } from '../services/api';
 import type { DetailedSession, Session, StageExecution } from '../types';
-import { isValidSessionStatus, SESSION_STATUS } from '../utils/statusConstants';
+import { isValidSessionStatus, SESSION_STATUS, type StageStatus } from '../utils/statusConstants';
 import {
   createParallelPlaceholders,
   replacePlaceholderWithRealStage
@@ -19,7 +19,8 @@ interface SessionContextData {
   refreshSessionSummary: (sessionId: string) => Promise<void>;
   refreshSessionStages: (sessionId: string) => Promise<void>;
   updateFinalAnalysis: (analysis: string) => void;
-  updateSessionStatus: (newStatus: DetailedSession['status'], errorMessage?: string) => void;
+  updateSessionStatus: (newStatus: DetailedSession['status'], errorMessage?: string | null) => void;
+  updateStageStatus: (stageId: string, status: StageStatus, errorMessage?: string | null, completedAtUs?: number | null) => void;
   // Placeholder management for parallel stages
   handleParallelStageStarted: (stageExecution: StageExecution) => void;
   handleParallelChildStageStarted: (stageExecution: StageExecution) => void;
@@ -48,7 +49,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
    * - Force refresh is requested
    * - No session data exists
    */
-  const fetchSessionDetail = async (sessionId: string, forceRefresh: boolean = false) => {
+  const fetchSessionDetail = useCallback(async (sessionId: string, forceRefresh: boolean = false) => {
     // Skip fetch if we already have this session cached and no force refresh
     if (!forceRefresh && cachedSessionId === sessionId && session) {
       console.log(`🎯 [SessionContext] ✅ CACHE HIT - Using cached session data for ${sessionId}, no API call needed!`);
@@ -98,30 +99,30 @@ export function SessionProvider({ children }: SessionProviderProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [cachedSessionId, session, setSession, setLoading, setError, setCachedSessionId]);
 
   /**
    * Update session state with a function (for WebSocket updates, etc.)
    */
-  const updateSession = (updater: (prev: DetailedSession | null) => DetailedSession | null) => {
+  const updateSession = useCallback((updater: (prev: DetailedSession | null) => DetailedSession | null) => {
     setSession(updater);
-  };
+  }, [setSession]);
 
   /**
    * Clear cached session data (useful for navigation cleanup)
    */
-  const clearSession = () => {
+  const clearSession = useCallback(() => {
     console.log(`🧹 [SessionContext] Clearing cached session data`);
     setSession(null);
     setCachedSessionId(null);
     setError(null);
     setLoading(false);
-  };
+  }, [setSession, setCachedSessionId, setError, setLoading]);
 
   /**
    * Lightweight refresh of session summary statistics only
    */
-  const refreshSessionSummary = async (sessionId: string) => {
+  const refreshSessionSummary = useCallback(async (sessionId: string) => {
     try {
       console.log('🔄 [SessionContext] Refreshing session summary statistics for:', sessionId);
       const summaryData = await apiClient.getSessionSummary(sessionId);
@@ -150,12 +151,12 @@ export function SessionProvider({ children }: SessionProviderProps) {
     } catch (error) {
       console.error('❌ [SessionContext] Failed to refresh session summary:', error);
     }
-  };
+  }, [setSession]);
 
   /**
    * Partial update for session stages (avoids full page refresh)
    */
-  const refreshSessionStages = async (sessionId: string) => {
+  const refreshSessionStages = useCallback(async (sessionId: string) => {
     try {
       console.log('🔄 [SessionContext] Refreshing session stages for:', sessionId);
       const sessionData = await apiClient.getSessionDetail(sessionId);
@@ -200,12 +201,12 @@ export function SessionProvider({ children }: SessionProviderProps) {
     } catch (error) {
       console.error('❌ [SessionContext] Failed to refresh session stages:', error);
     }
-  };
+  }, [setSession]);
 
   /**
    * Direct update of final analysis (no API call needed)
    */
-  const updateFinalAnalysis = (analysis: string) => {
+  const updateFinalAnalysis = useCallback((analysis: string) => {
     console.log('🎯 [SessionContext] Updating final analysis directly');
     setSession(prevSession => {
       if (!prevSession) return prevSession;
@@ -218,12 +219,12 @@ export function SessionProvider({ children }: SessionProviderProps) {
         final_analysis: analysis
       };
     });
-  };
+  }, [setSession]);
 
   /**
    * Direct update of session status (no API call needed)
    */
-  const updateSessionStatus = (newStatus: DetailedSession['status'], errorMessage?: string) => {
+  const updateSessionStatus = useCallback((newStatus: DetailedSession['status'], errorMessage?: string | null) => {
     console.log('🔄 [SessionContext] Updating session status directly:', newStatus);
     setSession(prevSession => {
       if (!prevSession) return prevSession;
@@ -234,15 +235,15 @@ export function SessionProvider({ children }: SessionProviderProps) {
       return {
         ...prevSession,
         status: newStatus,
-        error_message: errorMessage || prevSession.error_message
+        error_message: errorMessage === undefined ? prevSession.error_message : errorMessage
       };
     });
-  };
+  }, [setSession]);
 
   /**
    * Handle parallel parent stage started event - inject placeholders immediately
    */
-  const handleParallelStageStarted = (stageExecution: StageExecution) => {
+  const handleParallelStageStarted = useCallback((stageExecution: StageExecution) => {
     console.log('🚀 [SessionContext] Parallel parent stage started, injecting placeholders:', {
       execution_id: stageExecution.execution_id,
       parallel_type: stageExecution.parallel_type,
@@ -284,12 +285,12 @@ export function SessionProvider({ children }: SessionProviderProps) {
         stages: updatedStages
       };
     });
-  };
+  }, [setSession]);
 
   /**
    * Handle parallel child stage started event - replace placeholder with real data
    */
-  const handleParallelChildStageStarted = (stageExecution: StageExecution) => {
+  const handleParallelChildStageStarted = useCallback((stageExecution: StageExecution) => {
     console.log('🔄 [SessionContext] Parallel child stage started, replacing placeholder:', {
       execution_id: stageExecution.execution_id,
       parent_id: stageExecution.parent_stage_execution_id,
@@ -309,7 +310,79 @@ export function SessionProvider({ children }: SessionProviderProps) {
         stages: updatedStages
       };
     });
-  };
+  }, [setSession]);
+
+  /**
+   * Update a specific stage's status and error message from WebSocket event
+   * This avoids a full API refresh and prevents race conditions
+   */
+  const updateStageStatus = useCallback((
+    stageId: string, 
+    status: StageStatus, 
+    errorMessage?: string | null,
+    completedAtUs?: number | null
+  ) => {
+    console.log('🔄 [SessionContext] Updating stage status from WebSocket:', {
+      stageId,
+      status,
+      errorMessage,
+      completedAtUs
+    });
+
+    setSession(prevSession => {
+      
+      if (!prevSession) return prevSession;
+      
+      // CRITICAL: If stages array is empty, skip this update and let the API refresh handle it
+      // WebSocket events can arrive before initial session data loads, causing updates to stale state
+      if (!prevSession.stages || prevSession.stages.length === 0) {
+        console.log('⏭️ [SessionContext] Skipping WebSocket stage update - session data not loaded yet');
+        return prevSession;
+      }
+
+      let stageFound = false;
+
+      // Helper function to update stage recursively (handles nested parallel stages)
+      const updateStageRecursive = (stages: StageExecution[]): StageExecution[] => {
+        return stages.map(stage => {
+          // Check if this is the stage we're looking for
+          if (stage.execution_id === stageId) {
+            stageFound = true;
+            return {
+              ...stage,
+              status: status,
+              error_message: errorMessage === undefined ? stage.error_message : errorMessage,
+              completed_at_us: completedAtUs === undefined ? stage.completed_at_us : completedAtUs
+            };
+          }
+
+          // Check nested parallel executions
+          if (stage.parallel_executions && stage.parallel_executions.length > 0) {
+            return {
+              ...stage,
+              parallel_executions: updateStageRecursive(stage.parallel_executions)
+            };
+          }
+
+          return stage;
+        });
+      };
+
+      const updatedStages = updateStageRecursive(prevSession.stages || []);
+      
+      // If stage wasn't found, skip this update - let the API refresh handle it
+      // This prevents creating inconsistent state when WebSocket arrives before API data
+      if (!stageFound) {
+        console.log('⏭️ [SessionContext] Skipping WebSocket stage update - stage not found yet (will be handled by API refresh)');
+        return prevSession;
+      }
+
+      return {
+        ...prevSession,
+        stages: updatedStages
+      };
+    });
+  }, [setSession]);
 
   const contextValue: SessionContextData = {
     session,
@@ -323,6 +396,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     refreshSessionStages,
     updateFinalAnalysis,
     updateSessionStatus,
+    updateStageStatus,
     // Placeholder management
     handleParallelStageStarted,
     handleParallelChildStageStarted
@@ -364,6 +438,7 @@ export function useSession(sessionId: string | undefined) {
     refreshSessionStages,
     updateFinalAnalysis,
     updateSessionStatus,
+    updateStageStatus,
     handleParallelStageStarted,
     handleParallelChildStageStarted
   } = useSessionContext();
@@ -413,6 +488,7 @@ export function useSession(sessionId: string | undefined) {
     },
     updateFinalAnalysis,
     updateSessionStatus,
+    updateStageStatus,
     handleParallelStageStarted,
     handleParallelChildStageStarted
   };
