@@ -12,6 +12,7 @@ export const SESSION_EVENTS = {
   COMPLETED: 'session.completed',
   FAILED: 'session.failed',
   CANCELLED: 'session.cancelled',
+  TIMED_OUT: 'session.timed_out',
   CANCEL_REQUESTED: 'session.cancel_requested',
   STATUS_CHANGE: 'session.status_change',
 } as const;
@@ -76,6 +77,7 @@ export const TERMINAL_SESSION_EVENTS = [
   SESSION_EVENTS.COMPLETED,
   SESSION_EVENTS.FAILED,
   SESSION_EVENTS.CANCELLED,
+  SESSION_EVENTS.TIMED_OUT,
 ] as const;
 
 /**

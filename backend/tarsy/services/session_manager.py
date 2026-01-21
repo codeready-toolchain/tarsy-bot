@@ -151,3 +151,30 @@ class SessionManager:
             # and we don't want to mask the original error
             logger.error(f"Failed to update session error: {str(e)}", exc_info=True)
 
+    def update_session_timed_out(self, session_id: Optional[str], error_message: str):
+        """
+        Mark history session as timed out.
+        
+        Args:
+            session_id: Session ID to update
+            error_message: Timeout error message
+            
+        Note:
+            Similar to update_session_error, this method is called from exception handlers.
+            Exceptions from history service are logged but NOT re-raised.
+        """
+        # Graceful degradation: skip if no history service or no session
+        if not session_id or not self.history_service:
+            return
+            
+        try:
+            # Status 'timed_out' will automatically set completed_at_us in the history service
+            self.history_service.update_session_status(
+                session_id=session_id,
+                status=AlertSessionStatus.TIMED_OUT.value,
+                error_message=error_message
+            )
+        except Exception as e:
+            # Log but don't re-raise: this method is called from exception handlers,
+            # and we don't want to mask the original error
+            logger.error(f"Failed to update session timeout: {str(e)}", exc_info=True)

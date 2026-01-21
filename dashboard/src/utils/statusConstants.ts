@@ -15,6 +15,7 @@ export const SESSION_STATUS = {
   COMPLETED: 'completed',
   FAILED: 'failed',
   CANCELLED: 'cancelled',
+  TIMED_OUT: 'timed_out',
 } as const;
 
 export type SessionStatus = typeof SESSION_STATUS[keyof typeof SESSION_STATUS];
@@ -81,6 +82,7 @@ export const TERMINAL_SESSION_STATUSES: SessionStatus[] = [
   SESSION_STATUS.COMPLETED,
   SESSION_STATUS.FAILED,
   SESSION_STATUS.CANCELLED,
+  SESSION_STATUS.TIMED_OUT,
 ];
 
 export const ACTIVE_SESSION_STATUSES: SessionStatus[] = [
@@ -194,6 +196,8 @@ export function getSessionStatusDisplayName(status: string): string {
       return 'Failed';
     case SESSION_STATUS.CANCELLED:
       return 'Cancelled';
+    case SESSION_STATUS.TIMED_OUT:
+      return 'Timed Out';
     case SESSION_STATUS.IN_PROGRESS:
       return 'In Progress';
     case SESSION_STATUS.PENDING:
@@ -267,6 +271,8 @@ export function getSessionStatusChipColor(
       return 'success';
     case SESSION_STATUS.FAILED:
       return 'error';
+    case SESSION_STATUS.TIMED_OUT:
+      return 'error';
     case SESSION_STATUS.CANCELLED:
       return 'default';
     case SESSION_STATUS.IN_PROGRESS:
@@ -293,6 +299,8 @@ export function getSessionStatusProgressColor(
     case SESSION_STATUS.COMPLETED:
       return 'success';
     case SESSION_STATUS.FAILED:
+      return 'error';
+    case SESSION_STATUS.TIMED_OUT:
       return 'error';
     case SESSION_STATUS.CANCELLED:
       return 'inherit';

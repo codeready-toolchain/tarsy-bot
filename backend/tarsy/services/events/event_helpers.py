@@ -23,6 +23,7 @@ from tarsy.models.event_models import (
     SessionProgressUpdateEvent,
     SessionResumedEvent,
     SessionStartedEvent,
+    SessionTimedOutEvent,
     StageCompletedEvent,
     StageStartedEvent,
 )
@@ -112,6 +113,26 @@ async def publish_session_failed(session_id: str) -> None:
             logger.info(f"[EVENT] Published session.failed to channels: 'sessions' and 'session:{session_id}'")
     except Exception as e:
         logger.warning(f"Failed to publish session.failed event: {e}")
+
+
+async def publish_session_timed_out(session_id: str) -> None:
+    """
+    Publish session.timed_out event to both global and session-specific channels.
+
+    Args:
+        session_id: Session identifier
+    """
+    try:
+        async_session_factory = get_async_session_factory()
+        async with async_session_factory() as session:
+            event = SessionTimedOutEvent(session_id=session_id, status=AlertSessionStatus.TIMED_OUT.value)
+            # Publish to global 'sessions' channel for dashboard
+            await publish_event(session, EventChannel.SESSIONS, event)
+            # Also publish to session-specific channel for detail views
+            await publish_event(session, f"session:{session_id}", event)
+            logger.info(f"[EVENT] Published session.timed_out to channels: 'sessions' and 'session:{session_id}'")
+    except Exception as e:
+        logger.warning(f"Failed to publish session.timed_out event: {e}")
 
 
 async def publish_session_paused(session_id: str, pause_metadata: Optional[dict] = None) -> None:

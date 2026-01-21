@@ -117,6 +117,14 @@ class SessionCancelledEvent(BaseEvent):
     status: Literal["cancelled"] = "cancelled"  # For instant client update
 
 
+class SessionTimedOutEvent(BaseEvent):
+    """Session timed out (processing exceeded time limit)."""
+
+    type: Literal["session.timed_out"] = "session.timed_out"
+    session_id: str = Field(description="Session identifier")
+    status: Literal["timed_out"] = "timed_out"  # For instant client update
+
+
 class AgentCancelledEvent(BaseEvent):
     """Individual parallel agent cancelled by user."""
 
