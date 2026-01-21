@@ -343,7 +343,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       let stageFound = false;
 
       // Helper function to update stage recursively (handles nested parallel stages)
-      const updateStageRecursive = (stages: StageExecution[], depth: number = 0): StageExecution[] => {
+      const updateStageRecursive = (stages: StageExecution[]): StageExecution[] => {
         return stages.map(stage => {
           // Check if this is the stage we're looking for
           if (stage.execution_id === stageId) {
@@ -360,7 +360,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
           if (stage.parallel_executions && stage.parallel_executions.length > 0) {
             return {
               ...stage,
-              parallel_executions: updateStageRecursive(stage.parallel_executions, depth + 1)
+              parallel_executions: updateStageRecursive(stage.parallel_executions)
             };
           }
 
