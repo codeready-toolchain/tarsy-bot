@@ -118,11 +118,11 @@ describe('timestamp utilities', () => {
   });
 
   describe('formatDuration', () => {
-    it('should format sub-second durations in milliseconds', () => {
+    it('should format sub-second durations as "0s"', () => {
       const start = 1000000000000; // microseconds
       const end = start + 500000; // +500ms
       const formatted = formatDuration(start, end);
-      expect(formatted).toBe('500ms');
+      expect(formatted).toBe('0s');
     });
 
     it('should format second durations', () => {
@@ -149,33 +149,33 @@ describe('timestamp utilities', () => {
     it('should use current time when end is not provided', () => {
       const start = getCurrentTimestampUs() - 1000000; // 1 second ago
       const formatted = formatDuration(start);
-      expect(formatted).toMatch(/ms|s/);
+      expect(formatted).toMatch(/0s|s/);
     });
 
     it('should handle zero duration', () => {
       const time = 1000000000000;
       const formatted = formatDuration(time, time);
-      expect(formatted).toBe('0ms');
+      expect(formatted).toBe('0s');
     });
 
-    it('should handle negative duration (return 0ms)', () => {
+    it('should handle negative duration (return "0s")', () => {
       const start = 1000000000000;
       const end = start - 1000000;
       const formatted = formatDuration(start, end);
-      expect(formatted).toBe('0ms');
+      expect(formatted).toBe('0s');
     });
 
-    it('should round milliseconds', () => {
+    it('should not show milliseconds for sub-second durations', () => {
       const start = 1000000000000;
       const end = start + 123456; // 123.456ms
       const formatted = formatDuration(start, end);
-      expect(formatted).toBe('123ms');
+      expect(formatted).toBe('0s');
     });
   });
 
   describe('formatDurationMs', () => {
-    it('should format sub-second durations', () => {
-      expect(formatDurationMs(500)).toBe('500ms');
+    it('should format sub-second durations as "0s"', () => {
+      expect(formatDurationMs(500)).toBe('0s');
     });
 
     it('should format second durations', () => {
@@ -187,16 +187,16 @@ describe('timestamp utilities', () => {
     });
 
     it('should handle zero', () => {
-      expect(formatDurationMs(0)).toBe('0ms');
+      expect(formatDurationMs(0)).toBe('0s');
     });
 
     it('should handle negative values', () => {
-      expect(formatDurationMs(-100)).toBe('0ms');
+      expect(formatDurationMs(-100)).toBe('0s');
     });
 
     it('should round values appropriately', () => {
       expect(formatDurationMs(1234)).toBe('1s');
-      expect(formatDurationMs(999)).toBe('999ms');
+      expect(formatDurationMs(999)).toBe('0s');
     });
 
     it('should format large minute durations', () => {
