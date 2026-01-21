@@ -708,7 +708,7 @@ class MockFactory:
             "anthropic_api_key": "test-anthropic-key",
             "default_llm_provider": "gemini",
             "max_llm_mcp_iterations": 3,
-            "alert_processing_timeout": 600,  # Default 10 minute timeout
+            "alert_processing_timeout": 900,  # Default 15 minute timeout
             "llm_iteration_timeout": 210,  # Default 3.5 minute iteration timeout
             "mcp_tool_call_timeout": 70,  # Default 70 second tool timeout
             "llm_providers": {

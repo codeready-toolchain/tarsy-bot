@@ -402,7 +402,7 @@ class TestCancelledAgentErrorAggregation:
             stage_name="investigation",
             timestamp_us=now_us(),
             result_summary="Agent cancelled",
-            error_message="Operation timed out after 600 seconds"
+            error_message="Operation timed out after 900 seconds"
         )
         
         # Create parallel stage result (overall status is FAILED because all agents cancelled)
@@ -423,7 +423,7 @@ class TestCancelledAgentErrorAggregation:
                         started_at_us=now_us(),
                         completed_at_us=now_us(),
                         status=StageStatus.CANCELLED,
-                        error_message="Operation timed out after 600 seconds",
+                        error_message="Operation timed out after 900 seconds",
                         token_usage=None
                     )
                 ]
@@ -442,7 +442,7 @@ class TestCancelledAgentErrorAggregation:
         assert "Chain processing failed" in error_msg
         assert "Parallel stage 'investigation' failed" in error_msg
         assert "TimeoutAgent (cancelled)" in error_msg
-        assert "Operation timed out after 600 seconds" in error_msg
+        assert "Operation timed out after 900 seconds" in error_msg
     
     def test_parallel_stage_with_mixed_failed_and_cancelled(self, alert_service, chain_context):
         """Test aggregation with a parallel stage with both failed and cancelled agents."""
