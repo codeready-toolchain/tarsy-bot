@@ -2,6 +2,7 @@ import React from 'react';
 import { TableRow, TableCell, Typography, IconButton, Tooltip, Chip } from '@mui/material';
 import { OpenInNew, Chat as ChatIcon, CallSplit } from '@mui/icons-material';
 import StatusBadge from './StatusBadge';
+import ScoreBadge from './ScoreBadge';
 import TokenUsageDisplay from './TokenUsageDisplay';
 import { highlightSearchTermNodes } from '../utils/search';
 import type { AlertListItemProps } from '../types';
@@ -12,7 +13,7 @@ import { formatTimestamp, formatDurationMs, formatDuration } from '../utils/time
  * Displays basic session information with Phase 4 search highlighting support
  * Uses Unix timestamp utilities for optimal performance and consistent formatting
  */
-const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchTerm }) => {
+const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, onScoreClick, searchTerm }) => {
   const handleRowClick = () => {
     if (onClick) {
       if (!session.session_id) {
@@ -29,6 +30,14 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
     if (session.session_id) {
       const url = `${window.location.origin}/sessions/${session.session_id}`;
       window.open(url, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  // Handle score badge click - navigate to score tab
+  const handleScoreClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent row click
+    if (onScoreClick && session.session_id) {
+      onScoreClick(session.session_id);
     }
   };
 
@@ -116,6 +125,14 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
         ) : (
           <Typography variant="body2" color="text.secondary">-</Typography>
         )}
+      </TableCell>
+      {/* EP-0028: Score badge */}
+      <TableCell>
+        <ScoreBadge
+          score={session.score_total ?? null}
+          status={session.score_status}
+          onClick={onScoreClick ? handleScoreClick : undefined}
+        />
       </TableCell>
       {/* Chat indicator badge */}
       <TableCell sx={{ width: 40, textAlign: 'center', px: 0.5 }}>
