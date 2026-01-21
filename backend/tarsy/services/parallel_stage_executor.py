@@ -427,10 +427,18 @@ class ParallelStageExecutor:
                 # Cancellation can happen if the agent task is cancelled mid-flight (e.g. shutdown,
                 # upstream cancellation, or nested wait_for interactions). Treat it as a terminal
                 # result so the child stage doesn't stay "running" forever in the UI.
-                from tarsy.utils.agent_execution_utils import extract_cancellation_reason
+                #
+                # Check tracker: if user requested cancel → CANCELLED, otherwise → TIMED_OUT
+                from tarsy.services.cancellation_tracker import is_user_cancel
                 from tarsy.models.constants import CancellationReason
 
-                reason = extract_cancellation_reason(e)
+                if is_user_cancel(chain_context.session_id):
+                    reason = CancellationReason.USER_CANCEL.value
+                    await self.stage_manager.update_stage_execution_cancelled(child_execution_id, reason)
+                else:
+                    reason = CancellationReason.TIMEOUT.value
+                    await self.stage_manager.update_stage_execution_timed_out(child_execution_id, reason)
+
                 logger.warning(
                     "%s '%s' was cancelled (%s)",
                     parallel_type,
@@ -438,14 +446,9 @@ class ParallelStageExecutor:
                     reason,
                 )
 
-                # Use appropriate status based on cancellation reason
-                if reason == CancellationReason.TIMEOUT.value:
-                    await self.stage_manager.update_stage_execution_timed_out(child_execution_id, reason)
-                else:
-                    await self.stage_manager.update_stage_execution_cancelled(child_execution_id, reason)
-
+                # Create exception with correct reason for build_agent_result_from_exception
                 result, metadata = build_agent_result_from_exception(
-                    exception=e,
+                    exception=asyncio.CancelledError(reason),
                     agent_name=agent_name,
                     stage_name=stage.name,
                     llm_provider=execution_config.llm_provider or self.settings.llm_provider,
@@ -919,19 +922,22 @@ class ParallelStageExecutor:
             
             except asyncio.CancelledError as e:
                 # Cancellation (timeout or user-requested) - mark stage appropriately
-                from tarsy.utils.agent_execution_utils import extract_cancellation_reason
+                # Check tracker: if user requested cancel → CANCELLED, otherwise → TIMED_OUT
+                from tarsy.services.cancellation_tracker import is_user_cancel
                 from tarsy.models.constants import CancellationReason
-                reason = extract_cancellation_reason(e)
+                
+                if is_user_cancel(chain_context.session_id):
+                    reason = CancellationReason.USER_CANCEL.value
+                    await self.stage_manager.update_stage_execution_cancelled(child_execution_id, reason)
+                else:
+                    reason = CancellationReason.TIMEOUT.value
+                    await self.stage_manager.update_stage_execution_timed_out(child_execution_id, reason)
+                
                 logger.warning(f"Agent '{agent_name}' cancelled ({reason})")
                 
-                # Use appropriate status based on cancellation reason
-                if reason == CancellationReason.TIMEOUT.value:
-                    await self.stage_manager.update_stage_execution_timed_out(child_execution_id, reason)
-                else:
-                    await self.stage_manager.update_stage_execution_cancelled(child_execution_id, reason)
-                
+                # Create exception with correct reason for build_agent_result_from_exception
                 result, metadata = build_agent_result_from_exception(
-                    exception=e,
+                    exception=asyncio.CancelledError(reason),
                     agent_name=agent_name,
                     stage_name=stage_config.name,
                     llm_provider=execution_config.llm_provider or self.settings.llm_provider,
@@ -1186,25 +1192,27 @@ class ParallelStageExecutor:
             
         except asyncio.CancelledError as e:
             # Cancellation (timeout or user-requested) - mark stage appropriately
-            from tarsy.utils.agent_execution_utils import extract_cancellation_reason
+            # Check tracker: if user requested cancel → CANCELLED, otherwise → TIMED_OUT
+            from tarsy.services.cancellation_tracker import is_user_cancel
             from tarsy.models.constants import CancellationReason
-            reason = extract_cancellation_reason(e)
-            error_msg = f"{synthesis_config.agent} synthesis cancelled ({reason})"
-            logger.warning(error_msg)
             
-            # Use appropriate status based on cancellation reason
-            if reason == CancellationReason.TIMEOUT.value:
-                await self.stage_manager.update_stage_execution_timed_out(
-                    synthesis_stage_execution_id, reason
-                )
-                status = StageStatus.TIMED_OUT
-                summary = f"Synthesis timed out ({reason})"
-            else:
+            if is_user_cancel(chain_context.session_id):
+                reason = CancellationReason.USER_CANCEL.value
                 await self.stage_manager.update_stage_execution_cancelled(
                     synthesis_stage_execution_id, reason
                 )
                 status = StageStatus.CANCELLED
                 summary = f"Synthesis cancelled ({reason})"
+            else:
+                reason = CancellationReason.TIMEOUT.value
+                await self.stage_manager.update_stage_execution_timed_out(
+                    synthesis_stage_execution_id, reason
+                )
+                status = StageStatus.TIMED_OUT
+                summary = f"Synthesis timed out ({reason})"
+            
+            error_msg = f"{synthesis_config.agent} synthesis cancelled ({reason})"
+            logger.warning(error_msg)
             
             # Create result with appropriate status
             result = AgentExecutionResult(

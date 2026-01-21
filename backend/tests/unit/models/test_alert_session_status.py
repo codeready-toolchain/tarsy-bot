@@ -24,6 +24,7 @@ class TestAlertSessionStatus:
             (AlertSessionStatus.COMPLETED, False, True),
             (AlertSessionStatus.FAILED, False, True),
             (AlertSessionStatus.CANCELLED, False, True),
+            (AlertSessionStatus.TIMED_OUT, False, True),
         ],
     )
     def test_status_classification(
@@ -52,6 +53,12 @@ class TestAlertSessionStatus:
         """Test that CANCELLED status is terminal but not active."""
         assert AlertSessionStatus.CANCELLED in AlertSessionStatus.get_terminal_statuses()
         assert AlertSessionStatus.CANCELLED not in AlertSessionStatus.get_active_statuses()
+    
+    @pytest.mark.unit
+    def test_timed_out_is_terminal_not_active(self) -> None:
+        """Test that TIMED_OUT status is terminal but not active."""
+        assert AlertSessionStatus.TIMED_OUT in AlertSessionStatus.get_terminal_statuses()
+        assert AlertSessionStatus.TIMED_OUT not in AlertSessionStatus.get_active_statuses()
     
     @pytest.mark.unit
     def test_paused_is_active_not_terminal(self) -> None:
@@ -97,5 +104,6 @@ class TestAlertSessionStatus:
         assert isinstance(terminal_values, list)
         assert all(isinstance(v, str) for v in terminal_values)
         assert "cancelled" in terminal_values
+        assert "timed_out" in terminal_values
         assert "canceling" not in terminal_values
 

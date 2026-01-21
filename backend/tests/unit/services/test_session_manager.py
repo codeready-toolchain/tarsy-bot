@@ -126,6 +126,7 @@ class TestUpdateSessionStatus:
             error_message=None,
             final_analysis=None,
             final_analysis_summary=None,
+            executive_summary_error=None,
             pause_metadata=None
         )
     
@@ -149,6 +150,7 @@ class TestUpdateSessionStatus:
             error_message=None,
             final_analysis="Analysis complete",
             final_analysis_summary="Summary",
+            executive_summary_error=None,
             pause_metadata=None
         )
     
@@ -177,6 +179,7 @@ class TestUpdateSessionStatus:
             error_message=None,
             final_analysis=None,
             final_analysis_summary=None,
+            executive_summary_error=None,
             pause_metadata=pause_meta
         )
     

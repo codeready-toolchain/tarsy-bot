@@ -398,11 +398,24 @@ class AlertService:
             except asyncio.TimeoutError:
                 error_msg = f"Alert processing exceeded {self.settings.alert_processing_timeout}s timeout"
                 logger.error(f"{error_msg} for session {chain_context.session_id}")
-                # Update history session with timeout error
-                self.session_manager.update_session_error(chain_context.session_id, error_msg)
-                # Publish session.failed event
-                from tarsy.services.events.event_helpers import publish_session_failed
-                await publish_session_failed(chain_context.session_id)
+                
+                # Check tracker: if user requested cancel → CANCELLED, otherwise → TIMED_OUT
+                from tarsy.services.cancellation_tracker import is_user_cancel
+                if is_user_cancel(chain_context.session_id):
+                    # User requested cancellation
+                    self.session_manager.update_session_status(
+                        chain_context.session_id,
+                        AlertSessionStatus.CANCELLED.value,
+                        error_message="Session cancelled by user"
+                    )
+                    from tarsy.services.events.event_helpers import publish_session_cancelled
+                    await publish_session_cancelled(chain_context.session_id)
+                else:
+                    # System timeout
+                    self.session_manager.update_session_timed_out(chain_context.session_id, error_msg)
+                    from tarsy.services.events.event_helpers import publish_session_timed_out
+                    await publish_session_timed_out(chain_context.session_id)
+                
                 return format_error_response(chain_context, error_msg)
             
             # Step 7: Format and return results
@@ -1542,7 +1555,15 @@ class AlertService:
                     # Cancellation is a normal control-flow event (user cancel, timeout, shutdown).
                     # In Python 3.13+, CancelledError derives from BaseException and will not be
                     # caught by `except Exception`.
-                    reason = extract_cancellation_reason(e)
+                    #
+                    # Check tracker: if user requested cancel → CANCELLED, otherwise → TIMED_OUT
+                    from tarsy.services.cancellation_tracker import is_user_cancel
+                    
+                    if is_user_cancel(chain_context.session_id):
+                        reason = CancellationReason.USER_CANCEL.value
+                    else:
+                        reason = CancellationReason.TIMEOUT.value
+                    
                     logger.info(
                         "Stage '%s' cancelled (reason=%s) in session %s",
                         stage.name,
@@ -1550,13 +1571,13 @@ class AlertService:
                         chain_context.session_id,
                     )
                     if stage_execution_id:
-                        # Use appropriate status based on cancellation reason
-                        if reason == CancellationReason.TIMEOUT.value:
-                            await self.stage_manager.update_stage_execution_timed_out(
+                        # Use appropriate status based on tracker
+                        if is_user_cancel(chain_context.session_id):
+                            await self.stage_manager.update_stage_execution_cancelled(
                                 stage_execution_id, reason
                             )
                         else:
-                            await self.stage_manager.update_stage_execution_cancelled(
+                            await self.stage_manager.update_stage_execution_timed_out(
                                 stage_execution_id, reason
                             )
                     raise

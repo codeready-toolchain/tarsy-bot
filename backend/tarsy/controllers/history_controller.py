@@ -557,11 +557,15 @@ async def cancel_session(
     from tarsy.config.settings import get_settings
     from tarsy.models.constants import AlertSessionStatus
     from tarsy.services.events.event_helpers import publish_cancel_request, publish_session_cancelled
+    from tarsy.services.cancellation_tracker import mark_cancelled
     
     # Step 1: Validate session exists
     session = history_service.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+    
+    # Mark in tracker so exception handlers know this is user cancellation (not timeout)
+    mark_cancelled(session_id)
     
     was_paused = session.status == AlertSessionStatus.PAUSED.value
     

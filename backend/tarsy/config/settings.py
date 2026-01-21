@@ -175,7 +175,7 @@ class Settings(BaseSettings):
         description="Maximum number of alerts that can be processed concurrently"
     )
     alert_processing_timeout: int = Field(
-        default=600,
+        default=20,
         description="Timeout in seconds for processing a single alert (default: 10 minutes)"
     )
     llm_iteration_timeout: int = Field(
