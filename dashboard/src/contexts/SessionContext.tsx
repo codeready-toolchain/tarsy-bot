@@ -19,7 +19,7 @@ interface SessionContextData {
   refreshSessionSummary: (sessionId: string) => Promise<void>;
   refreshSessionStages: (sessionId: string) => Promise<void>;
   updateFinalAnalysis: (analysis: string) => void;
-  updateSessionStatus: (newStatus: DetailedSession['status'], errorMessage?: string) => void;
+  updateSessionStatus: (newStatus: DetailedSession['status'], errorMessage?: string | null) => void;
   updateStageStatus: (stageId: string, status: StageStatus, errorMessage?: string | null, completedAtUs?: number | null) => void;
   // Placeholder management for parallel stages
   handleParallelStageStarted: (stageExecution: StageExecution) => void;
@@ -224,7 +224,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
   /**
    * Direct update of session status (no API call needed)
    */
-  const updateSessionStatus = useCallback((newStatus: DetailedSession['status'], errorMessage?: string) => {
+  const updateSessionStatus = useCallback((newStatus: DetailedSession['status'], errorMessage?: string | null) => {
     console.log('🔄 [SessionContext] Updating session status directly:', newStatus);
     setSession(prevSession => {
       if (!prevSession) return prevSession;
@@ -235,7 +235,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       return {
         ...prevSession,
         status: newStatus,
-        error_message: errorMessage ?? prevSession.error_message
+        error_message: errorMessage === undefined ? prevSession.error_message : errorMessage
       };
     });
   }, [setSession]);
@@ -351,8 +351,8 @@ export function SessionProvider({ children }: SessionProviderProps) {
             return {
               ...stage,
               status: status,
-              error_message: errorMessage ?? stage.error_message,
-              completed_at_us: completedAtUs ?? stage.completed_at_us
+              error_message: errorMessage === undefined ? stage.error_message : errorMessage,
+              completed_at_us: completedAtUs === undefined ? stage.completed_at_us : completedAtUs
             };
           }
 
