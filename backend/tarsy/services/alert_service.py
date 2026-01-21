@@ -429,7 +429,7 @@ class AlertService:
                 
                 # Generate executive summary for dashboard display and external notifications
                 # Use chain-level provider for executive summary (or global if not set)
-                final_result_summary = await self.final_analysis_summarizer.generate_executive_summary(
+                summary_result = await self.final_analysis_summarizer.generate_executive_summary(
                     content=analysis,
                     session_id=chain_context.session_id,
                     provider=chain_definition.llm_provider
@@ -440,7 +440,8 @@ class AlertService:
                     chain_context.session_id, 
                     AlertSessionStatus.COMPLETED.value,
                     final_analysis=final_result,
-                    final_analysis_summary=final_result_summary
+                    final_analysis_summary=summary_result.summary,
+                    executive_summary_error=summary_result.error
                 )
                 
                 # Publish session.completed event
@@ -925,7 +926,7 @@ class AlertService:
                 final_result = result.final_analysis or "No analysis provided"
 
                 # Generate executive summary
-                summary = await self.final_analysis_summarizer.generate_executive_summary(
+                summary_result = await self.final_analysis_summarizer.generate_executive_summary(
                     content=final_result,
                     session_id=session_id,
                     provider=chain_definition.llm_provider
@@ -935,7 +936,8 @@ class AlertService:
                     session_id,
                     AlertSessionStatus.COMPLETED.value,
                     final_analysis=final_result,
-                    final_analysis_summary=summary
+                    final_analysis_summary=summary_result.summary,
+                    executive_summary_error=summary_result.error
                 )
                 from tarsy.services.events.event_helpers import publish_session_completed
                 await publish_session_completed(session_id)
@@ -953,7 +955,7 @@ class AlertService:
             final_result = synthesis_result.result_summary
             
             # Generate executive summary
-            summary = await self.final_analysis_summarizer.generate_executive_summary(
+            summary_result = await self.final_analysis_summarizer.generate_executive_summary(
                 content=final_result,
                 session_id=session_id,
                 provider=chain_definition.llm_provider
@@ -963,7 +965,8 @@ class AlertService:
                 session_id,
                 AlertSessionStatus.COMPLETED.value,
                 final_analysis=final_result,
-                final_analysis_summary=summary
+                final_analysis_summary=summary_result.summary,
+                executive_summary_error=summary_result.error
             )
             from tarsy.services.events.event_helpers import publish_session_completed
             await publish_session_completed(session_id)
@@ -1176,7 +1179,7 @@ class AlertService:
                 
                 # Generate executive summary for resumed sessions too
                 # Use chain-level provider for executive summary (or global if not set)
-                final_result_summary = await self.final_analysis_summarizer.generate_executive_summary(
+                summary_result = await self.final_analysis_summarizer.generate_executive_summary(
                     content=analysis,
                     session_id=session_id,
                     provider=chain_definition.llm_provider
@@ -1186,7 +1189,8 @@ class AlertService:
                     session_id,
                     AlertSessionStatus.COMPLETED.value,
                     final_analysis=final_result,
-                    final_analysis_summary=final_result_summary,
+                    final_analysis_summary=summary_result.summary,
+                    executive_summary_error=summary_result.error,
                 )
                 from tarsy.services.events.event_helpers import (
                     publish_session_completed,
@@ -1546,9 +1550,15 @@ class AlertService:
                         chain_context.session_id,
                     )
                     if stage_execution_id:
-                        await self.stage_manager.update_stage_execution_cancelled(
-                            stage_execution_id, reason
-                        )
+                        # Use appropriate status based on cancellation reason
+                        if reason == CancellationReason.TIMEOUT.value:
+                            await self.stage_manager.update_stage_execution_timed_out(
+                                stage_execution_id, reason
+                            )
+                        else:
+                            await self.stage_manager.update_stage_execution_cancelled(
+                                stage_execution_id, reason
+                            )
                     raise
 
                 except Exception as e:

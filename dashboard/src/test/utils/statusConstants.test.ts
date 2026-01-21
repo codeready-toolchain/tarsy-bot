@@ -297,3 +297,51 @@ describe('Stage Status Constants - Cancelled Support', () => {
   });
 });
 
+describe('Stage Status Constants - Timed Out Support', () => {
+  describe('STAGE_STATUS constant', () => {
+    it('should include TIMED_OUT status', () => {
+      expect(STAGE_STATUS.TIMED_OUT).toBe('timed_out');
+    });
+  });
+
+  describe('Status categorization', () => {
+    it('should categorize timed_out as terminal stage status', () => {
+      expect(TERMINAL_STAGE_STATUSES).toContain(STAGE_STATUS.TIMED_OUT);
+    });
+
+    it('should not categorize timed_out as active stage status', () => {
+      expect(ACTIVE_STAGE_STATUSES).not.toContain(STAGE_STATUS.TIMED_OUT);
+    });
+  });
+
+  describe('isTerminalStageStatus', () => {
+    it('should return true for timed_out stages', () => {
+      expect(isTerminalStageStatus('timed_out')).toBe(true);
+    });
+  });
+
+  describe('isActiveStageStatus', () => {
+    it('should return false for timed_out stages', () => {
+      expect(isActiveStageStatus('timed_out')).toBe(false);
+    });
+  });
+
+  describe('getStageStatusDisplayName', () => {
+    it('should return "Timed Out" for timed_out status', () => {
+      expect(getStageStatusDisplayName('timed_out')).toBe('Timed Out');
+    });
+  });
+
+  describe('getStageStatusChipColor', () => {
+    it('should return error color for timed_out status', () => {
+      expect(getStageStatusChipColor('timed_out')).toBe('error');
+    });
+  });
+
+  describe('getStageStatusProgressColor', () => {
+    it('should return error color for timed_out status', () => {
+      expect(getStageStatusProgressColor('timed_out')).toBe('error');
+    });
+  });
+});
+

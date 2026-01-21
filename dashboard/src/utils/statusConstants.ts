@@ -30,6 +30,7 @@ export const STAGE_STATUS = {
   COMPLETED: 'completed',
   FAILED: 'failed',
   CANCELLED: 'cancelled',
+  TIMED_OUT: 'timed_out',
 } as const;
 
 export type StageStatus = typeof STAGE_STATUS[keyof typeof STAGE_STATUS];
@@ -98,6 +99,7 @@ export const TERMINAL_STAGE_STATUSES: StageStatus[] = [
   STAGE_STATUS.COMPLETED,
   STAGE_STATUS.FAILED,
   STAGE_STATUS.CANCELLED,
+  STAGE_STATUS.TIMED_OUT,
 ];
 
 export const ACTIVE_STAGE_STATUSES: StageStatus[] = [
@@ -216,6 +218,8 @@ export function getStageStatusDisplayName(status: string): string {
       return 'Failed';
     case STAGE_STATUS.CANCELLED:
       return 'Cancelled';
+    case STAGE_STATUS.TIMED_OUT:
+      return 'Timed Out';
     case STAGE_STATUS.ACTIVE:
       return 'Active';
     case STAGE_STATUS.PENDING:
@@ -316,6 +320,8 @@ export function getStageStatusChipColor(
       return 'success';
     case STAGE_STATUS.FAILED:
       return 'error';
+    case STAGE_STATUS.TIMED_OUT:
+      return 'error';
     case STAGE_STATUS.CANCELLED:
       return 'warning';
     case STAGE_STATUS.ACTIVE:
@@ -339,6 +345,8 @@ export function getStageStatusProgressColor(
     case STAGE_STATUS.COMPLETED:
       return 'success';
     case STAGE_STATUS.FAILED:
+      return 'error';
+    case STAGE_STATUS.TIMED_OUT:
       return 'error';
     case STAGE_STATUS.CANCELLED:
       return 'warning';

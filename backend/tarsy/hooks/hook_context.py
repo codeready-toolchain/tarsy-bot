@@ -277,7 +277,13 @@ class InteractionHookContext(Generic[TInteraction]):
         if exc_type is not None:
             # Handle errors
             self.interaction.success = False
-            self.interaction.error_message = str(exc_val)
+            # CancelledError has empty str() but reason in args[0] - use existing utility
+            if isinstance(exc_val, asyncio.CancelledError):
+                from tarsy.utils.agent_execution_utils import extract_cancellation_reason
+                reason = extract_cancellation_reason(exc_val)
+                self.interaction.error_message = f"Operation cancelled ({reason})"
+            else:
+                self.interaction.error_message = str(exc_val) or type(exc_val).__name__
             await self._trigger_appropriate_hooks()
         
         return False  # Don't suppress exceptions

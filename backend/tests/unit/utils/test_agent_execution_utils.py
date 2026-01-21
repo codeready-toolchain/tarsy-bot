@@ -53,8 +53,8 @@ class TestBuildAgentResultFromException:
         assert metadata.error_message == "Something went wrong"
         assert metadata.token_usage is None
 
-    def test_build_result_from_cancelled_error_with_reason(self) -> None:
-        """Test creating result from CancelledError with explicit reason."""
+    def test_build_result_from_cancelled_error_with_user_cancel_reason(self) -> None:
+        """Test creating result from CancelledError with user_cancel reason."""
         exception = asyncio.CancelledError("user_cancel")
         agent_started_at_us = 2000000
 
@@ -67,7 +67,7 @@ class TestBuildAgentResultFromException:
             agent_started_at_us=agent_started_at_us,
         )
 
-        # Verify result
+        # Verify result - user cancellation should use CANCELLED status
         assert result.status == StageStatus.CANCELLED
         assert result.agent_name == "cancelled-agent"
         assert result.stage_name == "cancelled-stage"
@@ -77,6 +77,31 @@ class TestBuildAgentResultFromException:
         # Verify metadata
         assert metadata.status == StageStatus.CANCELLED
         assert metadata.error_message == "user_cancel"
+
+    def test_build_result_from_cancelled_error_with_timeout_reason(self) -> None:
+        """Test creating result from CancelledError with timeout reason."""
+        exception = asyncio.CancelledError("timeout")
+        agent_started_at_us = 2000000
+
+        result, metadata = build_agent_result_from_exception(
+            exception=exception,
+            agent_name="timed-out-agent",
+            stage_name="timed-out-stage",
+            llm_provider="anthropic",
+            iteration_strategy="fixed",
+            agent_started_at_us=agent_started_at_us,
+        )
+
+        # Verify result - timeout should use TIMED_OUT status
+        assert result.status == StageStatus.TIMED_OUT
+        assert result.agent_name == "timed-out-agent"
+        assert result.stage_name == "timed-out-stage"
+        assert result.error_message == "timeout"
+        assert "Execution timed out: timeout" in result.result_summary
+
+        # Verify metadata
+        assert metadata.status == StageStatus.TIMED_OUT
+        assert metadata.error_message == "timeout"
 
     def test_build_result_from_cancelled_error_without_reason(self) -> None:
         """Test creating result from CancelledError without explicit reason."""

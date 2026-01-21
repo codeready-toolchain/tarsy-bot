@@ -88,6 +88,7 @@ class SessionManager:
         error_message: Optional[str] = None,
         final_analysis: Optional[str] = None,
         final_analysis_summary: Optional[str] = None,
+        executive_summary_error: Optional[str] = None,
         pause_metadata: Optional[dict] = None
     ):
         """
@@ -99,6 +100,7 @@ class SessionManager:
             error_message: Optional error message if failed
             final_analysis: Optional final analysis if completed
             final_analysis_summary: Optional final analysis summary if completed
+            executive_summary_error: Optional error if executive summary generation failed
             pause_metadata: Optional pause metadata if paused
             
         Raises:
@@ -116,6 +118,7 @@ class SessionManager:
             error_message=error_message,
             final_analysis=final_analysis,
             final_analysis_summary=final_analysis_summary,
+            executive_summary_error=executive_summary_error,
             pause_metadata=pause_metadata
         )
     

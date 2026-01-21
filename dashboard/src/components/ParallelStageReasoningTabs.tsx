@@ -14,6 +14,7 @@ import {
   CallSplit,
   CancelOutlined,
   PauseCircle,
+  TimerOff,
 } from '@mui/icons-material';
 import type { ChatFlowItemData } from '../utils/chatFlowParser';
 import type { StageExecution } from '../types';
@@ -23,6 +24,7 @@ import ChatFlowItem from './ChatFlowItem';
 import StreamingContentRenderer, { type StreamingItem } from './StreamingContentRenderer';
 import { getParallelStageLabel } from '../utils/parallelStageHelpers';
 import { isTerminalProgressStatus } from '../utils/statusMapping';
+import { STAGE_STATUS, getStageStatusDisplayName, getStageStatusChipColor } from '../utils/statusConstants';
 import TokenUsageDisplay from './TokenUsageDisplay';
 
 // Module-level constant to avoid creating new Map on every render
@@ -77,30 +79,40 @@ function TabPanel(props: TabPanelProps) {
 
 // Helper to get status icon from stage execution status (stable, doesn't blink)
 const getStatusIcon = (status: string) => {
-  if (status === 'failed') return <ErrorIcon fontSize="small" />;
-  if (status === 'completed') return <CheckCircle fontSize="small" />;
-  if (status === 'cancelled') return <CancelOutlined fontSize="small" />;
-  if (status === 'paused') return <PauseCircle fontSize="small" />;
-  return <PlayArrow fontSize="small" />;
+  switch (status) {
+    case STAGE_STATUS.FAILED:
+      return <ErrorIcon fontSize="small" />;
+    case STAGE_STATUS.TIMED_OUT:
+      return <TimerOff fontSize="small" />;
+    case STAGE_STATUS.COMPLETED:
+      return <CheckCircle fontSize="small" />;
+    case STAGE_STATUS.CANCELLED:
+      return <CancelOutlined fontSize="small" />;
+    case STAGE_STATUS.PAUSED:
+      return <PauseCircle fontSize="small" />;
+    default:
+      return <PlayArrow fontSize="small" />;
+  }
 };
 
 // Helper to get status color from stage execution status (stable, doesn't blink)
+// Uses getStageStatusChipColor but maps 'warning' to 'default' for cancelled to match existing behavior
 const getStatusColor = (status: string) => {
-  if (status === 'failed') return 'error';
-  if (status === 'completed') return 'success';
-  if (status === 'cancelled') return 'default';
-  if (status === 'paused') return 'warning';
-  return 'primary';
+  if (status === STAGE_STATUS.CANCELLED) return 'default';
+  return getStageStatusChipColor(status);
 };
 
 // Helper to get user-friendly status label
+// Uses getStageStatusDisplayName but customizes "Completed" -> "Complete" and "Active" -> "Running"
 const getStatusLabel = (status: string) => {
-  if (status === 'failed') return 'Failed';
-  if (status === 'completed') return 'Complete';
-  if (status === 'cancelled') return 'Cancelled';
-  if (status === 'paused') return 'Paused';
-  if (status === 'active') return 'Running';
-  return 'Pending';
+  switch (status) {
+    case STAGE_STATUS.COMPLETED:
+      return 'Complete';
+    case STAGE_STATUS.ACTIVE:
+      return 'Running';
+    default:
+      return getStageStatusDisplayName(status);
+  }
 };
 
 /**
@@ -390,8 +402,9 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
         const executionStreamingItems = streamingByExecution.get(execution.executionId) || [];
         const hasDbItems = execution.items.length > 0;
         const hasStreamingItems = executionStreamingItems.length > 0;
-        const isFailed = execution.stageExecution.status === 'failed';
-        const hasError = isFailed && Boolean(execution.stageExecution.error_message);
+        const isFailed = execution.stageExecution.status === STAGE_STATUS.FAILED;
+        const isTimedOut = execution.stageExecution.status === STAGE_STATUS.TIMED_OUT;
+        const hasError = (isFailed || isTimedOut) && Boolean(execution.stageExecution.error_message);
         
         return (
           <TabPanel key={execution.executionId} value={selectedTab} index={index}>
@@ -432,7 +445,7 @@ const ParallelStageReasoningTabs: React.FC<ParallelStageReasoningTabsProps> = ({
               )}
 
               {/* Agent-Level Cancel Button - Only for paused agents */}
-              {execution.stageExecution.status === 'paused' && (
+              {execution.stageExecution.status === STAGE_STATUS.PAUSED && (
                 <Box 
                   sx={{ 
                     mt: 3, 

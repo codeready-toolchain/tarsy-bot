@@ -289,6 +289,7 @@ class HistoryService:
         error_message: Optional[str] = None,
         final_analysis: Optional[str] = None,
         final_analysis_summary: Optional[str] = None,
+        executive_summary_error: Optional[str] = None,
         pause_metadata: Optional[dict] = None
     ) -> bool:
         """
@@ -299,6 +300,8 @@ class HistoryService:
             status: New status (pending, in_progress, completed, failed, paused)
             error_message: Error message if status is failed
             final_analysis: Final formatted analysis if status is completed
+            final_analysis_summary: Executive summary of final analysis if generated successfully
+            executive_summary_error: Error message if executive summary generation failed
             pause_metadata: Pause metadata if status is paused
             
         Returns:
@@ -324,6 +327,8 @@ class HistoryService:
                     session.final_analysis = final_analysis
                 if final_analysis_summary:
                     session.final_analysis_summary = final_analysis_summary
+                if executive_summary_error:
+                    session.executive_summary_error = executive_summary_error
                 # Set pause_metadata when transitioning to PAUSED, clear it otherwise
                 if status == AlertSessionStatus.PAUSED.value:
                     session.pause_metadata = pause_metadata

@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pytest
 
-from tarsy.integrations.notifications.summarizer import ExecutiveSummaryAgent
+from tarsy.integrations.notifications.summarizer import ExecutiveSummaryAgent, ExecutiveSummaryResult
 from tarsy.models.constants import LLMInteractionType
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 
@@ -49,7 +49,9 @@ class TestExecutiveSummaryAgent:
             session_id="test-session"
         )
         
-        assert result == "Brief summary of the analysis" 
+        assert isinstance(result, ExecutiveSummaryResult)
+        assert result.summary == "Brief summary of the analysis"
+        assert result.error is None
         mock_llm_client.generate_response.assert_called_once()
     
     @pytest.mark.asyncio
@@ -66,7 +68,8 @@ class TestExecutiveSummaryAgent:
             session_id="test-session"
         )
         
-        assert result == "Summary with whitespace"
+        assert result.summary == "Summary with whitespace"
+        assert result.error is None
     
     @pytest.mark.asyncio
     async def test_generate_executive_summary_with_stage_execution_id(self, summary_agent, mock_llm_client):
@@ -83,7 +86,8 @@ class TestExecutiveSummaryAgent:
             stage_execution_id="stage-123"
         )
         
-        assert result == "Summary"
+        assert result.summary == "Summary"
+        assert result.error is None
         
         call_args = mock_llm_client.generate_response.call_args
         assert call_args.kwargs["stage_execution_id"] == "stage-123"
@@ -175,7 +179,8 @@ class TestExecutiveSummaryAgent:
             session_id="test-session"
         )
         
-        assert result is None
+        assert result.summary is None
+        assert result.error == "No assistant response received"
     
     @pytest.mark.asyncio
     async def test_generate_executive_summary_llm_exception(self, summary_agent, mock_llm_client):
@@ -187,7 +192,8 @@ class TestExecutiveSummaryAgent:
             session_id="test-session"
         )
         
-        assert result is None
+        assert result.summary is None
+        assert result.error == "LLM service unavailable"
     
     @pytest.mark.asyncio
     async def test_generate_executive_summary_long_content(self, summary_agent, mock_llm_client):
@@ -205,7 +211,8 @@ class TestExecutiveSummaryAgent:
             session_id="test-session"
         )
         
-        assert result == "Concise summary"
+        assert result.summary == "Concise summary"
+        assert result.error is None
         
         call_args = mock_llm_client.generate_response.call_args
         conversation = call_args.kwargs["conversation"]
@@ -227,9 +234,10 @@ class TestExecutiveSummaryAgent:
             session_id="test-session"
         )
         
-        assert result == multiline_summary
-        assert "Line 1:" in result
-        assert "Line 3:" in result
+        assert result.summary == multiline_summary
+        assert result.error is None
+        assert "Line 1:" in result.summary
+        assert "Line 3:" in result.summary
     
     @pytest.mark.asyncio
     async def test_generate_executive_summary_timeout(self, mock_llm_client, mock_settings):
@@ -259,5 +267,120 @@ class TestExecutiveSummaryAgent:
             session_id="test-session"
         )
         
-        # Should return None on timeout
-        assert result is None
+        # Should return result with error on timeout
+        assert result.summary is None
+        assert "timed out" in result.error.lower()
+
+
+@pytest.mark.unit
+class TestExecutiveSummaryAgentCancellationHandling:
+    """Test CancelledError handling in ExecutiveSummaryAgent.generate_executive_summary."""
+    
+    @pytest.mark.asyncio
+    async def test_cancelled_error_with_timeout_reason_returns_error(self):
+        """Test that CancelledError with timeout reason returns result with error."""
+        import asyncio
+        
+        mock_llm_client = Mock()
+        mock_llm_client.generate_response = AsyncMock(
+            side_effect=asyncio.CancelledError("timeout")
+        )
+        
+        mock_settings = Mock()
+        mock_settings.llm_iteration_timeout = 180
+        
+        summary_agent = ExecutiveSummaryAgent(
+            llm_manager=mock_llm_client,
+            settings=mock_settings
+        )
+        
+        result = await summary_agent.generate_executive_summary(
+            content="Analysis content",
+            session_id="test-session"
+        )
+        
+        # Should return result with error on cancellation
+        assert result.summary is None
+        assert "timeout" in result.error.lower()
+    
+    @pytest.mark.asyncio
+    async def test_cancelled_error_with_user_cancel_reason_returns_error(self):
+        """Test that CancelledError with user_cancel reason returns result with error."""
+        import asyncio
+        
+        mock_llm_client = Mock()
+        mock_llm_client.generate_response = AsyncMock(
+            side_effect=asyncio.CancelledError("user_cancel")
+        )
+        
+        mock_settings = Mock()
+        mock_settings.llm_iteration_timeout = 180
+        
+        summary_agent = ExecutiveSummaryAgent(
+            llm_manager=mock_llm_client,
+            settings=mock_settings
+        )
+        
+        result = await summary_agent.generate_executive_summary(
+            content="Analysis content",
+            session_id="test-session"
+        )
+        
+        assert result.summary is None
+        assert "user_cancel" in result.error.lower()
+    
+    @pytest.mark.asyncio
+    async def test_cancelled_error_without_args_returns_error(self):
+        """Test that CancelledError without args returns result with error."""
+        import asyncio
+        
+        mock_llm_client = Mock()
+        mock_llm_client.generate_response = AsyncMock(
+            side_effect=asyncio.CancelledError()
+        )
+        
+        mock_settings = Mock()
+        mock_settings.llm_iteration_timeout = 180
+        
+        summary_agent = ExecutiveSummaryAgent(
+            llm_manager=mock_llm_client,
+            settings=mock_settings
+        )
+        
+        result = await summary_agent.generate_executive_summary(
+            content="Analysis content",
+            session_id="test-session"
+        )
+        
+        assert result.summary is None
+        assert result.error is not None
+        assert "cancelled" in result.error.lower()
+    
+    @pytest.mark.asyncio
+    async def test_cancelled_error_does_not_propagate(self):
+        """Test that CancelledError does not propagate and is handled gracefully."""
+        import asyncio
+        
+        mock_llm_client = Mock()
+        mock_llm_client.generate_response = AsyncMock(
+            side_effect=asyncio.CancelledError("timeout")
+        )
+        
+        mock_settings = Mock()
+        mock_settings.llm_iteration_timeout = 180
+        
+        summary_agent = ExecutiveSummaryAgent(
+            llm_manager=mock_llm_client,
+            settings=mock_settings
+        )
+        
+        # Should not raise CancelledError
+        try:
+            result = await summary_agent.generate_executive_summary(
+                content="Analysis content",
+                session_id="test-session"
+            )
+            assert result.summary is None
+            assert result.error is not None
+        except asyncio.CancelledError:
+            pytest.fail("CancelledError should not propagate from generate_executive_summary")
