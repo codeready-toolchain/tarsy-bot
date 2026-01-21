@@ -170,4 +170,5 @@ class StageExecutionEventHook(BaseHook[StageExecution]):
                 chat_id=stage_execution.chat_id,
                 parent_stage_execution_id=stage_execution.parent_stage_execution_id,
                 parallel_index=stage_execution.parallel_index,
+                error_message=stage_execution.error_message,
             )

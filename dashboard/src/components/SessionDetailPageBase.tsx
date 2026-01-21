@@ -589,7 +589,7 @@ function SessionDetailPageBase({
             stage_index: 0, // Will be updated by full refresh
             stage_name: update.stage_name,
             agent: 'parallel', // Placeholder
-            status: 'active' as const,
+            status: STAGE_STATUS.ACTIVE,
             started_at_us: null,
             paused_at_us: null,
             completed_at_us: null,

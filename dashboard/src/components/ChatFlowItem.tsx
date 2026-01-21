@@ -16,6 +16,7 @@ import {
 } from '../utils/markdownComponents';
 import { FADE_COLLAPSE_ANIMATION } from '../constants/chatFlowAnimations';
 import { CHAT_FLOW_ITEM_TYPES } from '../constants/chatFlowItemTypes';
+import { STAGE_STATUS } from '../utils/statusConstants';
 
 interface ChatFlowItemProps {
   item: ChatFlowItemData;
@@ -130,8 +131,8 @@ function ChatFlowItem({
   
   // Render stage start separator with collapse/expand control
   if (item.type === CHAT_FLOW_ITEM_TYPES.STAGE_START) {
-    const isFailed = item.stageStatus === 'failed';
-    const hasError = isFailed && item.stageErrorMessage;
+    const isErrorStatus = item.stageStatus === STAGE_STATUS.FAILED || item.stageStatus === STAGE_STATUS.TIMED_OUT || item.stageStatus === STAGE_STATUS.CANCELLED;
+    const hasError = isErrorStatus && item.stageErrorMessage;
     
     return (
       <Box sx={{ my: 2.5 }}>
@@ -147,10 +148,10 @@ function ChatFlowItem({
               py: 0.5,
               transition: 'all 0.2s ease-in-out',
               '&:hover': onToggleCollapse ? {
-                backgroundColor: alpha(isFailed ? '#d32f2f' : '#1976d2', 0.08),
+                backgroundColor: alpha(isErrorStatus ? '#d32f2f' : '#1976d2', 0.08),
                 '& .MuiChip-root': {
-                  backgroundColor: alpha(isFailed ? '#d32f2f' : '#1976d2', 0.12),
-                  borderColor: isFailed ? '#d32f2f' : '#1976d2',
+                  backgroundColor: alpha(isErrorStatus ? '#d32f2f' : '#1976d2', 0.12),
+                  borderColor: isErrorStatus ? '#d32f2f' : '#1976d2',
                 }
               } : {}
             }}
@@ -168,7 +169,7 @@ function ChatFlowItem({
             <Chip
               icon={<Flag />}
               label={`Stage: ${item.stageName}`}
-              color={isFailed ? 'error' : 'primary'}
+              color={isErrorStatus ? 'error' : 'primary'}
               variant="outlined"
               size="small"
               sx={{
@@ -187,12 +188,12 @@ function ChatFlowItem({
                 }}
                 sx={{
                   padding: 0.75,
-                  backgroundColor: isCollapsed ? alpha('#666', 0.1) : alpha(isFailed ? '#d32f2f' : '#1976d2', 0.1),
+                  backgroundColor: isCollapsed ? alpha('#666', 0.1) : alpha(isErrorStatus ? '#d32f2f' : '#1976d2', 0.1),
                   border: '1px solid',
-                  borderColor: isCollapsed ? alpha('#666', 0.2) : alpha(isFailed ? '#d32f2f' : '#1976d2', 0.2),
+                  borderColor: isCollapsed ? alpha('#666', 0.2) : alpha(isErrorStatus ? '#d32f2f' : '#1976d2', 0.2),
                   color: isCollapsed ? '#666' : 'inherit',
                   '&:hover': {
-                    backgroundColor: isCollapsed ? '#666' : (isFailed ? '#d32f2f' : '#1976d2'),
+                    backgroundColor: isCollapsed ? '#666' : (isErrorStatus ? '#d32f2f' : '#1976d2'),
                     color: 'white',
                     transform: 'scale(1.1)'
                   },
@@ -220,11 +221,15 @@ function ChatFlowItem({
           Agent: {item.stageAgent}
         </Typography>
         
-        {/* Show error message for failed stages (not collapsed) */}
+        {/* Show error message for failed/timed_out/cancelled stages (not collapsed) */}
         {hasError && !isCollapsed && (
           <Alert severity="error" sx={{ mt: 2, mx: 2 }}>
             <Typography variant="body2">
-              <strong>Stage Failed:</strong> {item.stageErrorMessage}
+              <strong>
+                {item.stageStatus === STAGE_STATUS.TIMED_OUT ? 'Stage Timed Out' : 
+                 item.stageStatus === STAGE_STATUS.CANCELLED ? 'Stage Cancelled' : 
+                 'Stage Failed'}:
+              </strong> {item.stageErrorMessage}
             </Typography>
           </Alert>
         )}

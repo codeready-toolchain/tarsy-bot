@@ -82,6 +82,42 @@ class ParallelStageExecutor:
             return "unknown"
         return getattr(strategy, "value", strategy)
     
+    async def _handle_stage_cancellation(
+        self,
+        session_id: str,
+        stage_execution_id: str,
+        description: str,
+    ) -> tuple[str, str]:
+        """
+        Handle stage cancellation by checking tracker and updating stage status.
+        
+        Determines whether cancellation was user-initiated or due to timeout,
+        updates the stage execution status accordingly, and logs the result.
+        
+        Args:
+            session_id: Session ID to check in cancellation tracker
+            stage_execution_id: Stage execution ID to update
+            description: Human-readable description (e.g., "Agent 'KubernetesAgent'")
+            
+        Returns:
+            Tuple of (reason, error_msg) where reason is the CancellationReason value
+            and error_msg is the descriptive message stored in the database.
+        """
+        from tarsy.services.cancellation_tracker import is_user_cancel
+        from tarsy.models.constants import CancellationReason
+        
+        if is_user_cancel(session_id):
+            reason = CancellationReason.USER_CANCEL.value
+            error_msg = f"{description} cancelled by user"
+            await self.stage_manager.update_stage_execution_cancelled(stage_execution_id, error_msg)
+        else:
+            reason = CancellationReason.TIMEOUT.value
+            error_msg = f"{description} timed out"
+            await self.stage_manager.update_stage_execution_timed_out(stage_execution_id, error_msg)
+        
+        logger.warning(error_msg)
+        return reason, error_msg
+    
     async def execute_parallel_agents(
         self,
         stage: "ChainStageConfigModel",
@@ -423,27 +459,14 @@ class ParallelStageExecutor:
                 
                 return (result, metadata)
                 
-            except asyncio.CancelledError as e:
+            except asyncio.CancelledError:
                 # Cancellation can happen if the agent task is cancelled mid-flight (e.g. shutdown,
                 # upstream cancellation, or nested wait_for interactions). Treat it as a terminal
                 # result so the child stage doesn't stay "running" forever in the UI.
-                #
-                # Check tracker: if user requested cancel → CANCELLED, otherwise → TIMED_OUT
-                from tarsy.services.cancellation_tracker import is_user_cancel
-                from tarsy.models.constants import CancellationReason
-
-                if is_user_cancel(chain_context.session_id):
-                    reason = CancellationReason.USER_CANCEL.value
-                    await self.stage_manager.update_stage_execution_cancelled(child_execution_id, reason)
-                else:
-                    reason = CancellationReason.TIMEOUT.value
-                    await self.stage_manager.update_stage_execution_timed_out(child_execution_id, reason)
-
-                logger.warning(
-                    "%s '%s' was cancelled (%s)",
-                    parallel_type,
-                    agent_name,
-                    reason,
+                reason, _ = await self._handle_stage_cancellation(
+                    session_id=chain_context.session_id,
+                    stage_execution_id=child_execution_id,
+                    description=f"{parallel_type} '{agent_name}'",
                 )
 
                 # Create exception with correct reason for build_agent_result_from_exception
@@ -920,20 +943,13 @@ class ParallelStageExecutor:
                 
                 return (paused_result, metadata)
             
-            except asyncio.CancelledError as e:
+            except asyncio.CancelledError:
                 # Cancellation (timeout or user-requested) - mark stage appropriately
-                # Check tracker: if user requested cancel → CANCELLED, otherwise → TIMED_OUT
-                from tarsy.services.cancellation_tracker import is_user_cancel
-                from tarsy.models.constants import CancellationReason
-                
-                if is_user_cancel(chain_context.session_id):
-                    reason = CancellationReason.USER_CANCEL.value
-                    await self.stage_manager.update_stage_execution_cancelled(child_execution_id, reason)
-                else:
-                    reason = CancellationReason.TIMEOUT.value
-                    await self.stage_manager.update_stage_execution_timed_out(child_execution_id, reason)
-                
-                logger.warning(f"Agent '{agent_name}' cancelled ({reason})")
+                reason, _ = await self._handle_stage_cancellation(
+                    session_id=chain_context.session_id,
+                    stage_execution_id=child_execution_id,
+                    description=f"Agent '{agent_name}'",
+                )
                 
                 # Create exception with correct reason for build_agent_result_from_exception
                 result, metadata = build_agent_result_from_exception(
@@ -1190,41 +1206,17 @@ class ParallelStageExecutor:
             logger.info(f"{synthesis_config.agent} synthesis completed successfully")
             return (synthesis_stage_execution_id, synthesis_result)
             
-        except asyncio.CancelledError as e:
+        except asyncio.CancelledError:
             # Cancellation (timeout or user-requested) - mark stage appropriately
-            # Check tracker: if user requested cancel → CANCELLED, otherwise → TIMED_OUT
-            from tarsy.services.cancellation_tracker import is_user_cancel
-            from tarsy.models.constants import CancellationReason
-            
-            if is_user_cancel(chain_context.session_id):
-                reason = CancellationReason.USER_CANCEL.value
-                await self.stage_manager.update_stage_execution_cancelled(
-                    synthesis_stage_execution_id, reason
-                )
-                status = StageStatus.CANCELLED
-                summary = f"Synthesis cancelled ({reason})"
-            else:
-                reason = CancellationReason.TIMEOUT.value
-                await self.stage_manager.update_stage_execution_timed_out(
-                    synthesis_stage_execution_id, reason
-                )
-                status = StageStatus.TIMED_OUT
-                summary = f"Synthesis timed out ({reason})"
-            
-            error_msg = f"{synthesis_config.agent} synthesis cancelled ({reason})"
-            logger.warning(error_msg)
-            
-            # Create result with appropriate status
-            result = AgentExecutionResult(
-                status=status,
-                agent_name=synthesis_config.agent,
-                stage_name="synthesis",
-                timestamp_us=now_us(),
-                result_summary=summary,
-                error_message=error_msg
+            await self._handle_stage_cancellation(
+                session_id=chain_context.session_id,
+                stage_execution_id=synthesis_stage_execution_id,
+                description=f"{synthesis_config.agent} synthesis",
             )
             
-            return (synthesis_stage_execution_id, result)
+            # Re-raise so the session-level timeout handler can process it
+            # and set the correct session status (TIMED_OUT or CANCELLED)
+            raise
             
         except Exception as e:
             error_msg = f"{synthesis_config.agent} synthesis failed: {str(e)}"

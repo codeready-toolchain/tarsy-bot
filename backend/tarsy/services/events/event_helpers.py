@@ -423,6 +423,7 @@ async def publish_stage_completed(
     chat_id: Optional[str] = None,
     parent_stage_execution_id: Optional[str] = None,
     parallel_index: Optional[int] = None,
+    error_message: Optional[str] = None,
 ) -> None:
     """
     Publish stage.completed event.
@@ -431,10 +432,11 @@ async def publish_stage_completed(
         session_id: Session identifier
         stage_id: Stage execution identifier
         stage_name: Human-readable stage name
-        status: Stage status (completed/failed/partial)
+        status: Stage status (completed/failed/partial/timed_out/cancelled)
         chat_id: Optional chat ID if this is a chat response stage
         parent_stage_execution_id: Optional parent stage execution ID if this is a child of a parallel stage
         parallel_index: Optional position in parallel group (1-N) if this is a child stage
+        error_message: Optional error message if stage failed or timed out
     """
     try:
         async_session_factory = get_async_session_factory()
@@ -447,6 +449,7 @@ async def publish_stage_completed(
                 chat_id=chat_id,
                 parent_stage_execution_id=parent_stage_execution_id,
                 parallel_index=parallel_index,
+                error_message=error_message,
             )
             await publish_event(
                 session, EventChannel.session_details(session_id), event

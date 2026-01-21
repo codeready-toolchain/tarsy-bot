@@ -1410,6 +1410,11 @@ class AlertService:
                                         error=error_msg,
                                         timestamp_us=now_us()
                                     )
+                            except asyncio.CancelledError:
+                                # Synthesis cancelled (timeout or user-requested) - re-raise to let
+                                # the outer handler set the correct session status
+                                logger.info(f"Synthesis for parallel stage '{stage.name}' was cancelled")
+                                raise
                             except Exception as e:
                                 # Synthesis exception - stop chain execution immediately
                                 error_msg = f"Automatic synthesis failed for parallel stage '{stage.name}': {str(e)}"
@@ -1560,25 +1565,24 @@ class AlertService:
                     from tarsy.services.cancellation_tracker import is_user_cancel
                     
                     if is_user_cancel(chain_context.session_id):
-                        reason = CancellationReason.USER_CANCEL.value
+                        error_msg = f"Stage '{stage.name}' cancelled by user"
                     else:
-                        reason = CancellationReason.TIMEOUT.value
+                        error_msg = f"Stage '{stage.name}' timed out"
                     
                     logger.info(
-                        "Stage '%s' cancelled (reason=%s) in session %s",
-                        stage.name,
-                        reason,
+                        "%s in session %s",
+                        error_msg,
                         chain_context.session_id,
                     )
                     if stage_execution_id:
                         # Use appropriate status based on tracker
                         if is_user_cancel(chain_context.session_id):
                             await self.stage_manager.update_stage_execution_cancelled(
-                                stage_execution_id, reason
+                                stage_execution_id, error_msg
                             )
                         else:
                             await self.stage_manager.update_stage_execution_timed_out(
-                                stage_execution_id, reason
+                                stage_execution_id, error_msg
                             )
                     raise
 
