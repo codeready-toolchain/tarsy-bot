@@ -406,8 +406,12 @@ class TestAlertProcessing:
             final_analysis="Test analysis result"
         )
 
+        from tarsy.integrations.notifications.summarizer import ExecutiveSummaryResult
         mock_final_analysis_summarizer = AsyncMock()
-        mock_final_analysis_summarizer.generate_executive_summary.return_value = "Test analysis summary"
+        mock_final_analysis_summarizer.generate_executive_summary.return_value = ExecutiveSummaryResult(
+            summary="Test analysis summary",
+            error=None
+        )
         service.final_analysis_summarizer = mock_final_analysis_summarizer
         
         # Set up the service with our mocked dependencies
@@ -674,6 +678,7 @@ class TestHistorySessionManagement:
             error_message=None,
             final_analysis=None,
             final_analysis_summary=None,
+            executive_summary_error=None,
             pause_metadata=None
         )
     
@@ -689,6 +694,7 @@ class TestHistorySessionManagement:
             error_message=None,
             final_analysis=None,
             final_analysis_summary=None,
+            executive_summary_error=None,
             pause_metadata=None
         )
     
@@ -705,6 +711,7 @@ class TestHistorySessionManagement:
             error_message=None,
             final_analysis=analysis,
             final_analysis_summary=None,
+            executive_summary_error=None,
             pause_metadata=None
         )
 
@@ -722,6 +729,7 @@ class TestHistorySessionManagement:
             error_message=None,
             final_analysis=analysis,
             final_analysis_summary=summary,
+            executive_summary_error=None,
             pause_metadata=None
         )
     
@@ -1420,7 +1428,7 @@ class TestEnhancedChainExecution:
     async def test_execute_chain_stages_cancelled_error_marks_stage_cancelled(
         self, initialized_service
     ) -> None:
-        """Test CancelledError in a single-agent stage marks the stage as CANCELLED and re-raises."""
+        """Test CancelledError with timeout reason in a single-agent stage marks the stage as TIMED_OUT and re-raises."""
         from contextlib import asynccontextmanager
 
         from tarsy.models.constants import CancellationReason, StageStatus
@@ -1492,8 +1500,8 @@ class TestEnhancedChainExecution:
                     chain_definition, chain_context, session_mcp_client
                 )
 
-        assert stage_record.status == StageStatus.CANCELLED.value
-        assert stage_record.error_message == CancellationReason.TIMEOUT.value
+        assert stage_record.status == StageStatus.TIMED_OUT.value
+        assert "timed out" in stage_record.error_message.lower()
 
 
 @pytest.mark.unit

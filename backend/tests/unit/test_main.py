@@ -642,23 +642,31 @@ class TestBackgroundProcessing:
         """Test background processing with timeout."""
         # Make process_alert hang
         mock_alert_service.process_alert = AsyncMock(side_effect=asyncio.sleep(1000))
-        mock_session_manager = Mock()
-        mock_session_manager.update_session_error = Mock()
-        mock_alert_service.session_manager = mock_session_manager
+        
+        # Mock history service to track status updates
+        from tarsy.models.constants import AlertSessionStatus
+        mock_history_service = Mock()
+        mock_history_service.update_session_status = Mock()
         
         with patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)), \
              patch('tarsy.main.asyncio.wait_for', side_effect=asyncio.TimeoutError()), \
              patch('tarsy.main.active_tasks_lock', asyncio.Lock()), \
              patch('tarsy.main.active_tasks', {}), \
-             patch('tarsy.services.events.event_helpers.publish_session_failed', new_callable=AsyncMock):
+             patch('tarsy.services.history_service.get_history_service', return_value=mock_history_service), \
+             patch('tarsy.services.cancellation_tracker.is_user_cancel', return_value=False), \
+             patch('tarsy.services.events.event_helpers.publish_session_timed_out', new_callable=AsyncMock):
             # Should not raise exception, should handle timeout gracefully
             await process_alert_background("test-session-123", mock_alert_data)
         
-        # Verify session was marked as failed
-        mock_session_manager.update_session_error.assert_called_once()
-        call_args = mock_session_manager.update_session_error.call_args
-        assert call_args[0][0] == mock_alert_data.session_id
-        assert "timeout" in call_args[0][1].lower()
+        # Verify session was marked as timed out
+        mock_history_service.update_session_status.assert_called()
+        # Check that it was called with TIMED_OUT status and a timeout error message
+        calls = [call for call in mock_history_service.update_session_status.call_args_list 
+                 if call[1].get('status') == AlertSessionStatus.TIMED_OUT.value]
+        assert len(calls) >= 1
+        # Verify error message mentions timeout
+        last_call = calls[-1]
+        assert "timeout" in last_call[1].get('error_message', '').lower()
 
     @patch('tarsy.main.alert_service')
     async def test_process_alert_background_invalid_alert(self, mock_alert_service):
@@ -778,7 +786,7 @@ class TestBackgroundProcessing:
     async def test_process_alert_background_non_user_cancellation(
         self, mock_alert_service, mock_alert_data
     ):
-        """Test non-user cancellation (e.g., timeout) marks session as FAILED."""
+        """Test non-user cancellation (e.g., timeout) marks session as TIMED_OUT."""
         from tarsy.models.constants import AlertSessionStatus
         from tarsy.models.db_models import AlertSession
         from tarsy.utils.timestamp import now_us
@@ -787,9 +795,6 @@ class TestBackgroundProcessing:
         mock_alert_service.process_alert = AsyncMock(
             side_effect=asyncio.CancelledError()
         )
-        mock_session_manager = Mock()
-        mock_session_manager.update_session_error = Mock()
-        mock_alert_service.session_manager = mock_session_manager
         
         # Mock session in IN_PROGRESS status (not user-requested cancellation)
         mock_session = AlertSession(
@@ -803,6 +808,7 @@ class TestBackgroundProcessing:
         
         mock_history_service = Mock()
         mock_history_service.get_session.return_value = mock_session
+        mock_history_service.update_session_status = Mock()
         
         # Create lock in async context (Python 3.13+ requirement)
         test_lock = asyncio.Lock()
@@ -811,16 +817,18 @@ class TestBackgroundProcessing:
              patch('tarsy.services.history_service.get_history_service', return_value=mock_history_service), \
              patch('tarsy.main.active_tasks_lock', test_lock), \
              patch('tarsy.main.active_tasks', {}), \
-             patch('tarsy.services.events.event_helpers.publish_session_failed', new_callable=AsyncMock):
+             patch('tarsy.services.cancellation_tracker.is_user_cancel', return_value=False), \
+             patch('tarsy.services.events.event_helpers.publish_session_timed_out', new_callable=AsyncMock):
             
             # Should not raise exception and should handle gracefully
             await process_alert_background("test-session-123", mock_alert_data)
         
-        # Verify session was marked as failed (non-user cancellation)
-        mock_session_manager.update_session_error.assert_called_once()
-        call_args = mock_session_manager.update_session_error.call_args
-        assert call_args[0][0] == mock_alert_data.session_id
-        assert "cancelled" in call_args[0][1].lower()
+        # Verify session was marked as timed out (non-user cancellation)
+        mock_history_service.update_session_status.assert_called()
+        # Check that it was called with TIMED_OUT status
+        calls = [call for call in mock_history_service.update_session_status.call_args_list 
+                 if call[1].get('status') == AlertSessionStatus.TIMED_OUT.value]
+        assert len(calls) >= 1
 
     @patch('tarsy.main.alert_service')
     async def test_process_alert_background_user_cancellation_already_cancelled_status(

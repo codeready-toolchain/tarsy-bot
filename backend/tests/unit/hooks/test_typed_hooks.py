@@ -535,7 +535,8 @@ class TestStageExecutionEventHook:
                     status="completed",  # Verify it's a string, not enum
                     chat_id=None,
                     parent_stage_execution_id=None,
-                    parallel_index=0
+                    parallel_index=0,
+                    error_message=None
                 )
     
     @pytest.mark.asyncio
@@ -553,7 +554,8 @@ class TestStageExecutionEventHook:
                     status="failed",  # Verify it's a string, not enum
                     chat_id=None,
                     parent_stage_execution_id=None,
-                    parallel_index=0
+                    parallel_index=0,
+                    error_message=None
                 )
     
     @pytest.mark.asyncio
@@ -571,5 +573,6 @@ class TestStageExecutionEventHook:
                     status="partial",  # Verify it's a string, not enum
                     chat_id=None,
                     parent_stage_execution_id=None,
-                    parallel_index=0
+                    parallel_index=0,
+                    error_message=None
                 )

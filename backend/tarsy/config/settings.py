@@ -175,7 +175,7 @@ class Settings(BaseSettings):
         description="Maximum number of alerts that can be processed concurrently"
     )
     alert_processing_timeout: int = Field(
-        default=45,
+        default=600,
         description="Timeout in seconds for processing a single alert (default: 10 minutes)"
     )
     llm_iteration_timeout: int = Field(
@@ -321,7 +321,7 @@ class Settings(BaseSettings):
         return self
     
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=".env" if not is_testing() else None,
         env_file_encoding="utf-8",
         # Allow extra fields to be ignored for backward compatibility
         extra="ignore"

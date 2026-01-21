@@ -455,6 +455,7 @@ class TestSynthesisParallelResultsCancellationHandling:
         stage_manager.create_stage_execution = AsyncMock(return_value="synthesis-exec-1")
         stage_manager.update_stage_execution_started = AsyncMock()
         stage_manager.update_stage_execution_cancelled = AsyncMock()
+        stage_manager.update_stage_execution_timed_out = AsyncMock()
         stage_manager.update_stage_execution_failed = AsyncMock()
 
         settings = MockFactory.create_mock_settings()
@@ -522,20 +523,22 @@ class TestSynthesisParallelResultsCancellationHandling:
             mcp_servers=None
         )
 
-        # Execute synthesis
-        exec_id, result = await executor.synthesize_parallel_results(
-            parallel_result=parallel_result,
-            chain_context=chain_context,
-            session_mcp_client=Mock(),
-            stage_config=stage_config,
-            chain_definition=chain_def,
-            current_stage_index=1
-        )
+        # Execute synthesis - should raise CancelledError
+        with pytest.raises(asyncio.CancelledError):
+            exec_id, result = await executor.synthesize_parallel_results(
+                parallel_result=parallel_result,
+                chain_context=chain_context,
+                session_mcp_client=Mock(),
+                stage_config=stage_config,
+                chain_definition=chain_def,
+                current_stage_index=1
+            )
 
-        # Verify stage was marked as cancelled with correct reason
-        stage_manager.update_stage_execution_cancelled.assert_called_once_with("synthesis-exec-1", "timeout")
-        assert result.status == StageStatus.CANCELLED
-        assert "cancelled (timeout)" in result.error_message
+        # Verify stage was marked as timed out with formatted error message
+        stage_manager.update_stage_execution_timed_out.assert_called_once_with(
+            "synthesis-exec-1",
+            "SynthesisAgent synthesis timed out"
+        )
 
     @pytest.mark.asyncio
     async def test_synthesis_handles_cancelled_error_with_user_cancel_reason(self) -> None:
@@ -544,6 +547,7 @@ class TestSynthesisParallelResultsCancellationHandling:
         stage_manager.create_stage_execution = AsyncMock(return_value="synthesis-exec-1")
         stage_manager.update_stage_execution_started = AsyncMock()
         stage_manager.update_stage_execution_cancelled = AsyncMock()
+        stage_manager.update_stage_execution_timed_out = AsyncMock()
         stage_manager.update_stage_execution_failed = AsyncMock()
 
         settings = MockFactory.create_mock_settings()
@@ -610,18 +614,25 @@ class TestSynthesisParallelResultsCancellationHandling:
             mcp_servers=None
         )
 
-        exec_id, result = await executor.synthesize_parallel_results(
-            parallel_result=parallel_result,
-            chain_context=chain_context,
-            session_mcp_client=Mock(),
-            stage_config=stage_config,
-            chain_definition=chain_def,
-            current_stage_index=1
-        )
+        # Mock the cancellation tracker to indicate user cancellation
+        from unittest.mock import patch
+        with patch('tarsy.services.cancellation_tracker.is_user_cancel', return_value=True):
+            # Execute synthesis - should raise CancelledError
+            with pytest.raises(asyncio.CancelledError):
+                exec_id, result = await executor.synthesize_parallel_results(
+                    parallel_result=parallel_result,
+                    chain_context=chain_context,
+                    session_mcp_client=Mock(),
+                    stage_config=stage_config,
+                    chain_definition=chain_def,
+                    current_stage_index=1
+                )
 
-        stage_manager.update_stage_execution_cancelled.assert_called_once_with("synthesis-exec-1", "user_cancel")
-        assert result.status == StageStatus.CANCELLED
-        assert "cancelled (user_cancel)" in result.error_message
+        # Verify stage was marked as cancelled with formatted error message
+        stage_manager.update_stage_execution_cancelled.assert_called_once_with(
+            "synthesis-exec-1",
+            "SynthesisAgent synthesis cancelled by user"
+        )
 
 
 @pytest.mark.unit
@@ -630,13 +641,14 @@ class TestParallelStageExecutorCancellationHandling:
 
     @pytest.mark.asyncio
     async def test_parallel_stage_handles_cancelled_error_from_gather(self) -> None:
-        """Cancelled agents should not crash the stage; they should be marked CANCELLED and not stay running."""
+        """Cancelled agents should not crash the stage; they should be marked TIMED_OUT (no user cancel) and not stay running."""
         stage_manager = Mock()
         stage_manager.create_stage_execution = AsyncMock(side_effect=["parent-exec", "child-exec-1", "child-exec-2"])
         stage_manager.update_stage_execution_started = AsyncMock()
         stage_manager.update_stage_execution_completed = AsyncMock()
         stage_manager.update_stage_execution_failed = AsyncMock()
         stage_manager.update_stage_execution_cancelled = AsyncMock()
+        stage_manager.update_stage_execution_timed_out = AsyncMock()
         stage_manager.update_stage_execution_paused = AsyncMock()
 
         settings = MockFactory.create_mock_settings()
@@ -726,9 +738,13 @@ class TestParallelStageExecutorCancellationHandling:
         )
 
         assert isinstance(result, ParallelStageResult)
-        assert any(r.status == StageStatus.CANCELLED for r in result.results)
+        assert any(r.status == StageStatus.TIMED_OUT for r in result.results)
         assert any(r.status == StageStatus.COMPLETED for r in result.results)
-        stage_manager.update_stage_execution_cancelled.assert_any_call("child-exec-1", "unknown")
+        # Verify timed out agent was marked appropriately (error message contains "timed out")
+        calls = stage_manager.update_stage_execution_timed_out.call_args_list
+        assert len(calls) == 1
+        assert calls[0][0][0] == "child-exec-1"
+        assert "timed out" in calls[0][0][1].lower()
 
 
 @pytest.mark.unit

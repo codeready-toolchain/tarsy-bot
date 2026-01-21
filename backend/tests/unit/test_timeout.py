@@ -109,8 +109,9 @@ class TestTimeoutErrorHandlingInMain:
 
     @pytest.mark.asyncio
     async def test_timeout_error_calls_fixed_mark_session_as_failed(self, mock_alert_data):
-        """Test that TimeoutError properly updates session status and publishes event."""
+        """Test that TimeoutError properly updates session status to TIMED_OUT and publishes event."""
         from tarsy.main import process_alert_background
+        from tarsy.models.constants import AlertSessionStatus
         
         # Create mock alert_service with proper structure
         mock_alert_service = Mock()
@@ -120,17 +121,20 @@ class TestTimeoutErrorHandlingInMain:
             await asyncio.sleep(10)
         
         mock_alert_service.process_alert = AsyncMock(side_effect=slow_process)
-        mock_session_manager = Mock()
-        mock_session_manager.update_session_error = Mock()
-        mock_alert_service.session_manager = mock_session_manager
+        
+        # Mock history service to track status updates
+        mock_history_service = Mock()
+        mock_history_service.update_session_status = Mock()
         
         # Mock the event publisher
         with patch('tarsy.main.alert_service', mock_alert_service), \
              patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)), \
              patch('tarsy.main.get_settings') as mock_get_settings, \
+             patch('tarsy.services.history_service.get_history_service', return_value=mock_history_service), \
              patch('tarsy.main.active_tasks_lock', asyncio.Lock()), \
              patch('tarsy.main.active_tasks', {}), \
-             patch('tarsy.services.events.event_helpers.publish_session_failed', new_callable=AsyncMock) as mock_publish:
+             patch('tarsy.services.cancellation_tracker.is_user_cancel', return_value=False), \
+             patch('tarsy.services.events.event_helpers.publish_session_timed_out', new_callable=AsyncMock) as mock_publish:
             
             # Configure settings with short timeout
             settings = Mock()
@@ -140,11 +144,14 @@ class TestTimeoutErrorHandlingInMain:
             # Run process_alert_background - should timeout and handle it
             await process_alert_background("test-session-timeout", mock_alert_data)
             
-            # Verify session was marked as failed
-            mock_session_manager.update_session_error.assert_called_once()
-            call_args = mock_session_manager.update_session_error.call_args[0]
-            assert call_args[0] == "test-session-timeout"
-            assert "timeout" in call_args[1].lower()
+            # Verify session was marked as timed out
+            mock_history_service.update_session_status.assert_called()
+            calls = [call for call in mock_history_service.update_session_status.call_args_list 
+                     if call[1].get('status') == AlertSessionStatus.TIMED_OUT.value]
+            assert len(calls) >= 1
+            # Verify error message mentions timeout
+            last_call = calls[-1]
+            assert "timeout" in last_call[1].get('error_message', '').lower()
             
             # Verify event was published
             mock_publish.assert_called_once_with("test-session-timeout")
