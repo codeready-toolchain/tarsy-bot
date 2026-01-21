@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, useRef } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import type { ReactNode } from 'react';
 import { apiClient, handleAPIError } from '../services/api';
 import type { DetailedSession, Session, StageExecution } from '../types';
@@ -49,7 +49,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
    * - Force refresh is requested
    * - No session data exists
    */
-  const fetchSessionDetail = async (sessionId: string, forceRefresh: boolean = false) => {
+  const fetchSessionDetail = useCallback(async (sessionId: string, forceRefresh: boolean = false) => {
     // Skip fetch if we already have this session cached and no force refresh
     if (!forceRefresh && cachedSessionId === sessionId && session) {
       console.log(`🎯 [SessionContext] ✅ CACHE HIT - Using cached session data for ${sessionId}, no API call needed!`);
@@ -99,30 +99,30 @@ export function SessionProvider({ children }: SessionProviderProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [cachedSessionId, session, setSession, setLoading, setError, setCachedSessionId]);
 
   /**
    * Update session state with a function (for WebSocket updates, etc.)
    */
-  const updateSession = (updater: (prev: DetailedSession | null) => DetailedSession | null) => {
+  const updateSession = useCallback((updater: (prev: DetailedSession | null) => DetailedSession | null) => {
     setSession(updater);
-  };
+  }, [setSession]);
 
   /**
    * Clear cached session data (useful for navigation cleanup)
    */
-  const clearSession = () => {
+  const clearSession = useCallback(() => {
     console.log(`🧹 [SessionContext] Clearing cached session data`);
     setSession(null);
     setCachedSessionId(null);
     setError(null);
     setLoading(false);
-  };
+  }, [setSession, setCachedSessionId, setError, setLoading]);
 
   /**
    * Lightweight refresh of session summary statistics only
    */
-  const refreshSessionSummary = async (sessionId: string) => {
+  const refreshSessionSummary = useCallback(async (sessionId: string) => {
     try {
       console.log('🔄 [SessionContext] Refreshing session summary statistics for:', sessionId);
       const summaryData = await apiClient.getSessionSummary(sessionId);
@@ -151,12 +151,12 @@ export function SessionProvider({ children }: SessionProviderProps) {
     } catch (error) {
       console.error('❌ [SessionContext] Failed to refresh session summary:', error);
     }
-  };
+  }, [setSession]);
 
   /**
    * Partial update for session stages (avoids full page refresh)
    */
-  const refreshSessionStages = async (sessionId: string) => {
+  const refreshSessionStages = useCallback(async (sessionId: string) => {
     try {
       console.log('🔄 [SessionContext] Refreshing session stages for:', sessionId);
       const sessionData = await apiClient.getSessionDetail(sessionId);
@@ -201,12 +201,12 @@ export function SessionProvider({ children }: SessionProviderProps) {
     } catch (error) {
       console.error('❌ [SessionContext] Failed to refresh session stages:', error);
     }
-  };
+  }, [setSession]);
 
   /**
    * Direct update of final analysis (no API call needed)
    */
-  const updateFinalAnalysis = (analysis: string) => {
+  const updateFinalAnalysis = useCallback((analysis: string) => {
     console.log('🎯 [SessionContext] Updating final analysis directly');
     setSession(prevSession => {
       if (!prevSession) return prevSession;
@@ -219,12 +219,12 @@ export function SessionProvider({ children }: SessionProviderProps) {
         final_analysis: analysis
       };
     });
-  };
+  }, [setSession]);
 
   /**
    * Direct update of session status (no API call needed)
    */
-  const updateSessionStatus = (newStatus: DetailedSession['status'], errorMessage?: string) => {
+  const updateSessionStatus = useCallback((newStatus: DetailedSession['status'], errorMessage?: string) => {
     console.log('🔄 [SessionContext] Updating session status directly:', newStatus);
     setSession(prevSession => {
       if (!prevSession) return prevSession;
@@ -238,12 +238,12 @@ export function SessionProvider({ children }: SessionProviderProps) {
         error_message: errorMessage || prevSession.error_message
       };
     });
-  };
+  }, [setSession]);
 
   /**
    * Handle parallel parent stage started event - inject placeholders immediately
    */
-  const handleParallelStageStarted = (stageExecution: StageExecution) => {
+  const handleParallelStageStarted = useCallback((stageExecution: StageExecution) => {
     console.log('🚀 [SessionContext] Parallel parent stage started, injecting placeholders:', {
       execution_id: stageExecution.execution_id,
       parallel_type: stageExecution.parallel_type,
@@ -285,12 +285,12 @@ export function SessionProvider({ children }: SessionProviderProps) {
         stages: updatedStages
       };
     });
-  };
+  }, [setSession]);
 
   /**
    * Handle parallel child stage started event - replace placeholder with real data
    */
-  const handleParallelChildStageStarted = (stageExecution: StageExecution) => {
+  const handleParallelChildStageStarted = useCallback((stageExecution: StageExecution) => {
     console.log('🔄 [SessionContext] Parallel child stage started, replacing placeholder:', {
       execution_id: stageExecution.execution_id,
       parent_id: stageExecution.parent_stage_execution_id,
@@ -310,13 +310,13 @@ export function SessionProvider({ children }: SessionProviderProps) {
         stages: updatedStages
       };
     });
-  };
+  }, [setSession]);
 
   /**
    * Update a specific stage's status and error message from WebSocket event
    * This avoids a full API refresh and prevents race conditions
    */
-  const updateStageStatus = (
+  const updateStageStatus = useCallback((
     stageId: string, 
     status: string, 
     errorMessage?: string,
@@ -382,7 +382,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
         stages: updatedStages
       };
     });
-  };
+  }, [setSession]);
 
   const contextValue: SessionContextData = {
     session,
