@@ -20,6 +20,7 @@ interface SessionContextData {
   refreshSessionStages: (sessionId: string) => Promise<void>;
   updateFinalAnalysis: (analysis: string) => void;
   updateSessionStatus: (newStatus: DetailedSession['status'], errorMessage?: string) => void;
+  updateStageStatus: (stageId: string, status: string, errorMessage?: string, completedAtUs?: number) => void;
   // Placeholder management for parallel stages
   handleParallelStageStarted: (stageExecution: StageExecution) => void;
   handleParallelChildStageStarted: (stageExecution: StageExecution) => void;
@@ -311,6 +312,78 @@ export function SessionProvider({ children }: SessionProviderProps) {
     });
   };
 
+  /**
+   * Update a specific stage's status and error message from WebSocket event
+   * This avoids a full API refresh and prevents race conditions
+   */
+  const updateStageStatus = (
+    stageId: string, 
+    status: string, 
+    errorMessage?: string,
+    completedAtUs?: number
+  ) => {
+    console.log('🔄 [SessionContext] Updating stage status from WebSocket:', {
+      stageId,
+      status,
+      errorMessage,
+      completedAtUs
+    });
+
+    setSession(prevSession => {
+      
+      if (!prevSession) return prevSession;
+      
+      // CRITICAL: If stages array is empty, skip this update and let the API refresh handle it
+      // WebSocket events can arrive before initial session data loads, causing updates to stale state
+      if (!prevSession.stages || prevSession.stages.length === 0) {
+        console.log('⏭️ [SessionContext] Skipping WebSocket stage update - session data not loaded yet');
+        return prevSession;
+      }
+
+      let stageFound = false;
+
+      // Helper function to update stage recursively (handles nested parallel stages)
+      const updateStageRecursive = (stages: StageExecution[], depth: number = 0): StageExecution[] => {
+        return stages.map(stage => {
+          // Check if this is the stage we're looking for
+          if (stage.execution_id === stageId) {
+            stageFound = true;
+            return {
+              ...stage,
+              status: status as any,
+              error_message: errorMessage || stage.error_message,
+              completed_at_us: completedAtUs || stage.completed_at_us
+            };
+          }
+
+          // Check nested parallel executions
+          if (stage.parallel_executions && stage.parallel_executions.length > 0) {
+            return {
+              ...stage,
+              parallel_executions: updateStageRecursive(stage.parallel_executions, depth + 1)
+            };
+          }
+
+          return stage;
+        });
+      };
+
+      const updatedStages = updateStageRecursive(prevSession.stages || []);
+      
+      // If stage wasn't found, skip this update - let the API refresh handle it
+      // This prevents creating inconsistent state when WebSocket arrives before API data
+      if (!stageFound) {
+        console.log('⏭️ [SessionContext] Skipping WebSocket stage update - stage not found yet (will be handled by API refresh)');
+        return prevSession;
+      }
+
+      return {
+        ...prevSession,
+        stages: updatedStages
+      };
+    });
+  };
+
   const contextValue: SessionContextData = {
     session,
     loading,
@@ -323,6 +396,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
     refreshSessionStages,
     updateFinalAnalysis,
     updateSessionStatus,
+    updateStageStatus,
     // Placeholder management
     handleParallelStageStarted,
     handleParallelChildStageStarted
@@ -364,6 +438,7 @@ export function useSession(sessionId: string | undefined) {
     refreshSessionStages,
     updateFinalAnalysis,
     updateSessionStatus,
+    updateStageStatus,
     handleParallelStageStarted,
     handleParallelChildStageStarted
   } = useSessionContext();
@@ -413,6 +488,7 @@ export function useSession(sessionId: string | undefined) {
     },
     updateFinalAnalysis,
     updateSessionStatus,
+    updateStageStatus,
     handleParallelStageStarted,
     handleParallelChildStageStarted
   };

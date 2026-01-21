@@ -124,6 +124,7 @@ function SessionDetailPageBase({
     refetch, 
     refreshSessionSummary,
     refreshSessionStages,
+    updateStageStatus,
     handleParallelStageStarted
   } = useSession(sessionId);
 
@@ -574,7 +575,7 @@ function SessionDetailPageBase({
         }
       }
       else if (isStageEvent(eventType)) {
-        // Stage events (stage.started, stage.completed, stage.failed)
+        // Stage events (stage.started, stage.completed, stage.failed, stage.timed_out)
         console.log('🔄 Stage event, using partial refresh');
         
         // Check if this is a parallel stage starting (has expected_parallel_count)
@@ -616,12 +617,31 @@ function SessionDetailPageBase({
           // Child stage starting - will be handled by full refresh which will replace placeholder
         }
         
+        // For stage completion events (completed/failed/timed_out), update stage status immediately from event
+        // This avoids race conditions where the API is called before the DB transaction commits
+        if ((eventType === STAGE_EVENTS.COMPLETED || eventType === STAGE_EVENTS.FAILED || eventType === STAGE_EVENTS.TIMED_OUT) && 
+            update.stage_id && update.status) {
+          console.log('✅ Stage terminal event - updating stage status directly from WebSocket event:', {
+            stage_id: update.stage_id,
+            status: update.status,
+            error_message: update.error_message
+          });
+          
+          // Update the stage immediately with data from the event
+          updateStageStatus(
+            update.stage_id,
+            update.status,
+            update.error_message,
+            update.completed_at_us
+          );
+        }
+        
         // Update summary immediately
         if (sessionId) {
           refreshSessionSummary(sessionId);
         }
         
-        // Use throttled partial update for stage content
+        // Use throttled partial update for stage content (this will fetch full LLM interactions, etc.)
         throttledUpdate(() => {
           if (sessionId) {
             refreshSessionStages(sessionId);

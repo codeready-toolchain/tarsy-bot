@@ -797,13 +797,17 @@ function ConversationTimeline({
             type: item.type,
             timestamp: item.timestamp_us,
             llm_id: item.llm_interaction_id,
-            mcp_id: item.mcp_event_id
+            mcp_id: item.mcp_event_id,
+            stageStatus: item.stageStatus,
+            stageErrorMessage: item.stageErrorMessage
           })));
           const newHash = JSON.stringify(flow.map(item => ({
             type: item.type,
             timestamp: item.timestamp_us,
             llm_id: item.llm_interaction_id,
-            mcp_id: item.mcp_event_id
+            mcp_id: item.mcp_event_id,
+            stageStatus: item.stageStatus,
+            stageErrorMessage: item.stageErrorMessage
           })));
           
           if (prevHash !== newHash) {
