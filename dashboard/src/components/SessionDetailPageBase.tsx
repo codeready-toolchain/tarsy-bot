@@ -35,7 +35,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useChatState } from '../hooks/useChatState';
 import type { DetailedSession } from '../types';
 import { useAdvancedAutoScroll } from '../hooks/useAdvancedAutoScroll';
-import { isTerminalSessionEvent } from '../utils/eventTypes';
+import { isTerminalSessionEvent, isStageEvent, STAGE_EVENTS, SESSION_EVENTS } from '../utils/eventTypes';
 import { isActiveSessionStatus, isTerminalSessionStatus, isActiveStageStatus, SESSION_STATUS } from '../utils/statusConstants';
 import { mapEventToProgressStatus, ProgressStatusMessage, StageName, isTerminalProgressStatus } from '../utils/statusMapping';
 import { STAGE_STATUS } from '../utils/statusConstants';
@@ -245,6 +245,9 @@ function SessionDetailPageBase({
         } else if (execution.status === STAGE_STATUS.CANCELLED) {
           // Cancelled agents get terminal status
           initialStatusMap.set(execution.execution_id, ProgressStatusMessage.CANCELLED);
+        } else if (execution.status === STAGE_STATUS.TIMED_OUT) {
+          // Timed out agents get terminal status
+          initialStatusMap.set(execution.execution_id, ProgressStatusMessage.TIMED_OUT);
         }
       }
     }
@@ -439,10 +442,10 @@ function SessionDetailPageBase({
       // Only track chat stages (those with chat_id)
       if (!event.chat_id) return;
       
-      if (event.type === 'stage.started') {
+      if (event.type === STAGE_EVENTS.STARTED) {
         console.log('💬 Chat stage started - disabling chat input');
         setChatStageInProgress(true);
-      } else if (event.type === 'stage.completed' || event.type === 'stage.failed') {
+      } else if (event.type === STAGE_EVENTS.COMPLETED || event.type === STAGE_EVENTS.FAILED) {
         console.log('💬 Chat stage ended - enabling chat input');
         setChatStageInProgress(false);
       }
@@ -477,18 +480,18 @@ function SessionDetailPageBase({
       const eventType = update.type || '';
       
       // Update progress status based on event
-      if (eventType.startsWith('stage.') || eventType === 'session.progress_update') {
+      if (isStageEvent(eventType) || eventType === SESSION_EVENTS.PROGRESS_UPDATE) {
         // Check if this is a parallel-related event (child or parent)
         // Use explicit presence checks to handle parallel_index === 0 correctly
-        const isParallelChildUpdate = (eventType === 'session.progress_update' && update.stage_execution_id !== undefined && update.stage_execution_id !== null && update.parallel_index !== undefined && update.parallel_index !== null) || 
-                                      (eventType.startsWith('stage.') && update.parent_stage_execution_id !== undefined && update.parent_stage_execution_id !== null);
-        const isParallelParentEvent = eventType.startsWith('stage.') && update.expected_parallel_count && update.expected_parallel_count > 0;
+        const isParallelChildUpdate = (eventType === SESSION_EVENTS.PROGRESS_UPDATE && update.stage_execution_id !== undefined && update.stage_execution_id !== null && update.parallel_index !== undefined && update.parallel_index !== null) || 
+                                      (isStageEvent(eventType) && update.parent_stage_execution_id !== undefined && update.parent_stage_execution_id !== null);
+        const isParallelParentEvent = isStageEvent(eventType) && update.expected_parallel_count && update.expected_parallel_count > 0;
         const isParallelUpdate = isParallelChildUpdate || isParallelParentEvent;
         
         if (isParallelUpdate) {
           
           // Per-agent status update for parallel execution (child agents only)
-          if (eventType === 'session.progress_update' && isParallelChildUpdate) {
+          if (eventType === SESSION_EVENTS.PROGRESS_UPDATE && isParallelChildUpdate) {
             // Update session-level status when FIRST parallel child update arrives
             const parentId = update.parent_stage_execution_id;
             if (parentId !== undefined && parentId !== null && parentId !== parallelStageStatusUpdated.current) {
@@ -503,20 +506,31 @@ function SessionDetailPageBase({
                 return newMap;
               });
             }
-          } else if (eventType === 'stage.completed' || eventType === 'stage.failed') {
+          } else if (eventType === STAGE_EVENTS.COMPLETED || eventType === STAGE_EVENTS.FAILED || eventType === STAGE_EVENTS.TIMED_OUT) {
             // Backend sends stage_id, not stage_execution_id in completion events
             const executionId = update.stage_execution_id || update.stage_id;
             if (executionId && isParallelChildUpdate) {
-              // Set terminal status when this specific parallel child stage completes or fails
+              // Set terminal status when this specific parallel child stage completes, fails, or times out
               // Use executionId (from stage_id or stage_execution_id) to match the key format from mapEventToProgressStatus
-              const terminalStatus = eventType === 'stage.completed' ? ProgressStatusMessage.COMPLETED : ProgressStatusMessage.FAILED;
+              // Check the status field from event payload (more reliable than event type)
+              const stageStatus = update.status || '';
+              let terminalStatus: string;
+              if (stageStatus === STAGE_STATUS.TIMED_OUT || eventType === STAGE_EVENTS.TIMED_OUT) {
+                terminalStatus = ProgressStatusMessage.TIMED_OUT;
+              } else if (stageStatus === STAGE_STATUS.COMPLETED || eventType === STAGE_EVENTS.COMPLETED) {
+                terminalStatus = ProgressStatusMessage.COMPLETED;
+              } else if (stageStatus === STAGE_STATUS.CANCELLED) {
+                terminalStatus = ProgressStatusMessage.CANCELLED;
+              } else {
+                terminalStatus = ProgressStatusMessage.FAILED;
+              }
               setAgentProgressStatuses(prev => {
                 const newMap = new Map(prev);
                 newMap.set(executionId, terminalStatus);
                 return newMap;
               });
             } else if (update.expected_parallel_count && update.expected_parallel_count > 0 && (update.parent_stage_execution_id === undefined || update.parent_stage_execution_id === null)) {
-              // Clear all agent statuses when the parallel parent completes or fails
+              // Clear all agent statuses when the parallel parent completes, fails, or times out
               // Parent stages have expected_parallel_count > 0 and no parent_stage_execution_id
               parallelStageStatusUpdated.current = null;
               setAgentProgressStatuses(new Map());
@@ -559,12 +573,12 @@ function SessionDetailPageBase({
           refreshSessionSummary(sessionId);
         }
       }
-      else if (eventType.startsWith('stage.')) {
+      else if (isStageEvent(eventType)) {
         // Stage events (stage.started, stage.completed, stage.failed)
         console.log('🔄 Stage event, using partial refresh');
         
         // Check if this is a parallel stage starting (has expected_parallel_count)
-        if (eventType === 'stage.started' && update.expected_parallel_count && update.expected_parallel_count > 0) {
+        if (eventType === STAGE_EVENTS.STARTED && update.expected_parallel_count && update.expected_parallel_count > 0) {
           console.log('🚀 Parallel parent stage starting - injecting placeholders immediately');
           
           // Create a minimal StageExecution object for placeholder injection
@@ -597,7 +611,7 @@ function SessionDetailPageBase({
           };
           
           handleParallelStageStarted(parentStage);
-        } else if (eventType === 'stage.started' && update.parent_stage_execution_id !== undefined && update.parent_stage_execution_id !== null) {
+        } else if (eventType === STAGE_EVENTS.STARTED && update.parent_stage_execution_id !== undefined && update.parent_stage_execution_id !== null) {
           console.log('🔄 Parallel child stage starting - will replace placeholder');
           // Child stage starting - will be handled by full refresh which will replace placeholder
         }

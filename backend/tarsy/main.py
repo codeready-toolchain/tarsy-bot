@@ -715,6 +715,58 @@ async def mark_session_as_failed(alert: Optional[ChainContext], error_msg: str) 
         from tarsy.services.events.event_helpers import publish_session_failed
         await publish_session_failed(alert.session_id)
 
+
+async def mark_session_cancelled_or_timed_out(
+    session_id: str,
+    timeout_error_msg: str = "Session timed out",
+    cancel_paused_stages: bool = False
+) -> bool:
+    """
+    Mark session as CANCELLED (if user-requested) or TIMED_OUT (if system timeout).
+    
+    Uses the cancellation tracker to determine the cause.
+    
+    Args:
+        session_id: Session ID to update
+        timeout_error_msg: Error message to use if it's a timeout
+        cancel_paused_stages: If True, also cancel all paused stages (for user cancellation)
+        
+    Returns:
+        True if status was updated, False if history service unavailable
+    """
+    from tarsy.models.constants import AlertSessionStatus
+    from tarsy.services.cancellation_tracker import is_user_cancel
+    from tarsy.services.events.event_helpers import publish_session_cancelled, publish_session_timed_out
+    from tarsy.services.history_service import get_history_service
+    
+    history_service = get_history_service()
+    if not history_service:
+        logger.warning(f"Session {session_id} - history service unavailable for status update")
+        return False
+    
+    if is_user_cancel(session_id):
+        # User-requested cancellation
+        history_service.update_session_status(
+            session_id=session_id,
+            status=AlertSessionStatus.CANCELLED.value,
+            error_message="Session cancelled by user"
+        )
+        if cancel_paused_stages:
+            await history_service.cancel_all_paused_stages(session_id)
+        await publish_session_cancelled(session_id)
+        logger.info(f"Session {session_id} cancelled by user")
+    else:
+        # System timeout
+        history_service.update_session_status(
+            session_id=session_id,
+            status=AlertSessionStatus.TIMED_OUT.value,
+            error_message=timeout_error_msg
+        )
+        await publish_session_timed_out(session_id)
+        logger.info(f"Session {session_id} timed out")
+    
+    return True
+
 async def process_alert_background(session_id: str, alert: ChainContext) -> None:
     """Background task to process an alert with comprehensive error handling and concurrency control."""
     if alert_processing_semaphore is None or alert_service is None:
@@ -765,37 +817,11 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
             except asyncio.CancelledError:
                 # Task was cancelled - check tracker to determine if user-requested or timeout
                 logger.info(f"Session {session_id} task was cancelled")
-                
-                from tarsy.models.constants import AlertSessionStatus
-                from tarsy.services.cancellation_tracker import is_user_cancel
-                from tarsy.services.events.event_helpers import (
-                    publish_session_cancelled,
-                    publish_session_timed_out,
+                await mark_session_cancelled_or_timed_out(
+                    session_id, 
+                    timeout_error_msg="Session timed out",
+                    cancel_paused_stages=True
                 )
-                from tarsy.services.history_service import get_history_service
-                
-                history_service = get_history_service()
-                if history_service:
-                    if is_user_cancel(session_id):
-                        # User-requested cancellation
-                        history_service.update_session_status(
-                            session_id=session_id,
-                            status=AlertSessionStatus.CANCELLED.value,
-                            error_message="Session cancelled by user"
-                        )
-                        await history_service.cancel_all_paused_stages(session_id)
-                        await publish_session_cancelled(session_id)
-                        logger.info(f"Session {session_id} cancelled by user request")
-                    else:
-                        # System timeout
-                        history_service.update_session_status(
-                            session_id=session_id,
-                            status=AlertSessionStatus.TIMED_OUT.value,
-                            error_message="Session timed out"
-                        )
-                        await publish_session_timed_out(session_id)
-                        logger.info(f"Session {session_id} timed out")
-                
                 raise  # Re-raise to preserve the original CancelledError
             
             # Calculate processing duration
@@ -804,42 +830,19 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
             
         except asyncio.CancelledError:
             # Handle cancellation explicitly to prevent it from being caught by Exception handler
-            # Check tracker to determine if user-requested or timeout
+            # Check if session already has a terminal status (inner handler may have updated it)
             from tarsy.models.constants import AlertSessionStatus
-            from tarsy.services.cancellation_tracker import is_user_cancel
-            from tarsy.services.events.event_helpers import publish_session_cancelled, publish_session_timed_out
             from tarsy.services.history_service import get_history_service
             
             history_service = get_history_service()
             if history_service:
                 session = history_service.get_session(session_id)
-                # Check if session already has a terminal status (inner handler may have updated it)
                 if session and session.status in AlertSessionStatus.terminal_values():
                     logger.info(f"Session {session_id} already in terminal state ({session.status}) - exiting gracefully")
                     return
-                
-                if is_user_cancel(session_id):
-                    # User-requested cancellation
-                    history_service.update_session_status(
-                        session_id=session_id,
-                        status=AlertSessionStatus.CANCELLED.value,
-                        error_message="Session cancelled by user"
-                    )
-                    await publish_session_cancelled(session_id)
-                    logger.info(f"Session {session_id} cancelled by user - exiting gracefully")
-                    return
-                else:
-                    # System timeout
-                    history_service.update_session_status(
-                        session_id=session_id,
-                        status=AlertSessionStatus.TIMED_OUT.value,
-                        error_message="Session timed out"
-                    )
-                    await publish_session_timed_out(session_id)
-                    logger.info(f"Session {session_id} timed out")
-            else:
-                # History service not available, log and exit
-                logger.warning(f"Session {session_id} cancelled but history service unavailable")
+            
+            # Update status based on tracker (user cancel vs timeout)
+            await mark_session_cancelled_or_timed_out(session_id, timeout_error_msg="Session timed out")
             
         except ValueError as e:
             # Configuration or data validation errors
@@ -848,10 +851,10 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
             await mark_session_as_failed(alert, error_msg)
             
         except TimeoutError as e:
-            # Processing timeout
+            # Processing timeout - check tracker to determine status
             error_msg = str(e)
             logger.error(f"Session {session_id} processing timeout: {error_msg}")
-            await mark_session_as_failed(alert, error_msg)
+            await mark_session_cancelled_or_timed_out(session_id, timeout_error_msg=error_msg)
             
         except ConnectionError as e:
             # Network or external service errors

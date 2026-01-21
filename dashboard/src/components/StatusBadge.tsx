@@ -7,7 +7,8 @@ import {
   Refresh,
   HourglassEmpty,
   Cancel,
-  PauseCircle
+  PauseCircle,
+  TimerOff
 } from '@mui/icons-material';
 import { SESSION_STATUS } from '../utils/statusConstants';
 import type { StatusBadgeProps } from '../types';
@@ -60,6 +61,12 @@ const getStatusConfig = (status: string): {
         color: 'default', 
         icon: <Cancel sx={{ fontSize: 16 }} />, 
         label: 'Cancelled' 
+      };
+    case SESSION_STATUS.TIMED_OUT:
+      return {
+        color: 'error',
+        icon: <TimerOff sx={{ fontSize: 16 }} />,
+        label: 'Timed Out'
       };
     default: 
       return { 

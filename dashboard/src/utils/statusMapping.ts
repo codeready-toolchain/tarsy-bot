@@ -5,6 +5,8 @@
  * Supports regular stages, parallel stages, synthesis, and executive summary.
  */
 
+import { SESSION_EVENTS, STAGE_EVENTS } from './eventTypes';
+
 /**
  * Progress phase constants (matches backend ProgressPhase enum).
  */
@@ -44,6 +46,7 @@ export const ProgressStatusMessage = {
   COMPLETED: 'Completed',
   FAILED: 'Failed',
   CANCELLED: 'Cancelled',
+  TIMED_OUT: 'Timed Out',
 } as const;
 
 /**
@@ -54,6 +57,7 @@ export const TERMINAL_PROGRESS_STATUSES = [
   ProgressStatusMessage.COMPLETED,
   ProgressStatusMessage.FAILED,
   ProgressStatusMessage.CANCELLED,
+  ProgressStatusMessage.TIMED_OUT,
 ] as const;
 
 /**
@@ -90,7 +94,7 @@ export function mapEventToProgressStatus(event: any, includeAgentContext?: boole
   let statusMessage: string = ProgressStatusMessage.PROCESSING;
   
   // Explicit progress update event (e.g., distilling, finalizing)
-  if (eventType === 'session.progress_update') {
+  if (eventType === SESSION_EVENTS.PROGRESS_UPDATE) {
     const phase = event.phase || event.data?.phase;
     if (phase === ProgressPhase.CONCLUDING) statusMessage = ProgressStatusMessage.CONCLUDING;        // Forced conclusion at iteration limit
     else if (phase === ProgressPhase.DISTILLING) statusMessage = ProgressStatusMessage.DISTILLING;        // MCP tool result summarization
@@ -101,7 +105,7 @@ export function mapEventToProgressStatus(event: any, includeAgentContext?: boole
   }
   
   // Stage-based detection
-  else if (eventType === 'stage.started') {
+  else if (eventType === STAGE_EVENTS.STARTED) {
     const stageName = event.stage_name || event.data?.stage_name;
     
     // Synthesis stage
