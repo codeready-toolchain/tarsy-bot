@@ -15,7 +15,9 @@ import time
 from typing import List
 from unittest.mock import AsyncMock, Mock, patch
 
+import httpx
 import pytest
+import respx
 from mcp.types import Tool
 
 from tarsy.integrations.mcp.client import MCPClient
@@ -56,30 +58,30 @@ class TestConcurrentAlertSessions:
             }
         }
         
-        # Mock LLM responses for concurrent sessions
-        def create_streaming_mock():
-            """Create mock LLM streaming responses."""
-            interaction_count = 0
+        # Mock LLM responses for concurrent sessions at HTTP level using respx
+        # This is more reliable than patching LangChain methods for background tasks
+        interaction_count = {"count": 0}
+        
+        def create_openai_streaming_response(*args, **kwargs):
+            """Create mock OpenAI streaming response."""
+            interaction_count["count"] += 1
             
-            async def mock_astream(*args, **kwargs):
-                nonlocal interaction_count
-                interaction_count += 1
-                
-                # Simple response for each session
-                response_content = f"Final Answer: Analysis completed for concurrent session {interaction_count}"
-                
-                # Create usage metadata
-                usage_metadata = {
-                    'input_tokens': 100,
-                    'output_tokens': 50,
-                    'total_tokens': 150
-                }
-                
-                # Yield chunks from create_mock_stream
-                async for chunk in create_mock_stream(response_content, usage_metadata):
-                    yield chunk
-                
-            return mock_astream
+            # OpenAI streaming response format
+            response_text = f"Final Answer: Analysis completed for concurrent session {interaction_count['count']}"
+            
+            # Simulate streaming chunks
+            chunks = []
+            # First chunk with content
+            chunks.append(b'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4","choices":[{"index":0,"delta":{"role":"assistant","content":"' + response_text.encode() + b'"},"finish_reason":null}]}\n\n')
+            # Final chunk with usage
+            chunks.append(b'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":100,"completion_tokens":50,"total_tokens":150}}\n\n')
+            chunks.append(b'data: [DONE]\n\n')
+            
+            return httpx.Response(
+                status_code=200,
+                content=b''.join(chunks),
+                headers={"content-type": "text/event-stream"}
+            )
         
         # Mock MCP sessions for concurrent processing
         def create_mock_mcp_session(server_name: str):
@@ -126,22 +128,25 @@ class TestConcurrentAlertSessions:
              patch.dict(os.environ, {}, clear=True), \
              E2ETestUtils.setup_runbook_service_patching():
             
-            # Mock LLM streaming
-            streaming_mock = create_streaming_mock()
+            # Mock MCP client for concurrent sessions
+            mock_sessions = {
+                "kubernetes-server": create_mock_mcp_session("kubernetes-server")
+            }
             
-            with E2ETestUtils.create_llm_patch_context(streaming_mock=streaming_mock):
-                # Mock MCP client for concurrent sessions
-                mock_sessions = {
-                    "kubernetes-server": create_mock_mcp_session("kubernetes-server")
-                }
-                
-                mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
-                
-                # Mock initialize to avoid real MCP server startup
-                async def mock_initialize(self):
-                    """Mock initialization for concurrent sessions."""
-                    self.sessions = mock_sessions.copy()
-                    self._initialized = True
+            mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
+            
+            # Mock initialize to avoid real MCP server startup
+            async def mock_initialize(self):
+                """Mock initialization for concurrent sessions."""
+                self.sessions = mock_sessions.copy()
+                self._initialized = True
+            
+            # Mock LLM at HTTP level using respx (more reliable for background tasks)
+            with respx.mock:
+                # Mock OpenAI API calls
+                respx.post("https://api.openai.com/v1/chat/completions").mock(
+                    side_effect=create_openai_streaming_response
+                )
                 
                 with patch.object(MCPClient, "initialize", mock_initialize), \
                      patch.object(MCPClient, "list_tools", mock_list_tools), \
@@ -234,6 +239,7 @@ class TestConcurrentAlertSessions:
                     print(f"   ✅ All {concurrent_alert_count} sessions processed without transport deadlocks")
                     print(f"   ✅ System handled concurrent MCP client creation gracefully")
                     print(f"   ✅ No system crashes from cancel scope conflicts!")
+                    print(f"   📝 Total LLM interactions: {interaction_count['count']}")
                     
                     # Key insight: The test reaching this point without exceptions demonstrates
                     # that concurrent MCP transport operations are handled correctly.
