@@ -19,6 +19,7 @@ class AlertSessionStatus(Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"  # Terminal state - cancellation completed
+    TIMED_OUT = "timed_out"  # System timeout (session processing timeout)
     
     @classmethod
     def get_active_statuses(cls) -> List['AlertSessionStatus']:
@@ -28,7 +29,7 @@ class AlertSessionStatus(Enum):
     @classmethod
     def get_terminal_statuses(cls) -> List['AlertSessionStatus']:
         """Statuses that indicate session processing is finished."""
-        return [cls.COMPLETED, cls.FAILED, cls.CANCELLED]
+        return [cls.COMPLETED, cls.FAILED, cls.CANCELLED, cls.TIMED_OUT]
     
     @classmethod
     def get_all_statuses(cls) -> List['AlertSessionStatus']:
@@ -60,7 +61,8 @@ class StageStatus(Enum):
     PAUSED = "paused"  # Waiting for user resume
     COMPLETED = "completed"
     FAILED = "failed"
-    CANCELLED = "cancelled"  # User-initiated cancellation
+    CANCELLED = "cancelled"  # User-initiated cancellation only
+    TIMED_OUT = "timed_out"  # System timeout (session/iteration timeout)
     PARTIAL = "partial"  # Some results but with warnings/issues
 
 

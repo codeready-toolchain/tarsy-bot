@@ -15,6 +15,7 @@ export const SESSION_STATUS = {
   COMPLETED: 'completed',
   FAILED: 'failed',
   CANCELLED: 'cancelled',
+  TIMED_OUT: 'timed_out',
 } as const;
 
 export type SessionStatus = typeof SESSION_STATUS[keyof typeof SESSION_STATUS];
@@ -30,6 +31,7 @@ export const STAGE_STATUS = {
   COMPLETED: 'completed',
   FAILED: 'failed',
   CANCELLED: 'cancelled',
+  TIMED_OUT: 'timed_out',
 } as const;
 
 export type StageStatus = typeof STAGE_STATUS[keyof typeof STAGE_STATUS];
@@ -80,6 +82,7 @@ export const TERMINAL_SESSION_STATUSES: SessionStatus[] = [
   SESSION_STATUS.COMPLETED,
   SESSION_STATUS.FAILED,
   SESSION_STATUS.CANCELLED,
+  SESSION_STATUS.TIMED_OUT,
 ];
 
 export const ACTIVE_SESSION_STATUSES: SessionStatus[] = [
@@ -98,6 +101,7 @@ export const TERMINAL_STAGE_STATUSES: StageStatus[] = [
   STAGE_STATUS.COMPLETED,
   STAGE_STATUS.FAILED,
   STAGE_STATUS.CANCELLED,
+  STAGE_STATUS.TIMED_OUT,
 ];
 
 export const ACTIVE_STAGE_STATUSES: StageStatus[] = [
@@ -192,6 +196,8 @@ export function getSessionStatusDisplayName(status: string): string {
       return 'Failed';
     case SESSION_STATUS.CANCELLED:
       return 'Cancelled';
+    case SESSION_STATUS.TIMED_OUT:
+      return 'Timed Out';
     case SESSION_STATUS.IN_PROGRESS:
       return 'In Progress';
     case SESSION_STATUS.PENDING:
@@ -216,6 +222,8 @@ export function getStageStatusDisplayName(status: string): string {
       return 'Failed';
     case STAGE_STATUS.CANCELLED:
       return 'Cancelled';
+    case STAGE_STATUS.TIMED_OUT:
+      return 'Timed Out';
     case STAGE_STATUS.ACTIVE:
       return 'Active';
     case STAGE_STATUS.PENDING:
@@ -263,6 +271,8 @@ export function getSessionStatusChipColor(
       return 'success';
     case SESSION_STATUS.FAILED:
       return 'error';
+    case SESSION_STATUS.TIMED_OUT:
+      return 'error';
     case SESSION_STATUS.CANCELLED:
       return 'default';
     case SESSION_STATUS.IN_PROGRESS:
@@ -290,6 +300,8 @@ export function getSessionStatusProgressColor(
       return 'success';
     case SESSION_STATUS.FAILED:
       return 'error';
+    case SESSION_STATUS.TIMED_OUT:
+      return 'error';
     case SESSION_STATUS.CANCELLED:
       return 'inherit';
     case SESSION_STATUS.IN_PROGRESS:
@@ -316,6 +328,8 @@ export function getStageStatusChipColor(
       return 'success';
     case STAGE_STATUS.FAILED:
       return 'error';
+    case STAGE_STATUS.TIMED_OUT:
+      return 'error';
     case STAGE_STATUS.CANCELLED:
       return 'warning';
     case STAGE_STATUS.ACTIVE:
@@ -339,6 +353,8 @@ export function getStageStatusProgressColor(
     case STAGE_STATUS.COMPLETED:
       return 'success';
     case STAGE_STATUS.FAILED:
+      return 'error';
+    case STAGE_STATUS.TIMED_OUT:
       return 'error';
     case STAGE_STATUS.CANCELLED:
       return 'warning';

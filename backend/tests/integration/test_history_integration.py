@@ -611,7 +611,7 @@ class TestAlertServiceHistoryIntegration:
         settings.openai_api_key = "test-key"
         settings.anthropic_api_key = "test-key"
         # Add timeout settings for alert processing
-        settings.alert_processing_timeout = 600  # Default 10 minute timeout
+        settings.alert_processing_timeout = 900  # Default 15 minute timeout
         settings.llm_iteration_timeout = 210  # Default 3.5 minute iteration timeout
         settings.mcp_tool_call_timeout = 70  # Default 70 second tool timeout
         return settings
@@ -625,8 +625,11 @@ class TestAlertServiceHistoryIntegration:
         # Create AlertService directly with mock settings
         service = AlertService(mock_settings)
 
+        from tarsy.integrations.notifications.summarizer import ExecutiveSummaryResult
         mock_summary = AsyncMock()
-        mock_summary.generate_executive_summary.return_value = "Test analysis"
+        mock_summary.generate_executive_summary.return_value = ExecutiveSummaryResult(
+            summary="Test analysis", error=None
+        )
         service.final_analysis_summarizer = mock_summary
         
         # Mock LLM manager to appear available

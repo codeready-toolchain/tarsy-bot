@@ -557,6 +557,7 @@ async def cancel_session(
     from tarsy.config.settings import get_settings
     from tarsy.models.constants import AlertSessionStatus
     from tarsy.services.events.event_helpers import publish_cancel_request, publish_session_cancelled
+    from tarsy.services.cancellation_tracker import mark_cancelled, clear as clear_cancelled
     
     # Step 1: Validate session exists
     session = history_service.get_session(session_id)
@@ -570,24 +571,32 @@ async def cancel_session(
         # Paused sessions have no active task, so cancel immediately
         logger.info(f"Session {session_id} is paused - cancelling immediately")
         
-        # Update session status
-        history_service.update_session_status(
-            session_id=session_id,
-            status=AlertSessionStatus.CANCELLED.value,
-            error_message="Session cancelled by user"
-        )
-        
-        # Update all paused stages to CANCELLED for consistency
-        await history_service.cancel_all_paused_stages(session_id)
-        
-        # Publish cancellation event for UI
-        await publish_session_cancelled(session_id)
-        
-        return {
-            "success": True,
-            "message": "Paused session cancelled immediately",
-            "session_id": session_id
-        }
+        try:
+            # Update session status
+            history_service.update_session_status(
+                session_id=session_id,
+                status=AlertSessionStatus.CANCELLED.value,
+                error_message="Session cancelled by user"
+            )
+            
+            # Mark in tracker only after successful state transition
+            mark_cancelled(session_id)
+            
+            # Update all paused stages to CANCELLED for consistency
+            await history_service.cancel_all_paused_stages(session_id)
+            
+            # Publish cancellation event for UI
+            await publish_session_cancelled(session_id)
+            
+            return {
+                "success": True,
+                "message": "Paused session cancelled immediately",
+                "session_id": session_id
+            }
+        except Exception:
+            # Clear tracker entry if update failed
+            clear_cancelled(session_id)
+            raise
     
     # Step 3: For active sessions, update status to CANCELING
     success, current_status = history_service.update_session_to_canceling(session_id)
@@ -600,6 +609,9 @@ async def cancel_session(
             )
         else:
             raise HTTPException(status_code=500, detail="Failed to update session status")
+    
+    # Mark in tracker only after successful state transition to CANCELING
+    mark_cancelled(session_id)
     
     # If already CANCELING, this is idempotent - continue normally
     

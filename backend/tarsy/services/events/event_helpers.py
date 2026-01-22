@@ -23,6 +23,7 @@ from tarsy.models.event_models import (
     SessionProgressUpdateEvent,
     SessionResumedEvent,
     SessionStartedEvent,
+    SessionTimedOutEvent,
     StageCompletedEvent,
     StageStartedEvent,
 )
@@ -112,6 +113,26 @@ async def publish_session_failed(session_id: str) -> None:
             logger.info(f"[EVENT] Published session.failed to channels: 'sessions' and 'session:{session_id}'")
     except Exception as e:
         logger.warning(f"Failed to publish session.failed event: {e}")
+
+
+async def publish_session_timed_out(session_id: str) -> None:
+    """
+    Publish session.timed_out event to both global and session-specific channels.
+
+    Args:
+        session_id: Session identifier
+    """
+    try:
+        async_session_factory = get_async_session_factory()
+        async with async_session_factory() as session:
+            event = SessionTimedOutEvent(session_id=session_id, status=AlertSessionStatus.TIMED_OUT.value)
+            # Publish to global 'sessions' channel for dashboard
+            await publish_event(session, EventChannel.SESSIONS, event)
+            # Also publish to session-specific channel for detail views
+            await publish_event(session, f"session:{session_id}", event)
+            logger.info(f"[EVENT] Published session.timed_out to channels: 'sessions' and 'session:{session_id}'")
+    except Exception as e:
+        logger.warning(f"Failed to publish session.timed_out event: {e}")
 
 
 async def publish_session_paused(session_id: str, pause_metadata: Optional[dict] = None) -> None:
@@ -402,6 +423,7 @@ async def publish_stage_completed(
     chat_id: Optional[str] = None,
     parent_stage_execution_id: Optional[str] = None,
     parallel_index: Optional[int] = None,
+    error_message: Optional[str] = None,
 ) -> None:
     """
     Publish stage.completed event.
@@ -410,10 +432,11 @@ async def publish_stage_completed(
         session_id: Session identifier
         stage_id: Stage execution identifier
         stage_name: Human-readable stage name
-        status: Stage status (completed/failed/partial)
+        status: Stage status (completed/failed/partial/timed_out/cancelled)
         chat_id: Optional chat ID if this is a chat response stage
         parent_stage_execution_id: Optional parent stage execution ID if this is a child of a parallel stage
         parallel_index: Optional position in parallel group (1-N) if this is a child stage
+        error_message: Optional error message if stage failed or timed out
     """
     try:
         async_session_factory = get_async_session_factory()
@@ -426,6 +449,7 @@ async def publish_stage_completed(
                 chat_id=chat_id,
                 parent_stage_execution_id=parent_stage_execution_id,
                 parallel_index=parallel_index,
+                error_message=error_message,
             )
             await publish_event(
                 session, EventChannel.session_details(session_id), event

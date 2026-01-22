@@ -7,7 +7,7 @@ replicated agent execution, and result aggregation.
 
 import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -445,18 +445,211 @@ class TestExecutionConfigGeneration:
 
 
 @pytest.mark.unit
+class TestSynthesisParallelResultsCancellationHandling:
+    """Test CancelledError handling in synthesize_parallel_results (invoke_synthesis)."""
+
+    @pytest.mark.asyncio
+    async def test_synthesis_handles_cancelled_error_with_timeout_reason(self) -> None:
+        """Test that synthesis cancellation with timeout reason is handled correctly."""
+        stage_manager = Mock()
+        stage_manager.create_stage_execution = AsyncMock(return_value="synthesis-exec-1")
+        stage_manager.update_stage_execution_started = AsyncMock()
+        stage_manager.update_stage_execution_cancelled = AsyncMock()
+        stage_manager.update_stage_execution_timed_out = AsyncMock()
+        stage_manager.update_stage_execution_failed = AsyncMock()
+
+        settings = MockFactory.create_mock_settings()
+
+        # Create mock agent that raises CancelledError with timeout reason
+        synthesis_agent = Mock()
+        synthesis_agent.process_alert = AsyncMock(side_effect=asyncio.CancelledError("timeout"))
+        synthesis_agent.set_current_stage_execution_id = Mock()
+
+        agent_factory = Mock()
+        agent_factory.get_agent_with_config = Mock(return_value=synthesis_agent)
+        agent_factory.agent_configs = {}
+
+        executor = ParallelStageExecutor(
+            agent_factory=agent_factory,
+            settings=settings,
+            stage_manager=stage_manager,
+        )
+
+        # Build minimal parallel result
+        from tarsy.models.agent_execution_result import ParallelStageMetadata
+        from tarsy.models.constants import SuccessPolicy
+
+        parallel_result = ParallelStageResult(
+            stage_name="investigation",
+            results=[],
+            metadata=ParallelStageMetadata(
+                parent_stage_execution_id="parent-exec-1",
+                parallel_type="multi_agent",
+                success_policy=SuccessPolicy.ANY,
+                started_at_us=now_us(),
+                completed_at_us=now_us(),
+                agent_metadatas=[]
+            ),
+            status=StageStatus.COMPLETED,
+            timestamp_us=now_us()
+        )
+
+        # Build chain context
+        from tarsy.models.alert import ProcessingAlert
+        alert = AlertFactory.create_kubernetes_alert()
+        processing_alert = ProcessingAlert(
+            alert_type=alert.alert_type or "kubernetes",
+            severity=alert.data.get("severity", "critical"),
+            timestamp=alert.timestamp,
+            environment=alert.data.get("environment", "production"),
+            runbook_url=alert.runbook,
+            alert_data=alert.data,
+        )
+        chain_context = ChainContext.from_processing_alert(processing_alert=processing_alert, session_id="test-session")
+
+        # Stage config with synthesis
+        stage_config = SimpleNamespace(
+            name="investigation",
+            synthesis=None,  # Use defaults
+            llm_provider=None,
+            iteration_strategy=None,
+            success_policy=SuccessPolicy.ANY
+        )
+
+        chain_def = SimpleNamespace(
+            llm_provider="openai",
+            max_iterations=None,
+            force_conclusion_at_max_iterations=None,
+            mcp_servers=None
+        )
+
+        # Mock the cancellation tracker to indicate timeout (not user cancellation)
+        # This ensures deterministic test behavior regardless of shared state
+        with patch('tarsy.services.cancellation_tracker.is_user_cancel', return_value=False):
+            # Execute synthesis - should raise CancelledError
+            with pytest.raises(asyncio.CancelledError):
+                exec_id, result = await executor.synthesize_parallel_results(
+                    parallel_result=parallel_result,
+                    chain_context=chain_context,
+                    session_mcp_client=Mock(),
+                    stage_config=stage_config,
+                    chain_definition=chain_def,
+                    current_stage_index=1
+                )
+
+        # Verify stage was marked as timed out with formatted error message
+        stage_manager.update_stage_execution_timed_out.assert_called_once_with(
+            "synthesis-exec-1",
+            "SynthesisAgent synthesis timed out"
+        )
+
+    @pytest.mark.asyncio
+    async def test_synthesis_handles_cancelled_error_with_user_cancel_reason(self) -> None:
+        """Test that synthesis cancellation with user_cancel reason is handled correctly."""
+        stage_manager = Mock()
+        stage_manager.create_stage_execution = AsyncMock(return_value="synthesis-exec-1")
+        stage_manager.update_stage_execution_started = AsyncMock()
+        stage_manager.update_stage_execution_cancelled = AsyncMock()
+        stage_manager.update_stage_execution_timed_out = AsyncMock()
+        stage_manager.update_stage_execution_failed = AsyncMock()
+
+        settings = MockFactory.create_mock_settings()
+
+        # Create mock agent that raises CancelledError with user_cancel reason
+        synthesis_agent = Mock()
+        synthesis_agent.process_alert = AsyncMock(side_effect=asyncio.CancelledError("user_cancel"))
+        synthesis_agent.set_current_stage_execution_id = Mock()
+
+        agent_factory = Mock()
+        agent_factory.get_agent_with_config = Mock(return_value=synthesis_agent)
+        agent_factory.agent_configs = {}
+
+        executor = ParallelStageExecutor(
+            agent_factory=agent_factory,
+            settings=settings,
+            stage_manager=stage_manager,
+        )
+
+        # Build minimal parallel result
+        from tarsy.models.agent_execution_result import ParallelStageMetadata
+        from tarsy.models.constants import SuccessPolicy
+
+        parallel_result = ParallelStageResult(
+            stage_name="investigation",
+            results=[],
+            metadata=ParallelStageMetadata(
+                parent_stage_execution_id="parent-exec-1",
+                parallel_type="multi_agent",
+                success_policy=SuccessPolicy.ANY,
+                started_at_us=now_us(),
+                completed_at_us=now_us(),
+                agent_metadatas=[]
+            ),
+            status=StageStatus.COMPLETED,
+            timestamp_us=now_us()
+        )
+
+        # Build chain context
+        from tarsy.models.alert import ProcessingAlert
+        alert = AlertFactory.create_kubernetes_alert()
+        processing_alert = ProcessingAlert(
+            alert_type=alert.alert_type or "kubernetes",
+            severity=alert.data.get("severity", "critical"),
+            timestamp=alert.timestamp,
+            environment=alert.data.get("environment", "production"),
+            runbook_url=alert.runbook,
+            alert_data=alert.data,
+        )
+        chain_context = ChainContext.from_processing_alert(processing_alert=processing_alert, session_id="test-session")
+
+        stage_config = SimpleNamespace(
+            name="investigation",
+            synthesis=None,
+            llm_provider=None,
+            iteration_strategy=None,
+            success_policy=SuccessPolicy.ANY
+        )
+
+        chain_def = SimpleNamespace(
+            llm_provider="openai",
+            max_iterations=None,
+            force_conclusion_at_max_iterations=None,
+            mcp_servers=None
+        )
+
+        # Mock the cancellation tracker to indicate user cancellation
+        from unittest.mock import patch
+        with patch('tarsy.services.cancellation_tracker.is_user_cancel', return_value=True), pytest.raises(asyncio.CancelledError):
+            await executor.synthesize_parallel_results(
+                parallel_result=parallel_result,
+                chain_context=chain_context,
+                session_mcp_client=Mock(),
+                stage_config=stage_config,
+                chain_definition=chain_def,
+                current_stage_index=1
+            )
+
+        # Verify stage was marked as cancelled with formatted error message
+        stage_manager.update_stage_execution_cancelled.assert_called_once_with(
+            "synthesis-exec-1",
+            "SynthesisAgent synthesis cancelled by user"
+        )
+
+
+@pytest.mark.unit
 class TestParallelStageExecutorCancellationHandling:
     """Test CancelledError handling during parallel execution."""
 
     @pytest.mark.asyncio
     async def test_parallel_stage_handles_cancelled_error_from_gather(self) -> None:
-        """Cancelled agents should not crash the stage; they should be marked CANCELLED and not stay running."""
+        """Cancelled agents should not crash the stage; they should be marked TIMED_OUT (no user cancel) and not stay running."""
         stage_manager = Mock()
         stage_manager.create_stage_execution = AsyncMock(side_effect=["parent-exec", "child-exec-1", "child-exec-2"])
         stage_manager.update_stage_execution_started = AsyncMock()
         stage_manager.update_stage_execution_completed = AsyncMock()
         stage_manager.update_stage_execution_failed = AsyncMock()
         stage_manager.update_stage_execution_cancelled = AsyncMock()
+        stage_manager.update_stage_execution_timed_out = AsyncMock()
         stage_manager.update_stage_execution_paused = AsyncMock()
 
         settings = MockFactory.create_mock_settings()
@@ -546,9 +739,13 @@ class TestParallelStageExecutorCancellationHandling:
         )
 
         assert isinstance(result, ParallelStageResult)
-        assert any(r.status == StageStatus.CANCELLED for r in result.results)
+        assert any(r.status == StageStatus.TIMED_OUT for r in result.results)
         assert any(r.status == StageStatus.COMPLETED for r in result.results)
-        stage_manager.update_stage_execution_cancelled.assert_any_call("child-exec-1", "unknown")
+        # Verify timed out agent was marked appropriately (error message contains "timed out")
+        calls = stage_manager.update_stage_execution_timed_out.call_args_list
+        assert len(calls) == 1
+        assert calls[0][0][0] == "child-exec-1"
+        assert "timed out" in calls[0][0][1].lower()
 
 
 @pytest.mark.unit

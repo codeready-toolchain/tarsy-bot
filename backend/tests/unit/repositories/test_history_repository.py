@@ -1192,6 +1192,36 @@ class TestHistoryRepository:
         assert "Test issue detected" in result.final_analysis_summary
     
     @pytest.mark.unit
+    def test_get_session_details_with_executive_summary_error(self, repository):
+        """Test that get_session_details includes executive_summary_error field."""
+        # Create completed session with final analysis but executive summary generation failed
+        session_with_error = AlertSession(
+            session_id="session-with-error",
+            alert_data={"test": "data"},
+            agent_type="TestAgent",
+            alert_type="test",
+            status="completed",
+            started_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
+            completed_at_us=int(datetime.now(timezone.utc).timestamp() * 1_000_000),
+            chain_id="test-chain-error",
+            final_analysis="**Root Cause:** Test issue detected.\n\n**Resolution:** Apply fix.",
+            final_analysis_summary=None,
+            executive_summary_error="Executive summary generation timed out after 180s"
+        )
+        
+        repository.create_alert_session(session_with_error)
+        
+        # Get session details
+        result = repository.get_session_details("session-with-error")
+        
+        assert result is not None
+        assert result.final_analysis is not None
+        assert result.final_analysis_summary is None
+        assert result.executive_summary_error is not None
+        assert result.executive_summary_error == "Executive summary generation timed out after 180s"
+        assert "timed out" in result.executive_summary_error
+    
+    @pytest.mark.unit
     def test_get_session_details_extracts_session_level_interactions(self, repository, sample_alert_session):
         """Test that interactions without stage_execution_id are extracted as session-level interactions."""
         from tarsy.models.constants import LLMInteractionType
@@ -1883,7 +1913,7 @@ class TestHistoryRepositoryErrorHandling:
         # Should return default structure with empty lists on error
         assert result.agent_types == []
         assert result.alert_types == []
-        assert result.status_options == ["pending", "in_progress", "paused", "canceling", "completed", "failed", "cancelled"]
+        assert result.status_options == ["pending", "in_progress", "paused", "canceling", "completed", "failed", "cancelled", "timed_out"]
         assert len(result.time_ranges) == 5
 
 class TestHistoryRepositoryPerformance:
@@ -2009,7 +2039,7 @@ class TestHistoryRepositoryPerformance:
         
         # Verify status options
         assert hasattr(result, 'status_options')
-        assert len(result.status_options) == 7
+        assert len(result.status_options) == 8
         assert "pending" in result.status_options
         assert "in_progress" in result.status_options
         assert "paused" in result.status_options
@@ -2017,6 +2047,7 @@ class TestHistoryRepositoryPerformance:
         assert "completed" in result.status_options
         assert "failed" in result.status_options
         assert "cancelled" in result.status_options
+        assert "timed_out" in result.status_options
         
         # Verify time ranges
         assert hasattr(result, 'time_ranges')
@@ -2033,8 +2064,8 @@ class TestHistoryRepositoryPerformance:
         assert result.agent_types == []
         assert result.alert_types == []
         # Status options should always return all possible statuses (not dynamic from database)
-        assert len(result.status_options) == 7
-        assert result.status_options == ["pending", "in_progress", "paused", "canceling", "completed", "failed", "cancelled"]
+        assert len(result.status_options) == 8
+        assert result.status_options == ["pending", "in_progress", "paused", "canceling", "completed", "failed", "cancelled", "timed_out"]
         
         # Time ranges should still be present (static)
         assert len(result.time_ranges) == 5
@@ -2061,7 +2092,7 @@ class TestHistoryRepositoryPerformance:
         assert result.agent_types == sorted(result.agent_types)
         assert result.alert_types == sorted(result.alert_types)
         # Status options are returned in constant definition order (not sorted)
-        assert result.status_options == ["pending", "in_progress", "paused", "canceling", "completed", "failed", "cancelled"]
+        assert result.status_options == ["pending", "in_progress", "paused", "canceling", "completed", "failed", "cancelled", "timed_out"]
 
 @pytest.mark.unit  
 class TestHistoryRepositoryDuplicatePrevention:

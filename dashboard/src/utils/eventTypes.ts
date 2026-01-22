@@ -12,8 +12,10 @@ export const SESSION_EVENTS = {
   COMPLETED: 'session.completed',
   FAILED: 'session.failed',
   CANCELLED: 'session.cancelled',
+  TIMED_OUT: 'session.timed_out',
   CANCEL_REQUESTED: 'session.cancel_requested',
   STATUS_CHANGE: 'session.status_change',
+  PROGRESS_UPDATE: 'session.progress_update',
 } as const;
 
 // Stage lifecycle events
@@ -21,6 +23,7 @@ export const STAGE_EVENTS = {
   STARTED: 'stage.started',
   COMPLETED: 'stage.completed',
   FAILED: 'stage.failed',
+  TIMED_OUT: 'stage.timed_out',
 } as const;
 
 // LLM interaction events
@@ -76,6 +79,7 @@ export const TERMINAL_SESSION_EVENTS = [
   SESSION_EVENTS.COMPLETED,
   SESSION_EVENTS.FAILED,
   SESSION_EVENTS.CANCELLED,
+  SESSION_EVENTS.TIMED_OUT,
 ] as const;
 
 /**

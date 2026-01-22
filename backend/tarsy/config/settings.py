@@ -23,7 +23,7 @@ def is_testing() -> bool:
         "pytest" in os.environ.get("_", "") or
         "PYTEST_CURRENT_TEST" in os.environ or
         os.environ.get("TESTING", "").lower() == "true" or
-        "test" in sys.argv[0].lower() if len(sys.argv) > 0 else False
+        ("test" in sys.argv[0].lower() if len(sys.argv) > 0 else False)
     )
 
 
@@ -174,8 +174,8 @@ class Settings(BaseSettings):
         description="Maximum number of alerts that can be processed concurrently"
     )
     alert_processing_timeout: int = Field(
-        default=600,
-        description="Timeout in seconds for processing a single alert (default: 10 minutes)"
+        default=900,
+        description="Timeout in seconds for processing a single alert (default: 15 minutes)"
     )
     llm_iteration_timeout: int = Field(
         default=210,
@@ -320,7 +320,7 @@ class Settings(BaseSettings):
         return self
     
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=".env" if not is_testing() else None,
         env_file_encoding="utf-8",
         # Allow extra fields to be ignored for backward compatibility
         extra="ignore"

@@ -28,6 +28,7 @@ def build_agent_result_from_exception(
     Convert an exception to AgentExecutionResult and AgentExecutionMetadata.
 
     Handles both CancelledError (with reason extraction) and regular exceptions.
+    For CancelledError, distinguishes between timeout (TIMED_OUT) and user cancellation (CANCELLED).
 
     Args:
         exception: The exception that occurred during agent execution
@@ -40,13 +41,18 @@ def build_agent_result_from_exception(
     Returns:
         Tuple of (AgentExecutionResult, AgentExecutionMetadata)
     """
-    status = StageStatus.CANCELLED if isinstance(exception, asyncio.CancelledError) else StageStatus.FAILED
-
-    # Extract cancellation reason or error message
+    # Determine status based on exception type and cancellation reason
     if isinstance(exception, asyncio.CancelledError):
-        error_message = extract_cancellation_reason(exception)
-        summary_prefix = "Execution cancelled"
+        reason = extract_cancellation_reason(exception)
+        if reason == CancellationReason.TIMEOUT.value:
+            status = StageStatus.TIMED_OUT
+            summary_prefix = "Execution timed out"
+        else:
+            status = StageStatus.CANCELLED
+            summary_prefix = "Execution cancelled"
+        error_message = reason
     else:
+        status = StageStatus.FAILED
         error_message = str(exception) or type(exception).__name__
         summary_prefix = "Execution failed"
 

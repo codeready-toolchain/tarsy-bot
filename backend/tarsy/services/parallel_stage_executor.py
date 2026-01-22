@@ -82,6 +82,42 @@ class ParallelStageExecutor:
             return "unknown"
         return getattr(strategy, "value", strategy)
     
+    async def _handle_stage_cancellation(
+        self,
+        session_id: str,
+        stage_execution_id: str,
+        description: str,
+    ) -> tuple[str, str]:
+        """
+        Handle stage cancellation by checking tracker and updating stage status.
+        
+        Determines whether cancellation was user-initiated or due to timeout,
+        updates the stage execution status accordingly, and logs the result.
+        
+        Args:
+            session_id: Session ID to check in cancellation tracker
+            stage_execution_id: Stage execution ID to update
+            description: Human-readable description (e.g., "Agent 'KubernetesAgent'")
+            
+        Returns:
+            Tuple of (reason, error_msg) where reason is the CancellationReason value
+            and error_msg is the descriptive message stored in the database.
+        """
+        from tarsy.services.cancellation_tracker import is_user_cancel
+        from tarsy.models.constants import CancellationReason
+        
+        if is_user_cancel(session_id):
+            reason = CancellationReason.USER_CANCEL.value
+            error_msg = f"{description} cancelled by user"
+            await self.stage_manager.update_stage_execution_cancelled(stage_execution_id, error_msg)
+        else:
+            reason = CancellationReason.TIMEOUT.value
+            error_msg = f"{description} timed out"
+            await self.stage_manager.update_stage_execution_timed_out(stage_execution_id, error_msg)
+        
+        logger.warning(error_msg)
+        return reason, error_msg
+    
     async def execute_parallel_agents(
         self,
         stage: "ChainStageConfigModel",
@@ -183,8 +219,8 @@ class ParallelStageExecutor:
         
         Priority order:
         1. PAUSED: If any agent paused, whole stage is paused (enables resume)
-        2. SuccessPolicy.ALL: All must succeed (any failure/cancellation = stage failure)
-        3. SuccessPolicy.ANY: At least one must succeed (all failures/cancellations = stage failure)
+        2. SuccessPolicy.ALL: All must succeed (any failure/cancellation/timeout = stage failure)
+        3. SuccessPolicy.ANY: At least one must succeed (all failures/cancellations/timeouts = stage failure)
         
         Args:
             metadatas: List of agent execution metadata
@@ -197,21 +233,22 @@ class ParallelStageExecutor:
         completed_count = sum(1 for m in metadatas if m.status == StageStatus.COMPLETED)
         failed_count = sum(1 for m in metadatas if m.status == StageStatus.FAILED)
         cancelled_count = sum(1 for m in metadatas if m.status == StageStatus.CANCELLED)
+        timed_out_count = sum(1 for m in metadatas if m.status == StageStatus.TIMED_OUT)
         paused_count = sum(1 for m in metadatas if m.status == StageStatus.PAUSED)
         
         # PAUSED takes priority over everything - if any agent paused, whole stage is paused
         if paused_count > 0:
             return StageStatus.PAUSED
         
-        # Treat CANCELLED same as FAILED for success_policy evaluation
-        non_success_count = failed_count + cancelled_count
+        # Treat CANCELLED and TIMED_OUT same as FAILED for success_policy evaluation
+        non_success_count = failed_count + cancelled_count + timed_out_count
         
         # Apply success policy
         if success_policy == SuccessPolicy.ALL:
-            # ALL policy: all must succeed (any failure/cancellation = stage failure)
+            # ALL policy: all must succeed (any failure/cancellation/timeout = stage failure)
             return StageStatus.COMPLETED if non_success_count == 0 else StageStatus.FAILED
         else:  # SuccessPolicy.ANY
-            # ANY policy: at least one must succeed (all failures/cancellations = stage failure)
+            # ANY policy: at least one must succeed (all failures/cancellations/timeouts = stage failure)
             return StageStatus.COMPLETED if completed_count > 0 else StageStatus.FAILED
     
     def _aggregate_parallel_stage_errors(
@@ -221,9 +258,9 @@ class ParallelStageExecutor:
         success_policy: SuccessPolicy
     ) -> str:
         """
-        Aggregate error messages from failed/cancelled agents in a parallel stage.
+        Aggregate error messages from failed/cancelled/timed-out agents in a parallel stage.
         
-        Creates a detailed error message listing each failed/cancelled agent with their specific error.
+        Creates a detailed error message listing each failed/cancelled/timed-out agent with their specific error.
         
         Args:
             metadatas: List of agent execution metadata
@@ -235,6 +272,7 @@ class ParallelStageExecutor:
         """
         failed_agents = []
         cancelled_agents = []
+        timed_out_agents = []
         
         for metadata in metadatas:
             agent_name = metadata.agent_name or 'unknown'
@@ -244,15 +282,18 @@ class ParallelStageExecutor:
                 failed_agents.append(f"  - {agent_name} (failed): {error_msg}")
             elif metadata.status == StageStatus.CANCELLED:
                 cancelled_agents.append(f"  - {agent_name} (cancelled): {error_msg}")
+            elif metadata.status == StageStatus.TIMED_OUT:
+                timed_out_agents.append(f"  - {agent_name} (timed out): {error_msg}")
         
         # Count totals
         failed_count = len(failed_agents)
         cancelled_count = len(cancelled_agents)
+        timed_out_count = len(timed_out_agents)
         total_agents = len(metadatas)
         
         # Build header
         error_parts = [
-            f"{parallel_type.capitalize()} stage failed: {failed_count + cancelled_count}/{total_agents} executions failed (policy: {success_policy})"
+            f"{parallel_type.capitalize()} stage failed: {failed_count + cancelled_count + timed_out_count}/{total_agents} executions failed (policy: {success_policy})"
         ]
         
         # Add detailed agent errors
@@ -263,6 +304,10 @@ class ParallelStageExecutor:
         if cancelled_agents:
             error_parts.append("\nCancelled agents:")
             error_parts.extend(cancelled_agents)
+        
+        if timed_out_agents:
+            error_parts.append("\nTimed out agents:")
+            error_parts.extend(timed_out_agents)
         
         return "\n".join(error_parts)
     
@@ -414,24 +459,19 @@ class ParallelStageExecutor:
                 
                 return (result, metadata)
                 
-            except asyncio.CancelledError as e:
+            except asyncio.CancelledError:
                 # Cancellation can happen if the agent task is cancelled mid-flight (e.g. shutdown,
                 # upstream cancellation, or nested wait_for interactions). Treat it as a terminal
                 # result so the child stage doesn't stay "running" forever in the UI.
-                from tarsy.utils.agent_execution_utils import extract_cancellation_reason
-
-                reason = extract_cancellation_reason(e)
-                logger.warning(
-                    "%s '%s' was cancelled (%s)",
-                    parallel_type,
-                    agent_name,
-                    reason,
+                reason, _ = await self._handle_stage_cancellation(
+                    session_id=chain_context.session_id,
+                    stage_execution_id=child_execution_id,
+                    description=f"{parallel_type} '{agent_name}'",
                 )
 
-                await self.stage_manager.update_stage_execution_cancelled(child_execution_id, reason)
-
+                # Create exception with correct reason for build_agent_result_from_exception
                 result, metadata = build_agent_result_from_exception(
-                    exception=e,
+                    exception=asyncio.CancelledError(reason),
                     agent_name=agent_name,
                     stage_name=stage.name,
                     llm_provider=execution_config.llm_provider or self.settings.llm_provider,
@@ -903,6 +943,26 @@ class ParallelStageExecutor:
                 
                 return (paused_result, metadata)
             
+            except asyncio.CancelledError:
+                # Cancellation (timeout or user-requested) - mark stage appropriately
+                reason, _ = await self._handle_stage_cancellation(
+                    session_id=chain_context.session_id,
+                    stage_execution_id=child_execution_id,
+                    description=f"Agent '{agent_name}'",
+                )
+                
+                # Create exception with correct reason for build_agent_result_from_exception
+                result, metadata = build_agent_result_from_exception(
+                    exception=asyncio.CancelledError(reason),
+                    agent_name=agent_name,
+                    stage_name=stage_config.name,
+                    llm_provider=execution_config.llm_provider or self.settings.llm_provider,
+                    iteration_strategy=execution_config.iteration_strategy or "unknown",
+                    agent_started_at_us=agent_started_at_us,
+                )
+                
+                return (result, metadata)
+            
             except Exception as e:
                 logger.error(f"Agent '{agent_name}' failed: {e}", exc_info=True)
                 
@@ -1145,6 +1205,18 @@ class ParallelStageExecutor:
             
             logger.info(f"{synthesis_config.agent} synthesis completed successfully")
             return (synthesis_stage_execution_id, synthesis_result)
+            
+        except asyncio.CancelledError:
+            # Cancellation (timeout or user-requested) - mark stage appropriately
+            await self._handle_stage_cancellation(
+                session_id=chain_context.session_id,
+                stage_execution_id=synthesis_stage_execution_id,
+                description=f"{synthesis_config.agent} synthesis",
+            )
+            
+            # Re-raise so the session-level timeout handler can process it
+            # and set the correct session status (TIMED_OUT or CANCELLED)
+            raise
             
         except Exception as e:
             error_msg = f"{synthesis_config.agent} synthesis failed: {str(e)}"

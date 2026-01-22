@@ -9,7 +9,7 @@
 
 Inspired by the spirit of sci-fi AI, TARSy is your reliable companion for SRE operations. 🚀
 
-[demo-parallel-agents.webm](https://github.com/user-attachments/assets/7e2a5461-99e9-43af-aad2-d1fb86d58ffa)
+[tarsy-gh-demo.webm](https://github.com/user-attachments/assets/dae0e409-ef7f-46a6-b390-dbf287497963)
 
 
 ## Documentation

@@ -117,6 +117,14 @@ class SessionCancelledEvent(BaseEvent):
     status: Literal["cancelled"] = "cancelled"  # For instant client update
 
 
+class SessionTimedOutEvent(BaseEvent):
+    """Session timed out (processing exceeded time limit)."""
+
+    type: Literal["session.timed_out"] = "session.timed_out"
+    session_id: str = Field(description="Session identifier")
+    status: Literal["timed_out"] = "timed_out"  # For instant client update
+
+
 class AgentCancelledEvent(BaseEvent):
     """Individual parallel agent cancelled by user."""
 
@@ -210,8 +218,9 @@ class StageCompletedEvent(BaseEvent):
     session_id: str = Field(description="Session identifier")
     stage_id: str = Field(description="Stage execution identifier")
     stage_name: str = Field(description="Human-readable stage name")
-    status: str = Field(description="Stage status (completed/failed)")
+    status: str = Field(description="Stage status (completed/failed/timed_out/cancelled)")
     chat_id: Optional[str] = Field(default=None, description="Chat ID if this is a chat response stage")
+    error_message: Optional[str] = Field(default=None, description="Error message if stage failed or timed out")
     # Parallel child metadata (for child stages of parallel execution)
     parent_stage_execution_id: Optional[str] = Field(default=None, description="Parent stage execution ID if this is a child of a parallel stage")
     parallel_index: Optional[int] = Field(default=None, description="Position in parallel group (1-N) if this is a child stage")

@@ -3,6 +3,7 @@ import { formatTimestamp, formatDurationMs } from './timestamp';
 import { getMessages } from './conversationParser';
 import { isLLMInteraction, isMCPInteraction } from './typeGuards';
 import { LLM_INTERACTION_TYPES } from '../constants/llmInteractionTypes';
+import { STAGE_STATUS } from './statusConstants';
 
 /**
  * Shared helper functions for timeline components
@@ -12,13 +13,16 @@ import { LLM_INTERACTION_TYPES } from '../constants/llmInteractionTypes';
 // Stage status color mapping
 export const getStageStatusColor = (status: string): 'success' | 'error' | 'primary' | 'warning' | 'default' => {
   switch (status) {
-    case 'completed':
+    case STAGE_STATUS.COMPLETED:
       return 'success';
-    case 'failed':
+    case STAGE_STATUS.FAILED:
+    case STAGE_STATUS.TIMED_OUT:
       return 'error';
-    case 'active':
+    case STAGE_STATUS.ACTIVE:
       return 'primary';
-    case 'pending':
+    case STAGE_STATUS.PENDING:
+    case STAGE_STATUS.PAUSED:
+    case STAGE_STATUS.CANCELLED:
       return 'warning';
     default:
       return 'default';
@@ -167,11 +171,14 @@ export const formatStageForCopy = (stage: StageExecution, stageIndex: number, in
 // Stage status icons (string version for text formatting)
 export const getStageStatusIcon = (status: string) => {
   switch (status) {
-    case 'completed':
+    case STAGE_STATUS.COMPLETED:
       return '✓';
-    case 'failed':
+    case STAGE_STATUS.FAILED:
+    case STAGE_STATUS.TIMED_OUT:
       return '✗';
-    case 'active':
+    case STAGE_STATUS.CANCELLED:
+      return '⊘';
+    case STAGE_STATUS.ACTIVE:
       return '🔧';
     default:
       return '⏸';

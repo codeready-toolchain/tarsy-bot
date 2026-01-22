@@ -6,6 +6,7 @@ displayed in the dashboard reasoning view and used in external notifications (Sl
 """
 
 import asyncio
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 from tarsy.agents.prompts.builders import PromptBuilder
@@ -18,6 +19,17 @@ if TYPE_CHECKING:
     from tarsy.integrations.llm.manager import LLMManager
 
 logger = get_module_logger(__name__)
+
+
+@dataclass
+class ExecutiveSummaryResult:
+    """Result of executive summary generation with success/error tracking."""
+    
+    summary: Optional[str]
+    """The generated executive summary, or None if generation failed."""
+    
+    error: Optional[str]
+    """Error message if generation failed, None if successful."""
 
 
 class ExecutiveSummaryAgent:
@@ -47,7 +59,7 @@ class ExecutiveSummaryAgent:
         stage_execution_id: Optional[str] = None,
         max_tokens: int = 150,
         provider: Optional[str] = None
-    ) -> Optional[str]:
+    ) -> ExecutiveSummaryResult:
         """
         Generate a concise executive summary of the content.
         
@@ -62,7 +74,7 @@ class ExecutiveSummaryAgent:
             provider: Optional LLM provider name (uses chain's provider or global default)
             
         Returns:
-            Concise executive summary string, or None if generation fails
+            ExecutiveSummaryResult with summary string or error message
             
         Raises:
             ValueError: If content is empty or None
@@ -104,23 +116,32 @@ class ExecutiveSummaryAgent:
                     timeout=self.settings.llm_iteration_timeout
                 )
             except asyncio.TimeoutError:
+                error_msg = f"Executive summary generation timed out after {self.settings.llm_iteration_timeout}s"
+                logger.warning(f"{error_msg} for session {session_id}")
+                return ExecutiveSummaryResult(summary=None, error=error_msg)
+            except asyncio.CancelledError as e:
+                # Task was cancelled (timeout or user request) - return error gracefully
+                from tarsy.utils.agent_execution_utils import extract_cancellation_reason
+                reason = extract_cancellation_reason(e)
+                error_msg = f"Cancelled ({reason})"
                 logger.warning(
-                    f"Executive summary generation exceeded {self.settings.llm_iteration_timeout}s timeout "
-                    f"for session {session_id} - returning None"
+                    f"Executive summary generation cancelled ({reason}) for session {session_id}"
                 )
-                return None
+                return ExecutiveSummaryResult(summary=None, error=error_msg)
             
             # Extract summary from response
             assistant_message = response_conversation.get_latest_assistant_message()
             if not assistant_message:
-                logger.error("No assistant response received for executive summary generation")
-                return None
+                error_msg = "No assistant response received"
+                logger.error(f"{error_msg} for executive summary generation")
+                return ExecutiveSummaryResult(summary=None, error=error_msg)
             
             executive_summary = assistant_message.content.strip()
 
             logger.info(f"Generated executive summary for session {session_id}: {executive_summary[:100]}...")
-            return executive_summary
+            return ExecutiveSummaryResult(summary=executive_summary, error=None)
             
         except Exception as e:
+            error_msg = str(e) or type(e).__name__
             logger.error(f"Failed to generate executive summary for session {session_id}: {e}")
-            return None
+            return ExecutiveSummaryResult(summary=None, error=error_msg)

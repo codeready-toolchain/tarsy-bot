@@ -102,6 +102,11 @@ class AlertSession(SQLModel, table=True):
         description="Executive summary of the final analysis, displayed in dashboard and used in external notifications (e.g., Slack)"
     )
     
+    executive_summary_error: Optional[str] = Field(
+        default=None,
+        description="Error message if executive summary generation failed (e.g., timeout, cancellation)"
+    )
+    
     session_metadata: Optional[dict] = Field(
         default=None,
         sa_column=Column[Any](JSON),

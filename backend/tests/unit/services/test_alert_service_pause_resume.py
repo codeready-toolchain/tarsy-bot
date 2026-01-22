@@ -64,8 +64,14 @@ class TestAlertServiceResumePausedSession:
         alert_service.runbook_service.download_runbook = AsyncMock(return_value="# Default runbook")
         
         # Mock final_analysis_summarizer
+        from tarsy.integrations.notifications.summarizer import ExecutiveSummaryResult
         mock_summarizer = AsyncMock()
-        mock_summarizer.generate_executive_summary = AsyncMock(return_value="Executive summary of resumed analysis")
+        mock_summarizer.generate_executive_summary = AsyncMock(
+            return_value=ExecutiveSummaryResult(
+                summary="Executive summary of resumed analysis",
+                error=None
+            )
+        )
         alert_service.final_analysis_summarizer = mock_summarizer
         
         # Mock session_manager.update_session_status and _execute_chain_stages

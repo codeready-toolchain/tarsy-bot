@@ -58,7 +58,7 @@ def mock_settings():
     settings.max_llm_mcp_iterations = 3
     settings.force_conclusion_at_max_iterations = False  # Default pause behavior
     # Add timeout settings for alert processing
-    settings.alert_processing_timeout = 600  # Default 10 minute timeout
+    settings.alert_processing_timeout = 900  # Default 15 minute timeout
     settings.llm_iteration_timeout = 210  # Default 3.5 minute iteration timeout
     settings.mcp_tool_call_timeout = 70  # Default 70 second tool timeout
     settings.log_level = "INFO"
@@ -900,8 +900,11 @@ async def alert_service(ensure_integration_test_isolation, mock_settings, mock_r
     await service.initialize()
     
     # Mock final_analysis_summary to avoid needing real LLM
+    from tarsy.integrations.notifications.summarizer import ExecutiveSummaryResult
     mock_summary = Mock()
-    mock_summary.generate_executive_summary = AsyncMock(return_value="Test analysis summary")
+    mock_summary.generate_executive_summary = AsyncMock(
+        return_value=ExecutiveSummaryResult(summary="Test analysis summary", error=None)
+    )
     service.final_analysis_summarizer = mock_summary
     
     # Replace the agent_factory with our mock AFTER initialization
@@ -1001,8 +1004,11 @@ def alert_service_with_mocks(
     service.mcp_client_factory = mock_factory
     
     # Mock final_analysis_summary
+    from tarsy.integrations.notifications.summarizer import ExecutiveSummaryResult
     mock_summary = Mock()
-    mock_summary.generate_executive_summary = AsyncMock(return_value="Test analysis summary")
+    mock_summary.generate_executive_summary = AsyncMock(
+        return_value=ExecutiveSummaryResult(summary="Test analysis summary", error=None)
+    )
     service.final_analysis_summarizer = mock_summary
     
     # Create mock history service for proper testing

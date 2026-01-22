@@ -407,6 +407,7 @@ class DetailedSession(BaseModel):
     alert_data: dict  # Complete alert information
     final_analysis: Optional[str] = None
     final_analysis_summary: Optional[str] = None
+    executive_summary_error: Optional[str] = None
     session_metadata: Optional[dict] = None
     pause_metadata: Optional[Dict[str, Any]] = None
     

@@ -59,11 +59,11 @@ export const formatDuration = (startUs: number, endUs?: number): string => {
   const durationUs = endTime - startUs;
   const durationMs = durationUs / 1000; // Convert to milliseconds
   
-  if (durationMs < 0) return '0ms';
+  if (durationMs < 0) return '0s';
   
-  // Less than 1 second - show milliseconds
+  // Less than 1 second - show "0s" instead of milliseconds
   if (durationMs < 1000) {
-    return `${Math.round(durationMs)}ms`;
+    return '0s';
   }
   
   // Less than 1 minute - show seconds with decimal
@@ -89,10 +89,11 @@ export const formatDuration = (startUs: number, endUs?: number): string => {
  * Format duration in milliseconds to human readable format
  */
 export const formatDurationMs = (durationMs: number): string => {
-  if (durationMs < 0) return '0ms';
+  if (durationMs < 0) return '0s';
   
+  // Less than 1 second - show "0s" instead of milliseconds
   if (durationMs < 1000) {
-    return `${Math.round(durationMs)}ms`;
+    return '0s';
   }
   
   if (durationMs < 60000) {

@@ -126,6 +126,7 @@ class TestUpdateSessionStatus:
             error_message=None,
             final_analysis=None,
             final_analysis_summary=None,
+            executive_summary_error=None,
             pause_metadata=None
         )
     
@@ -149,6 +150,57 @@ class TestUpdateSessionStatus:
             error_message=None,
             final_analysis="Analysis complete",
             final_analysis_summary="Summary",
+            executive_summary_error=None,
+            pause_metadata=None
+        )
+    
+    def test_update_session_status_with_executive_summary_error(self):
+        """Test updating session status with executive summary error."""
+        history_service = Mock()
+        history_service.update_session_status = Mock()
+        
+        manager = SessionManager(history_service=history_service)
+        
+        manager.update_session_status(
+            session_id="session-1",
+            status=AlertSessionStatus.COMPLETED.value,
+            final_analysis="Analysis complete",
+            final_analysis_summary=None,
+            executive_summary_error="Executive summary generation timed out after 180s"
+        )
+        
+        history_service.update_session_status.assert_called_once_with(
+            session_id="session-1",
+            status=AlertSessionStatus.COMPLETED.value,
+            error_message=None,
+            final_analysis="Analysis complete",
+            final_analysis_summary=None,
+            executive_summary_error="Executive summary generation timed out after 180s",
+            pause_metadata=None
+        )
+    
+    def test_update_session_status_completed_with_summary_explicit_none_error(self):
+        """Test successful completion with summary and explicitly passing None for error field."""
+        history_service = Mock()
+        history_service.update_session_status = Mock()
+        
+        manager = SessionManager(history_service=history_service)
+        
+        manager.update_session_status(
+            session_id="session-1",
+            status=AlertSessionStatus.COMPLETED.value,
+            final_analysis="Analysis complete",
+            final_analysis_summary="Summary text",
+            executive_summary_error=None
+        )
+        
+        history_service.update_session_status.assert_called_once_with(
+            session_id="session-1",
+            status=AlertSessionStatus.COMPLETED.value,
+            error_message=None,
+            final_analysis="Analysis complete",
+            final_analysis_summary="Summary text",
+            executive_summary_error=None,
             pause_metadata=None
         )
     
@@ -177,6 +229,7 @@ class TestUpdateSessionStatus:
             error_message=None,
             final_analysis=None,
             final_analysis_summary=None,
+            executive_summary_error=None,
             pause_metadata=pause_meta
         )
     

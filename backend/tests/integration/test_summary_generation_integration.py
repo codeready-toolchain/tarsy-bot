@@ -59,13 +59,15 @@ Added the missing environment variable and restarted the pod."""
         ])
         mock_llm_manager.generate_response.return_value = response_conversation
         
-        summary = await summary_agent.generate_executive_summary(
+        summary_result = await summary_agent.generate_executive_summary(
             content=final_analysis,
             session_id="integration-test-session"
         )
         
-        assert summary is not None
-        assert len(summary) > 0
+        assert summary_result is not None
+        assert summary_result.summary is not None
+        assert len(summary_result.summary) > 0
+        assert summary_result.error is None
         
         call_args = mock_llm_manager.generate_response.call_args
         conversation = call_args.kwargs["conversation"]
@@ -103,18 +105,19 @@ Added the missing environment variable and restarted the pod."""
         ])
         mock_llm_manager.generate_response.return_value = response_conversation
         
-        summary = await summary_agent.generate_executive_summary(
+        summary_result = await summary_agent.generate_executive_summary(
             content="Test analysis content",
             session_id=session_id
         )
         
-        assert summary == "Test summary generated"
+        assert summary_result.summary == "Test summary generated"
+        assert summary_result.error is None
         
         success = history_service.update_session_status(
             session_id=session_id,
             status=AlertSessionStatus.COMPLETED.value,
             final_analysis="Full analysis",
-            final_analysis_summary=summary
+            final_analysis_summary=summary_result.summary
         )
         
         assert success
@@ -130,12 +133,13 @@ Added the missing environment variable and restarted the pod."""
         """Test that summary generation failure doesn't affect main processing."""
         mock_llm_manager.generate_response.side_effect = Exception("LLM timeout")
         
-        summary = await summary_agent.generate_executive_summary(
+        summary_result = await summary_agent.generate_executive_summary(
             content="Analysis content",
             session_id="test-session"
         )
         
-        assert summary is None
+        assert summary_result.summary is None
+        assert summary_result.error == "LLM timeout"
     
     @pytest.mark.asyncio
     async def test_summary_with_different_analysis_lengths(self, summary_agent, mock_llm_manager):
@@ -153,12 +157,13 @@ Added the missing environment variable and restarted the pod."""
             ])
             mock_llm_manager.generate_response.return_value = response_conversation
             
-            summary = await summary_agent.generate_executive_summary(
+            summary_result = await summary_agent.generate_executive_summary(
                 content=analysis_content,
                 session_id=f"test-{len(analysis_content)}"
             )
             
-            assert summary == expected_summary
+            assert summary_result.summary == expected_summary
+            assert summary_result.error is None
     
     @pytest.mark.asyncio
     async def test_summary_uses_correct_llm_parameters(self, summary_agent, mock_llm_manager):
@@ -207,13 +212,14 @@ Missing ConfigMap reference in pod spec.
         ])
         mock_llm_manager.generate_response.return_value = response_conversation
         
-        summary = await summary_agent.generate_executive_summary(
+        summary_result = await summary_agent.generate_executive_summary(
             content=analysis,
             session_id="test-multiline"
         )
         
-        assert summary is not None
-        assert "ConfigMap" in summary
+        assert summary_result.summary is not None
+        assert "ConfigMap" in summary_result.summary
+        assert summary_result.error is None
     
     @pytest.mark.asyncio
     async def test_summary_trims_whitespace(self, summary_agent, mock_llm_manager):
@@ -232,12 +238,13 @@ Missing ConfigMap reference in pod spec.
             ])
             mock_llm_manager.generate_response.return_value = response_conversation
             
-            summary = await summary_agent.generate_executive_summary(
+            summary_result = await summary_agent.generate_executive_summary(
                 content="Analysis",
                 session_id="test-whitespace"
             )
             
-            assert summary == expected_summary
+            assert summary_result.summary == expected_summary
+            assert summary_result.error is None
 
 
 @pytest.mark.integration

@@ -129,7 +129,7 @@ class AlertResponse(BaseModel):
 ```
 
 **Timeout Management**: 
-- **10-minute processing limit** with `asyncio.wait_for()`
+- **15-minute processing limit** with `asyncio.wait_for()`
 - **Graceful error handling** for timeouts, validation errors, connection errors
 - **Service lifecycle coordination** during startup/shutdown
 - **Pod-level session tracking** for multi-replica deployments

@@ -5,7 +5,7 @@ Tests the typed context manager system that ensures proper data flow
 from service methods to hooks without contamination or type mismatches.
 """
 
-
+import asyncio
 from unittest.mock import AsyncMock, Mock
 
 import pytest
@@ -488,6 +488,124 @@ class TestInteractionHookContextCompletion:
         hook_manager.trigger_llm_hooks.assert_not_called()
         hook_manager.trigger_mcp_hooks.assert_not_called()
         hook_manager.trigger_mcp_list_hooks.assert_not_called()
+
+
+@pytest.mark.unit
+class TestInteractionHookContextCancelledErrorHandling:
+    """Test CancelledError handling in InteractionHookContext.__aexit__."""
+    
+    @pytest.fixture
+    def hook_manager(self):
+        """Mock hook manager for testing."""
+        mock_manager = Mock()
+        mock_manager.trigger_llm_hooks = AsyncMock()
+        mock_manager.trigger_mcp_hooks = AsyncMock()
+        mock_manager.trigger_mcp_list_hooks = AsyncMock()
+        return mock_manager
+    
+    @pytest.mark.asyncio
+    async def test_cancelled_error_with_timeout_reason(self, hook_manager):
+        """Test CancelledError with args=('timeout',) produces meaningful error message."""
+        interaction = LLMInteraction(
+            session_id="test_session",
+            provider="openai",
+            model_name="gpt-4",
+            success=False
+        )
+        context = InteractionHookContext(interaction, hook_manager)
+        
+        # Create CancelledError with timeout reason
+        cancelled_error = asyncio.CancelledError("timeout")
+        
+        result = await context.__aexit__(asyncio.CancelledError, cancelled_error, None)
+        
+        assert result is False  # Don't suppress exception
+        assert context.interaction.success is False
+        assert context.interaction.error_message == "Operation cancelled (timeout)"
+    
+    @pytest.mark.asyncio
+    async def test_cancelled_error_with_user_cancel_reason(self, hook_manager):
+        """Test CancelledError with args=('user_cancel',) produces meaningful error message."""
+        interaction = LLMInteraction(
+            session_id="test_session",
+            provider="openai",
+            model_name="gpt-4",
+            success=False
+        )
+        context = InteractionHookContext(interaction, hook_manager)
+        
+        # Create CancelledError with user_cancel reason
+        cancelled_error = asyncio.CancelledError("user_cancel")
+        
+        result = await context.__aexit__(asyncio.CancelledError, cancelled_error, None)
+        
+        assert result is False
+        assert context.interaction.success is False
+        assert context.interaction.error_message == "Operation cancelled (user_cancel)"
+    
+    @pytest.mark.asyncio
+    async def test_cancelled_error_without_args(self, hook_manager):
+        """Test CancelledError with no args produces 'unknown' reason."""
+        interaction = LLMInteraction(
+            session_id="test_session",
+            provider="openai",
+            model_name="gpt-4",
+            success=False
+        )
+        context = InteractionHookContext(interaction, hook_manager)
+        
+        # Create CancelledError with no args
+        cancelled_error = asyncio.CancelledError()
+        
+        result = await context.__aexit__(asyncio.CancelledError, cancelled_error, None)
+        
+        assert result is False
+        assert context.interaction.success is False
+        assert context.interaction.error_message == "Operation cancelled (unknown)"
+    
+    @pytest.mark.asyncio
+    async def test_regular_exception_still_works(self, hook_manager):
+        """Test that regular exceptions still produce proper error messages."""
+        interaction = LLMInteraction(
+            session_id="test_session",
+            provider="openai",
+            model_name="gpt-4",
+            success=False
+        )
+        context = InteractionHookContext(interaction, hook_manager)
+        
+        # Regular exception should work as before
+        test_exception = ValueError("Test error message")
+        
+        result = await context.__aexit__(ValueError, test_exception, None)
+        
+        assert result is False
+        assert context.interaction.success is False
+        assert context.interaction.error_message == "Test error message"
+    
+    @pytest.mark.asyncio
+    async def test_exception_with_empty_str_uses_type_name(self, hook_manager):
+        """Test that exception with empty str() uses type name as fallback."""
+        interaction = LLMInteraction(
+            session_id="test_session",
+            provider="openai",
+            model_name="gpt-4",
+            success=False
+        )
+        context = InteractionHookContext(interaction, hook_manager)
+        
+        # Create exception with empty string representation
+        class EmptyException(Exception):
+            def __str__(self):
+                return ""
+        
+        test_exception = EmptyException()
+        
+        result = await context.__aexit__(EmptyException, test_exception, None)
+        
+        assert result is False
+        assert context.interaction.success is False
+        assert context.interaction.error_message == "EmptyException"
 
 
 @pytest.mark.unit

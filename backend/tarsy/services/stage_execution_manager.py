@@ -305,17 +305,32 @@ class StageExecutionManager:
 
     async def update_stage_execution_cancelled(self, stage_execution_id: str, reason: str) -> None:
         """
-        Update stage execution as cancelled.
+        Update stage execution as cancelled (user-initiated only).
 
         Args:
             stage_execution_id: Stage execution ID
-            reason: Cancellation reason (e.g. "user_cancel", "shutdown", "timeout", "unknown")
+            reason: Cancellation reason (e.g. "user_cancel", "shutdown", "unknown")
 
         Raises:
             RuntimeError: If stage execution cannot be updated to cancelled status
         """
         await self._update_stage_execution_terminal(
             stage_execution_id, StageStatus.CANCELLED, reason, "cancelled"
+        )
+
+    async def update_stage_execution_timed_out(self, stage_execution_id: str, reason: str) -> None:
+        """
+        Update stage execution as timed out (system timeout).
+
+        Args:
+            stage_execution_id: Stage execution ID
+            reason: Timeout reason description
+
+        Raises:
+            RuntimeError: If stage execution cannot be updated to timed_out status
+        """
+        await self._update_stage_execution_terminal(
+            stage_execution_id, StageStatus.TIMED_OUT, reason, "timed_out"
         )
     
     async def update_stage_execution_paused(

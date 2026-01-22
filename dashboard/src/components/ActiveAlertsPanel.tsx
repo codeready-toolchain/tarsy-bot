@@ -138,7 +138,7 @@ const ActiveAlertsPanel: React.FC<ActiveAlertsPanelProps> = ({
         handleSessionUpdate(update);
         if (eventType === SESSION_EVENTS.COMPLETED) {
           handleSessionCompleted(update);
-        } else if (eventType === SESSION_EVENTS.FAILED) {
+        } else if (eventType === SESSION_EVENTS.FAILED || eventType === SESSION_EVENTS.TIMED_OUT) {
           handleSessionFailed(update);
         } else if (eventType === SESSION_EVENTS.CANCELLED) {
           handleSessionCancelled(update);
