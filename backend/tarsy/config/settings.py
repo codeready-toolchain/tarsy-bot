@@ -17,7 +17,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from tarsy.config.builtin_config import get_builtin_llm_providers
 from tarsy.models.llm_models import LLMProviderConfig, LLMProviderType
 
-
 def is_testing() -> bool:
     """Check if we're running in a test environment."""
     return (
@@ -338,17 +337,21 @@ class Settings(BaseSettings):
         # Get API key based on provider type (not provider name)
         provider_type = base_config.type  # Type-safe field access
         
-        if provider_type == LLMProviderType.GOOGLE:
-            api_key = self.google_api_key
-        elif provider_type == LLMProviderType.OPENAI:
-            api_key = self.openai_api_key
-        elif provider_type == LLMProviderType.XAI:
-            api_key = self.xai_api_key
-        elif provider_type == LLMProviderType.ANTHROPIC:
-            api_key = self.anthropic_api_key
-        else:
-            api_key = ""
-        
+        # read the api_key from the env var specified in the config, if any
+        api_key = os.getenv(base_config.api_key_env, "").strip()
+
+        # fallback to the defaults if the config does not specify an explicit
+        # api_key in any way
+        if not api_key:
+            if provider_type == LLMProviderType.GOOGLE:
+                api_key = self.google_api_key
+            elif provider_type == LLMProviderType.OPENAI:
+                api_key = self.openai_api_key
+            elif provider_type == LLMProviderType.XAI:
+                api_key = self.xai_api_key
+            elif provider_type == LLMProviderType.ANTHROPIC:
+                api_key = self.anthropic_api_key
+
         # Create new config instance with runtime fields
         return base_config.model_copy(update={
             "api_key": api_key,

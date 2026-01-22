@@ -252,17 +252,15 @@ class TestSettingsLLMConfiguration:
     
     def test_get_llm_config_success(self):
         """Test successful LLM config retrieval."""
-        settings = Settings(
-            google_api_key="test-google-key",
-            openai_api_key="test-openai-key"
-        )
-        
-        # Get config for built-in provider
-        config = settings.get_llm_config("google-default")
-        
-        assert config.type == LLMProviderType.GOOGLE
-        assert config.api_key == "test-google-key"
-        assert hasattr(config, 'disable_ssl_verification')
+        with patch.dict(os.environ, {"GOOGLE_API_KEY": "test-google-key"}, clear=False):
+            settings = Settings()
+
+            # Get config for built-in provider
+            config = settings.get_llm_config("google-default")
+
+            assert config.type == LLMProviderType.GOOGLE
+            assert config.api_key == "test-google-key"
+            assert hasattr(config, 'disable_ssl_verification')
     
     def test_get_llm_config_unknown_provider(self):
         """Test error for unknown provider."""
@@ -273,25 +271,30 @@ class TestSettingsLLMConfiguration:
     
     def test_get_llm_config_api_key_mapping(self):
         """Test correct API key mapping by provider type."""
-        settings = Settings(
-            google_api_key="google-key",
-            openai_api_key="openai-key", 
-            xai_api_key="xai-key",
-            anthropic_api_key="anthropic-key"
-        )
-        
-        # Test each provider type gets correct API key
-        google_config = settings.get_llm_config("google-default")
-        assert google_config.api_key == "google-key"
-        
-        openai_config = settings.get_llm_config("openai-default") 
-        assert openai_config.api_key == "openai-key"
-        
-        xai_config = settings.get_llm_config("xai-default")
-        assert xai_config.api_key == "xai-key"
-        
-        anthropic_config = settings.get_llm_config("anthropic-default")
-        assert anthropic_config.api_key == "anthropic-key"
+        with patch.dict(
+            os.environ,
+            {
+                "GOOGLE_API_KEY": "google-key",
+                "OPENAI_API_KEY": "openai-key",
+                "XAI_API_KEY": "xai-key",
+                "ANTHROPIC_API_KEY": "anthropic-key"
+            },
+            clear=False
+        ):
+            settings = Settings()
+
+            # Test each provider type gets correct API key from env vars
+            google_config = settings.get_llm_config("google-default")
+            assert google_config.api_key == "google-key"
+
+            openai_config = settings.get_llm_config("openai-default")
+            assert openai_config.api_key == "openai-key"
+
+            xai_config = settings.get_llm_config("xai-default")
+            assert xai_config.api_key == "xai-key"
+
+            anthropic_config = settings.get_llm_config("anthropic-default")
+            assert anthropic_config.api_key == "anthropic-key"
     
     def test_get_llm_config_ssl_verification_setting(self):
         """Test SSL verification setting is included in config."""
@@ -325,6 +328,158 @@ class TestSettingsLLMConfiguration:
         
         anthropic_config = settings.get_llm_config("anthropic-default")
         assert anthropic_config.max_tool_result_tokens == 150000
+
+    def test_get_llm_config_builtin_provider_uses_standard_env_var(self):
+        """Test that built-in providers read from their standard environment variables."""
+        # For built-in providers, api_key_env matches the standard env var name
+        # So both primary and fallback paths read from the same env var
+        with patch.dict(
+            os.environ,
+            {
+                "GOOGLE_API_KEY": "google-test-key",
+                "OPENAI_API_KEY": "openai-test-key"
+            },
+            clear=False
+        ):
+            settings = Settings()
+
+            google_config = settings.get_llm_config("google-default")
+            assert google_config.api_key == "google-test-key"
+
+            openai_config = settings.get_llm_config("openai-default")
+            assert openai_config.api_key == "openai-test-key"
+
+    def test_get_llm_config_custom_env_var_takes_precedence(self):
+        """Test that custom api_key_env takes precedence over standard env var for provider type."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            content = {
+                'llm_providers': {
+                    'custom-openai': {
+                        'type': 'openai',
+                        'model': 'gpt-4-custom',
+                        'api_key_env': 'CUSTOM_OPENAI_KEY'  # Custom env var name
+                    }
+                }
+            }
+            import yaml
+            yaml.safe_dump(content, f)
+            temp_file = f.name
+
+        try:
+            # Set both custom env var and standard env var
+            with patch.dict(
+                os.environ,
+                {
+                    "CUSTOM_OPENAI_KEY": "custom-value",  # Should use this
+                    "OPENAI_API_KEY": "standard-value"    # Should NOT use this
+                },
+                clear=False
+            ):
+                settings = Settings(llm_config_path=temp_file)
+                config = settings.get_llm_config("custom-openai")
+
+                # Should use CUSTOM_OPENAI_KEY (from api_key_env), not OPENAI_API_KEY
+                assert config.api_key == "custom-value"
+        finally:
+            os.unlink(temp_file)
+
+    def test_get_llm_config_custom_env_var_fallback_to_standard(self):
+        """Test fallback to standard env var when custom api_key_env is not set."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            content = {
+                'llm_providers': {
+                    'custom-openai': {
+                        'type': 'openai',
+                        'model': 'gpt-4-custom',
+                        'api_key_env': 'CUSTOM_OPENAI_KEY'
+                    }
+                }
+            }
+            import yaml
+            yaml.safe_dump(content, f)
+            temp_file = f.name
+
+        try:
+            # Don't set CUSTOM_OPENAI_KEY, but set OPENAI_API_KEY
+            with patch.dict(
+                os.environ,
+                {"OPENAI_API_KEY": "fallback-value"},
+                clear=False
+            ):
+                # Make sure CUSTOM_OPENAI_KEY is not set
+                env_clean = {k: v for k, v in os.environ.items() if k != "CUSTOM_OPENAI_KEY"}
+                env_clean["OPENAI_API_KEY"] = "fallback-value"
+
+                with patch.dict(os.environ, env_clean, clear=True):
+                    settings = Settings(llm_config_path=temp_file)
+                    config = settings.get_llm_config("custom-openai")
+
+                    # Should fall back to OPENAI_API_KEY (Settings field reads from env var)
+                    assert config.api_key == "fallback-value"
+        finally:
+            os.unlink(temp_file)
+
+    def test_get_llm_config_custom_env_var_whitespace_fallback(self):
+        """Test fallback when custom env var contains only whitespace."""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.yaml', delete=False) as f:
+            content = {
+                'llm_providers': {
+                    'custom-openai': {
+                        'type': 'openai',
+                        'model': 'gpt-4-custom',
+                        'api_key_env': 'CUSTOM_OPENAI_KEY'
+                    }
+                }
+            }
+            import yaml
+            yaml.safe_dump(content, f)
+            temp_file = f.name
+
+        try:
+            # Set custom env var to whitespace, standard env var to a value
+            with patch.dict(
+                os.environ,
+                {
+                    "CUSTOM_OPENAI_KEY": "   \t\n   ",  # Whitespace only
+                    "OPENAI_API_KEY": "fallback-value"
+                },
+                clear=False
+            ):
+                settings = Settings(llm_config_path=temp_file)
+                config = settings.get_llm_config("custom-openai")
+
+                # Should fall back when custom is whitespace-only
+                assert config.api_key == "fallback-value"
+        finally:
+            os.unlink(temp_file)
+
+    def test_get_llm_config_strips_env_var_whitespace(self):
+        """Test that environment variable values have whitespace stripped."""
+        with patch.dict(os.environ, {"GOOGLE_API_KEY": "  key-with-spaces  \n"}, clear=False):
+            settings = Settings()
+            config = settings.get_llm_config("google-default")
+
+            # Should strip whitespace
+            assert config.api_key == "key-with-spaces"
+
+    def test_get_llm_config_vertexai_provider_requires_env_var(self):
+        """Test that VertexAI provider uses env var and has no standard env var fallback."""
+        # Test with env var set
+        with patch.dict(os.environ, {"VERTEX_AI_PROJECT": "my-project:us-central1"}, clear=False):
+            settings = Settings()
+            config = settings.get_llm_config("vertexai-default")
+
+            # Should use env var value
+            assert config.api_key == "my-project:us-central1"
+
+        # Test without env var set (no standard fallback like OPENAI_API_KEY exists)
+        env_clean = {k: v for k, v in os.environ.items() if k != "VERTEX_AI_PROJECT"}
+        with patch.dict(os.environ, env_clean, clear=True):
+            settings = Settings()
+            config = settings.get_llm_config("vertexai-default")
+
+            # Should return empty string (no fallback env var)
+            assert config.api_key == ""
 
 
 @pytest.mark.unit
