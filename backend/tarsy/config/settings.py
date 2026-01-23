@@ -128,7 +128,7 @@ class Settings(BaseSettings):
         description="Database name"
     )
     history_retention_days: int = Field(
-        default=90,
+        default=365,
         description="Number of days to retain alert processing history data"
     )
     history_cleanup_interval_hours: int = Field(
