@@ -2,7 +2,7 @@ import { createContext, useContext, useState, useEffect, useRef, useCallback } f
 import type { ReactNode } from 'react';
 import { apiClient, handleAPIError } from '../services/api';
 import type { DetailedSession, Session, StageExecution } from '../types';
-import { isValidSessionStatus, SESSION_STATUS } from '../utils/statusConstants';
+import { isValidSessionStatus, SESSION_STATUS, type StageStatus } from '../utils/statusConstants';
 import {
   createParallelPlaceholders,
   replacePlaceholderWithRealStage
@@ -19,8 +19,8 @@ interface SessionContextData {
   refreshSessionSummary: (sessionId: string) => Promise<void>;
   refreshSessionStages: (sessionId: string) => Promise<void>;
   updateFinalAnalysis: (analysis: string) => void;
-  updateSessionStatus: (newStatus: DetailedSession['status'], errorMessage?: string) => void;
-  updateStageStatus: (stageId: string, status: string, errorMessage?: string, completedAtUs?: number) => void;
+  updateSessionStatus: (newStatus: DetailedSession['status'], errorMessage?: string | null) => void;
+  updateStageStatus: (stageId: string, status: StageStatus, errorMessage?: string | null, completedAtUs?: number | null) => void;
   // Placeholder management for parallel stages
   handleParallelStageStarted: (stageExecution: StageExecution) => void;
   handleParallelChildStageStarted: (stageExecution: StageExecution) => void;
@@ -224,7 +224,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
   /**
    * Direct update of session status (no API call needed)
    */
-  const updateSessionStatus = useCallback((newStatus: DetailedSession['status'], errorMessage?: string) => {
+  const updateSessionStatus = useCallback((newStatus: DetailedSession['status'], errorMessage?: string | null) => {
     console.log('🔄 [SessionContext] Updating session status directly:', newStatus);
     setSession(prevSession => {
       if (!prevSession) return prevSession;
@@ -235,7 +235,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
       return {
         ...prevSession,
         status: newStatus,
-        error_message: errorMessage ?? prevSession.error_message
+        error_message: errorMessage === undefined ? prevSession.error_message : errorMessage
       };
     });
   }, [setSession]);
@@ -318,9 +318,9 @@ export function SessionProvider({ children }: SessionProviderProps) {
    */
   const updateStageStatus = useCallback((
     stageId: string, 
-    status: string, 
-    errorMessage?: string,
-    completedAtUs?: number
+    status: StageStatus, 
+    errorMessage?: string | null,
+    completedAtUs?: number | null
   ) => {
     console.log('🔄 [SessionContext] Updating stage status from WebSocket:', {
       stageId,
@@ -343,16 +343,16 @@ export function SessionProvider({ children }: SessionProviderProps) {
       let stageFound = false;
 
       // Helper function to update stage recursively (handles nested parallel stages)
-      const updateStageRecursive = (stages: StageExecution[], depth: number = 0): StageExecution[] => {
+      const updateStageRecursive = (stages: StageExecution[]): StageExecution[] => {
         return stages.map(stage => {
           // Check if this is the stage we're looking for
           if (stage.execution_id === stageId) {
             stageFound = true;
             return {
               ...stage,
-              status: status as any,
-              error_message: errorMessage ?? stage.error_message,
-              completed_at_us: completedAtUs ?? stage.completed_at_us
+              status: status,
+              error_message: errorMessage === undefined ? stage.error_message : errorMessage,
+              completed_at_us: completedAtUs === undefined ? stage.completed_at_us : completedAtUs
             };
           }
 
@@ -360,7 +360,7 @@ export function SessionProvider({ children }: SessionProviderProps) {
           if (stage.parallel_executions && stage.parallel_executions.length > 0) {
             return {
               ...stage,
-              parallel_executions: updateStageRecursive(stage.parallel_executions, depth + 1)
+              parallel_executions: updateStageRecursive(stage.parallel_executions)
             };
           }
 
