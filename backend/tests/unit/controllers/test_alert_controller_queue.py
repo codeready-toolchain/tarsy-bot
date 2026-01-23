@@ -21,7 +21,7 @@ def test_client():
 @pytest.fixture
 def mock_alert_service():
     """Mock alert service."""
-    with patch("tarsy.controllers.alert_controller.alert_service") as mock:
+    with patch("tarsy.main.alert_service") as mock:
         mock_chain_registry = MagicMock()
         mock_chain_registry.get_default_alert_type.return_value = "generic"
         mock_chain_registry.list_available_alert_types.return_value = ["generic", "kubernetes"]
@@ -35,9 +35,10 @@ def mock_alert_service():
 @pytest.fixture
 def mock_history_service():
     """Mock history service."""
-    with patch("tarsy.controllers.alert_controller.get_history_service") as mock:
+    with patch("tarsy.services.history_service.get_history_service") as mock:
         service = MagicMock()
         service.repository = MagicMock()
+        service.count_pending_sessions = MagicMock(return_value=0)
         mock.return_value = service
         yield service
 
@@ -45,7 +46,7 @@ def mock_history_service():
 @pytest.fixture
 def mock_settings_with_queue_limit():
     """Mock settings with queue size limit."""
-    with patch("tarsy.controllers.alert_controller.get_settings") as mock:
+    with patch("tarsy.config.settings.get_settings") as mock:
         settings = MagicMock()
         settings.max_queue_size = 10
         settings.alert_data_masking_enabled = False
@@ -56,7 +57,7 @@ def mock_settings_with_queue_limit():
 @pytest.fixture
 def mock_settings_no_queue_limit():
     """Mock settings without queue size limit."""
-    with patch("tarsy.controllers.alert_controller.get_settings") as mock:
+    with patch("tarsy.config.settings.get_settings") as mock:
         settings = MagicMock()
         settings.max_queue_size = None
         settings.alert_data_masking_enabled = False
@@ -95,7 +96,7 @@ def test_submit_alert_queue_full(
 ):
     """Test submitting alert when queue is full."""
     # Queue is full (10 >= 10)
-    mock_history_service.repository.count_pending_sessions.return_value = 10
+    mock_history_service.count_pending_sessions.return_value = 10
     
     response = test_client.post(
         "/api/v1/alerts",
@@ -120,7 +121,7 @@ def test_submit_alert_no_queue_limit(
 ):
     """Test submitting alert when queue has no size limit."""
     # Even with many pending, should succeed
-    mock_history_service.repository.count_pending_sessions.return_value = 1000
+    mock_history_service.count_pending_sessions.return_value = 1000
     
     response = test_client.post(
         "/api/v1/alerts",
@@ -161,7 +162,7 @@ def test_submit_alert_queue_limit_boundary(
 ):
     """Test queue limit at exact boundary."""
     # Queue at limit - 1 (9 < 10) - should succeed
-    mock_history_service.repository.count_pending_sessions.return_value = 9
+    mock_history_service.count_pending_sessions.return_value = 9
     
     response = test_client.post(
         "/api/v1/alerts",
@@ -173,7 +174,7 @@ def test_submit_alert_queue_limit_boundary(
     assert response.status_code == 200
     
     # Queue at limit (10 >= 10) - should fail
-    mock_history_service.repository.count_pending_sessions.return_value = 10
+    mock_history_service.count_pending_sessions.return_value = 10
     
     response = test_client.post(
         "/api/v1/alerts",

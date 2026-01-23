@@ -61,27 +61,8 @@ class TestAlertSubmissionSessionCreation:
             mock_service.session_manager = Mock()
             yield mock_service
 
-    @pytest.fixture
-    def mock_process_alert_callback(self):
-        """Mock process_alert_callback with automatic cleanup."""
-        # Save original value if it exists
-        original = getattr(app.state, "process_alert_callback", None)
-        
-        # Set mock
-        mock_callback = AsyncMock()
-        app.state.process_alert_callback = mock_callback
-        
-        yield mock_callback
-        
-        # Restore original value
-        if original is None:
-            if hasattr(app.state, "process_alert_callback"):
-                delattr(app.state, "process_alert_callback")
-        else:
-            app.state.process_alert_callback = original
-
     def test_submit_alert_creates_session_before_response(
-        self, client, valid_alert_data, mock_alert_service, mock_chain_definition, mock_process_alert_callback
+        self, client, valid_alert_data, mock_alert_service, mock_chain_definition
     ):
         """Test that session is created in database before API response is returned."""
         # Arrange - Mock session creation to return True
@@ -108,9 +89,6 @@ class TestAlertSubmissionSessionCreation:
         
         assert chain_context.session_id == session_id
         assert chain_def == mock_chain_definition
-        
-        # Verify background task was started
-        mock_process_alert_callback.assert_called_once()
 
     def test_submit_alert_returns_400_for_invalid_alert_type(
         self, client, valid_alert_data, mock_alert_service

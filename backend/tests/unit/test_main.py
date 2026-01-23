@@ -626,11 +626,7 @@ class TestBackgroundProcessing:
         """Test successful background alert processing."""
         mock_alert_service.process_alert = AsyncMock(return_value={"status": "success"})
         
-        # Mock the semaphore and locks to avoid issues
-        with patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)), \
-             patch('tarsy.main.active_tasks_lock', asyncio.Lock()), \
-             patch('tarsy.main.active_tasks', {}):
-            await process_alert_background("test-session-123", mock_alert_data)
+        await process_alert_background("test-session-123", mock_alert_data)
         
         mock_alert_service.process_alert.assert_called_once_with(mock_alert_data)
 
@@ -648,10 +644,7 @@ class TestBackgroundProcessing:
         mock_history_service = Mock()
         mock_history_service.update_session_status = Mock()
         
-        with patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)), \
-             patch('tarsy.main.asyncio.wait_for', side_effect=asyncio.TimeoutError()), \
-             patch('tarsy.main.active_tasks_lock', asyncio.Lock()), \
-             patch('tarsy.main.active_tasks', {}), \
+        with patch('tarsy.main.asyncio.wait_for', side_effect=asyncio.TimeoutError()), \
              patch('tarsy.services.history_service.get_history_service', return_value=mock_history_service), \
              patch('tarsy.services.cancellation_tracker.is_user_cancel', return_value=False), \
              patch('tarsy.services.events.event_helpers.publish_session_timed_out', new_callable=AsyncMock):
@@ -691,10 +684,7 @@ class TestBackgroundProcessing:
             current_stage_name="test-stage"
         )
         
-        with patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)), \
-             patch('tarsy.main.active_tasks_lock', asyncio.Lock()), \
-             patch('tarsy.main.active_tasks', {}), \
-             patch('tarsy.services.events.event_helpers.publish_session_failed', new_callable=AsyncMock):
+        with patch('tarsy.services.events.event_helpers.publish_session_failed', new_callable=AsyncMock):
             # Test with None alert - should fail early during logging
             await process_alert_background("test-session-123", None)
             
@@ -720,10 +710,7 @@ class TestBackgroundProcessing:
         mock_session_manager.update_session_error = Mock()
         mock_alert_service.session_manager = mock_session_manager
         
-        with patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)), \
-             patch('tarsy.main.active_tasks_lock', asyncio.Lock()), \
-             patch('tarsy.main.active_tasks', {}), \
-             patch('tarsy.services.events.event_helpers.publish_session_failed', new_callable=AsyncMock):
+        with patch('tarsy.services.events.event_helpers.publish_session_failed', new_callable=AsyncMock):
             # Should not raise exception, should handle gracefully
             await process_alert_background("test-session-123", mock_alert_data)
         
@@ -770,10 +757,7 @@ class TestBackgroundProcessing:
         # Create lock in async context (Python 3.13+ requirement)
         test_lock = asyncio.Lock()
         
-        with patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)), \
-             patch('tarsy.services.history_service.get_history_service', return_value=mock_history_service), \
-             patch('tarsy.main.active_tasks_lock', test_lock), \
-             patch('tarsy.main.active_tasks', {}), \
+        with patch('tarsy.services.history_service.get_history_service', return_value=mock_history_service), \
              patch('tarsy.services.events.event_helpers.publish_session_cancelled', new_callable=AsyncMock):
             
             # Should not raise exception and should exit gracefully
@@ -813,10 +797,7 @@ class TestBackgroundProcessing:
         # Create lock in async context (Python 3.13+ requirement)
         test_lock = asyncio.Lock()
         
-        with patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)), \
-             patch('tarsy.services.history_service.get_history_service', return_value=mock_history_service), \
-             patch('tarsy.main.active_tasks_lock', test_lock), \
-             patch('tarsy.main.active_tasks', {}), \
+        with patch('tarsy.services.history_service.get_history_service', return_value=mock_history_service), \
              patch('tarsy.services.cancellation_tracker.is_user_cancel', return_value=False), \
              patch('tarsy.services.events.event_helpers.publish_session_timed_out', new_callable=AsyncMock):
             
@@ -867,10 +848,7 @@ class TestBackgroundProcessing:
         # Create lock in async context (Python 3.13+ requirement)
         test_lock = asyncio.Lock()
         
-        with patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)), \
-             patch('tarsy.services.history_service.get_history_service', return_value=mock_history_service), \
-             patch('tarsy.main.active_tasks_lock', test_lock), \
-             patch('tarsy.main.active_tasks', {}):
+        with patch('tarsy.services.history_service.get_history_service', return_value=mock_history_service):
             
             # Should not raise exception and should exit gracefully
             await process_alert_background("test-session-123", mock_alert_data)

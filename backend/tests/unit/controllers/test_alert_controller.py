@@ -47,9 +47,6 @@ class TestAlertControllerCriticalCoverage:
         """Test memory usage behavior under load for alert submission."""
         from tests.utils import AlertFactory
         
-        # Mock the process_alert_callback in app state
-        app.state.process_alert_callback = AsyncMock()
-        
         # Create many alerts to test memory usage
         alerts = [AlertFactory.create_kubernetes_alert() for _ in range(100)]
         
@@ -132,9 +129,6 @@ class TestSubmitAlertEndpoint:
         self, client, valid_alert_data
     ):
         """Test successful alert submission."""
-        # Mock the process_alert_callback in app state
-        app.state.process_alert_callback = AsyncMock()
-        
         response = client.post("/api/v1/alerts", json=valid_alert_data)
         
         assert response.status_code == 200
@@ -144,9 +138,6 @@ class TestSubmitAlertEndpoint:
         assert "session_id" in data
         assert len(data["session_id"]) == 36  # UUID format
         assert data["message"] == "Alert submitted for processing"
-        
-        # Verify background callback was called
-        assert app.state.process_alert_callback.called
 
     @pytest.mark.parametrize("invalid_input,expected_status,expected_error", [
         (None, 400, "Empty request body"),
@@ -244,9 +235,6 @@ class TestSubmitAlertEndpoint:
         self, client
     ):
         """Test alert submission applies defaults for missing fields."""
-        # Mock the process_alert_callback in app state
-        app.state.process_alert_callback = AsyncMock()
-        
         minimal_data = {
             "alert_type": "test",
             "runbook": "https://example.com/runbook.md"
@@ -254,17 +242,11 @@ class TestSubmitAlertEndpoint:
         
         response = client.post("/api/v1/alerts", json=minimal_data)
         assert response.status_code == 200
-        
-        # Verify background callback was called
-        assert app.state.process_alert_callback.called
 
     def test_submit_alert_without_alert_type_uses_default(
         self, client
     ):
         """Test alert submission without alert_type uses the default from chain registry."""
-        # Mock the process_alert_callback in app state
-        app.state.process_alert_callback = AsyncMock()
-        
         alert_data_no_type = {
             "data": {
                 "namespace": "test-namespace",
@@ -278,17 +260,11 @@ class TestSubmitAlertEndpoint:
         
         assert data["status"] == "queued"
         assert "session_id" in data
-        
-        # Verify background callback was called
-        assert app.state.process_alert_callback.called
 
     def test_submit_alert_without_runbook(
         self, client
     ):
         """Test alert submission without runbook field (should use built-in default)."""
-        # Mock the process_alert_callback in app state
-        app.state.process_alert_callback = AsyncMock()
-        
         alert_data_no_runbook = {
             "alert_type": "test_alert",
             "data": {
@@ -304,9 +280,6 @@ class TestSubmitAlertEndpoint:
         assert data["status"] == "queued"
         assert "session_id" in data
         assert len(data["session_id"]) == 36  # UUID format
-        
-        # Verify background callback was called
-        assert app.state.process_alert_callback.called
 
     def test_submit_alert_invalid_content_length_header(self, client, valid_alert_data):
         """Test that invalid Content-Length headers are handled gracefully."""
@@ -419,9 +392,6 @@ class TestInputSanitization:
             "data": input_data
         }
         
-        # Mock the callback
-        app.state.process_alert_callback = AsyncMock()
-        
         response = client.post("/api/v1/alerts", json=alert_data)
         
         # If newlines were being stripped (old bug), special characters in newlines 
@@ -458,9 +428,6 @@ class TestInputSanitization:
             "data": input_data
         }
         
-        # Mock the callback
-        app.state.process_alert_callback = AsyncMock()
-        
         response = client.post("/api/v1/alerts", json=alert_data)
         
         assert response.status_code == 200, f"{test_description}: Failed to process alert with tabs"
@@ -478,9 +445,6 @@ class TestInputSanitization:
             }
         }
         
-        # Mock the callback
-        app.state.process_alert_callback = AsyncMock()
-        
         response = client.post("/api/v1/alerts", json=alert_data)
         
         assert response.status_code == 200
@@ -497,9 +461,6 @@ class TestInputSanitization:
                 "message": "<script>alert('xss')</script>\nLegitimate data\twith tab"
             }
         }
-        
-        # Mock the callback
-        app.state.process_alert_callback = AsyncMock()
         
         response = client.post("/api/v1/alerts", json=alert_data)
         
@@ -531,9 +492,6 @@ containers:
             }
         }
         
-        # Mock the callback
-        app.state.process_alert_callback = AsyncMock()
-        
         response = client.post("/api/v1/alerts", json=alert_data)
         
         assert response.status_code == 200
@@ -559,9 +517,6 @@ containers:
             }
         }
         
-        # Mock the callback
-        app.state.process_alert_callback = AsyncMock()
-        
         response = client.post("/api/v1/alerts", json=nested_data)
         
         assert response.status_code == 200
@@ -582,9 +537,6 @@ containers:
                 ]
             }
         }
-        
-        # Mock the callback
-        app.state.process_alert_callback = AsyncMock()
         
         response = client.post("/api/v1/alerts", json=alert_data)
         
@@ -710,9 +662,6 @@ class TestAlertControllerCriticalCoverage:
             }
         ]
         
-        # Mock the process_alert_callback in app state
-        app.state.process_alert_callback = AsyncMock()
-        
         for payload in malicious_payloads:
             # Should handle malicious payloads gracefully
             response = client.post("/api/v1/alerts", json=payload)
@@ -792,9 +741,6 @@ class TestGracefulShutdownBehavior:
     def test_submit_alert_accepts_when_not_shutting_down(self, client):
         """Test that submit_alert endpoint accepts new sessions when not shutting down."""
         from tests.utils import AlertFactory
-        
-        # Mock the process callback in app state
-        app.state.process_alert_callback = AsyncMock()
         
         alert = AlertFactory.create_kubernetes_alert()
         alert_data = {

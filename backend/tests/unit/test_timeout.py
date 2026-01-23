@@ -128,11 +128,8 @@ class TestTimeoutErrorHandlingInMain:
         
         # Mock the event publisher
         with patch('tarsy.main.alert_service', mock_alert_service), \
-             patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)), \
              patch('tarsy.main.get_settings') as mock_get_settings, \
              patch('tarsy.services.history_service.get_history_service', return_value=mock_history_service), \
-             patch('tarsy.main.active_tasks_lock', asyncio.Lock()), \
-             patch('tarsy.main.active_tasks', {}), \
              patch('tarsy.services.cancellation_tracker.is_user_cancel', return_value=False), \
              patch('tarsy.services.events.event_helpers.publish_session_timed_out', new_callable=AsyncMock) as mock_publish:
             
@@ -190,10 +187,7 @@ class TestTimeoutErrorHandlingInMain:
         mock_alert_service.session_manager = mock_session_manager
         
         with patch('tarsy.main.alert_service', mock_alert_service), \
-             patch('tarsy.main.alert_processing_semaphore', asyncio.Semaphore(1)), \
              patch('tarsy.main.get_settings') as mock_get_settings, \
-             patch('tarsy.main.active_tasks_lock', asyncio.Lock()), \
-             patch('tarsy.main.active_tasks', {}), \
              patch('tarsy.services.events.event_helpers.publish_session_failed', new_callable=AsyncMock) as mock_publish:
             
             settings = Mock()

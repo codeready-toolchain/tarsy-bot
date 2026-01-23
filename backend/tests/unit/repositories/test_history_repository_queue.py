@@ -14,7 +14,13 @@ pytestmark = pytest.mark.unit
 
 
 @pytest.fixture
-def create_pending_session(db_session: Session):
+def history_repository(test_database_session: Session):
+    """Create a HistoryRepository with test database session."""
+    return HistoryRepository(test_database_session)
+
+
+@pytest.fixture
+def create_pending_session(test_database_session: Session):
     """Helper to create a pending session."""
     def _create(session_id: str, alert_type: str = "test-alert") -> AlertSession:
         session = AlertSession(
@@ -23,17 +29,18 @@ def create_pending_session(db_session: Session):
             agent_type="test-agent",
             status=AlertSessionStatus.PENDING.value,
             started_at_us=now_us(),
-            alert_data={"test": "data"}
+            alert_data={"test": "data"},
+            chain_id="test-chain-1"
         )
-        db_session.add(session)
-        db_session.commit()
-        db_session.refresh(session)
+        test_database_session.add(session)
+        test_database_session.commit()
+        test_database_session.refresh(session)
         return session
     return _create
 
 
 @pytest.fixture
-def create_in_progress_session(db_session: Session):
+def create_in_progress_session(test_database_session: Session):
     """Helper to create an in-progress session."""
     def _create(session_id: str, pod_id: str = "test-pod") -> AlertSession:
         session = AlertSession(
@@ -43,11 +50,12 @@ def create_in_progress_session(db_session: Session):
             status=AlertSessionStatus.IN_PROGRESS.value,
             pod_id=pod_id,
             started_at_us=now_us(),
-            alert_data={"test": "data"}
+            alert_data={"test": "data"},
+            chain_id="test-chain-1"
         )
-        db_session.add(session)
-        db_session.commit()
-        db_session.refresh(session)
+        test_database_session.add(session)
+        test_database_session.commit()
+        test_database_session.refresh(session)
         return session
     return _create
 
@@ -128,7 +136,7 @@ def test_claim_next_pending_session_none_available(history_repository: HistoryRe
 def test_claim_next_pending_session_updates_status(
     history_repository: HistoryRepository,
     create_pending_session,
-    db_session: Session
+    test_database_session: Session
 ):
     """Test claiming updates session status and pod_id."""
     session = create_pending_session("session-1")
@@ -142,7 +150,7 @@ def test_claim_next_pending_session_updates_status(
     assert claimed.last_interaction_at is not None
     
     # Verify in database
-    db_session.refresh(session)
+    test_database_session.refresh(session)
     assert session.status == AlertSessionStatus.IN_PROGRESS.value
     assert session.pod_id == "pod-1"
 
@@ -174,7 +182,7 @@ def test_claim_next_pending_session_skips_in_progress(
 def test_claim_next_pending_session_multiple_pods(
     history_repository: HistoryRepository,
     create_pending_session,
-    db_session: Session
+    test_database_session: Session
 ):
     """Test multiple pods claiming different sessions."""
     import time
