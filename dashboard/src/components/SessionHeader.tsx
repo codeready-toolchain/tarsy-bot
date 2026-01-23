@@ -471,9 +471,12 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
     if (wasInProgress && nowCompleted && onRefresh) {
       console.log(`🔄 Status changed from ${previousStatus} to ${currentStatus}, refreshing session data for final stats`);
       // Small delay to ensure backend has processed the completion
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         onRefresh();
       }, 500);
+      
+      // Cleanup timeout on unmount or re-run
+      return () => clearTimeout(timeoutId);
     }
     
     // Update the ref for next comparison

@@ -1435,6 +1435,31 @@ class TestHistoryRepository:
         assert interactions == []
 
     @pytest.mark.unit
+    def test_has_llm_interactions_true(
+        self, repository, sample_alert_session, sample_llm_interaction
+    ):
+        """Test has_llm_interactions returns True when interactions exist."""
+        repository.create_alert_session(sample_alert_session)
+        repository.create_llm_interaction(sample_llm_interaction)
+        
+        result = repository.has_llm_interactions(sample_alert_session.session_id)
+        assert result is True
+
+    @pytest.mark.unit
+    def test_has_llm_interactions_false(self, repository, sample_alert_session):
+        """Test has_llm_interactions returns False when no interactions exist."""
+        repository.create_alert_session(sample_alert_session)
+        
+        result = repository.has_llm_interactions(sample_alert_session.session_id)
+        assert result is False
+
+    @pytest.mark.unit
+    def test_has_llm_interactions_nonexistent_session(self, repository):
+        """Test has_llm_interactions returns False for non-existent session."""
+        result = repository.has_llm_interactions("non-existent-session")
+        assert result is False
+
+    @pytest.mark.unit
     def test_get_mcp_communications_empty_session(self, repository):
         """Test getting MCP communications for non-existent session."""
         communications = repository.get_mcp_communications_for_session("non-existent-session")

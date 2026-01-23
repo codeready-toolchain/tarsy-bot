@@ -73,7 +73,7 @@ def test_submit_alert_queue_not_full(
 ):
     """Test submitting alert when queue has space."""
     # Queue has space (5 < 10)
-    mock_history_service.repository.count_pending_sessions.return_value = 5
+    mock_history_service.count_pending_sessions.return_value = 5
     
     response = test_client.post(
         "/api/v1/alerts",
@@ -151,7 +151,7 @@ def test_submit_alert_queue_check_not_called_when_no_limit(
     
     assert response.status_code == 200
     # count_pending_sessions should not be called
-    mock_history_service.repository.count_pending_sessions.assert_not_called()
+    mock_history_service.count_pending_sessions.assert_not_called()
 
 
 def test_submit_alert_queue_limit_boundary(

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Accordion,
   AccordionSummary,
@@ -36,6 +36,13 @@ interface QueuedAlertsSectionProps {
   onRefresh?: () => void;
 }
 
+// Wait time refresh interval in milliseconds (10 seconds)
+const WAIT_TIME_REFRESH_INTERVAL_MS = 10000;
+
+// Delay after cancel before refreshing session list (500ms)
+// This gives the backend time to process the cancellation
+const POST_CANCEL_REFRESH_DELAY_MS = 500;
+
 /**
  * QueuedAlertsSection component displays queued (PENDING) sessions
  * in a collapsible accordion format
@@ -45,10 +52,32 @@ const QueuedAlertsSection: React.FC<QueuedAlertsSectionProps> = ({
   onSessionClick,
   onRefresh,
 }) => {
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [sessionToCancel, setSessionToCancel] = useState<string | null>(null);
   const [isCanceling, setIsCanceling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [, forceUpdate] = useState(0);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Refresh wait times periodically to keep them accurate
+  useEffect(() => {
+    if (sessions.length === 0) return;
+
+    const interval = setInterval(() => {
+      forceUpdate((n) => n + 1);
+    }, WAIT_TIME_REFRESH_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, [sessions.length]);
 
   // Handle cancel button click
   const handleCancelClick = (sessionId: string, event: React.MouseEvent) => {
@@ -80,9 +109,9 @@ const QueuedAlertsSection: React.FC<QueuedAlertsSectionProps> = ({
       setSessionToCancel(null);
       setIsCanceling(false);
       
-      // Trigger refresh if callback provided
+      // Trigger refresh after brief delay to allow backend to process
       if (onRefresh) {
-        setTimeout(onRefresh, 500);
+        timeoutRef.current = setTimeout(onRefresh, POST_CANCEL_REFRESH_DELAY_MS);
       }
     } catch (error) {
       const errorMessage = handleAPIError(error);

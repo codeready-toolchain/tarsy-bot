@@ -182,6 +182,29 @@ class HistoryRepository:
         """
         return self.llm_interaction_repo.create(llm_interaction)
     
+    def has_llm_interactions(self, session_id: str) -> bool:
+        """
+        Check if session has any LLM interactions (lightweight existence check).
+        
+        Uses LIMIT 1 for optimal performance - avoids loading full interaction history.
+        
+        Args:
+            session_id: The session identifier
+            
+        Returns:
+            True if session has at least one LLM interaction, False otherwise
+        """
+        try:
+            statement = select(LLMInteraction).where(
+                LLMInteraction.session_id == session_id
+            ).limit(1)
+            
+            result = self.session.exec(statement).first()
+            return result is not None
+        except Exception as e:
+            logger.error(f"Failed to check LLM interactions for session {session_id}: {str(e)}")
+            raise
+    
     def get_llm_interactions_for_session(self, session_id: str) -> List[LLMInteraction]:
         """
         Get all LLM interactions for a session ordered by timestamp.
@@ -1268,7 +1291,7 @@ class HistoryRepository:
                 return None
                 
             elif dialect == 'sqlite':
-                # SQLite: Status-based claiming with write lock
+                # SQLite: Status-based claiming with optimistic locking
                 # Find oldest PENDING session
                 statement = (
                     select(AlertSession)
@@ -1281,9 +1304,9 @@ class HistoryRepository:
                 if not session:
                     return None
                 
-                # Try to claim it by updating status
-                # SQLite IMMEDIATE transaction provides write lock
-                # If another pod tries to claim simultaneously, one will succeed
+                # Try to claim by updating status
+                # SQLite acquires a write lock on commit; concurrent claims may
+                # fail with a database locked error, handled by the except block
                 try:
                     session.status = AlertSessionStatus.IN_PROGRESS.value
                     session.pod_id = pod_id

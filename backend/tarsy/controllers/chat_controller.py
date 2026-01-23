@@ -182,8 +182,8 @@ async def check_chat_availability(
 
         # Check if session has any LLM interactions (needed for chat context)
         # Sessions cancelled before processing won't have any interactions
-        llm_interactions = await history_service.get_llm_interactions_for_session(session_id)
-        if not llm_interactions:
+        has_interactions = await history_service.has_llm_interactions(session_id)
+        if not has_interactions:
             return ChatAvailabilityResponse(
                 available=False,
                 reason="Session has no processing history to discuss (cancelled before starting)",

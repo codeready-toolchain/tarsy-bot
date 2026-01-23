@@ -5,6 +5,7 @@ FastAPI controller for alert processing endpoints.
 Provides REST API for submitting alerts and retrieving alert types.
 """
 
+import asyncio
 import json
 import re
 import uuid
@@ -321,8 +322,10 @@ async def submit_alert(request: Request) -> AlertResponse:
         from tarsy.services.history_service import get_history_service
         
         history_service = get_history_service()
-        if settings.max_queue_size is not None and history_service:
-            pending_count = history_service.count_pending_sessions()
+        if settings.max_queue_size is not None:
+            pending_count = await asyncio.to_thread(
+                history_service.count_pending_sessions
+            )
             if pending_count >= settings.max_queue_size:
                 raise HTTPException(
                     status_code=429,  # Too Many Requests

@@ -83,7 +83,7 @@ async def test_worker_has_capacity_true(mock_history_service, mock_process_callb
 @pytest.mark.asyncio
 async def test_worker_has_capacity_false(worker, mock_history_service):
     """Test capacity check when at max capacity."""
-    mock_history_service.repository.count_sessions_by_status.return_value = 5
+    mock_history_service.count_sessions_by_status.return_value = 5
     
     has_capacity = await worker._has_capacity()
     
@@ -259,7 +259,7 @@ async def test_worker_claim_loop_with_capacity(mock_history_service, mock_proces
 async def test_worker_claim_loop_no_capacity(worker, mock_history_service):
     """Test claim loop when at capacity."""
     # No capacity
-    mock_history_service.repository.count_sessions_by_status.return_value = 5
+    mock_history_service.count_sessions_by_status.return_value = 5
     
     # Start worker
     await worker.start()
@@ -271,7 +271,7 @@ async def test_worker_claim_loop_no_capacity(worker, mock_history_service):
     await worker.stop()
     
     # Verify no sessions were claimed
-    mock_history_service.repository.claim_next_pending_session.assert_not_called()
+    mock_history_service.claim_next_pending_session.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -306,13 +306,17 @@ async def test_worker_claim_loop_error_handling(mock_history_service, mock_proce
 async def test_worker_stop_timeout(worker, mock_history_service):
     """Test worker stop with timeout."""
     # Simulate stuck claim loop
-    mock_history_service.repository.count_sessions_by_status.return_value = 0
+    mock_history_service.count_sessions_by_status.return_value = 0
     
     await worker.start()
     
-    # Make the worker task hang
-    worker._worker_task.cancel = MagicMock()  # Prevent actual cancellation
+    # Mock cancel to track calls and force timeout path
+    cancel_mock = MagicMock()
+    worker._worker_task.cancel = cancel_mock
     
-    # Stop should timeout and cancel
-    with patch.object(worker._worker_task, "cancel"):
+    # Mock wait_for to immediately raise TimeoutError, forcing cancel path
+    with patch("tarsy.services.session_claim_worker.asyncio.wait_for", side_effect=asyncio.TimeoutError):
         await worker.stop()
+    
+    # Verify cancel was called due to timeout
+    cancel_mock.assert_called_once()

@@ -165,6 +165,7 @@ class TestChatController:
         """Test chat availability when session is completed."""
         mock_history_service.get_session = Mock(return_value=sample_session)
         mock_history_service.get_chat_by_session = AsyncMock(return_value=None)
+        mock_history_service.has_llm_interactions = AsyncMock(return_value=True)
 
         response = client.get("/api/v1/sessions/test-session-456/chat-available")
 
@@ -201,6 +202,21 @@ class TestChatController:
         data = response.json()
         assert data["available"] is False
         assert "terminal state" in data["reason"].lower()
+
+    def test_check_chat_availability_no_llm_interactions(
+        self, client, mock_history_service, sample_session
+    ):
+        """Test chat availability when session has no LLM interactions (cancelled early)."""
+        mock_history_service.get_session = Mock(return_value=sample_session)
+        mock_history_service.get_chat_by_session = AsyncMock(return_value=None)
+        mock_history_service.has_llm_interactions = AsyncMock(return_value=False)
+
+        response = client.get("/api/v1/sessions/test-session-456/chat-available")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["available"] is False
+        assert "no processing history" in data["reason"].lower()
 
     def test_check_chat_availability_session_not_found(self, client, mock_history_service):
         """Test chat availability when session doesn't exist."""

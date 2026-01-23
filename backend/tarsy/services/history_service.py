@@ -1122,6 +1122,29 @@ class HistoryService:
             _get_operation
         ) or []
     
+    async def has_llm_interactions(self, session_id: str) -> bool:
+        """
+        Check if session has any LLM interactions (lightweight existence check).
+        
+        Uses LIMIT 1 query for optimal performance - avoids loading full interaction history.
+        
+        Args:
+            session_id: Session identifier
+            
+        Returns:
+            True if session has at least one LLM interaction, False otherwise
+        """
+        def _has_operation():
+            with self.get_repository() as repo:
+                if not repo:
+                    return False
+                return repo.has_llm_interactions(session_id)
+        
+        return self._retry_database_operation(
+            "has_llm_interactions",
+            _has_operation
+        ) or False
+    
     async def get_llm_interactions_for_session(self, session_id: str) -> List['LLMInteraction']:
         """Get all LLM interactions for a session."""
         def _get_operation():

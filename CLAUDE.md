@@ -192,7 +192,7 @@ TARSy uses a database-backed global queue to manage alert processing across all 
 
 #### Database-Backed Claiming
 - **PostgreSQL**: Uses `FOR UPDATE SKIP LOCKED` for efficient lock-free claiming
-- **SQLite**: Status-based claiming with write locks (development only)
+- **SQLite**: Status-based claiming with optimistic locking (development only)
 - **Pod Tracking**: Each session records which pod is processing it
 - **Cancellation**: Sessions can be cancelled while in PENDING state
 

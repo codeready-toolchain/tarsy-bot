@@ -388,6 +388,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     shutdown_in_progress = True
     logger.info("Marked service as shutting down - will reject new alert submissions")
     
+    # Stop SessionClaimWorker first to prevent new sessions from being claimed
+    if session_claim_worker is not None:
+        try:
+            await session_claim_worker.stop()
+            logger.info("SessionClaimWorker stopped")
+        except Exception as e:
+            logger.error(f"Error stopping SessionClaimWorker: {e}", exc_info=True)
+    
     # Wait for active sessions to complete gracefully
     # Combine both session and chat tasks
     if active_tasks or active_chat_tasks:
@@ -424,14 +432,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             await mark_active_tasks_as_interrupted("after error")
     else:
         logger.info("No active sessions during shutdown")
-    
-    # Stop SessionClaimWorker
-    if session_claim_worker is not None:
-        try:
-            await session_claim_worker.stop()
-            logger.info("SessionClaimWorker stopped")
-        except Exception as e:
-            logger.error(f"Error stopping SessionClaimWorker: {e}", exc_info=True)
     
     # Stop MCP health monitor
     if mcp_health_monitor is not None:
@@ -532,7 +532,7 @@ async def health_check(response: Response) -> Dict[str, Any]:
         }
         
         # Check history service / database
-        db_info = get_database_info()
+        db_info = await asyncio.to_thread(get_database_info)
         history_status = "disabled"
         if db_info.get("enabled"):
             if db_info.get("connection_test"):
@@ -606,8 +606,11 @@ async def health_check(response: Response) -> Dict[str, Any]:
             from tarsy.services.history_service import get_history_service
             history_service = get_history_service()
             if history_service:
-                pending_count = history_service.count_pending_sessions()
-                active_count = history_service.count_sessions_by_status(
+                pending_count = await asyncio.to_thread(
+                    history_service.count_pending_sessions
+                )
+                active_count = await asyncio.to_thread(
+                    history_service.count_sessions_by_status,
                     AlertSessionStatus.IN_PROGRESS.value
                 )
                 health_status["queue"] = {

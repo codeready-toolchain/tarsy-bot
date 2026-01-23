@@ -1041,6 +1041,120 @@ class TestSettingsAPIKeyStripping:
 
 
 @pytest.mark.unit
+class TestAlertQueueValidators:
+    """Test alert queue configuration validators."""
+    
+    def test_max_concurrent_alerts_valid_values(self):
+        """Test max_concurrent_alerts accepts valid positive integers."""
+        # Valid positive integers
+        settings = Settings(max_concurrent_alerts=1)
+        assert settings.max_concurrent_alerts == 1
+        
+        settings = Settings(max_concurrent_alerts=5)
+        assert settings.max_concurrent_alerts == 5
+        
+        settings = Settings(max_concurrent_alerts=100)
+        assert settings.max_concurrent_alerts == 100
+    
+    def test_max_concurrent_alerts_rejects_zero(self):
+        """Test max_concurrent_alerts rejects zero."""
+        with pytest.raises(ValueError, match="max_concurrent_alerts must be an integer greater than 0"):
+            Settings(max_concurrent_alerts=0)
+    
+    def test_max_concurrent_alerts_rejects_negative(self):
+        """Test max_concurrent_alerts rejects negative values."""
+        with pytest.raises(ValueError, match="max_concurrent_alerts must be an integer greater than 0"):
+            Settings(max_concurrent_alerts=-1)
+        
+        with pytest.raises(ValueError, match="max_concurrent_alerts must be an integer greater than 0"):
+            Settings(max_concurrent_alerts=-100)
+    
+    def test_max_queue_size_valid_values(self):
+        """Test max_queue_size accepts valid values (None or non-negative integers)."""
+        # None is valid (unlimited queue)
+        settings = Settings(max_queue_size=None)
+        assert settings.max_queue_size is None
+        
+        # Zero is valid (no queue)
+        settings = Settings(max_queue_size=0)
+        assert settings.max_queue_size == 0
+        
+        # Positive integers are valid
+        settings = Settings(max_queue_size=1)
+        assert settings.max_queue_size == 1
+        
+        settings = Settings(max_queue_size=50)
+        assert settings.max_queue_size == 50
+    
+    def test_max_queue_size_rejects_negative(self):
+        """Test max_queue_size rejects negative values."""
+        with pytest.raises(ValueError, match="max_queue_size must be None or an integer >= 0"):
+            Settings(max_queue_size=-1)
+        
+        with pytest.raises(ValueError, match="max_queue_size must be None or an integer >= 0"):
+            Settings(max_queue_size=-100)
+    
+    def test_queue_claim_interval_seconds_valid_values(self):
+        """Test queue_claim_interval_seconds accepts valid positive numbers."""
+        # Valid positive floats
+        settings = Settings(queue_claim_interval_seconds=0.1)
+        assert settings.queue_claim_interval_seconds == 0.1
+        
+        settings = Settings(queue_claim_interval_seconds=1.0)
+        assert settings.queue_claim_interval_seconds == 1.0
+        
+        settings = Settings(queue_claim_interval_seconds=5.5)
+        assert settings.queue_claim_interval_seconds == 5.5
+        
+        # Valid positive integers (converted to float)
+        settings = Settings(queue_claim_interval_seconds=1)
+        assert settings.queue_claim_interval_seconds == 1.0
+        assert isinstance(settings.queue_claim_interval_seconds, float)
+        
+        settings = Settings(queue_claim_interval_seconds=10)
+        assert settings.queue_claim_interval_seconds == 10.0
+        assert isinstance(settings.queue_claim_interval_seconds, float)
+    
+    def test_queue_claim_interval_seconds_rejects_zero(self):
+        """Test queue_claim_interval_seconds rejects zero."""
+        with pytest.raises(ValueError, match="queue_claim_interval_seconds must be a number greater than 0"):
+            Settings(queue_claim_interval_seconds=0)
+        
+        with pytest.raises(ValueError, match="queue_claim_interval_seconds must be a number greater than 0"):
+            Settings(queue_claim_interval_seconds=0.0)
+    
+    def test_queue_claim_interval_seconds_rejects_negative(self):
+        """Test queue_claim_interval_seconds rejects negative values."""
+        with pytest.raises(ValueError, match="queue_claim_interval_seconds must be a number greater than 0"):
+            Settings(queue_claim_interval_seconds=-1)
+        
+        with pytest.raises(ValueError, match="queue_claim_interval_seconds must be a number greater than 0"):
+            Settings(queue_claim_interval_seconds=-0.5)
+    
+    def test_all_queue_validators_together(self):
+        """Test all queue validators work together."""
+        # Valid configuration
+        settings = Settings(
+            max_concurrent_alerts=10,
+            max_queue_size=50,
+            queue_claim_interval_seconds=2.5
+        )
+        
+        assert settings.max_concurrent_alerts == 10
+        assert settings.max_queue_size == 50
+        assert settings.queue_claim_interval_seconds == 2.5
+    
+    def test_queue_validators_with_defaults(self):
+        """Test queue validators work with default values."""
+        settings = Settings()
+        
+        # Defaults should pass validation
+        assert settings.max_concurrent_alerts == 5
+        assert settings.max_queue_size is None
+        assert settings.queue_claim_interval_seconds == 1.0
+
+
+@pytest.mark.unit
 class TestGetSettings:
     """Test settings singleton function."""
     
