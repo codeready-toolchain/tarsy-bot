@@ -20,6 +20,7 @@ from fastapi.responses import JSONResponse
 
 from tarsy.config.settings import get_settings
 from tarsy.controllers.alert_controller import router as alert_router
+from tarsy.models.constants import AlertSessionStatus
 from tarsy.controllers.chat_controller import router as chat_router
 from tarsy.controllers.history_controller import router as history_router
 from tarsy.controllers.websocket_controller import websocket_router
@@ -39,6 +40,7 @@ if TYPE_CHECKING:
     from tarsy.services.events.manager import EventSystemManager
     from tarsy.services.history_cleanup_service import HistoryCleanupService
     from tarsy.services.mcp_health_monitor import MCPHealthMonitor
+    from tarsy.services.session_claim_worker import SessionClaimWorker
 
 # Setup logger for this module
 logger = get_module_logger(__name__)
@@ -59,7 +61,7 @@ def get_pod_id() -> str:
 jwks_cache: TTLCache = TTLCache(maxsize=1, ttl=3600)  # Cache for 1 hour
 
 alert_service: Optional[AlertService] = None
-alert_processing_semaphore: Optional[asyncio.Semaphore] = None
+session_claim_worker: Optional["SessionClaimWorker"] = None
 event_system_manager: Optional["EventSystemManager"] = None
 history_cleanup_service: Optional["HistoryCleanupService"] = None
 mcp_health_monitor: Optional["MCPHealthMonitor"] = None  # MCPHealthMonitor for server health monitoring
@@ -181,7 +183,7 @@ async def mark_active_tasks_as_interrupted(reason: str) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager."""
-    global alert_service, alert_processing_semaphore, event_system_manager, history_cleanup_service, mcp_health_monitor, db_manager, active_tasks_lock, shutdown_in_progress
+    global alert_service, session_claim_worker, event_system_manager, history_cleanup_service, mcp_health_monitor, db_manager, active_tasks_lock, shutdown_in_progress
     
     # Initialize services
     settings = get_settings()
@@ -189,10 +191,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Setup logging
     setup_logging(settings.log_level)
     
-    # Initialize concurrency control
-    alert_processing_semaphore = asyncio.Semaphore(settings.max_concurrent_alerts)
+    # Initialize task tracking lock
     active_tasks_lock = asyncio.Lock()
-    logger.info(f"Alert processing concurrency limit: {settings.max_concurrent_alerts}")
     
     # Initialize database for history service
     db_init_success = initialize_database()
@@ -325,6 +325,30 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         import sys
         sys.exit(1)
     
+    # Initialize SessionClaimWorker for global queue management
+    try:
+        from tarsy.services.session_claim_worker import SessionClaimWorker
+        
+        session_claim_worker = SessionClaimWorker(
+            history_service=history_service,
+            max_global_concurrent=settings.max_concurrent_alerts,
+            claim_interval=settings.queue_claim_interval_seconds,
+            process_callback=process_alert_background,
+            pod_id=get_pod_id()
+        )
+        await session_claim_worker.start()
+        logger.info(
+            f"SessionClaimWorker started (global limit: {settings.max_concurrent_alerts}, "
+            f"queue_limit: {settings.max_queue_size or 'unlimited'})"
+        )
+    except Exception as e:
+        logger.critical(
+            f"Failed to initialize SessionClaimWorker: {e}. "
+            "This is a critical dependency - exiting to allow restart."
+        )
+        import sys
+        sys.exit(1)
+    
     # Set up app state with callbacks to avoid circular imports
     # The controllers will access these callbacks instead of importing the functions directly
     app.state.process_alert_callback = process_alert_background
@@ -400,6 +424,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             await mark_active_tasks_as_interrupted("after error")
     else:
         logger.info("No active sessions during shutdown")
+    
+    # Stop SessionClaimWorker
+    if session_claim_worker is not None:
+        try:
+            await session_claim_worker.stop()
+            logger.info("SessionClaimWorker stopped")
+        except Exception as e:
+            logger.error(f"Error stopping SessionClaimWorker: {e}", exc_info=True)
     
     # Stop MCP health monitor
     if mcp_health_monitor is not None:
@@ -568,6 +600,24 @@ async def health_check(response: Response) -> Dict[str, Any]:
                 "migration_version": db_info.get("migration_version") if db_info.get("enabled") else None
             }
         }
+        
+        # Add queue metrics
+        try:
+            from tarsy.services.history_service import get_history_service
+            history_service = get_history_service()
+            if history_service:
+                pending_count = history_service.count_pending_sessions()
+                active_count = history_service.count_sessions_by_status(
+                    AlertSessionStatus.IN_PROGRESS.value
+                )
+                health_status["queue"] = {
+                    "pending": pending_count,
+                    "max_queue_size": settings.max_queue_size or "unlimited",
+                    "active_global": active_count,
+                    "max_concurrent_alerts": settings.max_concurrent_alerts
+                }
+        except Exception as e:
+            logger.debug(f"Error getting queue metrics: {e}")
         
         # Check system warnings (non-critical issues like MCP initialization failures)
         from tarsy.services.system_warnings_service import get_warnings_service
@@ -768,125 +818,124 @@ async def mark_session_cancelled_or_timed_out(
     return True
 
 async def process_alert_background(session_id: str, alert: ChainContext) -> None:
-    """Background task to process an alert with comprehensive error handling and concurrency control."""
-    if alert_processing_semaphore is None or alert_service is None:
+    """Background task to process an alert with comprehensive error handling."""
+    if alert_service is None:
         logger.error(f"Cannot process session {session_id}: services not initialized")
         return
+    
+    start_time = datetime.now()
+    settings = get_settings()
+    
+    try:
+        logger.info(f"Starting background processing for session {session_id}")
         
-    async with alert_processing_semaphore:
-        start_time = datetime.now()
-        settings = get_settings()
+        # Log alert processing start
+        logger.info(f"Processing session {session_id} of type '{alert.processing_alert.alert_type}' with {len(alert.processing_alert.alert_data)} data fields")
         
+        # Process with timeout to prevent hanging
         try:
-            logger.info(f"Starting background processing for session {session_id}")
+            # Use configurable timeout for alert processing
+            timeout_seconds = settings.alert_processing_timeout
+            logger.info(f"Processing session {session_id} with {timeout_seconds}s timeout")
             
-            # Log alert processing start
-            logger.info(f"Processing session {session_id} of type '{alert.processing_alert.alert_type}' with {len(alert.processing_alert.alert_data)} data fields")
+            # Create the actual processing task
+            # Note: The outer task (this function) was already registered by the controller
+            task = asyncio.create_task(alert_service.process_alert(alert))
             
-            # Process with timeout to prevent hanging
-            try:
-                # Use configurable timeout for alert processing
-                timeout_seconds = settings.alert_processing_timeout
-                logger.info(f"Processing session {session_id} with {timeout_seconds}s timeout")
-                
-                # Create the actual processing task
-                # Note: The outer task (this function) was already registered by the controller
-                task = asyncio.create_task(alert_service.process_alert(alert))
-                
-                # Update active_tasks to track the inner processing task instead of the outer wrapper
-                # This allows cancellation to properly stop the actual processing work
-                assert active_tasks_lock is not None, "active_tasks_lock not initialized"
-                async with active_tasks_lock:
-                    active_tasks[session_id] = task
-                
-                try:
-                    await asyncio.wait_for(task, timeout=timeout_seconds)
-                except asyncio.TimeoutError:
-                    # Timeout occurred - try to cancel the task
-                    logger.warning(f"Session {session_id} exceeded {timeout_seconds}s timeout, attempting to cancel task")
-                    from tarsy.models.constants import CancellationReason
-
-                    task.cancel(CancellationReason.TIMEOUT.value)
-                    try:
-                        await task  # Wait for cancellation to complete
-                    except asyncio.CancelledError:
-                        logger.info(f"Session {session_id} task cancelled successfully")
-                    except Exception as e:
-                        logger.error(f"Error while cancelling session {session_id}: {e}")
-                    raise TimeoutError(f"Alert processing exceeded timeout limit of {timeout_seconds}s") from None
-            except asyncio.CancelledError:
-                # Task was cancelled - check tracker to determine if user-requested or timeout
-                logger.info(f"Session {session_id} task was cancelled")
-                await mark_session_cancelled_or_timed_out(
-                    session_id, 
-                    timeout_error_msg="Session timed out",
-                    cancel_paused_stages=True
-                )
-                raise  # Re-raise to preserve the original CancelledError
-            
-            # Calculate processing duration
-            duration = (datetime.now() - start_time).total_seconds()
-            logger.info(f"Session {session_id} processed successfully in {duration:.2f} seconds")
-            
-        except asyncio.CancelledError:
-            # Handle cancellation explicitly to prevent it from being caught by Exception handler
-            # Check if session already has a terminal status (inner handler may have updated it)
-            from tarsy.models.constants import AlertSessionStatus
-            from tarsy.services.history_service import get_history_service
-            
-            history_service = get_history_service()
-            if history_service:
-                session = history_service.get_session(session_id)
-                if session and session.status in AlertSessionStatus.terminal_values():
-                    logger.info(f"Session {session_id} already in terminal state ({session.status}) - exiting gracefully")
-                    return
-            
-            # Update status based on tracker (user cancel vs timeout)
-            await mark_session_cancelled_or_timed_out(session_id, timeout_error_msg="Session timed out")
-            
-        except ValueError as e:
-            # Configuration or data validation errors
-            error_msg = f"Invalid alert data: {str(e)}"
-            logger.error(f"Session {session_id} validation failed: {error_msg}")
-            await mark_session_as_failed(alert, error_msg)
-            
-        except TimeoutError as e:
-            # Processing timeout - check tracker to determine status
-            error_msg = str(e)
-            logger.error(f"Session {session_id} processing timeout: {error_msg}")
-            await mark_session_cancelled_or_timed_out(session_id, timeout_error_msg=error_msg)
-            
-        except ConnectionError as e:
-            # Network or external service errors
-            error_msg = f"Connection error during processing: {str(e)}"
-            logger.error(f"Session {session_id} connection error: {error_msg}")
-            await mark_session_as_failed(alert, error_msg)
-            
-        except MemoryError as e:
-            # Memory issues with large payloads
-            error_msg = f"Processing failed due to memory constraints: {str(e)}"
-            logger.error(f"Session {session_id} memory error: {error_msg}")
-            await mark_session_as_failed(alert, error_msg)
-            
-        except Exception as e:
-            # Catch-all for unexpected errors
-            duration = (datetime.now() - start_time).total_seconds()
-            error_msg = f"Unexpected processing error: {str(e)}"
-            logger.exception(
-                f"Session {session_id} unexpected error after {duration:.2f}s: {error_msg}"
-            )
-            await mark_session_as_failed(alert, error_msg)
-        
-        finally:
-            # Always remove task from active_tasks when done (success, failure, or cancellation)
+            # Update active_tasks to track the inner processing task instead of the outer wrapper
+            # This allows cancellation to properly stop the actual processing work
             assert active_tasks_lock is not None, "active_tasks_lock not initialized"
             async with active_tasks_lock:
-                active_tasks.pop(session_id, None)
-            logger.debug(f"Removed session {session_id} from active tasks")
+                active_tasks[session_id] = task
             
-            # Clean up cancellation tracker
-            from tarsy.services.cancellation_tracker import clear
-            clear(session_id)
+            try:
+                await asyncio.wait_for(task, timeout=timeout_seconds)
+            except asyncio.TimeoutError:
+                # Timeout occurred - try to cancel the task
+                logger.warning(f"Session {session_id} exceeded {timeout_seconds}s timeout, attempting to cancel task")
+                from tarsy.models.constants import CancellationReason
+
+                task.cancel(CancellationReason.TIMEOUT.value)
+                try:
+                    await task  # Wait for cancellation to complete
+                except asyncio.CancelledError:
+                    logger.info(f"Session {session_id} task cancelled successfully")
+                except Exception as e:
+                    logger.error(f"Error while cancelling session {session_id}: {e}")
+                raise TimeoutError(f"Alert processing exceeded timeout limit of {timeout_seconds}s") from None
+        except asyncio.CancelledError:
+            # Task was cancelled - check tracker to determine if user-requested or timeout
+            logger.info(f"Session {session_id} task was cancelled")
+            await mark_session_cancelled_or_timed_out(
+                session_id, 
+                timeout_error_msg="Session timed out",
+                cancel_paused_stages=True
+            )
+            raise  # Re-raise to preserve the original CancelledError
+        
+        # Calculate processing duration
+        duration = (datetime.now() - start_time).total_seconds()
+        logger.info(f"Session {session_id} processed successfully in {duration:.2f} seconds")
+        
+    except asyncio.CancelledError:
+        # Handle cancellation explicitly to prevent it from being caught by Exception handler
+        # Check if session already has a terminal status (inner handler may have updated it)
+        from tarsy.models.constants import AlertSessionStatus
+        from tarsy.services.history_service import get_history_service
+        
+        history_service = get_history_service()
+        if history_service:
+            session = history_service.get_session(session_id)
+            if session and session.status in AlertSessionStatus.terminal_values():
+                logger.info(f"Session {session_id} already in terminal state ({session.status}) - exiting gracefully")
+                return
+        
+        # Update status based on tracker (user cancel vs timeout)
+        await mark_session_cancelled_or_timed_out(session_id, timeout_error_msg="Session timed out")
+        
+    except ValueError as e:
+        # Configuration or data validation errors
+        error_msg = f"Invalid alert data: {str(e)}"
+        logger.error(f"Session {session_id} validation failed: {error_msg}")
+        await mark_session_as_failed(alert, error_msg)
+        
+    except TimeoutError as e:
+        # Processing timeout - check tracker to determine status
+        error_msg = str(e)
+        logger.error(f"Session {session_id} processing timeout: {error_msg}")
+        await mark_session_cancelled_or_timed_out(session_id, timeout_error_msg=error_msg)
+        
+    except ConnectionError as e:
+        # Network or external service errors
+        error_msg = f"Connection error during processing: {str(e)}"
+        logger.error(f"Session {session_id} connection error: {error_msg}")
+        await mark_session_as_failed(alert, error_msg)
+        
+    except MemoryError as e:
+        # Memory issues with large payloads
+        error_msg = f"Processing failed due to memory constraints: {str(e)}"
+        logger.error(f"Session {session_id} memory error: {error_msg}")
+        await mark_session_as_failed(alert, error_msg)
+        
+    except Exception as e:
+        # Catch-all for unexpected errors
+        duration = (datetime.now() - start_time).total_seconds()
+        error_msg = f"Unexpected processing error: {str(e)}"
+        logger.exception(
+            f"Session {session_id} unexpected error after {duration:.2f}s: {error_msg}"
+        )
+        await mark_session_as_failed(alert, error_msg)
+        
+    finally:
+        # Always remove task from active_tasks when done (success, failure, or cancellation)
+        assert active_tasks_lock is not None, "active_tasks_lock not initialized"
+        async with active_tasks_lock:
+            active_tasks.pop(session_id, None)
+        logger.debug(f"Removed session {session_id} from active tasks")
+        
+        # Clean up cancellation tracker
+        from tarsy.services.cancellation_tracker import clear
+        clear(session_id)
 
 
 async def process_chat_message_background(

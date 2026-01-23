@@ -150,12 +150,14 @@ The system supports defining new agents through YAML configuration without code 
 ### Alert Processing Pipeline
 1. **Alert Submission**: Flexible JSON structure via `/alerts` endpoint
 2. **Validation**: Pydantic models ensure data integrity
-3. **Agent Selection**: AgentRegistry routes to appropriate specialized agent
-4. **History Session**: Created for complete audit trail
-5. **Runbook Download**: GitHub runbook retrieval and agent distribution
-6. **Iterative Analysis**: Agent uses LLM + MCP tools iteratively
-7. **Real-time Updates**: WebSocket broadcasts to dashboard
-8. **Final Analysis**: Comprehensive result with processing history
+3. **Queue Check**: Verify queue not full (if `MAX_QUEUE_SIZE` configured)
+4. **Session Creation**: Create session in PENDING state
+5. **SessionClaimWorker**: Background worker claims session when capacity available
+6. **Agent Selection**: AgentRegistry routes to appropriate specialized agent
+7. **Runbook Download**: GitHub runbook retrieval and agent distribution
+8. **Iterative Analysis**: Agent uses LLM + MCP tools iteratively
+9. **Real-time Updates**: WebSocket broadcasts to dashboard
+10. **Final Analysis**: Comprehensive result with processing history
 
 ### WebSocket Channels
 - **Alert Progress**: `/ws/{alert_id}` - Individual alert status updates
@@ -175,11 +177,30 @@ The system supports defining new agents through YAML configuration without code 
 - **API Keys**: Separate environment variables for each provider
 - **Interaction Logging**: All LLM calls automatically captured for audit
 
+### Global Alert Queue System
+TARSy uses a database-backed global queue to manage alert processing across all pods:
+
+- **Global Concurrency Limit**: `MAX_CONCURRENT_ALERTS` enforces system-wide limits (not per-pod)
+- **FIFO Processing**: Alerts are processed in submission order (oldest first)
+- **SessionClaimWorker**: Background service on each pod that:
+  - Checks global capacity (active sessions < limit)
+  - Atomically claims PENDING sessions from database
+  - Dispatches sessions for processing
+- **Multi-Replica Safe**: PostgreSQL `FOR UPDATE SKIP LOCKED` prevents duplicate claims
+- **Queue Size Limit**: Optional `MAX_QUEUE_SIZE` rejects new alerts when queue is full (HTTP 429)
+- **Observable**: Health endpoint shows queue metrics (pending, active, limits)
+
+#### Database-Backed Claiming
+- **PostgreSQL**: Uses `FOR UPDATE SKIP LOCKED` for efficient lock-free claiming
+- **SQLite**: Status-based claiming with write locks (development only)
+- **Pod Tracking**: Each session records which pod is processing it
+- **Cancellation**: Sessions can be cancelled while in PENDING state
+
 ### Security and Data Handling
 - **Flexible Alerts**: Accept arbitrary JSON from any monitoring system
 - **Input Sanitization**: XSS prevention and payload size limits
 - **Data Masking**: Optional PII/sensitive data protection for MCP responses
-- **Concurrent Processing**: Semaphore-based concurrency control
+- **Queue Protection**: Optional queue size limit prevents resource exhaustion
 
 ### Development Environment
 - **UV Package Manager**: Fast Python dependency management

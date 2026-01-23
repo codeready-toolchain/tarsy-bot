@@ -1365,6 +1365,41 @@ class HistoryService:
             logger.info(f"Marked {count} chat(s) as interrupted for pod {pod_id}")
         
         return count or 0
+    
+    # Queue Management Methods
+    
+    def count_sessions_by_status(self, status: str) -> int:
+        """
+        Count sessions with given status across all pods.
+        
+        Args:
+            status: Session status to count (e.g., AlertSessionStatus.IN_PROGRESS.value)
+            
+        Returns:
+            Count of sessions with the given status
+        """
+        return self.repository.count_sessions_by_status(status)
+    
+    def count_pending_sessions(self) -> int:
+        """
+        Count sessions in PENDING state (for queue size check).
+        
+        Returns:
+            Count of pending sessions
+        """
+        return self.repository.count_pending_sessions()
+    
+    def claim_next_pending_session(self, pod_id: str) -> Optional[AlertSession]:
+        """
+        Atomically claim next PENDING session for this pod.
+        
+        Args:
+            pod_id: Pod identifier claiming the session
+            
+        Returns:
+            Claimed AlertSession if available, None otherwise
+        """
+        return self.repository.claim_next_pending_session(pod_id)
 
 
 # Global history service instance

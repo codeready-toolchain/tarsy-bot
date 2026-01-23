@@ -1194,6 +1194,119 @@ class HistoryRepository:
             logger.error(f"Failed to update pod tracking for session {session_id}: {str(e)}")
             return False
     
+    # Queue Management Methods
+    
+    def count_sessions_by_status(self, status: str) -> int:
+        """
+        Count sessions with given status across all pods.
+        
+        Args:
+            status: Session status to count (e.g., AlertSessionStatus.IN_PROGRESS.value)
+            
+        Returns:
+            Count of sessions with the given status
+        """
+        try:
+            statement = select(func.count(AlertSession.session_id)).where(
+                AlertSession.status == status
+            )
+            result = self.session.exec(statement).first()
+            return int(result) if result else 0
+        except Exception as e:
+            logger.error(f"Failed to count sessions by status {status}: {str(e)}")
+            raise
+    
+    def count_pending_sessions(self) -> int:
+        """
+        Count sessions in PENDING state (for queue size check).
+        
+        Returns:
+            Count of pending sessions
+        """
+        return self.count_sessions_by_status(AlertSessionStatus.PENDING.value)
+    
+    def claim_next_pending_session(self, pod_id: str) -> Optional[AlertSession]:
+        """
+        Atomically claim next PENDING session for this pod.
+        
+        Uses FOR UPDATE SKIP LOCKED on PostgreSQL for efficient lock-free claiming.
+        Uses status transition on SQLite with retry logic (less efficient but acceptable for dev).
+        
+        Args:
+            pod_id: Pod identifier claiming the session
+            
+        Returns:
+            Claimed AlertSession if available, None otherwise
+        """
+        try:
+            from tarsy.utils.timestamp import now_us
+            
+            # Detect database dialect
+            dialect = self.session.bind.dialect.name
+            
+            if dialect == 'postgresql':
+                # PostgreSQL: Use FOR UPDATE SKIP LOCKED for efficient claiming
+                statement = (
+                    select(AlertSession)
+                    .where(AlertSession.status == AlertSessionStatus.PENDING.value)
+                    .order_by(asc(AlertSession.started_at_us))
+                    .limit(1)
+                    .with_for_update(skip_locked=True)
+                )
+                
+                session = self.session.exec(statement).first()
+                if session:
+                    # Update session with pod_id and IN_PROGRESS status
+                    session.status = AlertSessionStatus.IN_PROGRESS.value
+                    session.pod_id = pod_id
+                    session.last_interaction_at = now_us()
+                    self.session.add(session)
+                    self.session.commit()
+                    self.session.refresh(session)
+                    logger.debug(f"Pod {pod_id} claimed session {session.session_id} (PostgreSQL)")
+                    return session
+                return None
+                
+            elif dialect == 'sqlite':
+                # SQLite: Status-based claiming with write lock
+                # Find oldest PENDING session
+                statement = (
+                    select(AlertSession)
+                    .where(AlertSession.status == AlertSessionStatus.PENDING.value)
+                    .order_by(asc(AlertSession.started_at_us))
+                    .limit(1)
+                )
+                
+                session = self.session.exec(statement).first()
+                if not session:
+                    return None
+                
+                # Try to claim it by updating status
+                # SQLite IMMEDIATE transaction provides write lock
+                # If another pod tries to claim simultaneously, one will succeed
+                try:
+                    session.status = AlertSessionStatus.IN_PROGRESS.value
+                    session.pod_id = pod_id
+                    session.last_interaction_at = now_us()
+                    self.session.add(session)
+                    self.session.commit()
+                    self.session.refresh(session)
+                    logger.debug(f"Pod {pod_id} claimed session {session.session_id} (SQLite)")
+                    return session
+                except Exception as e:
+                    # Race condition: another pod claimed it first
+                    self.session.rollback()
+                    logger.debug(f"Pod {pod_id} failed to claim session {session.session_id}: {e}")
+                    return None
+            else:
+                logger.error(f"Unsupported database dialect for queue: {dialect}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Failed to claim next pending session: {str(e)}")
+            self.session.rollback()
+            raise
+    
     def delete_sessions_older_than(self, cutoff_timestamp_us: int) -> int:
         """
         Delete alert sessions older than cutoff timestamp.

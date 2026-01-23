@@ -176,10 +176,20 @@ class Settings(BaseSettings):
         description="Enable PostgreSQL connection pool pre-ping to validate connections"
     )
     
-    # Concurrency Control Configuration
+    # Alert Queue Configuration
     max_concurrent_alerts: int = Field(
         default=5,
-        description="Maximum number of alerts that can be processed concurrently"
+        description="Maximum alerts processing concurrently across ALL pods (global limit). "
+                    "Enforced via database-backed queue with SessionClaimWorker."
+    )
+    max_queue_size: Optional[int] = Field(
+        default=None,
+        description="Maximum number of alerts waiting in PENDING state. "
+                    "None = unlimited queue. Rejects new alerts with HTTP 429 when full."
+    )
+    queue_claim_interval_seconds: float = Field(
+        default=1.0,
+        description="Interval between queue claim attempts (seconds)"
     )
     alert_processing_timeout: int = Field(
         default=900,

@@ -5,7 +5,6 @@ FastAPI controller for alert processing endpoints.
 Provides REST API for submitting alerts and retrieving alert types.
 """
 
-import asyncio
 import json
 import re
 import uuid
@@ -318,8 +317,26 @@ async def submit_alert(request: Request) -> AlertResponse:
                 }
             ) from e
         
+        # Check queue size limit (if configured)
+        from tarsy.services.history_service import get_history_service
+        
+        history_service = get_history_service()
+        if settings.max_queue_size is not None and history_service:
+            pending_count = history_service.count_pending_sessions()
+            if pending_count >= settings.max_queue_size:
+                raise HTTPException(
+                    status_code=429,  # Too Many Requests
+                    detail={
+                        "error": "Queue full",
+                        "message": f"Alert queue is full ({pending_count}/{settings.max_queue_size}). Please try again later.",
+                        "queue_size": pending_count,
+                        "max_queue_size": settings.max_queue_size
+                    }
+                )
+        
         # Create session in database BEFORE returning to client
         # This ensures the session exists when the frontend tries to fetch it
+        # Session is created in PENDING state - SessionClaimWorker will claim it
         session_created = alert_service.session_manager.create_chain_history_session(
             alert_context, 
             chain_definition
@@ -336,13 +353,7 @@ async def submit_alert(request: Request) -> AlertResponse:
                 }
             )
         
-        logger.info(f"Created session {session_id} in database with status PENDING")
-        
-        # Start background processing using callback from app state
-        # This avoids circular import by accessing the callback through FastAPI app state
-        process_callback = request.app.state.process_alert_callback
-        asyncio.create_task(process_callback(session_id, alert_context))
-        
+        logger.info(f"Session {session_id} created in PENDING state, waiting for worker to claim")
         logger.info(f"Alert submitted with session_id: {session_id}")
         
         # Return session_id - session is guaranteed to exist in database
