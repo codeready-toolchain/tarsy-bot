@@ -798,6 +798,7 @@ class E2ETestUtils:
                 # Test code here with patched LLM clients
         """
         from langchain_anthropic import ChatAnthropic
+        from langchain_core.language_models.chat_models import BaseChatModel
         from langchain_google_genai import ChatGoogleGenerativeAI
         from langchain_openai import ChatOpenAI
         from langchain_xai import ChatXAI
@@ -813,6 +814,7 @@ class E2ETestUtils:
         # Patch LangChain clients if streaming mock provided
         if streaming_mock:
             patches.extend([
+                patch.object(BaseChatModel, 'astream', streaming_mock),
                 patch.object(ChatOpenAI, 'astream', streaming_mock),
                 patch.object(ChatAnthropic, 'astream', streaming_mock),
                 patch.object(ChatXAI, 'astream', streaming_mock),
