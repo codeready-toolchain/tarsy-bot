@@ -1140,7 +1140,7 @@ class HistoryService:
                     return False
                 return repo.has_llm_interactions(session_id)
         
-        return self._retry_database_operation(
+        return await self._retry_database_operation_async(
             "has_llm_interactions",
             _has_operation
         ) or False
