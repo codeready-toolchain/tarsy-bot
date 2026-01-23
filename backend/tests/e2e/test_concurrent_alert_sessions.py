@@ -15,9 +15,7 @@ import time
 from typing import List
 from unittest.mock import AsyncMock, Mock, patch
 
-import httpx
 import pytest
-import respx
 from mcp.types import Tool
 
 from tarsy.integrations.mcp.client import MCPClient
@@ -31,7 +29,6 @@ class TestConcurrentAlertSessions:
     """E2E test for concurrent alert session processing without transport conflicts."""
 
     @pytest.mark.asyncio
-    @respx.mock  # Apply respx mock as decorator to ensure it's active for entire test
     async def test_concurrent_alert_processing_without_mcp_transport_conflicts(
         self, 
         e2e_test_client,
@@ -46,46 +43,39 @@ class TestConcurrentAlertSessions:
         current tasks's current cancel scope" during processing and cleanup.
         
         Mocking Strategy:
-        - Uses @respx.mock decorator for HTTP-level mocking (intercepts httpx transport)
-        - The decorator ensures the mock remains active for the entire test execution,
-          including all background tasks spawned by FastAPI
-        - respx route registration at test start intercepts all OpenAI API calls
-        - This approach is more reliable than patch.object() which doesn't always
-          propagate to async background tasks created by FastAPI's TestClient
+        - Uses patch.object on LangChain clients' astream method (same as other working E2E tests)
+        - This approach patches at the class method level, which properly propagates
+          to all background tasks spawned by FastAPI's TestClient
+        - HTTP-level mocking (respx) doesn't work reliably with async background tasks
+          because the mock context may not propagate to all event loop iterations
         
         Why this works:
-        - The decorator activates respx before the test function runs
-        - respx stays active until the test function completes (after all awaits)
-        - Background tasks continue running while the test awaits completion polling
-        - All HTTP calls from background tasks are intercepted by the active respx mock
+        - patch.object patches the class method directly, not the HTTP transport
+        - All instances of the LangChain client will use the patched method
+        - Background tasks inherit the patched method regardless of when they start
         """
-        # Setup respx route for OpenAI API calls - must be done at start of test
-        # Mock LLM responses for concurrent sessions at HTTP level
+        # Track LLM interaction count for concurrent sessions
         interaction_count = {"count": 0}
         
-        def create_openai_response(request):
-            """Create mock OpenAI streaming response."""
-            interaction_count["count"] += 1
+        def create_streaming_mock():
+            """Create a mock astream function that returns streaming responses."""
+            async def mock_astream(*args, **kwargs):
+                interaction_count["count"] += 1
+                count = interaction_count["count"]
+                
+                # Create a simple Final Answer response
+                content = f"Final Answer: Analysis completed for concurrent session {count}"
+                usage_metadata = {
+                    'input_tokens': 100,
+                    'output_tokens': 50,
+                    'total_tokens': 150
+                }
+                
+                # Use the standard mock stream generator from conftest
+                async for chunk in create_mock_stream(content, usage_metadata):
+                    yield chunk
             
-            # OpenAI streaming response format (SSE)
-            response_text = f"Final Answer: Analysis completed for concurrent session {interaction_count['count']}"
-            
-            # Simulate streaming chunks
-            chunks = []
-            # First chunk with content
-            chunks.append(f'data: {{"id":"chatcmpl-test","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4","choices":[{{"index":0,"delta":{{"role":"assistant","content":"{response_text}"}},"finish_reason":null}}]}}\n\n')
-            # Final chunk with usage
-            chunks.append('data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1234567890,"model":"gpt-4","choices":[{"index":0,"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":100,"completion_tokens":50,"total_tokens":150}}\n\n')
-            chunks.append('data: [DONE]\n\n')
-            
-            return httpx.Response(
-                status_code=200,
-                content=''.join(chunks).encode(),
-                headers={"content-type": "text/event-stream; charset=utf-8"}
-            )
-        
-        # Register respx route
-        respx.post("https://api.openai.com/v1/chat/completions").mock(side_effect=create_openai_response)
+            return mock_astream
         
         # Test MCP server configuration (matches e2e pattern)
         test_mcp_servers = {
@@ -156,10 +146,14 @@ class TestConcurrentAlertSessions:
                 self.sessions = mock_sessions.copy()
                 self._initialized = True
             
-            # Apply MCP and other patches
+            # Create streaming mock for LangChain clients
+            streaming_mock = create_streaming_mock()
+            
+            # Apply MCP and LLM patches (same pattern as working E2E tests)
             with patch.object(MCPClient, "initialize", mock_initialize), \
                  patch.object(MCPClient, "list_tools", mock_list_tools), \
-                 patch.object(MCPClient, "call_tool", mock_call_tool):
+                 patch.object(MCPClient, "call_tool", mock_call_tool), \
+                 E2ETestUtils.create_llm_patch_context(streaming_mock=streaming_mock):
                     
                     print("🧪 Testing concurrent alert processing with mocked external dependencies...")
                     concurrent_alert_count = 4
@@ -188,7 +182,7 @@ class TestConcurrentAlertSessions:
                     print(f"  📊 All {len(submitted_sessions)} sessions submitted in {submission_time:.2f}s")
                     
                     # Step 2: Poll for concurrent session completion
-                    # This ensures background tasks complete while respx mock is still active
+                    # This ensures background tasks complete while LLM mock is still active
                     print("⏳ Step 2: Polling for concurrent session completion...")
                     
                     await self._poll_for_concurrent_sessions_completion(
