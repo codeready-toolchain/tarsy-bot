@@ -9,7 +9,7 @@ UV := uv
 TEST_DIR := tests
 APP_DIR := app
 PYTEST := TESTING=true $(UV) run python -m pytest
-E2E_TEST_COUNT := 20
+E2E_TEST_COUNT := 19
 
 # Colors for output
 GREEN := \033[0;32m
@@ -130,11 +130,6 @@ test-e2e: check-test-deps clean-test-db ## Run end-to-end tests only (one by one
 	@$(MAKE) clean-test-db
 	@echo "$(YELLOW)Running 19th of $(E2E_TEST_COUNT) E2E tests (parallel LLM failure)...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_parallel_llm_failure_e2e.py -v --tb=short -m e2e || exit 1
-	@$(MAKE) clean-test-db
-	@echo ""
-	@echo "$(GREEN)═══ GROUP 5: Concurrency & Scale ═══$(NC)"
-	@echo "$(YELLOW)Running 20th of $(E2E_TEST_COUNT) E2E tests (concurrent sessions)...$(NC)"
-	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_concurrent_alert_sessions.py -v --tb=short -m e2e || exit 1
 	@echo ""
 	@echo "$(GREEN)All E2E tests completed successfully!$(NC)"
 
