@@ -316,7 +316,7 @@ const ActiveAlertCard: React.FC<ActiveAlertCardProps> = ({
                 {session.status === SESSION_STATUS.IN_PROGRESS
                   ? 'Processing Progress'
                   : session.status === SESSION_STATUS.PENDING
-                  ? 'Queue Status'
+                  ? 'Queued • Expected to start soon'
                   : 'Canceling…'}
               </Typography>
             </Box>

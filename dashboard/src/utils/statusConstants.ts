@@ -201,7 +201,7 @@ export function getSessionStatusDisplayName(status: string): string {
     case SESSION_STATUS.IN_PROGRESS:
       return 'In Progress';
     case SESSION_STATUS.PENDING:
-      return 'Pending';
+      return 'Queued';
     case SESSION_STATUS.PAUSED:
       return 'Paused';
     case SESSION_STATUS.CANCELING:

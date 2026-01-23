@@ -12,9 +12,11 @@ import {
 import { Refresh, WifiOff, Wifi } from '@mui/icons-material';
 import ActiveAlertCard from './ActiveAlertCard';
 import ChainProgressCard from './ChainProgressCard';
+import QueuedAlertsSection from './QueuedAlertsSection';
 import { websocketService } from '../services/websocketService';
 import type { ActiveAlertsPanelProps, SessionUpdate, ChainProgressUpdate, StageProgressUpdate } from '../types';
 import { SESSION_EVENTS, CHAIN_EVENTS } from '../utils/eventTypes';
+import { SESSION_STATUS } from '../utils/statusConstants';
 
 /**
  * ActiveAlertsPanel component displays currently active/processing alerts
@@ -190,6 +192,14 @@ const ActiveAlertsPanel: React.FC<ActiveAlertsPanelProps> = ({
     }
   };
 
+  // Separate queued sessions from active sessions
+  const queuedSessions = sessions.filter(s => s.status === SESSION_STATUS.PENDING);
+  const activeSessions = sessions.filter(s => 
+    s.status === SESSION_STATUS.IN_PROGRESS || 
+    s.status === SESSION_STATUS.PAUSED ||
+    s.status === SESSION_STATUS.CANCELING
+  );
+
   return (
     <Paper sx={{ p: 3, mb: 3 }}>
       {/* Panel Header */}
@@ -245,7 +255,7 @@ const ActiveAlertsPanel: React.FC<ActiveAlertsPanelProps> = ({
         </Box>
       ) : (
         <>
-          {/* Active Alerts List */}
+          {/* Empty State */}
           {sessions.length === 0 ? (
             <Box sx={{ py: 6, textAlign: 'center' }}>
               <Typography variant="h6" color="text.secondary" gutterBottom>
@@ -256,41 +266,59 @@ const ActiveAlertsPanel: React.FC<ActiveAlertsPanelProps> = ({
               </Typography>
             </Box>
           ) : (
-            <Stack spacing={2}>
-              {sessions.map((session) => {
-                // Use ChainProgressCard for chain sessions, ActiveAlertCard for regular sessions
-                const isChainSession = session.chain_id !== undefined;
-                
-                if (isChainSession) {
-                  return (
-                    <ChainProgressCard
-                      key={session.session_id}
-                      session={session}
-                      chainProgress={chainProgressData[session.session_id]}
-                      stageProgress={stageProgressData[session.session_id]}
-                      onClick={handleSessionClick}
-                      compact={false}
-                    />
-                  );
-                } else {
-                  return (
-                    <ActiveAlertCard
-                      key={session.session_id}
-                      session={session}
-                      progress={progressData[session.session_id]}
-                      onClick={handleSessionClick}
-                    />
-                  );
-                }
-              })}
-            </Stack>
+            <>
+              {/* Queued Alerts Section - Collapsible */}
+              {queuedSessions.length > 0 && (
+                <Box sx={{ mb: 2 }}>
+                  <QueuedAlertsSection
+                    sessions={queuedSessions}
+                    onSessionClick={handleSessionClick}
+                    onRefresh={handleRefresh}
+                  />
+                </Box>
+              )}
+              
+              {/* Active Processing Alerts - Full Cards */}
+              {activeSessions.length > 0 && (
+                <Stack spacing={2}>
+                  {activeSessions.map((session) => {
+                    // Use ChainProgressCard for chain sessions, ActiveAlertCard for regular sessions
+                    const isChainSession = session.chain_id !== undefined;
+                    
+                    if (isChainSession) {
+                      return (
+                        <ChainProgressCard
+                          key={session.session_id}
+                          session={session}
+                          chainProgress={chainProgressData[session.session_id]}
+                          stageProgress={stageProgressData[session.session_id]}
+                          onClick={handleSessionClick}
+                          compact={false}
+                        />
+                      );
+                    } else {
+                      return (
+                        <ActiveAlertCard
+                          key={session.session_id}
+                          session={session}
+                          progress={progressData[session.session_id]}
+                          onClick={handleSessionClick}
+                        />
+                      );
+                    }
+                  })}
+                </Stack>
+              )}
+            </>
           )}
 
           {/* Summary */}
           {sessions.length > 0 && (
             <Box sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: 'divider' }}>
               <Typography variant="body2" color="text.secondary">
-                Showing {sessions.length} active alert{sessions.length !== 1 ? 's' : ''}
+                {activeSessions.length > 0 && `${activeSessions.length} active`}
+                {queuedSessions.length > 0 && activeSessions.length > 0 && ' • '}
+                {queuedSessions.length > 0 && `${queuedSessions.length} queued`}
                 {wsConnected && ' • Live updates enabled'}
               </Typography>
             </Box>

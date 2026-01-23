@@ -29,7 +29,9 @@ graph LR
 ## Key Components
 
 ### 1. The Orchestrator
-- Receives alerts from monitoring systems
+- Receives alerts from monitoring systems via REST API
+- Creates sessions in PENDING state for queue-based processing
+- Enforces global concurrency limits across all replicas using database-backed queue
 - Determines which sequential chain should handle each alert type
 - Manages the overall chain execution workflow with stage-by-stage processing
 - Handles automatic pause when iteration limits are reached during stage execution
@@ -82,7 +84,9 @@ graph LR
 ```mermaid
 sequenceDiagram
     participant M as Monitoring System
-    participant T as Tarsy Orchestrator  
+    participant T as Tarsy Orchestrator
+    participant Q as Global Queue
+    participant W as SessionClaimWorker
     participant A as Agent Chains
     participant R as GitHub
     participant L as LLM (AI)
@@ -91,10 +95,15 @@ sequenceDiagram
     participant E as Engineers
 
     M->>T: Alert arrives
-    T->>A: Route to appropriate agent chain
-    T->>R: Download runbook for alert type
-    R->>T: Return runbook content
-    T->>A: Provide runbook content
+    T->>Q: Create session (PENDING state)
+    T->>D: Session created notification
+    
+    Note over W: Background worker checks capacity
+    W->>Q: Claim next session (when slots available)
+    W->>A: Route to appropriate agent chain
+    W->>R: Download runbook for alert type
+    R->>W: Return runbook content
+    W->>A: Provide runbook content
     A->>A: Configure agent-specific MCP servers & select processing approach
     A->>MCP: Get available tools
     MCP->>A: Return tool list
@@ -103,8 +112,8 @@ sequenceDiagram
     Note over A,L: MCP results are automatically<br/>summarized if they exceed<br/>configured token thresholds
     L->>A: Complete analysis and recommendations
     
-    A->>T: Return complete analysis
-    T->>D: Update dashboard
+    A->>W: Return complete analysis
+    W->>D: Update dashboard
     D->>E: Engineers review and take action
 ```
 

@@ -67,19 +67,24 @@ sequenceDiagram
     participant Client as Monitoring System
     participant API as FastAPI (/alerts)
     participant Val as Validation Layer
-    participant BG as Background Processor
+    participant DB as Database
+    participant Worker as SessionClaimWorker
     participant AS as AlertService
     
     Client->>API: POST /alerts (JSON payload)
     API->>Val: Validate & sanitize
+    Val->>Val: Check queue size limit
     Val->>API: Alert model + ChainContext
-    API->>API: Generate session_id (UUID)
-    API->>BG: Create background task
-    API-->>Client: 200 OK (session_id, status: "queued")
+    API->>DB: Create session (status=PENDING)
+    API-->>Client: 200 OK (session_id, status: "pending")
     
-    BG->>AS: async process_alert()
+    Note over Worker: Background loop on each pod
+    Worker->>DB: Check global capacity
+    Worker->>DB: Claim next PENDING session (atomic)
+    DB-->>Worker: Session claimed
+    Worker->>AS: async process_alert()
     AS->>AS: Select chain & execute stages
-    AS-->>BG: Processing complete
+    AS-->>Worker: Processing complete
 ```
 
 #### Key Components
@@ -103,30 +108,61 @@ class Alert(BaseModel):
 
 #### Background Processing & Concurrency Management
 
-**Concurrency Control**:
-```python
-# From main.py startup
-alert_processing_semaphore = asyncio.Semaphore(settings.max_concurrent_alerts)
+**Global Alert Queue System**:
 
-# In background processor
-async with alert_processing_semaphore:
-    await alert_service.process_alert(alert, session_id=session_id)
-```
+TARSy uses a database-backed global queue to manage alert processing across all pods in multi-replica deployments. This ensures system-wide concurrency limits are enforced regardless of how many replicas are running.
+
+**Architecture Components**:
+
+1. **Database-Backed Queue**: Sessions are created in `PENDING` state and stored in the database
+2. **SessionClaimWorker**: Background service running on each pod that claims sessions when capacity is available
+3. **Atomic Claiming**: PostgreSQL `FOR UPDATE SKIP LOCKED` prevents duplicate claims across pods
+4. **Global Concurrency Limit**: `max_concurrent_alerts` enforces system-wide active session limit (not per-pod)
+5. **Queue Size Limit**: Optional `max_queue_size` rejects new alerts when queue is full (HTTP 429)
+
+**📍 Configuration Settings**: `backend/tarsy/config/settings.py`
+- `max_concurrent_alerts` - Global limit across ALL pods (repurposed from per-pod limit)
+- `max_queue_size` - Optional: Reject alerts when queue is full (None = unlimited)
+- `queue_claim_interval_seconds` - Worker claim retry interval (default: 1.0 seconds)
+
+**Session Claim Process**:
+
+The SessionClaimWorker runs a background loop on each pod that:
+1. Checks global capacity by counting active (IN_PROGRESS) sessions across all pods
+2. Atomically claims the next PENDING session from the database when slots are available
+3. Dispatches the claimed session to the existing `process_alert_background()` handler
+4. Repeats at configured intervals
+
+**📍 Worker Implementation**: `backend/tarsy/services/session_claim_worker.py`
+
+**Database-Level Claiming**:
+
+- **PostgreSQL (Production)**: Uses `FOR UPDATE SKIP LOCKED` for efficient lock-free claiming across replicas
+  - Enables multiple pods to claim different sessions simultaneously without conflicts
+  - FIFO ordering ensures oldest sessions are processed first
+  
+- **SQLite (Development)**: Status-based claiming with write locks (single-replica environments only)
+  - Simpler approach suitable for development without concurrent pod conflicts
+
+**📍 Repository Methods**: `backend/tarsy/repositories/history_repository.py`
+- `claim_next_pending_session(pod_id)` - Atomic session claiming
+- `count_sessions_by_status(status)` - Global session counts
+- `count_pending_sessions()` - Queue size check
+
+**Queue Size Validation**:
+
+When `max_queue_size` is configured, the alert submission endpoint checks the pending queue size before creating new sessions. If the queue is full, the request is rejected with HTTP 429 (Too Many Requests) containing queue metrics.
+
+**📍 Validation Logic**: `backend/tarsy/controllers/alert_controller.py` - `submit_alert()` method
 
 **Session Identification**:
 - Each alert is assigned a unique `session_id` (UUID) when submitted
-- The `session_id` is returned immediately in the response
+- The `session_id` is returned immediately in the response with status "pending"
+- Sessions start in `PENDING` state until claimed by a worker
 - Clients use `session_id` to track processing via WebSocket
 - Database and events use `session_id` as the universal identifier
 
-**Alert Response Model**:
-```python
-class AlertResponse(BaseModel):
-    """Response model for alert submission."""
-    session_id: str  # Universal identifier for tracking
-    status: str      # "queued"
-    message: str     # "Alert submitted for processing"
-```
+**📍 Response Model**: `backend/tarsy/models/alert.py` - `AlertResponse` contains session_id, status, and message
 
 **Timeout Management**: 
 - **15-minute processing limit** with `asyncio.wait_for()`
@@ -134,7 +170,20 @@ class AlertResponse(BaseModel):
 - **Service lifecycle coordination** during startup/shutdown
 - **Pod-level session tracking** for multi-replica deployments
 
-**📍 Background Processing**: `process_alert_background()` in `backend/tarsy/main.py`
+**Key Benefits**:
+- **Global concurrency control**: Enforce system-wide limits across all replicas
+- **Fair FIFO processing**: Oldest alerts processed first, regardless of which pod receives them
+- **Prevents API quota issues**: Limit concurrent LLM calls to stay within provider quotas
+- **Graceful degradation**: Queue full → HTTP 429, not failed sessions
+- **Observable**: Health endpoint shows queue metrics (pending, active, limits)
+- **Multi-replica safe**: Database-backed claiming prevents duplicate processing
+- **Cancellable**: Sessions can be cancelled while in PENDING state
+
+**📍 Key Implementation Files**:
+- `backend/tarsy/services/session_claim_worker.py` - SessionClaimWorker background service
+- `backend/tarsy/repositories/history_repository.py` - Database claim methods
+- `backend/tarsy/controllers/alert_controller.py` - Queue size validation
+- `backend/tarsy/main.py` - Worker lifecycle management
 
 ### 2. Configuration Management
 **Purpose**: System configuration and extensibility  
@@ -1661,7 +1710,10 @@ GET /api/v1/history/sessions?start_date_us=1734476400000000&end_date_us=17345627
   - Returns HTTP 503 for degraded/unhealthy status (Kubernetes probes use this)
   - Checks: database connectivity, event system health, history service, system warnings
   - Provides detailed service status for all components in a single endpoint
+  - **Queue metrics**: Includes global alert queue status with pending count, active sessions, and configured limits
 - **`GET /api/v1/system/warnings`** - Active system warnings (MCP/LLM init failures, etc.)
+
+**Health Response**: Includes `queue` object with `pending`, `max_queue_size`, `active_global`, and `max_concurrent_alerts` fields for observability into the global queue state.
 
 The system warnings API surfaces critical but non-fatal initialization errors (MCP server failures, LLM provider issues, missing runbook service configuration) that don't prevent startup but affect functionality. Warnings are displayed in the dashboard UI and included in the main health endpoint response.
 
@@ -1671,6 +1723,7 @@ The system warnings API surfaces critical but non-fatal initialization errors (M
 - Health check validates database connectivity required for cross-pod coordination
 - Event system health includes PostgreSQL LISTEN connection status
 - Pod-specific issues (like event listener failures) properly trigger readiness probe failures
+- **Global queue metrics**: Health endpoint shows system-wide queue state across all replicas
 
 ### 9. Follow-up Chat Capability
 **Purpose**: Interactive investigation continuation after session completion  

@@ -125,7 +125,7 @@ describe('Status Constants - Pause/Resume', () => {
     });
 
     it('should return proper display names for all statuses', () => {
-      expect(getSessionStatusDisplayName('pending')).toBe('Pending');
+      expect(getSessionStatusDisplayName('pending')).toBe('Queued');
       expect(getSessionStatusDisplayName('in_progress')).toBe('In Progress');
       expect(getSessionStatusDisplayName('canceling')).toBe('Canceling');
       expect(getSessionStatusDisplayName('completed')).toBe('Completed');
