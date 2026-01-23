@@ -1378,7 +1378,10 @@ class HistoryService:
         Returns:
             Count of sessions with the given status
         """
-        return self.repository.count_sessions_by_status(status)
+        with self.get_repository() as repo:
+            if not repo:
+                return 0
+            return repo.count_sessions_by_status(status)
     
     def count_pending_sessions(self) -> int:
         """
@@ -1387,7 +1390,10 @@ class HistoryService:
         Returns:
             Count of pending sessions
         """
-        return self.repository.count_pending_sessions()
+        with self.get_repository() as repo:
+            if not repo:
+                return 0
+            return repo.count_pending_sessions()
     
     def claim_next_pending_session(self, pod_id: str) -> Optional[AlertSession]:
         """
@@ -1399,7 +1405,10 @@ class HistoryService:
         Returns:
             Claimed AlertSession if available, None otherwise
         """
-        return self.repository.claim_next_pending_session(pod_id)
+        with self.get_repository() as repo:
+            if not repo:
+                return None
+            return repo.claim_next_pending_session(pod_id)
 
 
 # Global history service instance
