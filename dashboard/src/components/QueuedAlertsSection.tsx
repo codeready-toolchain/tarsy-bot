@@ -78,6 +78,7 @@ const QueuedAlertsSection: React.FC<QueuedAlertsSectionProps> = ({
       await apiClient.cancelSession(sessionToCancel);
       setCancelDialogOpen(false);
       setSessionToCancel(null);
+      setIsCanceling(false);
       
       // Trigger refresh if callback provided
       if (onRefresh) {

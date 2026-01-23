@@ -51,6 +51,17 @@ function TechnicalTimeline({
       );
     }
     
+    // If session was cancelled before processing started, show info message
+    if (session.status === SESSION_STATUS.CANCELLED) {
+      return (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          <Typography variant="body2">
+            This session was cancelled before processing started.
+          </Typography>
+        </Alert>
+      );
+    }
+    
     // Session is terminal or inactive but has no stages - this is an error
     return (
       <Alert severity="error" sx={{ mb: 2 }}>

@@ -1003,6 +1003,13 @@ function SessionDetailPageBase({
                   Initializing investigation...
                 </Typography>
               </Box>
+            ) : (session.status === SESSION_STATUS.CANCELLED) ? (
+              // Session was cancelled before processing started - show info message
+              <Alert severity="info" sx={{ mb: 2 }}>
+                <Typography variant="body2">
+                  This session was cancelled before processing started.
+                </Typography>
+              </Alert>
             ) : (
               // Session is terminal or inactive but has no stages - this is an error
               <Alert severity="error" sx={{ mb: 2 }}>
@@ -1023,9 +1030,9 @@ function SessionDetailPageBase({
               </Alert>
             )}
 
-            {/* Chat Panel - Only shown for terminated sessions (completed, failed, cancelled) */}
+            {/* Chat Panel - Only shown for terminated sessions with chat available or existing chat */}
             {/* Positioned here (after timeline, before final analysis) for better UX */}
-            {isTerminalSessionStatus(session.status) && (
+            {isTerminalSessionStatus(session.status) && (chatAvailable || chat) && (
               <Box id="chat-panel">
                 <ChatPanel
                   chat={chat}
