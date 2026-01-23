@@ -20,7 +20,6 @@ from mcp.types import Tool
 
 from tarsy.integrations.mcp.client import MCPClient
 
-from .conftest import create_mock_stream
 from .e2e_utils import E2ETestUtils
 
 
@@ -43,39 +42,50 @@ class TestConcurrentAlertSessions:
         current tasks's current cancel scope" during processing and cleanup.
         
         Mocking Strategy:
-        - Uses patch.object on LangChain clients' astream method (same as other working E2E tests)
-        - This approach patches at the class method level, which properly propagates
-          to all background tasks spawned by FastAPI's TestClient
-        - HTTP-level mocking (respx) doesn't work reliably with async background tasks
-          because the mock context may not propagate to all event loop iterations
+        - Patches LLMClient.generate_response directly to bypass LangChain internals
+        - This approach works reliably because it patches at the TARSy application level
+          rather than trying to patch LangChain's complex streaming infrastructure
+        - LangChain's RunnableBinding (created by .bind()) doesn't respect class-level
+          patches on astream, making direct LLMClient patching necessary
         
         Why this works:
-        - patch.object patches the class method directly, not the HTTP transport
-        - All instances of the LangChain client will use the patched method
-        - Background tasks inherit the patched method regardless of when they start
+        - LLMClient.generate_response is the actual method agents call
+        - Patching at this level bypasses LangChain's RunnableBinding complexity
+        - The mock returns a valid "Final Answer" format that ReAct controller expects
+        - Background tasks use the patched method regardless of when they start
         """
         # Track LLM interaction count for concurrent sessions
         interaction_count = {"count": 0}
         
-        def create_streaming_mock():
-            """Create a mock astream function that returns streaming responses."""
-            async def mock_astream(*args, **kwargs):
-                interaction_count["count"] += 1
-                count = interaction_count["count"]
-                
-                # Create a simple Final Answer response
-                content = f"Final Answer: Analysis completed for concurrent session {count}"
-                usage_metadata = {
-                    'input_tokens': 100,
-                    'output_tokens': 50,
-                    'total_tokens': 150
-                }
-                
-                # Use the standard mock stream generator from conftest
-                async for chunk in create_mock_stream(content, usage_metadata):
-                    yield chunk
+        # Create a mock for LLMClient.generate_response that returns completed conversations
+        # This bypasses LangChain's astream complexity which doesn't work reliably with patches
+        from tarsy.models.unified_interactions import MessageRole
+        
+        async def mock_generate_response(
+            self,
+            conversation,
+            session_id,
+            request_data=None,
+            stage_execution_id=None,
+            tools=None,
+            max_tokens=None,
+            timeout_seconds=300.0,
+            max_retries=2,
+            interaction_type=None,
+            native_tools_override=None,
+            parallel_metadata=None,
+        ):
+            """Mock generate_response that returns a Final Answer without calling real LLM."""
+            interaction_count["count"] += 1
+            count = interaction_count["count"]
             
-            return mock_astream
+            # Create response content
+            response_content = f"Final Answer: Analysis completed for concurrent session {count}. The system is functioning correctly."
+            
+            # Add assistant message to conversation
+            conversation.add_message(MessageRole.ASSISTANT, response_content)
+            
+            return conversation
         
         # Test MCP server configuration (matches e2e pattern)
         test_mcp_servers = {
@@ -133,123 +143,123 @@ class TestConcurrentAlertSessions:
              patch.dict(os.environ, {}, clear=True), \
              E2ETestUtils.setup_runbook_service_patching():
             
-            # Create streaming mock for LangChain clients
-            streaming_mock = create_streaming_mock()
+            # Mock MCP client for concurrent sessions
+            mock_sessions = {
+                "kubernetes-server": create_mock_mcp_session("kubernetes-server")
+            }
             
-            # LLM patches must wrap MCP patches (same pattern as test_api_e2e.py)
-            with E2ETestUtils.create_llm_patch_context(streaming_mock=streaming_mock):
-                # Mock MCP client for concurrent sessions
-                mock_sessions = {
-                    "kubernetes-server": create_mock_mcp_session("kubernetes-server")
-                }
+            mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
+            
+            # Mock initialize to avoid real MCP server startup
+            async def mock_initialize(self):
+                """Mock initialization for concurrent sessions."""
+                self.sessions = mock_sessions.copy()
+                self._initialized = True
+            
+            # Patch LLMClient.generate_response directly - this bypasses LangChain's
+            # complex astream/RunnableBinding internals that don't work with class-level patches
+            # when instances are created before the patch is applied
+            from tarsy.integrations.llm.client import LLMClient
+            
+            with patch.object(MCPClient, "initialize", mock_initialize), \
+                 patch.object(MCPClient, "list_tools", mock_list_tools), \
+                 patch.object(MCPClient, "call_tool", mock_call_tool), \
+                 patch.object(LLMClient, "generate_response", mock_generate_response):
                 
-                mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
+                print("🧪 Testing concurrent alert processing with mocked external dependencies...")
+                concurrent_alert_count = 4
+                submitted_sessions: List[str] = []
                 
-                # Mock initialize to avoid real MCP server startup
-                async def mock_initialize(self):
-                    """Mock initialization for concurrent sessions."""
-                    self.sessions = mock_sessions.copy()
-                    self._initialized = True
+                # Step 1: Submit multiple alerts rapidly (creating concurrent MCP clients)
+                print("📤 Step 1: Rapid concurrent alert submission...")
+                start_time = time.time()
                 
-                # Apply MCP patches inside LLM patch context
-                with patch.object(MCPClient, "initialize", mock_initialize), \
-                     patch.object(MCPClient, "list_tools", mock_list_tools), \
-                     patch.object(MCPClient, "call_tool", mock_call_tool):
+                for i in range(concurrent_alert_count):
+                    alert = e2e_realistic_kubernetes_alert.copy()
+                    alert["data"]["pod"] = f"concurrent-test-pod-{i}"
+                    alert["data"]["description"] = f"Concurrent test alert {i+1}"
+                    # Force MCP client creation for each session
+                    alert["mcp_selection"] = {
+                        "servers": [
+                            {"name": "kubernetes-server", "tools": ["kubectl_get", "kubectl_describe"]}
+                        ]
+                    }
                     
-                    print("🧪 Testing concurrent alert processing with mocked external dependencies...")
-                    concurrent_alert_count = 4
-                    submitted_sessions: List[str] = []
-                    
-                    # Step 1: Submit multiple alerts rapidly (creating concurrent MCP clients)
-                    print("📤 Step 1: Rapid concurrent alert submission...")
-                    start_time = time.time()
-                    
-                    for i in range(concurrent_alert_count):
-                        alert = e2e_realistic_kubernetes_alert.copy()
-                        alert["data"]["pod"] = f"concurrent-test-pod-{i}"
-                        alert["data"]["description"] = f"Concurrent test alert {i+1}"
-                        # Force MCP client creation for each session
-                        alert["mcp_selection"] = {
-                            "servers": [
-                                {"name": "kubernetes-server", "tools": ["kubectl_get", "kubectl_describe"]}
-                            ]
-                        }
+                    session_id = E2ETestUtils.submit_alert(e2e_test_client, alert)
+                    submitted_sessions.append(session_id)
+                    print(f"  ✅ Session {i+1} submitted: {session_id[:8]}")
+                
+                submission_time = time.time() - start_time
+                print(f"  📊 All {len(submitted_sessions)} sessions submitted in {submission_time:.2f}s")
+                
+                # Step 2: Poll for concurrent session completion
+                # This ensures background tasks complete while LLM mock is still active
+                print("⏳ Step 2: Polling for concurrent session completion...")
+                
+                await self._poll_for_concurrent_sessions_completion(
+                    e2e_test_client, submitted_sessions, max_wait_seconds=10
+                )
+                
+                # Step 3: Verify final session statuses (already collected during polling)
+                print("🔍 Step 3: Analyzing final session results...")
+                
+                completed_count = 0
+                failed_count = 0
+                other_count = 0
+                
+                # Get final status for each session
+                for i, session_id in enumerate(submitted_sessions):
+                    try:
+                        detail_data = await E2ETestUtils.get_session_details_async(
+                            e2e_test_client, session_id, max_retries=1, retry_delay=0.1
+                        )
+                        session_status = detail_data.get("status", "unknown")
                         
-                        session_id = E2ETestUtils.submit_alert(e2e_test_client, alert)
-                        submitted_sessions.append(session_id)
-                        print(f"  ✅ Session {i+1} submitted: {session_id[:8]}")
-                    
-                    submission_time = time.time() - start_time
-                    print(f"  📊 All {len(submitted_sessions)} sessions submitted in {submission_time:.2f}s")
-                    
-                    # Step 2: Poll for concurrent session completion
-                    # This ensures background tasks complete while LLM mock is still active
-                    print("⏳ Step 2: Polling for concurrent session completion...")
-                    
-                    await self._poll_for_concurrent_sessions_completion(
-                        e2e_test_client, submitted_sessions, max_wait_seconds=10
-                    )
-                    
-                    # Step 3: Verify final session statuses (already collected during polling)
-                    print("🔍 Step 3: Analyzing final session results...")
-                    
-                    completed_count = 0
-                    failed_count = 0
-                    other_count = 0
-                    
-                    # Get final status for each session
-                    for i, session_id in enumerate(submitted_sessions):
-                        try:
-                            detail_data = await E2ETestUtils.get_session_details_async(
-                                e2e_test_client, session_id, max_retries=1, retry_delay=0.1
-                            )
-                            session_status = detail_data.get("status", "unknown")
-                            
-                            if session_status == "completed":
-                                completed_count += 1
-                            elif session_status == "failed":
-                                failed_count += 1
-                            else:
-                                other_count += 1
-                                
-                        except Exception as e:
-                            print(f"  ❌ Session {i+1} final status check failed: {e}")
+                        if session_status == "completed":
+                            completed_count += 1
+                        elif session_status == "failed":
+                            failed_count += 1
+                        else:
                             other_count += 1
-                    
-                    total_time = time.time() - start_time
-                    print(f"  📊 Total processing time: {total_time:.2f}s")
-                    print(f"  📊 Results: {completed_count} completed, {failed_count} failed, {other_count} other")
-                    
-                    # Assert - Key success criteria for concurrent MCP transport fix
-                    
-                    # The main validation is that we can create multiple concurrent sessions
-                    # without the system crashing due to transport conflicts. The original bug
-                    # would cause RuntimeError exceptions that crashed the system.
-                    
-                    # 1. All sessions should be submitted successfully (no transport conflicts during creation)
-                    assert len(submitted_sessions) == concurrent_alert_count, (
-                        "Not all sessions were submitted - indicates transport conflicts during creation"
-                    )
-                    
-                    # 2. Sessions should be created and started (even if they don't complete due to test env)
-                    # The key is that we reach this point without system crashes from transport conflicts
-                    sessions_started = completed_count + failed_count + other_count
-                    assert sessions_started == concurrent_alert_count, (
-                        f"Not all sessions were processed ({sessions_started}/{concurrent_alert_count}). "
-                        f"This suggests transport deadlocks."
-                    )
-                    
-                    print(f"🎉 SUCCESS: Concurrent MCP transport handling validated!")
-                    print(f"   ✅ All {concurrent_alert_count} sessions submitted without system crashes")
-                    print(f"   ✅ All {concurrent_alert_count} sessions processed without transport deadlocks")
-                    print(f"   ✅ System handled concurrent MCP client creation gracefully")
-                    print(f"   ✅ No system crashes from cancel scope conflicts!")
-                    print(f"   📝 Total LLM interactions: {interaction_count['count']}")
-                    
-                    # Key insight: The test reaching this point without exceptions demonstrates
-                    # that concurrent MCP transport operations are handled correctly.
-                    # Session completion rates in test environment are secondary to the core
-                    # validation that transport conflicts don't crash the system.
+                            
+                    except Exception as e:
+                        print(f"  ❌ Session {i+1} final status check failed: {e}")
+                        other_count += 1
+                
+                total_time = time.time() - start_time
+                print(f"  📊 Total processing time: {total_time:.2f}s")
+                print(f"  📊 Results: {completed_count} completed, {failed_count} failed, {other_count} other")
+                
+                # Assert - Key success criteria for concurrent MCP transport fix
+                
+                # The main validation is that we can create multiple concurrent sessions
+                # without the system crashing due to transport conflicts. The original bug
+                # would cause RuntimeError exceptions that crashed the system.
+                
+                # 1. All sessions should be submitted successfully (no transport conflicts during creation)
+                assert len(submitted_sessions) == concurrent_alert_count, (
+                    "Not all sessions were submitted - indicates transport conflicts during creation"
+                )
+                
+                # 2. Sessions should be created and started (even if they don't complete due to test env)
+                # The key is that we reach this point without system crashes from transport conflicts
+                sessions_started = completed_count + failed_count + other_count
+                assert sessions_started == concurrent_alert_count, (
+                    f"Not all sessions were processed ({sessions_started}/{concurrent_alert_count}). "
+                    f"This suggests transport deadlocks."
+                )
+                
+                print(f"🎉 SUCCESS: Concurrent MCP transport handling validated!")
+                print(f"   ✅ All {concurrent_alert_count} sessions submitted without system crashes")
+                print(f"   ✅ All {concurrent_alert_count} sessions processed without transport deadlocks")
+                print(f"   ✅ System handled concurrent MCP client creation gracefully")
+                print(f"   ✅ No system crashes from cancel scope conflicts!")
+                print(f"   📝 Total LLM interactions: {interaction_count['count']}")
+                
+                # Key insight: The test reaching this point without exceptions demonstrates
+                # that concurrent MCP transport operations are handled correctly.
+                # Session completion rates in test environment are secondary to the core
+                # validation that transport conflicts don't crash the system.
 
     async def _poll_for_concurrent_sessions_completion(
         self, e2e_test_client, session_ids: List[str], max_wait_seconds: int = 10
