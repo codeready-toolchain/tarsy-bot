@@ -229,11 +229,12 @@ class TestLLMClientInitialization:
         with patch('tarsy.integrations.llm.client.ChatAnthropicVertex') as mock_vertexai:
             mock_vertexai.return_value = Mock()
             
-            # Use 'vertexai' as provider name with project:location format
+            # Use 'vertexai' as provider name with explicit project and location
             vertexai_config = create_test_config(
                 type="vertexai",
                 model="claude-sonnet-4-5@20250929",
-                api_key="my-project:us-east5"
+                project="my-project",
+                location="us-east5"
             )
             client = LLMClient("vertexai", vertexai_config)
             
@@ -251,11 +252,12 @@ class TestLLMClientInitialization:
         with patch('tarsy.integrations.llm.client.ChatAnthropicVertex') as mock_vertexai:
             mock_vertexai.return_value = Mock()
             
-            # Use 'vertexai' as provider name with project only (defaults to us-east5)
+            # Use 'vertexai' as provider name with project only (location defaults to empty string in config)
             vertexai_config = create_test_config(
                 type="vertexai",
                 model="claude-sonnet-4-5@20250929",
-                api_key="my-project"
+                project="my-project",
+                location=""  # Empty location becomes empty string after strip
             )
             client = LLMClient("vertexai", vertexai_config)
             
@@ -264,9 +266,61 @@ class TestLLMClientInitialization:
             mock_vertexai.assert_called_once_with(
                 model_name="claude-sonnet-4-5@20250929",
                 project="my-project",
-                location="us-east5",  # Default location
+                location="",  # Empty string passed through
                 temperature=0.7
             )
+
+    def test_llm_client_stores_vertexai_project_and_location(self, mock_config):
+        """Test that LLMClient stores project and location fields for VertexAI."""
+        with patch('tarsy.integrations.llm.client.ChatAnthropicVertex') as mock_vertexai:
+            mock_vertexai.return_value = Mock()
+            
+            vertexai_config = create_test_config(
+                "vertexai",
+                model="claude-sonnet-4-5@20250929",
+                project="test-project-123",
+                location="us-central1"
+            )
+            client = LLMClient("vertexai", vertexai_config)
+            
+            # Verify client stores project and location
+            assert client.project == "test-project-123"
+            assert client.location == "us-central1"
+            assert client.api_key == ""  # api_key should be empty for VertexAI
+
+    def test_llm_client_strips_whitespace_from_project_and_location(self, mock_config):
+        """Test that LLMClient strips whitespace from project and location."""
+        with patch('tarsy.integrations.llm.client.ChatAnthropicVertex') as mock_vertexai:
+            mock_vertexai.return_value = Mock()
+            
+            vertexai_config = create_test_config(
+                "vertexai",
+                model="claude-sonnet-4-5@20250929",
+                project="  project-with-spaces  ",
+                location="  us-west1  "
+            )
+            client = LLMClient("vertexai", vertexai_config)
+            
+            # Verify whitespace is stripped
+            assert client.project == "project-with-spaces"
+            assert client.location == "us-west1"
+
+    def test_llm_client_handles_none_project_and_location(self, mock_config):
+        """Test that LLMClient handles None values for project and location."""
+        with patch('tarsy.integrations.llm.client.ChatAnthropicVertex') as mock_vertexai:
+            mock_vertexai.return_value = Mock()
+            
+            vertexai_config = create_test_config(
+                "vertexai",
+                model="claude-sonnet-4-5@20250929",
+                project=None,
+                location=None
+            )
+            client = LLMClient("vertexai", vertexai_config)
+            
+            # None should become empty string after strip
+            assert client.project == ""
+            assert client.location == ""
     
     def test_initialization_unknown_provider(self):
         """Test that BaseModel validation prevents unknown provider types."""
@@ -1722,7 +1776,7 @@ class TestLLMClientNativeTools:
     ) -> None:
         """Test that native tools are not initialized for non-Google providers."""
         config = create_test_config(
-            type=provider_type,
+            provider_type,
             native_tools={GoogleNativeTool.GOOGLE_SEARCH.value: True}  # Even if configured, should not init for non-Google
         )
         

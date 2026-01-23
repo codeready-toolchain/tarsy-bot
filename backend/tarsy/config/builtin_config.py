@@ -277,7 +277,8 @@ BUILTIN_LLM_PROVIDERS: Dict[str, LLMProviderConfig] = {
     "vertexai-default": LLMProviderConfig(
         type=LLMProviderType.VERTEXAI,
         model="claude-sonnet-4-5@20250929",  # Claude Sonnet 4.5 on Vertex AI
-        api_key_env="VERTEX_AI_PROJECT",  # Format: "project_id:location" or "project_id"
+        project_env="GOOGLE_CLOUD_PROJECT",  # Standard GCP project ID env var
+        location_env="GOOGLE_CLOUD_LOCATION",  # Standard GCP location env var
         max_tool_result_tokens=150000  # Conservative for 200K context
     )
 }

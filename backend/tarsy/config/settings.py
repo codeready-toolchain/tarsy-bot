@@ -51,13 +51,21 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(default="")
     xai_api_key: str = Field(default="")
     anthropic_api_key: str = Field(default="")
+    google_cloud_project: str = Field(
+        default="",
+        description="GCP project ID for VertexAI (Claude on Vertex AI). Maps to GOOGLE_CLOUD_PROJECT env var (standard GCP)."
+    )
+    google_cloud_location: str = Field(
+        default="us-east5",
+        description="GCP region for VertexAI (Claude on Vertex AI). Maps to GOOGLE_CLOUD_LOCATION env var (standard GCP). Default: us-east5"
+    )
     llm_provider: str = Field(default="google-default")
     disable_ssl_verification: bool = Field(default=False, description="Disable SSL certificate verification for LLM API calls (use with caution)")
     
-    @field_validator('google_api_key', 'openai_api_key', 'xai_api_key', 'anthropic_api_key', mode='after')
+    @field_validator('google_api_key', 'openai_api_key', 'xai_api_key', 'anthropic_api_key', 'google_cloud_project', 'google_cloud_location', mode='after')
     @classmethod
     def strip_api_keys(cls, v: str) -> str:
-        """Strip whitespace from API keys to avoid gRPC metadata errors."""
+        """Strip whitespace from API keys and configuration values to avoid errors."""
         return v.strip() if v else v
     
     # LLM Configuration File Path
@@ -333,15 +341,39 @@ class Settings(BaseSettings):
             raise ValueError(f"Unsupported LLM provider: {provider}. Available: {available}")
         
         base_config = self.llm_providers[provider]
-        
-        # Get API key based on provider type (not provider name)
         provider_type = base_config.type  # Type-safe field access
         
-        # read the api_key from the env var specified in the config, if any
-        api_key = os.getenv(base_config.api_key_env, "").strip()
-
-        # fallback to the defaults if the config does not specify an explicit
-        # api_key in any way
+        # Special handling for VertexAI - uses project/location instead of api_key
+        if provider_type == LLMProviderType.VERTEXAI:
+            # Read from project_env and location_env specified in config
+            project = ""
+            location = self.google_cloud_location  # Default
+            
+            if base_config.project_env:
+                project = os.getenv(base_config.project_env, "").strip()
+                if not project:
+                    project = self.google_cloud_project  # Fallback to Settings field
+            else:
+                project = self.google_cloud_project
+                
+            if base_config.location_env:
+                env_location = os.getenv(base_config.location_env, "").strip()
+                if env_location:
+                    location = env_location
+                # else: use default from Settings field
+            
+            return base_config.model_copy(update={
+                "project": project,
+                "location": location,
+                "disable_ssl_verification": self.disable_ssl_verification
+            })
+        
+        # Standard handling for other providers (api_key)
+        api_key = ""
+        if base_config.api_key_env:
+            api_key = os.getenv(base_config.api_key_env, "").strip()
+        
+        # Fallback to provider-specific Settings fields if env var not set
         if not api_key:
             if provider_type == LLMProviderType.GOOGLE:
                 api_key = self.google_api_key

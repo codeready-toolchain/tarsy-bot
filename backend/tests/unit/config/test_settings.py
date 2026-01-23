@@ -462,24 +462,114 @@ class TestSettingsLLMConfiguration:
             # Should strip whitespace
             assert config.api_key == "key-with-spaces"
 
-    def test_get_llm_config_vertexai_provider_requires_env_var(self):
-        """Test that VertexAI provider uses env var and has no standard env var fallback."""
-        # Test with env var set
-        with patch.dict(os.environ, {"VERTEX_AI_PROJECT": "my-project:us-central1"}, clear=False):
+    def test_get_llm_config_vertexai_provider_uses_gcp_env_vars(self):
+        """Test that VertexAI provider uses GCP standard env vars (project and location)."""
+        # Test with both env vars set
+        with patch.dict(os.environ, {
+            "GOOGLE_CLOUD_PROJECT": "my-project",
+            "GOOGLE_CLOUD_LOCATION": "us-central1"
+        }, clear=False):
             settings = Settings()
             config = settings.get_llm_config("vertexai-default")
 
-            # Should use env var value
-            assert config.api_key == "my-project:us-central1"
+            # Should use env var values
+            assert config.project == "my-project"
+            assert config.location == "us-central1"
 
-        # Test without env var set (no standard fallback like OPENAI_API_KEY exists)
-        env_clean = {k: v for k, v in os.environ.items() if k != "VERTEX_AI_PROJECT"}
+        # Test with only project set (location should use default)
+        env_clean = {k: v for k, v in os.environ.items() if k not in ["GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION"]}
+        with patch.dict(os.environ, {**env_clean, "GOOGLE_CLOUD_PROJECT": "test-project"}, clear=True):
+            settings = Settings()
+            config = settings.get_llm_config("vertexai-default")
+
+            # Should use env var for project and default for location
+            assert config.project == "test-project"
+            assert config.location == "us-east5"  # Default location
+
+        # Test without any env vars set (should use Settings field defaults)
+        env_clean = {k: v for k, v in os.environ.items() if k not in ["GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION"]}
         with patch.dict(os.environ, env_clean, clear=True):
             settings = Settings()
             config = settings.get_llm_config("vertexai-default")
 
-            # Should return empty string (no fallback env var)
-            assert config.api_key == ""
+            # Should use Settings field defaults
+            assert config.project == ""  # google_cloud_project default
+            assert config.location == "us-east5"  # google_cloud_location default
+
+    def test_get_llm_config_vertexai_does_not_populate_api_key(self):
+        """Test that VertexAI provider does not populate api_key field."""
+        with patch.dict(os.environ, {
+            "GOOGLE_CLOUD_PROJECT": "my-project"
+        }, clear=False):
+            settings = Settings()
+            config = settings.get_llm_config("vertexai-default")
+
+            # api_key should remain None for VertexAI
+            assert config.api_key is None
+            assert config.project == "my-project"
+
+    def test_get_llm_config_vertexai_custom_provider_with_different_env_vars(self):
+        """Test custom VertexAI provider with custom env var names."""
+        from tarsy.models.llm_models import LLMProviderConfig, LLMProviderType
+        
+        # Create a custom VertexAI provider with different env var names
+        custom_provider = LLMProviderConfig(
+            type=LLMProviderType.VERTEXAI,
+            model="claude-sonnet-4-5@20250929",
+            project_env="CUSTOM_PROJECT",
+            location_env="CUSTOM_LOCATION"
+        )
+        
+        with patch.dict(os.environ, {
+            "CUSTOM_PROJECT": "custom-project",
+            "CUSTOM_LOCATION": "europe-west1"
+        }, clear=False):
+            # Mock get_builtin_llm_providers to include our custom provider
+            from tarsy.config.builtin_config import get_builtin_llm_providers
+            original_providers = get_builtin_llm_providers()
+            custom_providers = {**original_providers, "custom-vertexai": custom_provider}
+            
+            with patch('tarsy.config.settings.get_builtin_llm_providers', return_value=custom_providers):
+                settings = Settings()
+                config = settings.get_llm_config("custom-vertexai")
+
+                # Should use custom env var values
+                assert config.project == "custom-project"
+                assert config.location == "europe-west1"
+
+    def test_get_llm_config_vertexai_fallback_to_settings_fields(self):
+        """Test VertexAI provider falls back to Settings fields when env vars not set."""
+        # Clean environment
+        env_clean = {k: v for k, v in os.environ.items() if k not in ["GOOGLE_CLOUD_PROJECT", "GOOGLE_CLOUD_LOCATION"]}
+        
+        with patch.dict(os.environ, env_clean, clear=True):
+            # Set values directly on Settings fields
+            settings = Settings(
+                google_cloud_project="settings-project",
+                google_cloud_location="us-west2"
+            )
+            config = settings.get_llm_config("vertexai-default")
+
+            # Should use Settings field values
+            assert config.project == "settings-project"
+            assert config.location == "us-west2"
+
+    def test_get_llm_config_vertexai_env_var_takes_precedence_over_settings(self):
+        """Test that env vars take precedence over Settings fields for VertexAI."""
+        with patch.dict(os.environ, {
+            "GOOGLE_CLOUD_PROJECT": "env-project",
+            "GOOGLE_CLOUD_LOCATION": "env-location"
+        }, clear=False):
+            # Set different values on Settings fields
+            settings = Settings(
+                google_cloud_project="settings-project",
+                google_cloud_location="settings-location"
+            )
+            config = settings.get_llm_config("vertexai-default")
+
+            # Env vars should take precedence
+            assert config.project == "env-project"
+            assert config.location == "env-location"
 
 
 @pytest.mark.unit
@@ -505,20 +595,61 @@ class TestBuiltinLLMProvidersConfiguration:
             assert provider_config.max_tool_result_tokens == expected_limit
     
     def test_builtin_providers_config_structure(self):
-        """Test that built-in provider configs have all required fields."""
+        """Test that built-in provider configs have appropriate fields."""
         from tarsy.config.builtin_config import BUILTIN_LLM_PROVIDERS
         
-        required_fields = {"type", "model", "api_key_env"}
-        
         for provider_name, config in BUILTIN_LLM_PROVIDERS.items():
-            # Check all required fields are present
-            for field in required_fields:
-                assert hasattr(config, field), f"Provider {provider_name} missing required field: {field}"
+            # All providers must have type and model
+            assert hasattr(config, 'type'), f"Provider {provider_name} missing type"
+            assert hasattr(config, 'model'), f"Provider {provider_name} missing model"
             
             # Check max_tool_result_tokens is present (EP-0016 requirement)
             assert hasattr(config, 'max_tool_result_tokens'), f"Provider {provider_name} missing max_tool_result_tokens"
             assert isinstance(config.max_tool_result_tokens, int), f"Provider {provider_name} max_tool_result_tokens must be int"
             assert config.max_tool_result_tokens > 0, f"Provider {provider_name} max_tool_result_tokens must be positive"
+
+    def test_vertexai_default_uses_project_and_location_env(self):
+        """Test that vertexai-default provider uses project_env and location_env."""
+        from tarsy.config.builtin_config import BUILTIN_LLM_PROVIDERS
+        from tarsy.models.llm_models import LLMProviderType
+        
+        vertexai_config = BUILTIN_LLM_PROVIDERS["vertexai-default"]
+        
+        # Should use GCP standard env vars
+        assert vertexai_config.project_env == "GOOGLE_CLOUD_PROJECT"
+        assert vertexai_config.location_env == "GOOGLE_CLOUD_LOCATION"
+        
+        # Should be VertexAI type
+        assert vertexai_config.type == LLMProviderType.VERTEXAI
+        
+        # Should NOT have api_key_env set (optional for VertexAI)
+        assert vertexai_config.api_key_env is None
+
+    def test_non_vertexai_providers_use_api_key_env(self):
+        """Test that non-VertexAI providers use api_key_env."""
+        from tarsy.config.builtin_config import BUILTIN_LLM_PROVIDERS
+        from tarsy.models.llm_models import LLMProviderType
+        
+        non_vertexai_providers = [
+            ("openai-default", LLMProviderType.OPENAI),
+            ("google-default", LLMProviderType.GOOGLE),
+            ("xai-default", LLMProviderType.XAI),
+            ("anthropic-default", LLMProviderType.ANTHROPIC),
+        ]
+        
+        for provider_name, expected_type in non_vertexai_providers:
+            config = BUILTIN_LLM_PROVIDERS[provider_name]
+            
+            # Should have api_key_env set
+            assert config.api_key_env is not None, f"{provider_name} should have api_key_env"
+            assert isinstance(config.api_key_env, str), f"{provider_name} api_key_env should be string"
+            
+            # Should be the expected type
+            assert config.type == expected_type
+            
+            # Should NOT have project_env or location_env
+            assert config.project_env is None, f"{provider_name} should not have project_env"
+            assert config.location_env is None, f"{provider_name} should not have location_env"
 
 
 @pytest.mark.unit
@@ -834,12 +965,19 @@ class TestSettingsAPIKeyStripping:
             ("anthropic_api_key", "   test-anthropic-key", "test-anthropic-key"),
             ("anthropic_api_key", "test-anthropic-key   ", "test-anthropic-key"),
             ("anthropic_api_key", "   test-anthropic-key   ", "test-anthropic-key"),
+            # GCP project and location tests
+            ("google_cloud_project", "   my-project", "my-project"),
+            ("google_cloud_project", "my-project   ", "my-project"),
+            ("google_cloud_project", "   my-project   ", "my-project"),
+            ("google_cloud_location", "   us-east5", "us-east5"),
+            ("google_cloud_location", "us-east5   ", "us-east5"),
+            ("google_cloud_location", "   us-east5   ", "us-east5"),
         ],
     )
     def test_api_key_whitespace_stripping(
         self, api_key_field: str, input_value: str, expected_value: str
     ) -> None:
-        """Test that API keys have whitespace stripped during Settings initialization."""
+        """Test that API keys and GCP config have whitespace stripped during Settings initialization."""
         settings = Settings(**{api_key_field: input_value})
         
         actual_value = getattr(settings, api_key_field)

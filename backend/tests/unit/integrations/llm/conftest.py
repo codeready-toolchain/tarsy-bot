@@ -95,7 +95,7 @@ def create_test_config(provider_type: str = "openai", **overrides):
     """Helper to create test LLMProviderConfig instances.
     
     Args:
-        provider_type: The LLM provider type (e.g., "openai", "google")
+        provider_type: The LLM provider type (e.g., "openai", "google", "vertexai")
         **overrides: Any fields to override in the config
         
     Returns:
@@ -103,14 +103,30 @@ def create_test_config(provider_type: str = "openai", **overrides):
     """
     from tarsy.models.llm_models import LLMProviderConfig
     
-    defaults = {
-        "type": provider_type,
-        "model": "gpt-4",
-        "api_key_env": "OPENAI_API_KEY",
-        "temperature": 0.7,  # Set explicit temperature for test assertions
-        "api_key": "test-api-key",
-        # native_tools not set by default, uses secure defaults (code_execution disabled, others enabled)
-    }
+    # Default values depend on provider type
+    if provider_type == "vertexai":
+        # VertexAI uses project/location instead of api_key
+        defaults = {
+            "type": provider_type,
+            "model": "claude-sonnet-4-5@20250929",
+            "project_env": "GOOGLE_CLOUD_PROJECT",
+            "location_env": "GOOGLE_CLOUD_LOCATION",
+            "temperature": 0.7,  # Set explicit temperature for test assertions
+            "project": "test-project",
+            "location": "us-east5",
+            # native_tools not set by default, uses secure defaults (code_execution disabled, others enabled)
+        }
+    else:
+        # Standard providers use api_key
+        defaults = {
+            "type": provider_type,
+            "model": "gpt-4",
+            "api_key_env": "OPENAI_API_KEY",
+            "temperature": 0.7,  # Set explicit temperature for test assertions
+            "api_key": "test-api-key",
+            # native_tools not set by default, uses secure defaults (code_execution disabled, others enabled)
+        }
+    
     defaults.update(overrides)
     return LLMProviderConfig(**defaults)
 

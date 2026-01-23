@@ -204,6 +204,144 @@ class TestLLMProviderConfigNativeTools:
 
 
 @pytest.mark.unit
+class TestLLMProviderConfigVertexAIFields:
+    """Test cases for VertexAI-specific configuration fields."""
+
+    def test_vertexai_config_with_project_and_location_env(self) -> None:
+        """Test VertexAI config can be created with project_env and location_env."""
+        config = LLMProviderConfig(
+            type="vertexai",
+            model="claude-sonnet-4-5@20250929",
+            project_env="GOOGLE_CLOUD_PROJECT",
+            location_env="GOOGLE_CLOUD_LOCATION"
+        )
+        
+        assert config.type == LLMProviderType.VERTEXAI
+        assert config.project_env == "GOOGLE_CLOUD_PROJECT"
+        assert config.location_env == "GOOGLE_CLOUD_LOCATION"
+        assert config.api_key_env is None  # Optional for VertexAI
+
+    def test_vertexai_config_without_api_key_env(self) -> None:
+        """Test VertexAI config can be created without api_key_env (now optional)."""
+        config = LLMProviderConfig(
+            type="vertexai",
+            model="claude-sonnet-4-5@20250929",
+            project_env="GOOGLE_CLOUD_PROJECT"
+        )
+        
+        assert config.type == LLMProviderType.VERTEXAI
+        assert config.api_key_env is None
+        assert config.project_env == "GOOGLE_CLOUD_PROJECT"
+
+    def test_runtime_project_and_location_fields_default_none(self) -> None:
+        """Test runtime project and location fields default to None."""
+        config = LLMProviderConfig(
+            type="vertexai",
+            model="claude-sonnet-4-5@20250929",
+            project_env="GOOGLE_CLOUD_PROJECT"
+        )
+        
+        assert config.project is None
+        assert config.location is None
+
+    def test_runtime_project_and_location_can_be_set(self) -> None:
+        """Test runtime project and location fields can be populated."""
+        config = LLMProviderConfig(
+            type="vertexai",
+            model="claude-sonnet-4-5@20250929",
+            project_env="GOOGLE_CLOUD_PROJECT",
+            location_env="GOOGLE_CLOUD_LOCATION",
+            project="my-gcp-project",
+            location="us-east5"
+        )
+        
+        assert config.project == "my-gcp-project"
+        assert config.location == "us-east5"
+
+    def test_project_env_validation_rejects_empty_string(self) -> None:
+        """Test that project_env rejects empty strings."""
+        with pytest.raises(ValidationError) as exc_info:
+            LLMProviderConfig(
+                type="vertexai",
+                model="claude-sonnet-4-5@20250929",
+                project_env=""
+            )
+        
+        errors = exc_info.value.errors()
+        assert any("empty" in str(error).lower() for error in errors)
+
+    def test_location_env_validation_rejects_empty_string(self) -> None:
+        """Test that location_env rejects empty strings."""
+        with pytest.raises(ValidationError) as exc_info:
+            LLMProviderConfig(
+                type="vertexai",
+                model="claude-sonnet-4-5@20250929",
+                location_env=""
+            )
+        
+        errors = exc_info.value.errors()
+        assert any("empty" in str(error).lower() for error in errors)
+
+    def test_project_env_validation_rejects_lowercase(self) -> None:
+        """Test that project_env must be uppercase."""
+        with pytest.raises(ValidationError) as exc_info:
+            LLMProviderConfig(
+                type="vertexai",
+                model="claude-sonnet-4-5@20250929",
+                project_env="google_cloud_project"  # lowercase
+            )
+        
+        errors = exc_info.value.errors()
+        assert any("uppercase" in str(error).lower() for error in errors)
+
+    def test_location_env_validation_rejects_lowercase(self) -> None:
+        """Test that location_env must be uppercase."""
+        with pytest.raises(ValidationError) as exc_info:
+            LLMProviderConfig(
+                type="vertexai",
+                model="claude-sonnet-4-5@20250929",
+                location_env="google_cloud_location"  # lowercase
+            )
+        
+        errors = exc_info.value.errors()
+        assert any("uppercase" in str(error).lower() for error in errors)
+
+    def test_project_env_strips_whitespace(self) -> None:
+        """Test that project_env strips whitespace."""
+        config = LLMProviderConfig(
+            type="vertexai",
+            model="claude-sonnet-4-5@20250929",
+            project_env="  GOOGLE_CLOUD_PROJECT  "
+        )
+        
+        assert config.project_env == "GOOGLE_CLOUD_PROJECT"
+
+    def test_location_env_strips_whitespace(self) -> None:
+        """Test that location_env strips whitespace."""
+        config = LLMProviderConfig(
+            type="vertexai",
+            model="claude-sonnet-4-5@20250929",
+            location_env="  GOOGLE_CLOUD_LOCATION  "
+        )
+        
+        assert config.location_env == "GOOGLE_CLOUD_LOCATION"
+
+    def test_non_vertexai_provider_can_omit_project_location_fields(self) -> None:
+        """Test that non-VertexAI providers don't need project/location fields."""
+        config = LLMProviderConfig(
+            type="openai",
+            model="gpt-4",
+            api_key_env="OPENAI_API_KEY"
+        )
+        
+        assert config.type == LLMProviderType.OPENAI
+        assert config.project_env is None
+        assert config.location_env is None
+        assert config.project is None
+        assert config.location is None
+
+
+@pytest.mark.unit
 class TestLLMProviderConfigValidation:
     """Test cases for LLMProviderConfig validation with provider type enum."""
 

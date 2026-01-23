@@ -133,20 +133,23 @@ def _create_anthropic_client(temp, api_key, model, disable_ssl_verification=Fals
     # Note: ChatAnthropic may not support custom HTTP clients - would need to verify  
     return ChatAnthropic(**client_kwargs)
 
-def _create_vertexai_client(temp, api_key, model, disable_ssl_verification=False, base_url=None):
+def _create_vertexai_client(temp, project, model, disable_ssl_verification=False, base_url=None, location="us-east5"):
     """Create ChatAnthropicVertex client for Claude models on Vertex AI.
     
     Authentication via GOOGLE_APPLICATION_CREDENTIALS env var pointing to service account JSON.
-    Project and location extracted from api_key field (format: "project_id:location" or just "project_id").
-    """
-    # Parse project and location from api_key field
-    # Expected format: "project_id:location" or "project_id" (defaults to us-east5)
-    if ":" in api_key:
-        project, location = api_key.split(":", 1)
-    else:
-        project = api_key
-        location = "us-east5"  # Default region for Claude
+    Project and location provided via config.project and config.location fields.
     
+    Args:
+        temp: Temperature for response generation
+        project: GCP project ID (required)
+        model: Model name (e.g., claude-sonnet-4-5@20250929)
+        disable_ssl_verification: Whether to disable SSL verification (unused for VertexAI, kept for interface consistency)
+        base_url: Custom base URL (unused for VertexAI, kept for interface consistency)
+        location: GCP region (default: us-east5)
+    
+    Returns:
+        ChatAnthropicVertex: Configured LangChain client
+    """
     client_kwargs = {
         "model_name": model,
         "project": project,
@@ -175,6 +178,9 @@ class LLMClient:
         self.model = config.model  # Direct field access on BaseModel
         # Strip whitespace from API key to avoid gRPC metadata errors
         self.api_key = (config.api_key or "").strip()
+        # Store VertexAI-specific fields
+        self.project = (config.project or "").strip()  # For VertexAI
+        self.location = (config.location or "").strip()  # For VertexAI
         self.temperature = config.temperature  # Field with default in BaseModel
         self.llm_client: Optional[BaseChatModel] = None
         self.settings = settings  # Store settings for feature flag access
@@ -196,23 +202,46 @@ class LLMClient:
             provider_type = self.config.type  # Direct field access on BaseModel
             
             if provider_type.value in LLM_PROVIDERS:
-                if not self.api_key:
-                    logger.warning(f"No API key provided for {self.provider_name}")
-                    self.available = False
-                    return
-                
-                disable_ssl_verification = self.config.disable_ssl_verification
-                if disable_ssl_verification:
-                    logger.warning(f"SSL verification is DISABLED for {self.provider_name} - use with caution!")
-                
-                base_url = self.config.base_url
-                self.llm_client = LLM_PROVIDERS[provider_type.value](
-                    self.temperature, 
-                    self.api_key, 
-                    self.model,
-                    disable_ssl_verification,
-                    base_url
-                )
+                # Special handling for VertexAI - uses project/location instead of api_key
+                if provider_type == LLMProviderType.VERTEXAI:
+                    if not self.project:
+                        logger.warning(f"No GCP project provided for {self.provider_name}")
+                        self.available = False
+                        return
+                    
+                    disable_ssl_verification = self.config.disable_ssl_verification
+                    if disable_ssl_verification:
+                        logger.warning(f"SSL verification is DISABLED for {self.provider_name} - use with caution!")
+                    
+                    base_url = self.config.base_url
+                    # Pass project and location for VertexAI
+                    self.llm_client = LLM_PROVIDERS[provider_type.value](
+                        self.temperature,
+                        self.project,  # Pass project instead of api_key
+                        self.model,
+                        disable_ssl_verification,
+                        base_url,
+                        location=self.location  # Pass location as kwarg
+                    )
+                else:
+                    # Standard handling for other providers
+                    if not self.api_key:
+                        logger.warning(f"No API key provided for {self.provider_name}")
+                        self.available = False
+                        return
+                    
+                    disable_ssl_verification = self.config.disable_ssl_verification
+                    if disable_ssl_verification:
+                        logger.warning(f"SSL verification is DISABLED for {self.provider_name} - use with caution!")
+                    
+                    base_url = self.config.base_url
+                    self.llm_client = LLM_PROVIDERS[provider_type.value](
+                        self.temperature, 
+                        self.api_key, 
+                        self.model,
+                        disable_ssl_verification,
+                        base_url
+                    )
                 
                 # Initialize native tools for Google/Gemini models
                 # Uses Google AI SDK types (google.genai.types) for tool definition format

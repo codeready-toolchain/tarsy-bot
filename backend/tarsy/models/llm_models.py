@@ -49,9 +49,19 @@ class LLMProviderConfig(BaseModel):
         min_length=1,
         description="Model name to use (e.g., gpt-4, gemini-2.5-flash)"
     )
-    api_key_env: str = Field(
-        min_length=1,
-        description="Environment variable name containing the API key"
+    
+    # Optional configuration fields - specify which env vars to use
+    api_key_env: Optional[str] = Field(
+        default=None,
+        description="Environment variable name containing the API key (not used for VertexAI)"
+    )
+    project_env: Optional[str] = Field(
+        default=None,
+        description="Environment variable name containing the GCP project ID (VertexAI only)"
+    )
+    location_env: Optional[str] = Field(
+        default=None,
+        description="Environment variable name containing the GCP location (VertexAI only)"
     )
     
     # Optional fields with defaults
@@ -85,6 +95,14 @@ class LLMProviderConfig(BaseModel):
         default=None,
         description="Runtime API key (populated from environment)"
     )
+    project: Optional[str] = Field(
+        default=None,
+        description="Runtime GCP project ID (VertexAI only, populated from environment)"
+    )
+    location: Optional[str] = Field(
+        default=None,
+        description="Runtime GCP location (VertexAI only, populated from environment)"
+    )
     disable_ssl_verification: bool = Field(
         default=False,
         description="Runtime SSL verification setting"
@@ -113,14 +131,16 @@ class LLMProviderConfig(BaseModel):
             raise ValueError("Model name cannot be empty")
         return v.strip()
     
-    @field_validator("api_key_env")
+    @field_validator("api_key_env", "project_env", "location_env")
     @classmethod
-    def validate_api_key_env(cls, v: str) -> str:
-        """Validate API key environment variable name."""
+    def validate_env_var_names(cls, v: Optional[str]) -> Optional[str]:
+        """Validate environment variable names."""
+        if v is None:
+            return None
         if not v.strip():
-            raise ValueError("API key environment variable name cannot be empty")
+            raise ValueError("Environment variable name cannot be empty")
         if not v.isupper():
-            raise ValueError("API key environment variable should be uppercase")
+            raise ValueError("Environment variable name should be uppercase")
         return v.strip()
     
     @field_validator("native_tools", mode="before")
