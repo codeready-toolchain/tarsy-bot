@@ -133,122 +133,123 @@ class TestConcurrentAlertSessions:
              patch.dict(os.environ, {}, clear=True), \
              E2ETestUtils.setup_runbook_service_patching():
             
-            # Mock MCP client for concurrent sessions
-            mock_sessions = {
-                "kubernetes-server": create_mock_mcp_session("kubernetes-server")
-            }
-            
-            mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
-            
-            # Mock initialize to avoid real MCP server startup
-            async def mock_initialize(self):
-                """Mock initialization for concurrent sessions."""
-                self.sessions = mock_sessions.copy()
-                self._initialized = True
-            
             # Create streaming mock for LangChain clients
             streaming_mock = create_streaming_mock()
             
-            # Apply MCP and LLM patches (same pattern as working E2E tests)
-            with patch.object(MCPClient, "initialize", mock_initialize), \
-                 patch.object(MCPClient, "list_tools", mock_list_tools), \
-                 patch.object(MCPClient, "call_tool", mock_call_tool), \
-                 E2ETestUtils.create_llm_patch_context(streaming_mock=streaming_mock):
+            # LLM patches must wrap MCP patches (same pattern as test_api_e2e.py)
+            with E2ETestUtils.create_llm_patch_context(streaming_mock=streaming_mock):
+                # Mock MCP client for concurrent sessions
+                mock_sessions = {
+                    "kubernetes-server": create_mock_mcp_session("kubernetes-server")
+                }
                 
-                print("🧪 Testing concurrent alert processing with mocked external dependencies...")
-                concurrent_alert_count = 4
-                submitted_sessions: List[str] = []
+                mock_list_tools, mock_call_tool = E2ETestUtils.create_mcp_client_patches(mock_sessions)
                 
-                # Step 1: Submit multiple alerts rapidly (creating concurrent MCP clients)
-                print("📤 Step 1: Rapid concurrent alert submission...")
-                start_time = time.time()
+                # Mock initialize to avoid real MCP server startup
+                async def mock_initialize(self):
+                    """Mock initialization for concurrent sessions."""
+                    self.sessions = mock_sessions.copy()
+                    self._initialized = True
                 
-                for i in range(concurrent_alert_count):
-                    alert = e2e_realistic_kubernetes_alert.copy()
-                    alert["data"]["pod"] = f"concurrent-test-pod-{i}"
-                    alert["data"]["description"] = f"Concurrent test alert {i+1}"
-                    # Force MCP client creation for each session
-                    alert["mcp_selection"] = {
-                        "servers": [
-                            {"name": "kubernetes-server", "tools": ["kubectl_get", "kubectl_describe"]}
-                        ]
-                    }
+                # Apply MCP patches inside LLM patch context
+                with patch.object(MCPClient, "initialize", mock_initialize), \
+                     patch.object(MCPClient, "list_tools", mock_list_tools), \
+                     patch.object(MCPClient, "call_tool", mock_call_tool):
                     
-                    session_id = E2ETestUtils.submit_alert(e2e_test_client, alert)
-                    submitted_sessions.append(session_id)
-                    print(f"  ✅ Session {i+1} submitted: {session_id[:8]}")
-                
-                submission_time = time.time() - start_time
-                print(f"  📊 All {len(submitted_sessions)} sessions submitted in {submission_time:.2f}s")
-                
-                # Step 2: Poll for concurrent session completion
-                # This ensures background tasks complete while LLM mock is still active
-                print("⏳ Step 2: Polling for concurrent session completion...")
-                
-                await self._poll_for_concurrent_sessions_completion(
-                    e2e_test_client, submitted_sessions, max_wait_seconds=10
-                )
-                
-                # Step 3: Verify final session statuses (already collected during polling)
-                print("🔍 Step 3: Analyzing final session results...")
-                
-                completed_count = 0
-                failed_count = 0
-                other_count = 0
-                
-                # Get final status for each session
-                for i, session_id in enumerate(submitted_sessions):
-                    try:
-                        detail_data = await E2ETestUtils.get_session_details_async(
-                            e2e_test_client, session_id, max_retries=1, retry_delay=0.1
-                        )
-                        session_status = detail_data.get("status", "unknown")
+                    print("🧪 Testing concurrent alert processing with mocked external dependencies...")
+                    concurrent_alert_count = 4
+                    submitted_sessions: List[str] = []
+                    
+                    # Step 1: Submit multiple alerts rapidly (creating concurrent MCP clients)
+                    print("📤 Step 1: Rapid concurrent alert submission...")
+                    start_time = time.time()
+                    
+                    for i in range(concurrent_alert_count):
+                        alert = e2e_realistic_kubernetes_alert.copy()
+                        alert["data"]["pod"] = f"concurrent-test-pod-{i}"
+                        alert["data"]["description"] = f"Concurrent test alert {i+1}"
+                        # Force MCP client creation for each session
+                        alert["mcp_selection"] = {
+                            "servers": [
+                                {"name": "kubernetes-server", "tools": ["kubectl_get", "kubectl_describe"]}
+                            ]
+                        }
                         
-                        if session_status == "completed":
-                            completed_count += 1
-                        elif session_status == "failed":
-                            failed_count += 1
-                        else:
-                            other_count += 1
+                        session_id = E2ETestUtils.submit_alert(e2e_test_client, alert)
+                        submitted_sessions.append(session_id)
+                        print(f"  ✅ Session {i+1} submitted: {session_id[:8]}")
+                    
+                    submission_time = time.time() - start_time
+                    print(f"  📊 All {len(submitted_sessions)} sessions submitted in {submission_time:.2f}s")
+                    
+                    # Step 2: Poll for concurrent session completion
+                    # This ensures background tasks complete while LLM mock is still active
+                    print("⏳ Step 2: Polling for concurrent session completion...")
+                    
+                    await self._poll_for_concurrent_sessions_completion(
+                        e2e_test_client, submitted_sessions, max_wait_seconds=10
+                    )
+                    
+                    # Step 3: Verify final session statuses (already collected during polling)
+                    print("🔍 Step 3: Analyzing final session results...")
+                    
+                    completed_count = 0
+                    failed_count = 0
+                    other_count = 0
+                    
+                    # Get final status for each session
+                    for i, session_id in enumerate(submitted_sessions):
+                        try:
+                            detail_data = await E2ETestUtils.get_session_details_async(
+                                e2e_test_client, session_id, max_retries=1, retry_delay=0.1
+                            )
+                            session_status = detail_data.get("status", "unknown")
                             
-                    except Exception as e:
-                        print(f"  ❌ Session {i+1} final status check failed: {e}")
-                        other_count += 1
-                
-                total_time = time.time() - start_time
-                print(f"  📊 Total processing time: {total_time:.2f}s")
-                print(f"  📊 Results: {completed_count} completed, {failed_count} failed, {other_count} other")
-                
-                # Assert - Key success criteria for concurrent MCP transport fix
-                
-                # The main validation is that we can create multiple concurrent sessions
-                # without the system crashing due to transport conflicts. The original bug
-                # would cause RuntimeError exceptions that crashed the system.
-                
-                # 1. All sessions should be submitted successfully (no transport conflicts during creation)
-                assert len(submitted_sessions) == concurrent_alert_count, (
-                    "Not all sessions were submitted - indicates transport conflicts during creation"
-                )
-                
-                # 2. Sessions should be created and started (even if they don't complete due to test env)
-                # The key is that we reach this point without system crashes from transport conflicts
-                sessions_started = completed_count + failed_count + other_count
-                assert sessions_started == concurrent_alert_count, (
-                    f"Not all sessions were processed ({sessions_started}/{concurrent_alert_count}). "
-                    f"This suggests transport deadlocks."
-                )
-                
-                print(f"🎉 SUCCESS: Concurrent MCP transport handling validated!")
-                print(f"   ✅ All {concurrent_alert_count} sessions submitted without system crashes")
-                print(f"   ✅ All {concurrent_alert_count} sessions processed without transport deadlocks")
-                print(f"   ✅ System handled concurrent MCP client creation gracefully")
-                print(f"   ✅ No system crashes from cancel scope conflicts!")
-                print(f"   📝 Total LLM interactions: {interaction_count['count']}")
-                
-                # Key insight: The test reaching this point without exceptions demonstrates
-                # that concurrent MCP transport operations are handled correctly.
-                # Session completion rates in test environment are secondary to the core
-                # validation that transport conflicts don't crash the system.
+                            if session_status == "completed":
+                                completed_count += 1
+                            elif session_status == "failed":
+                                failed_count += 1
+                            else:
+                                other_count += 1
+                                
+                        except Exception as e:
+                            print(f"  ❌ Session {i+1} final status check failed: {e}")
+                            other_count += 1
+                    
+                    total_time = time.time() - start_time
+                    print(f"  📊 Total processing time: {total_time:.2f}s")
+                    print(f"  📊 Results: {completed_count} completed, {failed_count} failed, {other_count} other")
+                    
+                    # Assert - Key success criteria for concurrent MCP transport fix
+                    
+                    # The main validation is that we can create multiple concurrent sessions
+                    # without the system crashing due to transport conflicts. The original bug
+                    # would cause RuntimeError exceptions that crashed the system.
+                    
+                    # 1. All sessions should be submitted successfully (no transport conflicts during creation)
+                    assert len(submitted_sessions) == concurrent_alert_count, (
+                        "Not all sessions were submitted - indicates transport conflicts during creation"
+                    )
+                    
+                    # 2. Sessions should be created and started (even if they don't complete due to test env)
+                    # The key is that we reach this point without system crashes from transport conflicts
+                    sessions_started = completed_count + failed_count + other_count
+                    assert sessions_started == concurrent_alert_count, (
+                        f"Not all sessions were processed ({sessions_started}/{concurrent_alert_count}). "
+                        f"This suggests transport deadlocks."
+                    )
+                    
+                    print(f"🎉 SUCCESS: Concurrent MCP transport handling validated!")
+                    print(f"   ✅ All {concurrent_alert_count} sessions submitted without system crashes")
+                    print(f"   ✅ All {concurrent_alert_count} sessions processed without transport deadlocks")
+                    print(f"   ✅ System handled concurrent MCP client creation gracefully")
+                    print(f"   ✅ No system crashes from cancel scope conflicts!")
+                    print(f"   📝 Total LLM interactions: {interaction_count['count']}")
+                    
+                    # Key insight: The test reaching this point without exceptions demonstrates
+                    # that concurrent MCP transport operations are handled correctly.
+                    # Session completion rates in test environment are secondary to the core
+                    # validation that transport conflicts don't crash the system.
 
     async def _poll_for_concurrent_sessions_completion(
         self, e2e_test_client, session_ids: List[str], max_wait_seconds: int = 10
