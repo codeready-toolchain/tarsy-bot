@@ -219,3 +219,17 @@ class LLMProviderConfig(BaseModel):
         if tool_name == GoogleNativeTool.CODE_EXECUTION.value:
             return self.native_tools.get(tool_name, False)  # Default to False for code_execution
         return self.native_tools.get(tool_name, True)  # Default to True for other tools
+ 
+    def is_auth_configured(self) -> bool:
+        """
+        Checks whether the authentication is correctly configured. This merely checks
+        that all auth-related fields are present, not that they have valid values.
+        """
+
+        def not_empty(v: str | None) -> bool:
+            return v is not None and len(v.strip()) > 0
+
+        if self.type == LLMProviderType.VERTEXAI:
+            return not_empty(self.project) and not_empty(self.location)
+        else:
+            return not_empty(self.api_key)
