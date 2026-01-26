@@ -15,6 +15,7 @@ from tarsy.agents.exceptions import ConfigurationError, ToolSelectionError
 from tarsy.integrations.llm.client import LLMClient
 from tarsy.integrations.mcp.client import MCPClient
 from tarsy.models.alert import Alert
+from tarsy.models.constants import StageStatus
 from tarsy.models.processing_context import ChainContext
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
 from tarsy.services.mcp_server_registry import MCPServerRegistry
@@ -1505,3 +1506,137 @@ class TestBaseAgentTimeoutProtection:
             assert "1" in result.error_message  # Timeout value in message
         finally:
             settings.alert_processing_timeout = original_timeout
+
+
+@pytest.mark.unit
+class TestBaseAgentTimeoutDetection:
+    """Test timeout error detection in BaseAgent exception handling."""
+
+    @pytest.fixture
+    def mock_llm_client(self):
+        """Create mock LLM client."""
+        client = Mock(spec=LLMClient)
+        client.generate_response = AsyncMock()
+        return client
+
+    @pytest.fixture
+    def mock_mcp_client(self):
+        """Create mock MCP client."""
+        client = Mock(spec=MCPClient)
+        client.list_tools = AsyncMock(return_value={"test-server": []})
+        return client
+
+    @pytest.fixture
+    def mock_mcp_registry(self):
+        """Create mock MCP server registry."""
+        registry = Mock(spec=MCPServerRegistry)
+        mock_config = Mock()
+        mock_config.server_id = "test-server"
+        mock_config.instructions = "Test instructions"
+        registry.get_server_configs.return_value = [mock_config]
+        registry.get_all_server_ids.return_value = ["test-server"]
+        return registry
+
+    @pytest.fixture
+    def agent(self, mock_llm_client, mock_mcp_client, mock_mcp_registry):
+        """Create test agent."""
+        return TestConcreteAgent(mock_llm_client, mock_mcp_client, mock_mcp_registry)
+
+    @pytest.fixture
+    def chain_context(self):
+        """Create test chain context."""
+        from tarsy.models.alert import Alert, ProcessingAlert
+        
+        processing_alert = ProcessingAlert(
+            alert_id="timeout-test",
+            alert_type="kubernetes",
+            timestamp=now_us(),
+            environment="test",
+            alert_data={"test": "data"}
+        )
+        return ChainContext.from_processing_alert(
+            processing_alert=processing_alert,
+            session_id="timeout-detection-test",
+            current_stage_name="test-stage"
+        )
+
+    @pytest.mark.parametrize(
+        "exception,expected_status",
+        [
+            (TimeoutError("Operation timed out"), StageStatus.TIMED_OUT),
+            (Exception("Native thinking timed out after 180s"), StageStatus.TIMED_OUT),
+            (Exception("Request timeout exceeded"), StageStatus.TIMED_OUT),
+            (Exception("Connection timed out"), StageStatus.TIMED_OUT),
+            (Exception("TIMED OUT"), StageStatus.TIMED_OUT),
+            (ValueError("Invalid input"), StageStatus.FAILED),
+            (Exception("Something went wrong"), StageStatus.FAILED),
+            (RuntimeError("Service unavailable"), StageStatus.FAILED),
+        ],
+    )
+    @pytest.mark.asyncio
+    async def test_timeout_detection_from_exception(
+        self,
+        agent,
+        chain_context,
+        mock_llm_client,
+        exception: Exception,
+        expected_status: StageStatus
+    ) -> None:
+        """Test that timeout exceptions are correctly detected and result in TIMED_OUT status."""
+        # Mock LLM to raise the exception
+        mock_llm_client.generate_response.side_effect = exception
+        
+        # Process alert
+        result = await agent.process_alert(chain_context)
+        
+        # Verify status
+        assert result.status == expected_status
+        
+        # Verify error message contains appropriate text
+        if expected_status == StageStatus.TIMED_OUT:
+            assert "timed out" in result.result_summary.lower()
+            assert "timed out" in result.error_message.lower() or "timeout" in result.error_message.lower()
+        else:
+            assert result.error_message is not None
+
+    @pytest.mark.asyncio
+    async def test_asyncio_timeout_error_detected(
+        self, agent, chain_context, mock_llm_client
+    ) -> None:
+        """Test that asyncio.TimeoutError is correctly detected as timeout."""
+        import asyncio
+        
+        # Mock LLM to raise asyncio.TimeoutError
+        mock_llm_client.generate_response.side_effect = asyncio.TimeoutError()
+        
+        # Process alert
+        result = await agent.process_alert(chain_context)
+        
+        # Should be TIMED_OUT, not FAILED
+        assert result.status == StageStatus.TIMED_OUT
+        assert "timed out" in result.result_summary.lower()
+
+    @pytest.mark.asyncio
+    async def test_timeout_in_exception_message_case_insensitive(
+        self, agent, chain_context, mock_llm_client
+    ) -> None:
+        """Test that timeout detection is case-insensitive."""
+        test_cases = [
+            "TIMEOUT",
+            "TimeOut",
+            "timeout",
+            "TIMED OUT",
+            "Timed Out",
+            "timed out",
+        ]
+        
+        for message in test_cases:
+            # Reset mock
+            mock_llm_client.generate_response.side_effect = Exception(f"Error: {message}")
+            
+            # Process alert
+            result = await agent.process_alert(chain_context)
+            
+            # Should detect timeout regardless of case
+            assert result.status == StageStatus.TIMED_OUT, \
+                f"Failed to detect timeout in message: '{message}'"

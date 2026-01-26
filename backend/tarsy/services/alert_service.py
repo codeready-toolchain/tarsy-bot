@@ -1237,7 +1237,11 @@ class AlertService:
             elif result.status == ChainStatus.TIMED_OUT:
                 # Chain timed out - use TIMED_OUT status for better visibility
                 error_msg = result.error or "Chain execution timed out"
-                self.session_manager.update_session_status(session_id, AlertSessionStatus.TIMED_OUT.value)
+                self.session_manager.update_session_status(
+                    session_id,
+                    AlertSessionStatus.TIMED_OUT.value,
+                    error_message=error_msg
+                )
                 from tarsy.services.events.event_helpers import publish_session_timed_out
                 await publish_session_timed_out(session_id)
                 return format_error_response(chain_context, error_msg)

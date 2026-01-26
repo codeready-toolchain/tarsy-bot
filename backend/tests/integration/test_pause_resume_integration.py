@@ -946,4 +946,84 @@ class TestPauseResumeIntegration:
             "pause_metadata should be cleared after completion"
         assert retrieved_session.final_analysis == "Analysis completed after multiple pause/resume cycles"
         assert retrieved_session.completed_at_us is not None
+    
+    @pytest.mark.integration
+    def test_resumed_chain_timeout_persists_error_message(
+        self, history_service_with_test_db
+    ) -> None:
+        """Test that when a resumed chain times out, error message is persisted to database.
+        
+        This test verifies the fix for the resume path handling of ChainStatus.TIMED_OUT,
+        ensuring error messages are consistently persisted in both initial execution and
+        resume execution paths.
+        
+        Scenario:
+        1. Session is paused
+        2. Resume happens (update to IN_PROGRESS)
+        3. Chain execution times out (update to TIMED_OUT with error_message)
+        4. Verify error_message is persisted in the database
+        """
+        from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.pause_metadata import PauseMetadata, PauseReason
+        
+        history_service = history_service_with_test_db
+        session_id = "resume-timeout-test"
+        
+        # Step 1: Create a paused session
+        pause_meta = PauseMetadata(
+            reason=PauseReason.MAX_ITERATIONS_REACHED,
+            current_iteration=30,
+            message="Paused at max iterations",
+            paused_at_us=now_us()
+        )
+        
+        with history_service.get_repository() as repo:
+            session = AlertSession(
+                session_id=session_id,
+                alert_type="kubernetes",
+                agent_type="chain:test-chain",
+                status=AlertSessionStatus.PAUSED.value,
+                started_at_us=now_us(),
+                chain_id="test-chain",
+                pause_metadata=pause_meta.model_dump(mode='json')
+            )
+            repo.create_alert_session(session)
+        
+        # Verify initial paused state
+        retrieved_session = history_service.get_session(session_id)
+        assert retrieved_session is not None
+        assert retrieved_session.status == AlertSessionStatus.PAUSED.value
+        assert retrieved_session.pause_metadata is not None
+        assert retrieved_session.error_message is None
+        
+        # Step 2: Simulate resume (update to IN_PROGRESS, clear pause_metadata)
+        success = history_service.update_session_status(
+            session_id=session_id,
+            status=AlertSessionStatus.IN_PROGRESS.value
+        )
+        assert success is True
+        
+        # Verify resumed state
+        retrieved_session = history_service.get_session(session_id)
+        assert retrieved_session is not None
+        assert retrieved_session.status == AlertSessionStatus.IN_PROGRESS.value
+        assert retrieved_session.pause_metadata is None
+        
+        # Step 3: Chain times out during resumed execution - update to TIMED_OUT with error_message
+        timeout_error_message = "Chain execution timed out after resume"
+        success = history_service.update_session_status(
+            session_id=session_id,
+            status=AlertSessionStatus.TIMED_OUT.value,
+            error_message=timeout_error_message
+        )
+        assert success is True
+        
+        # Step 4: Verify error_message is persisted in database
+        retrieved_session = history_service.get_session(session_id)
+        assert retrieved_session is not None
+        assert retrieved_session.status == AlertSessionStatus.TIMED_OUT.value
+        assert retrieved_session.error_message == timeout_error_message, \
+            "Error message should be persisted when chain times out after resume"
+        assert retrieved_session.completed_at_us is not None, \
+            "Session should be marked as completed when timed out"
 
