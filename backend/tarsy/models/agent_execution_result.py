@@ -189,3 +189,7 @@ class ParallelStageResult(BaseModel):
         ...,
         description="Completion timestamp in microseconds (from metadata.completed_at_us)"
     )
+    error_message: Optional[str] = Field(
+        None,
+        description="Aggregated error message when stage fails (e.g., '2 out of 3 agents failed')"
+    )

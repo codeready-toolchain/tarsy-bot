@@ -207,7 +207,8 @@ class StageExecutionManager:
             existing_stage.completed_at_us = stage_result.timestamp_us
             # Serialize result to JSON-compatible dict for database storage
             existing_stage.stage_output = stage_result.model_dump(mode='json')
-            existing_stage.error_message = None
+            # Preserve error message from stage result (both AgentExecutionResult and ParallelStageResult have this)
+            existing_stage.error_message = stage_result.error_message
             
             # Calculate duration if we have started_at_us
             if existing_stage.started_at_us and existing_stage.completed_at_us:

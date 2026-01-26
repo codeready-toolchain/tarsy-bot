@@ -402,12 +402,20 @@ class BaseAgent(ABC):
             error_msg = f"Agent processing failed with unexpected error: {str(e)}"
             logger.error(error_msg, exc_info=True)
             
+            # Check if this is a timeout error - detect by exception type or message content
+            is_timeout = isinstance(e, (TimeoutError, asyncio.TimeoutError))
+            if not is_timeout:
+                error_str = str(e).lower()
+                is_timeout = 'timeout' in error_str or 'timed out' in error_str
+            
+            status = StageStatus.TIMED_OUT if is_timeout else StageStatus.FAILED
+            
             return AgentExecutionResult(
-                status=StageStatus.FAILED,
+                status=status,
                 agent_name=self.__class__.__name__,
                 stage_name=context.current_stage_name,
                 timestamp_us=now_us(),
-                result_summary=f"Agent execution failed with unexpected error: {str(e)}",
+                result_summary=f"Agent execution {'timed out' if is_timeout else 'failed'} with unexpected error: {str(e)}",
                 error_message=error_msg,
                 iteration_strategy=self._iteration_strategy.value,
                 llm_provider=self._llm_provider_name

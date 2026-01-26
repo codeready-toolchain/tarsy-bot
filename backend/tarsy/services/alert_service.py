@@ -955,7 +955,17 @@ class AlertService:
                 )
                 from tarsy.services.events.event_helpers import publish_session_completed
                 await publish_session_completed(session_id)
+            elif result.status == ChainStatus.TIMED_OUT:
+                # Chain timed out - use TIMED_OUT status for better visibility
+                self.session_manager.update_session_status(
+                    session_id,
+                    AlertSessionStatus.TIMED_OUT.value,
+                    error_message=result.error or "Chain execution timed out",
+                )
+                from tarsy.services.events.event_helpers import publish_session_timed_out
+                await publish_session_timed_out(session_id)
             else:
+                # Chain failed for other reasons
                 self.session_manager.update_session_status(
                     session_id,
                     AlertSessionStatus.FAILED.value,
@@ -1224,7 +1234,15 @@ class AlertService:
                     pause_message,
                     result.timestamp_us,
                 )
+            elif result.status == ChainStatus.TIMED_OUT:
+                # Chain timed out - use TIMED_OUT status for better visibility
+                error_msg = result.error or "Chain execution timed out"
+                self.session_manager.update_session_status(session_id, AlertSessionStatus.TIMED_OUT.value)
+                from tarsy.services.events.event_helpers import publish_session_timed_out
+                await publish_session_timed_out(session_id)
+                return format_error_response(chain_context, error_msg)
             else:
+                # Chain failed for other reasons
                 error_msg = result.error or "Chain execution failed"
                 self.session_manager.update_session_status(session_id, AlertSessionStatus.FAILED.value)
                 from tarsy.services.events.event_helpers import publish_session_failed
@@ -1401,12 +1419,14 @@ class AlertService:
                                     successful_stages += 1
                                     executed_stage_count += 1  # Increment for the synthesis stage
                                 else:
-                                    # Synthesis failed - stop chain execution immediately
+                                    # Synthesis failed or timed out - stop chain execution immediately
                                     error_msg = synthesis_result.error_message or f"Synthesis for parallel stage '{stage.name}' failed"
                                     logger.error(f"{error_msg} - stopping chain execution")
                                     
+                                    # Preserve timeout status if synthesis timed out
+                                    chain_status = ChainStatus.TIMED_OUT if synthesis_result.status == StageStatus.TIMED_OUT else ChainStatus.FAILED
                                     return ChainExecutionResult(
-                                        status=ChainStatus.FAILED,
+                                        status=chain_status,
                                         final_analysis=None,
                                         error=error_msg,
                                         timestamp_us=now_us()
@@ -1464,15 +1484,17 @@ class AlertService:
                                 timestamp_us=now_us()
                             )
                         else:
-                            # Parallel stage failed - stop chain execution immediately
+                            # Parallel stage failed or timed out - stop chain execution immediately
                             error_msg = f"Parallel stage '{stage.name}' failed"
                             logger.error(f"{error_msg} - stopping chain execution")
                             
                             # Extract any error message from parallel result
                             chain_error = self._aggregate_stage_errors(chain_context) if chain_context.stage_outputs else error_msg
                             
+                            # Preserve timeout status if parallel stage timed out
+                            chain_status = ChainStatus.TIMED_OUT if stage_result.status == StageStatus.TIMED_OUT else ChainStatus.FAILED
                             return ChainExecutionResult(
-                                status=ChainStatus.FAILED,
+                                status=chain_status,
                                 final_analysis=None,
                                 error=chain_error,
                                 timestamp_us=now_us()
@@ -1539,19 +1561,23 @@ class AlertService:
                             executed_stage_count += 1  # Increment for completed stage
                             logger.info(f"Stage '{stage.name}' completed successfully with agent '{stage_result.agent_name}'")
                         else:
-                            # Stage failed - stop chain execution immediately
+                            # Stage failed or timed out - stop chain execution immediately
                             error_msg = stage_result.error_message or f"Stage '{stage.name}' failed with status {stage_result.status.value}"
                             logger.error(f"Stage '{stage.name}' failed: {error_msg} - stopping chain execution")
                             
-                            # Update stage execution as failed
-                            await self.stage_manager.update_stage_execution_failed(stage_execution_id, error_msg)
+                            # Update stage execution with appropriate status
+                            if stage_result.status == StageStatus.TIMED_OUT:
+                                await self.stage_manager.update_stage_execution_timed_out(stage_execution_id, error_msg)
+                            else:
+                                await self.stage_manager.update_stage_execution_failed(stage_execution_id, error_msg)
                             
                             # Add error result to context for aggregation
                             chain_context.add_stage_result(stage_execution_id, stage_result)
                             
-                            # Stop execution immediately
+                            # Stop execution immediately - preserve timeout status
+                            chain_status = ChainStatus.TIMED_OUT if stage_result.status == StageStatus.TIMED_OUT else ChainStatus.FAILED
                             return ChainExecutionResult(
-                                status=ChainStatus.FAILED,
+                                status=chain_status,
                                 final_analysis=None,
                                 error=error_msg,
                                 timestamp_us=now_us()
@@ -1728,10 +1754,10 @@ class AlertService:
                     failed_agents = []
                     
                     for agent_result in stage_result.results:
-                        if agent_result.status in (StageStatus.FAILED, StageStatus.CANCELLED):
+                        if agent_result.status.is_error():
                             agent_name = agent_result.agent_name or 'unknown'
                             error_msg = agent_result.error_message or 'No error message'
-                            status_label = "cancelled" if agent_result.status == StageStatus.CANCELLED else "failed"
+                            status_label = agent_result.status.value  # Use the actual status value (failed/cancelled/timed_out)
                             failed_agents.append(f"{agent_name} ({status_label}): {error_msg}")
                     
                     if failed_agents:

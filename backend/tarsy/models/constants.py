@@ -64,6 +64,19 @@ class StageStatus(Enum):
     CANCELLED = "cancelled"  # User-initiated cancellation only
     TIMED_OUT = "timed_out"  # System timeout (session/iteration timeout)
     PARTIAL = "partial"  # Some results but with warnings/issues
+    
+    def is_error(self) -> bool:
+        """Check if this status represents an error/failure state."""
+        return self in (StageStatus.FAILED, StageStatus.CANCELLED, StageStatus.TIMED_OUT)
+    
+    def is_terminal(self) -> bool:
+        """Check if this status is terminal (stage processing is finished)."""
+        return self in (StageStatus.COMPLETED, StageStatus.FAILED, StageStatus.CANCELLED, StageStatus.TIMED_OUT)
+    
+    @classmethod
+    def get_error_statuses(cls) -> List['StageStatus']:
+        """Get all error/failure status values."""
+        return [cls.FAILED, cls.CANCELLED, cls.TIMED_OUT]
 
 
 class CancellationReason(str, Enum):
@@ -131,6 +144,7 @@ class ChainStatus(Enum):
     PAUSED = "paused"          # Execution paused, waiting for user action to resume
     COMPLETED = "completed"    # All stages completed successfully  
     FAILED = "failed"          # One or more stages failed, no active stages
+    TIMED_OUT = "timed_out"    # One or more stages timed out, no active stages
 
 
 class SystemHealthStatus(Enum):

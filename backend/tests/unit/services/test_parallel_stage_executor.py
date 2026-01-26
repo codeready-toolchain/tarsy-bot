@@ -834,14 +834,15 @@ class TestStatusAggregation:
         "completed,failed,cancelled,paused,policy,expected_status",
         [
             # CANCELLED treated like FAILED for success_policy evaluation
+            # BUT status is preserved when ALL failures are cancellations
             # ANY policy with some CANCELLED
             (1, 0, 1, 0, SuccessPolicy.ANY, StageStatus.COMPLETED),  # 1 success is enough
-            (0, 0, 3, 0, SuccessPolicy.ANY, StageStatus.FAILED),     # All cancelled = failed
+            (0, 0, 3, 0, SuccessPolicy.ANY, StageStatus.CANCELLED),  # All cancelled = CANCELLED status preserved
             (1, 1, 1, 0, SuccessPolicy.ANY, StageStatus.COMPLETED),  # Mixed but has success
             
             # ALL policy with CANCELLED
-            (2, 0, 1, 0, SuccessPolicy.ALL, StageStatus.FAILED),     # Any cancel = failed
-            (0, 1, 2, 0, SuccessPolicy.ALL, StageStatus.FAILED),     # Mixed failed+cancelled
+            (2, 0, 1, 0, SuccessPolicy.ALL, StageStatus.CANCELLED),  # All non-success are cancelled = CANCELLED status
+            (0, 1, 2, 0, SuccessPolicy.ALL, StageStatus.FAILED),     # Mixed failed+cancelled = FAILED
             
             # PAUSED still takes priority over CANCELLED
             (1, 0, 1, 1, SuccessPolicy.ANY, StageStatus.PAUSED),
