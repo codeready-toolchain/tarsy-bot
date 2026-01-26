@@ -334,8 +334,10 @@ class TestParallelStageResultErrorAggregation:
         assert "Parallel stage 'investigation' failed" in error_msg
         assert "KubernetesAgent" in error_msg
         assert "LLM request failed - no response received" in error_msg
-        # Successful agent should not be in error message
-        assert "LogAgent" not in error_msg or "LogAgent:" not in error_msg
+        # Successful agents should not appear with error labels
+        assert "LogAgent (failed)" not in error_msg
+        assert "LogAgent (cancelled)" not in error_msg
+        assert "LogAgent (timed_out)" not in error_msg
     
     def test_parallel_stage_without_error_messages(self, alert_service, chain_context):
         """Test aggregation with a parallel stage where agents failed without error messages."""
