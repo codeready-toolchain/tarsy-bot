@@ -831,25 +831,27 @@ class TestStatusAggregation:
         assert actual_status == expected_status
     
     @pytest.mark.parametrize(
-        "completed,failed,cancelled,paused,policy,expected_status",
+        "completed,failed,cancelled,timed_out,paused,policy,expected_status",
         [
             # CANCELLED treated like FAILED for success_policy evaluation
             # BUT status is preserved when ALL failures are cancellations
             # ANY policy with some CANCELLED
-            (1, 0, 1, 0, SuccessPolicy.ANY, StageStatus.COMPLETED),  # 1 success is enough
-            (0, 0, 3, 0, SuccessPolicy.ANY, StageStatus.CANCELLED),  # All cancelled = CANCELLED status preserved
-            (1, 1, 1, 0, SuccessPolicy.ANY, StageStatus.COMPLETED),  # Mixed but has success
+            (1, 0, 1, 0, 0, SuccessPolicy.ANY, StageStatus.COMPLETED),  # 1 success is enough
+            (0, 0, 3, 0, 0, SuccessPolicy.ANY, StageStatus.CANCELLED),  # All cancelled = CANCELLED status preserved
+            (0, 0, 0, 3, 0, SuccessPolicy.ANY, StageStatus.TIMED_OUT),  # All timed out = TIMED_OUT
+            (1, 1, 1, 0, 0, SuccessPolicy.ANY, StageStatus.COMPLETED),  # Mixed but has success
             
             # ALL policy with CANCELLED
-            (2, 0, 1, 0, SuccessPolicy.ALL, StageStatus.CANCELLED),  # All non-success are cancelled = CANCELLED status
-            (0, 1, 2, 0, SuccessPolicy.ALL, StageStatus.FAILED),     # Mixed failed+cancelled = FAILED
+            (2, 0, 1, 0, 0, SuccessPolicy.ALL, StageStatus.CANCELLED),  # All non-success are cancelled = CANCELLED status
+            (0, 0, 0, 3, 0, SuccessPolicy.ALL, StageStatus.TIMED_OUT),  # All non-success are timed out
+            (0, 1, 2, 0, 0, SuccessPolicy.ALL, StageStatus.FAILED),     # Mixed failed+cancelled = FAILED
             
             # PAUSED still takes priority over CANCELLED
-            (1, 0, 1, 1, SuccessPolicy.ANY, StageStatus.PAUSED),
-            (0, 1, 1, 1, SuccessPolicy.ALL, StageStatus.PAUSED),
+            (1, 0, 1, 0, 1, SuccessPolicy.ANY, StageStatus.PAUSED),
+            (0, 1, 1, 0, 1, SuccessPolicy.ALL, StageStatus.PAUSED),
             
             # Edge case: all types present
-            (1, 1, 1, 1, SuccessPolicy.ANY, StageStatus.PAUSED),  # Paused takes priority
+            (1, 1, 1, 1, 1, SuccessPolicy.ANY, StageStatus.PAUSED),  # Paused takes priority
         ],
     )
     def test_status_aggregation_with_cancelled(
@@ -857,11 +859,12 @@ class TestStatusAggregation:
         completed: int, 
         failed: int, 
         cancelled: int,
+        timed_out: int,
         paused: int, 
         policy: SuccessPolicy, 
         expected_status: StageStatus
     ):
-        """Test status aggregation with CANCELLED status included."""
+        """Test status aggregation with CANCELLED and TIMED_OUT status included."""
         metadatas = []
         
         for i in range(completed):
@@ -903,6 +906,20 @@ class TestStatusAggregation:
                     status=StageStatus.CANCELLED,
                     error_message="Cancelled by user",
                     token_usage=None
+                )
+            )
+        
+        for i in range(timed_out):
+            metadatas.append(
+                AgentExecutionMetadata(
+                    agent_name=f"agent-timed-out-{i}",
+                    llm_provider="openai",
+                    iteration_strategy="react",
+                    started_at_us=1000,
+                    completed_at_us=2000,
+                    status=StageStatus.TIMED_OUT,
+                    error_message="Timed out",
+                    token_usage=None,
                 )
             )
         

@@ -223,7 +223,7 @@ class Settings(BaseSettings):
         return float(v)
     
     alert_processing_timeout: int = Field(
-        default=900,
+        default=45,
         description="Timeout in seconds for processing a single alert (default: 15 minutes)"
     )
     llm_iteration_timeout: int = Field(

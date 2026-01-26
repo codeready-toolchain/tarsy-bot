@@ -518,6 +518,187 @@ class TestCancelledAgentErrorAggregation:
 
 
 @pytest.mark.unit
+class TestTimedOutStageErrorAggregation:
+    """Tests for timed out stage error aggregation."""
+    
+    def test_single_timed_out_stage(self, alert_service, chain_context):
+        """Test aggregation with a single timed out stage."""
+        # Create a timed out agent result
+        timed_out_result = AgentExecutionResult(
+            status=StageStatus.TIMED_OUT,
+            agent_name="SlowAgent",
+            stage_name="analysis",
+            timestamp_us=now_us(),
+            result_summary="Operation timed out",
+            error_message="Agent processing timed out after 300 seconds"
+        )
+        
+        # Add to chain context
+        chain_context.add_stage_result("stage-exec-1", timed_out_result)
+        
+        # Aggregate errors
+        error_msg = alert_service._aggregate_stage_errors(chain_context)
+        
+        # Verify error message includes timed out stage
+        assert "Chain processing failed" in error_msg
+        assert "analysis" in error_msg
+        assert "SlowAgent" in error_msg
+        assert "Agent processing timed out after 300 seconds" in error_msg
+    
+    def test_parallel_stage_timed_out_status(self, alert_service, chain_context):
+        """Test aggregation with a parallel stage that has TIMED_OUT status."""
+        # Create a timed out agent result
+        timed_out_agent = AgentExecutionResult(
+            status=StageStatus.TIMED_OUT,
+            agent_name="NativeThinkingAgent",
+            stage_name="investigation",
+            timestamp_us=now_us(),
+            result_summary="Agent timed out",
+            error_message="Native thinking timed out after 180 seconds"
+        )
+        
+        # Create parallel stage result with TIMED_OUT status (all agents timed out)
+        parallel_result = ParallelStageResult(
+            stage_name="investigation",
+            results=[timed_out_agent],
+            metadata=ParallelStageMetadata(
+                parent_stage_execution_id="parent-exec-1",
+                parallel_type="replica",
+                success_policy="any",
+                started_at_us=now_us(),
+                completed_at_us=now_us(),
+                agent_metadatas=[
+                    AgentExecutionMetadata(
+                        agent_name="NativeThinkingAgent",
+                        llm_provider="gemini",
+                        iteration_strategy="native-thinking",
+                        started_at_us=now_us(),
+                        completed_at_us=now_us(),
+                        status=StageStatus.TIMED_OUT,
+                        error_message="Native thinking timed out after 180 seconds",
+                        token_usage=None
+                    )
+                ]
+            ),
+            status=StageStatus.TIMED_OUT,
+            timestamp_us=now_us()
+        )
+        
+        # Add to chain context
+        chain_context.add_stage_result("parent-exec-1", parallel_result)
+        
+        # Aggregate errors
+        error_msg = alert_service._aggregate_stage_errors(chain_context)
+        
+        # Verify error message includes timed out agent with label
+        assert "Chain processing failed" in error_msg
+        assert "Parallel stage 'investigation' failed" in error_msg
+        assert "NativeThinkingAgent (timed_out)" in error_msg
+        assert "Native thinking timed out after 180 seconds" in error_msg
+
+
+@pytest.mark.unit
+class TestCancelledStageErrorAggregation:
+    """Tests for cancelled stage error aggregation."""
+    
+    def test_single_cancelled_stage(self, alert_service, chain_context):
+        """Test aggregation with a single cancelled stage."""
+        # Create a cancelled agent result
+        cancelled_result = AgentExecutionResult(
+            status=StageStatus.CANCELLED,
+            agent_name="UserCancelledAgent",
+            stage_name="investigation",
+            timestamp_us=now_us(),
+            result_summary="User cancelled",
+            error_message="User cancelled the operation"
+        )
+        
+        # Add to chain context
+        chain_context.add_stage_result("stage-exec-1", cancelled_result)
+        
+        # Aggregate errors
+        error_msg = alert_service._aggregate_stage_errors(chain_context)
+        
+        # Verify error message includes cancelled stage
+        assert "Chain processing failed" in error_msg
+        assert "investigation" in error_msg
+        assert "UserCancelledAgent" in error_msg
+        assert "User cancelled the operation" in error_msg
+    
+    def test_parallel_stage_cancelled_status(self, alert_service, chain_context):
+        """Test aggregation with a parallel stage that has CANCELLED status."""
+        # Create cancelled agent results
+        cancelled_agent_1 = AgentExecutionResult(
+            status=StageStatus.CANCELLED,
+            agent_name="KubernetesAgent",
+            stage_name="investigation",
+            timestamp_us=now_us(),
+            result_summary="Agent cancelled",
+            error_message="User requested cancellation"
+        )
+        
+        cancelled_agent_2 = AgentExecutionResult(
+            status=StageStatus.CANCELLED,
+            agent_name="LogAgent",
+            stage_name="investigation",
+            timestamp_us=now_us(),
+            result_summary="Agent cancelled",
+            error_message="User requested cancellation"
+        )
+        
+        # Create parallel stage result with CANCELLED status (all agents cancelled)
+        parallel_result = ParallelStageResult(
+            stage_name="investigation",
+            results=[cancelled_agent_1, cancelled_agent_2],
+            metadata=ParallelStageMetadata(
+                parent_stage_execution_id="parent-exec-1",
+                parallel_type="multi_agent",
+                success_policy="any",
+                started_at_us=now_us(),
+                completed_at_us=now_us(),
+                agent_metadatas=[
+                    AgentExecutionMetadata(
+                        agent_name="KubernetesAgent",
+                        llm_provider="gemini",
+                        iteration_strategy="react",
+                        started_at_us=now_us(),
+                        completed_at_us=now_us(),
+                        status=StageStatus.CANCELLED,
+                        error_message="User requested cancellation",
+                        token_usage=None
+                    ),
+                    AgentExecutionMetadata(
+                        agent_name="LogAgent",
+                        llm_provider="openai",
+                        iteration_strategy="react",
+                        started_at_us=now_us(),
+                        completed_at_us=now_us(),
+                        status=StageStatus.CANCELLED,
+                        error_message="User requested cancellation",
+                        token_usage=None
+                    )
+                ]
+            ),
+            status=StageStatus.CANCELLED,
+            timestamp_us=now_us()
+        )
+        
+        # Add to chain context
+        chain_context.add_stage_result("parent-exec-1", parallel_result)
+        
+        # Aggregate errors
+        error_msg = alert_service._aggregate_stage_errors(chain_context)
+        
+        # Verify error message includes both cancelled agents with labels
+        assert "Chain processing failed" in error_msg
+        assert "Parallel stage 'investigation' failed" in error_msg
+        assert "2 agents" in error_msg
+        assert "KubernetesAgent (cancelled)" in error_msg
+        assert "LogAgent (cancelled)" in error_msg
+        assert "User requested cancellation" in error_msg
+
+
+@pytest.mark.unit
 class TestMixedErrorAggregation:
     """Tests for mixed regular and parallel stage error aggregation."""
     

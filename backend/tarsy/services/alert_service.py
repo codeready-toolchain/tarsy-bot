@@ -477,6 +477,23 @@ class AlertService:
                     pause_message,
                     chain_result.timestamp_us
                 )
+            elif chain_result.status == ChainStatus.TIMED_OUT:
+                # Chain timed out - use TIMED_OUT status for better visibility
+                error_msg = chain_result.error or "Chain execution timed out"
+                logger.error(f"Chain execution timed out: {error_msg}")
+                
+                # Update history session with TIMED_OUT status
+                self.session_manager.update_session_status(
+                    chain_context.session_id,
+                    AlertSessionStatus.TIMED_OUT.value,
+                    error_message=error_msg
+                )
+                
+                # Publish session.timed_out event
+                from tarsy.services.events.event_helpers import publish_session_timed_out
+                await publish_session_timed_out(chain_context.session_id)
+                
+                return format_error_response(chain_context, error_msg)
             else:
                 # Handle chain processing error
                 error_msg = chain_result.error or 'Chain processing failed'
@@ -1749,7 +1766,7 @@ class AlertService:
         
         # Collect errors from stage outputs (keys are execution_ids, extract stage_name from result)
         for stage_result in chain_context.stage_outputs.values():
-            if hasattr(stage_result, 'status') and stage_result.status == StageStatus.FAILED:
+            if hasattr(stage_result, 'status') and stage_result.status.is_error():
                 # Check if this is a ParallelStageResult
                 if isinstance(stage_result, ParallelStageResult):
                     # Extract errors from individual parallel agent results
