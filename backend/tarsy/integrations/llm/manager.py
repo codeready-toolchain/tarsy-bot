@@ -42,16 +42,16 @@ class LLMManager:
         # Initialize each configured LLM provider
         for provider_name in self.settings.llm_providers.keys():
             config = None
-            has_api_key = False
+            auth_provided = False
             
             try:
                 config = self.settings.get_llm_config(provider_name)
                 
-                if not config.api_key:
-                    logger.warning(f"Skipping {provider_name}: No API key provided")
+                if not config.is_auth_configured():
+                    logger.warning(f"Skipping {provider_name}: Auth not fully configured")
                     continue  # Don't track as failure - this is expected
                 
-                has_api_key = True  # Mark that we have an API key
+                auth_provided = True  # Mark that we have an API key or some other means of auth
                 
                 # Use unified client for all providers
                 client = LLMClient(provider_name, config, self.settings)
@@ -61,8 +61,8 @@ class LLMManager:
             except Exception as e:
                 error_msg = str(e)
                 logger.error(f"Failed to initialize LLM client {provider_name}: {error_msg}")
-                # Track failure only if API key was provided (unexpected failure)
-                if has_api_key:
+                # Track failure only if auth was provided (unexpected failure)
+                if auth_provided:
                     self.failed_providers[provider_name] = error_msg
     
     def get_failed_providers(self) -> Dict[str, str]:

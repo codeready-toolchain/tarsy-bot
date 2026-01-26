@@ -440,3 +440,209 @@ class TestLLMProviderConfigValidation:
         assert config.api_key == "test-key-value"
         assert config.disable_ssl_verification is False
 
+@pytest.mark.unit
+class TestLLMProviderConfigIsAuthConfigured:
+    """Test cases for is_auth_configured() method."""
+
+    def test_vertexai_with_both_project_and_location_is_configured(self) -> None:
+        """Test that VertexAI with both project and location returns True."""
+        config = LLMProviderConfig(
+            type="vertexai",
+            model="claude-sonnet-4-5@20250929",
+            project="my-gcp-project",
+            location="us-east5"
+        )
+
+        assert config.is_auth_configured() is True
+
+    def test_vertexai_with_only_project_is_not_configured(self) -> None:
+        """Test that VertexAI with only project returns False."""
+        config = LLMProviderConfig(
+            type="vertexai",
+            model="claude-sonnet-4-5@20250929",
+            project="my-gcp-project"
+        )
+
+        assert config.is_auth_configured() is False
+
+    def test_vertexai_with_only_location_is_not_configured(self) -> None:
+        """Test that VertexAI with only location returns False."""
+        config = LLMProviderConfig(
+            type="vertexai",
+            model="claude-sonnet-4-5@20250929",
+            location="us-east5"
+        )
+
+        assert config.is_auth_configured() is False
+
+    def test_vertexai_with_neither_project_nor_location_is_not_configured(self) -> None:
+        """Test that VertexAI without project and location returns False."""
+        config = LLMProviderConfig(
+            type="vertexai",
+            model="claude-sonnet-4-5@20250929"
+        )
+
+        assert config.is_auth_configured() is False
+
+    def test_vertexai_with_empty_project_is_not_configured(self) -> None:
+        """Test that VertexAI with empty project string returns False."""
+        config = LLMProviderConfig(
+            type="vertexai",
+            model="claude-sonnet-4-5@20250929",
+            project="",
+            location="us-east5"
+        )
+
+        assert config.is_auth_configured() is False
+
+    def test_vertexai_with_empty_location_is_not_configured(self) -> None:
+        """Test that VertexAI with empty location string returns False."""
+        config = LLMProviderConfig(
+            type="vertexai",
+            model="claude-sonnet-4-5@20250929",
+            project="my-gcp-project",
+            location=""
+        )
+
+        assert config.is_auth_configured() is False
+
+    def test_vertexai_with_both_empty_is_not_configured(self) -> None:
+        """Test that VertexAI with both project and location as empty strings returns False."""
+        config = LLMProviderConfig(
+            type="vertexai",
+            model="claude-sonnet-4-5@20250929",
+            project="",
+            location=""
+        )
+
+        assert config.is_auth_configured() is False
+ 
+    def test_vertexai_with_whitespace_only_project_is_not_configured(self) -> None:
+        """Test that VertexAI with whitespace-only project returns False."""
+        config = LLMProviderConfig(
+            type="vertexai",
+            model="claude-sonnet-4-5@20250929",
+            project="   ",
+            location="us-east5"
+        )
+
+        assert config.is_auth_configured() is False
+
+    def test_vertexai_with_whitespace_only_location_is_not_configured(self) -> None:
+        """Test that VertexAI with whitespace-only location returns False."""
+        config = LLMProviderConfig(
+            type="vertexai",
+            model="claude-sonnet-4-5@20250929",
+            project="my-gcp-project",
+            location="  \t  "
+        )
+
+        assert config.is_auth_configured() is False
+
+    def test_vertexai_with_both_whitespace_only_is_not_configured(self) -> None:
+        """Test that VertexAI with both project and location as whitespace-only returns False."""
+        config = LLMProviderConfig(
+            type="vertexai",
+            model="claude-sonnet-4-5@20250929",
+            project="   ",
+            location=" \t "
+        )
+
+        assert config.is_auth_configured() is False
+
+    def test_openai_with_api_key_is_configured(self) -> None:
+        """Test that OpenAI with api_key returns True."""
+        config = LLMProviderConfig(
+            type="openai",
+            model="gpt-4",
+            api_key="sk-test-key-123"
+        )
+
+        assert config.is_auth_configured() is True
+
+    def test_openai_without_api_key_is_not_configured(self) -> None:
+        """Test that OpenAI without api_key returns False."""
+        config = LLMProviderConfig(
+            type="openai",
+            model="gpt-4"
+        )
+
+        assert config.is_auth_configured() is False
+
+    def test_openai_with_empty_api_key_is_not_configured(self) -> None:
+        """Test that OpenAI with empty api_key string returns False."""
+        config = LLMProviderConfig(
+            type="openai",
+            model="gpt-4",
+            api_key=""
+        )
+
+        assert config.is_auth_configured() is False
+ 
+    def test_openai_with_whitespace_only_api_key_is_not_configured(self) -> None:
+        """Test that OpenAI with whitespace-only api_key returns False."""
+        config = LLMProviderConfig(
+            type="openai",
+            model="gpt-4",
+            api_key="   \t   "
+        )
+
+        assert config.is_auth_configured() is False
+
+    def test_google_with_api_key_is_configured(self) -> None:
+        """Test that Google with api_key returns True."""
+        config = LLMProviderConfig(
+            type="google",
+            model="gemini-2.5-flash",
+            api_key="test-google-key"
+        )
+
+        assert config.is_auth_configured() is True
+
+    def test_google_without_api_key_is_not_configured(self) -> None:
+        """Test that Google without api_key returns False."""
+        config = LLMProviderConfig(
+            type="google",
+            model="gemini-2.5-flash"
+        )
+
+        assert config.is_auth_configured() is False
+
+    def test_xai_with_api_key_is_configured(self) -> None:
+        """Test that xAI with api_key returns True."""
+        config = LLMProviderConfig(
+            type="xai",
+            model="grok-2",
+            api_key="xai-test-key"
+        )
+
+        assert config.is_auth_configured() is True
+
+    def test_xai_without_api_key_is_not_configured(self) -> None:
+        """Test that xAI without api_key returns False."""
+        config = LLMProviderConfig(
+            type="xai",
+            model="grok-2"
+        )
+
+        assert config.is_auth_configured() is False
+
+    def test_anthropic_with_api_key_is_configured(self) -> None:
+        """Test that Anthropic with api_key returns True."""
+        config = LLMProviderConfig(
+            type="anthropic",
+            model="claude-3-5-sonnet",
+            api_key="sk-ant-test-key"
+        )
+
+        assert config.is_auth_configured() is True
+
+    def test_anthropic_without_api_key_is_not_configured(self) -> None:
+        """Test that Anthropic without api_key returns False."""
+        config = LLMProviderConfig(
+            type="anthropic",
+            model="claude-3-5-sonnet"
+        )
+
+        assert config.is_auth_configured() is False
+
