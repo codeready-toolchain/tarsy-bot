@@ -503,13 +503,23 @@ class LLMClient:
                     # Uses active_native_tools which may be overridden at session level
                     llm_with_tools = self.llm_client
                     code_execution_enabled = False
-                    
+
+                    # Bind max_tokens for VertexAI (Anthropic via Vertex AI)
+                    # ChatAnthropicVertex requires max_tokens to be bound, not passed in config
+                    if self.config.type == LLMProviderType.VERTEXAI and max_tokens is not None:
+                        try:
+                            llm_with_tools = self.llm_client.bind(max_tokens=max_tokens)
+                            logger.debug(f"Bound max_tokens={max_tokens} to {self.provider_name} model")
+                        except Exception as e:
+                            logger.error(f"Failed to bind max_tokens: {e}, continuing without explicit token limit")
+                            llm_with_tools = self.llm_client
+
                     if self.config.type == LLMProviderType.GOOGLE:
                         # Collect all enabled native tools (from active config which may be overridden)
                         active_tools = [tool for tool in active_native_tools.values() if tool is not None]
                         # Check if code execution is specifically enabled
                         code_execution_enabled = active_native_tools.get(GoogleNativeTool.CODE_EXECUTION.value) is not None
-                        
+
                         if active_tools:
                             try:
                                 # Convert all Google AI SDK tools to dicts and bind to model
