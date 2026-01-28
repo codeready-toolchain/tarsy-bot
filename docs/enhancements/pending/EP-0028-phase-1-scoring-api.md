@@ -325,21 +325,21 @@ Clients subscribe to channels via existing WebSocket infrastructure. Real-time u
 
 **Goal:** Implement hardcoded judge prompts and criteria versioning
 
-* [ ] Hardcode judge prompts as module constants in scoring service
+* [x] Hardcode judge prompts as module constants in scoring service
   * Module file: `backend/tarsy/agents/prompt/judges.py`
   * Constants:
     * `JUDGE_PROMPT_SCORE` - Main scoring evaluation prompt (see Attachment section)
     * `JUDGE_PROMPT_FOLLOWUP_MISSING_TOOLS` - Missing tools analysis prompt
   * Include placeholder support: `{{SESSION_CONVERSATION}}`, `{{ALERT_DATA}}`, `{{OUTPUT_SCHEMA}}`
 
-* [ ] Implement SHA256 hashing logic for BOTH prompts concatenated
+* [x] Implement SHA256 hashing logic for BOTH prompts concatenated
   * Concatenate: `JUDGE_PROMPT_SCORE + JUDGE_PROMPT_FOLLOWUP_MISSING_TOOLS`
   * Compute SHA256 hash (deterministic criteria versioning)
   * Hash computed once at TARSy startup (module load time)
   * Store as module-level variable for reuse
   * Change the implementation of the `current_prompt_used` to use this computed hash
 
-* [ ] Test hash determinism and reproducibility
+* [x] Test hash determinism and reproducibility
   * Verify same prompts produce same hash
   * Test hash changes when prompts change
 
@@ -357,10 +357,10 @@ Clients subscribe to channels via existing WebSocket infrastructure. Real-time u
 
 **Goal:** Implement core scoring logic and judge LLM integration
 
-* [ ] Implement session data retrieval from History Service
+* [x] Implement session data retrieval from History Service
   * Fetch complete session conversation (equivalent to `/final-analysis` endpoint data)
 
-* [ ] Build multi-turn judge prompt construction with placeholder substitution
+* [x] Build multi-turn judge prompt construction with placeholder substitution
   * **Turn 1 - Score Prompt:**
     * Start with `JUDGE_PROMPT_SCORE` constant
     * Replace `{{SESSION_CONVERSATION}}` with full conversation from History Service
@@ -377,18 +377,18 @@ Clients subscribe to channels via existing WebSocket infrastructure. Real-time u
   * **Store Missing Tools:**
     * Store full response as `missing_tools_analysis` (freeform text)
 
-* [ ] Integrate LLM client for multi-turn conversation
+* [x] Integrate LLM client for multi-turn conversation
   * Use TARSy's default LLM configuration via existing LLM client infrastructure
   * Support conversation history across turns
   * Use LLM client with conversation history support
   * reuse existing code to gain support for retries, back-off, circuit breaking, etc.
 
-* [ ] Implement score extraction logic
+* [x] Implement score extraction logic
   * Regex pattern: `r'(\d+)\s*$'` (extracts integer from last line)
   * Validate score is 0-100 range
   * Handle extraction failures with detailed error logging
 
-* [ ] Implement database storage logic
+* [x] Implement database storage logic
   * Insert single `session_scores` record with:
     * `total_score` (extracted integer)
     * `score_analysis` (freeform text, response minus last line)
@@ -400,13 +400,13 @@ Clients subscribe to channels via existing WebSocket infrastructure. Real-time u
   * Return populated `SessionScore` API model
   * Database retry: attempt once on failure, then return 500
 
-* [ ] Implement error handling
+* [x] Implement error handling
   * Score extraction failure: Log raw LLM response, return 500 with details
   * Database failures: Retry once, then return 500
   * Missing session: Return 404
   * LLM API failures: Handled by retry + circuit breaker
 
-* [ ] Test end-to-end scoring flow with mocked LLM responses
+* [x] Test end-to-end scoring flow with mocked LLM responses
   * Mock multi-turn LLM conversation (2 turns)
   * Verify score extraction
   * Test database storage

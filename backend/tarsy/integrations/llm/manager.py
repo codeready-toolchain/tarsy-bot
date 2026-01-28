@@ -74,7 +74,7 @@ class LLMManager:
         """
         return self.failed_providers.copy()
     
-    def get_client(self, provider: str = None) -> Optional[LLMClient]:
+    def get_client(self, provider: str | None = None) -> Optional[LLMClient]:
         """Get an LLM client by provider name."""
         if not provider:
             provider = self.settings.llm_provider
@@ -83,7 +83,7 @@ class LLMManager:
     
     def get_native_thinking_client(
         self, 
-        provider: str = None
+        provider: str | None = None
     ) -> Optional['GeminiNativeThinkingClient']:
         """
         Get native thinking client for Google/Gemini providers.
