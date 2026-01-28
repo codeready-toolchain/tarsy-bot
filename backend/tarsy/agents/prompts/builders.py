@@ -6,10 +6,10 @@ for clean, composable prompt generation.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from tarsy.models.processing_context import ToolWithServer
-from tarsy.models.unified_interactions import LLMConversation, MessageRole
+from tarsy.models.unified_interactions import LLMConversation, LLMInteraction, MessageRole
 from tarsy.utils.logger import get_module_logger
 
 if TYPE_CHECKING:
@@ -323,30 +323,85 @@ You have access to the same tools and systems that were used in the original inv
     
     # ============ Chat Formatting Methods ============
     
-    def format_investigation_context(self, conversation: Optional[LLMConversation]) -> str:
+    def _build_thinking_map(
+        self,
+        interactions: List[LLMInteraction]
+    ) -> Dict[int, str]:
+        """
+        Build map of thinking_content indexed by assistant message position.
+        
+        Strategy:
+        - Track cumulative assistant message counts across interactions
+        - Each interaction's thinking_content applies to the LAST new assistant message
+        - Only native thinking interactions have thinking_content (ReAct has None)
+        
+        Args:
+            interactions: List of LLM interactions in chronological order
+            
+        Returns:
+            Dictionary mapping assistant_message_index -> thinking_content
+            
+        Example:
+            Interaction 1: 1 assistant msg, thinking="Check namespace..."
+            Interaction 2: 2 assistant msgs total, thinking="Now check events..."
+            Result: {0: "Check namespace...", 1: "Now check events..."}
+        """
+        thinking_map = {}
+        prev_assistant_count = 0
+        
+        for interaction in interactions:
+            if not interaction.conversation or not interaction.thinking_content:
+                continue
+            
+            # Count assistant messages in this interaction's conversation
+            curr_assistant_count = sum(
+                1 for msg in interaction.conversation.messages
+                if msg.role == MessageRole.ASSISTANT
+            )
+            
+            # Thinking applies to the LAST new assistant message
+            if curr_assistant_count > prev_assistant_count:
+                last_new_assistant_idx = curr_assistant_count - 1
+                thinking_map[last_new_assistant_idx] = interaction.thinking_content
+            
+            prev_assistant_count = curr_assistant_count
+        
+        return thinking_map
+    
+    def format_investigation_context(
+        self,
+        conversation: Optional[LLMConversation],
+        interactions: Optional[List[LLMInteraction]] = None,
+        include_thinking: bool = False
+    ) -> str:
         """
         Format investigation conversation as clean historical context.
         
         Extracts user/assistant messages (skips system instructions) and formats
-        with clear emoji-based section markers for LLM consumption.
+        with clear emoji-based section markers for LLM consumption. Optionally
+        includes thinking_content from native thinking models.
         
         The formatted history includes:
-        - Initial investigation request (alert data, runbook, available tools)
-        - All ReAct reasoning (Thought/Action cycles)
+        - Investigation history header (📋 INVESTIGATION HISTORY)
+        - Initial investigation request (alert + runbook + previous stages + tools)
+        - Internal reasoning (optional, from native thinking models)
+        - All ReAct reasoning or Native Thinking responses
         - Tool observations (results)
         - Final analysis
         
         Args:
-            conversation: LLMConversation from LLMInteraction.conversation field (can be None for cancelled sessions)
+            conversation: LLMConversation from last LLMInteraction (has all messages)
+            interactions: Optional list of ALL interactions for thinking_content correlation
+            include_thinking: If True, include internal reasoning from native thinking models
             
         Returns:
-            Formatted string with investigation context section
+            Formatted string with investigation history section
         """
         # Handle None conversation (e.g., from cancelled sessions)
         if conversation is None:
             sections = []
             sections.append("═" * 79)
-            sections.append("📋 INVESTIGATION CONTEXT")
+            sections.append("📋 INVESTIGATION HISTORY")
             sections.append("═" * 79)
             sections.append("")
             sections.append("# Original Investigation")
@@ -356,14 +411,20 @@ You have access to the same tools and systems that were used in the original inv
             sections.append("═" * 79)
             return "\n".join(sections)
         
+        # Build thinking map if requested and interactions provided
+        thinking_map = {}
+        if include_thinking and interactions:
+            thinking_map = self._build_thinking_map(interactions)
+        
         sections = []
         sections.append("═" * 79)
-        sections.append("📋 INVESTIGATION CONTEXT")
+        sections.append("📋 INVESTIGATION HISTORY")
         sections.append("═" * 79)
         sections.append("")
         sections.append("# Original Investigation")
         sections.append("")
         
+        assistant_index = 0
         for i, msg in enumerate(conversation.messages):
             # Skip system messages - those are instructions we'll re-add for chat
             if msg.role == MessageRole.SYSTEM:
@@ -387,11 +448,20 @@ You have access to the same tools and systems that were used in the original inv
                     sections.append("")
             
             elif msg.role == MessageRole.ASSISTANT:
+                # Insert thinking BEFORE this assistant message if available
+                if assistant_index in thinking_map:
+                    sections.append("**Internal Reasoning:**")
+                    sections.append("")
+                    sections.append(thinking_map[assistant_index])
+                    sections.append("")
+                
                 # Assistant messages contain Thought/Action/Final Answer
                 sections.append("**Agent Response:**")
                 sections.append("")
                 sections.append(msg.content)
                 sections.append("")
+                
+                assistant_index += 1
         
         return "\n".join(sections)
     

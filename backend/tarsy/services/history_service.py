@@ -1298,6 +1298,197 @@ class HistoryService:
             logger.error(f"Failed to build conversation history: {str(e)}")
             return None
     
+    # ===== Session History Formatting =====
+    # These methods provide formatted session history for external consumption
+    # (chat follow-ups, scoring, auditing). They work universally across all
+    # iteration strategies by operating on the strategy-agnostic LLMConversation structure.
+    #
+    # Thinking Content Support:
+    # For native thinking models (Gemini), thinking_content can be optionally included
+    # by passing include_thinking=True. The implementation correlates thinking_content
+    # from each LLM interaction with its corresponding assistant message by tracking
+    # cumulative message counts across interactions.
+    
+    def get_formatted_session_conversation(
+        self,
+        session_id: str,
+        exclude_chat_stages: bool = True,
+        include_thinking: bool = False
+    ) -> str:
+        """
+        Get formatted conversation text for any session (ReAct, Native Thinking, Parallel).
+        
+        This method works universally across all iteration strategies by operating
+        on the LLMConversation structure which is strategy-agnostic. It retrieves
+        all relevant interactions and formats them using PromptBuilder, optionally
+        including thinking_content from native thinking models.
+        
+        The formatted output includes:
+        - Investigation history header (📋 INVESTIGATION HISTORY)
+        - Initial investigation request (alert + runbook + previous stages + tools)
+        - Internal reasoning (optional, from native thinking models correlated with responses)
+        - All ReAct reasoning or Native Thinking responses
+        - Tool observations
+        - Final analysis
+        
+        I can be used by different components, such as:
+        - ChatService: To capture session investigation history for follow-up chats (include_thinking=False)
+        - ScoringService: As the SESSION_CONVERSATION component for judge prompts (include_thinking=True)
+        
+        Args:
+            session_id: Session identifier
+            exclude_chat_stages: If True, only include main investigation stages (default)
+            include_thinking: If True, include internal reasoning from native thinking models (default: False)
+            
+        Returns:
+            Formatted conversation text with optional thinking_content
+            
+        Raises:
+            ValueError: If no valid interactions found for the session
+        """
+        def _get_formatted_conversation():
+            with self.get_repository() as repo:
+                if not repo:
+                    return None
+                
+                # Get ALL LLM interactions (needed for thinking_content correlation)
+                all_interactions = repo.get_llm_interactions_for_session(session_id=session_id)
+                
+                if not all_interactions:
+                    raise ValueError(f"No LLM interactions found for session {session_id}")
+                
+                # Filter to valid interactions
+                from tarsy.models.constants import CHAT_CONTEXT_INTERACTION_TYPES, LLMInteractionType
+                
+                # Filter by interaction type if requested
+                if exclude_chat_stages:
+                    # Exclude CHAT interaction types
+                    all_interactions = [
+                        i for i in all_interactions
+                        if i.interaction_type != LLMInteractionType.CHAT.value
+                    ]
+                
+                valid_interactions = [
+                    interaction for interaction in all_interactions
+                    if (interaction.conversation is not None and 
+                        interaction.interaction_type in CHAT_CONTEXT_INTERACTION_TYPES)
+                ]
+                
+                # If no valid interactions, return cancellation message
+                if not valid_interactions:
+                    from tarsy.agents.prompts.builders import PromptBuilder
+                    builder = PromptBuilder()
+                    return builder.format_investigation_context(None)
+                
+                # Get last interaction's conversation (has all accumulated messages)
+                last_interaction = valid_interactions[-1]
+                
+                # Format using PromptBuilder with optional thinking_content
+                from tarsy.agents.prompts.builders import PromptBuilder
+                builder = PromptBuilder()
+                return builder.format_investigation_context(
+                    conversation=last_interaction.conversation,
+                    interactions=valid_interactions if include_thinking else None,
+                    include_thinking=include_thinking
+                )
+        
+        result = self._retry_database_operation(
+            "get_formatted_session_conversation",
+            _get_formatted_conversation
+        )
+        
+        if result is None:
+            raise ValueError(f"Failed to get formatted conversation for session {session_id}")
+        
+        return result
+    
+    def build_comprehensive_session_history(
+        self,
+        session_id: str,
+        include_separate_alert_section: bool = True,
+        include_thinking: bool = False
+    ) -> str:
+        """
+        Build comprehensive session history for external analysis (scoring, auditing).
+        
+        Returns complete session information suitable for LLM-based evaluation:
+        - Alert metadata and data (optional separate section for structured access)
+        - Complete investigation conversation (includes alert + runbook + all stages)
+        
+        Note: Runbook content is already embedded in the investigation conversation
+        (in the initial prompt), so it's not duplicated in a separate section.
+        
+        This works universally across:
+        - ReAct and Native Thinking iteration strategies
+        - Sequential and parallel agent stages  
+        - Multiple LLM providers
+        
+        Args:
+            session_id: Session identifier
+            include_separate_alert_section: If True, add structured alert metadata 
+                at the top for easy LLM access (default: True)
+            include_thinking: If True, include internal reasoning from native thinking models (default: False)
+            
+        Returns:
+            Formatted text with optional alert section + investigation history (with optional thinking)
+            
+        Example output (include_separate_alert_section=True):
+            ═══════════════════════════════════════════════════════════════
+            ALERT INFORMATION
+            ═══════════════════════════════════════════════════════════════
+            **Alert Type:** PodCrashLoop
+            **Session ID:** abc-123
+            **Status:** completed
+            
+            **Alert Data:**
+            ```json
+            {
+              "pod": "my-pod",
+              "namespace": "production"
+            }
+            ```
+            
+            [followed by full investigation conversation with 📋 INVESTIGATION HISTORY]
+        """
+        # Get formatted investigation conversation (includes runbook, optional thinking)
+        conversation_text = self.get_formatted_session_conversation(
+            session_id,
+            include_thinking=include_thinking
+        )
+        
+        # If no separate alert section requested, return just the conversation
+        if not include_separate_alert_section:
+            return conversation_text
+        
+        # Get session metadata for structured alert section
+        session = self.get_session(session_id)
+        if not session:
+            raise ValueError(f"Session {session_id} not found")
+        
+        # Build alert section for structured access
+        sections = []
+        sections.append("=" * 79)
+        sections.append("ALERT INFORMATION")
+        sections.append("=" * 79)
+        sections.append("")
+        sections.append(f"**Alert Type:** {session.alert_type}")
+        sections.append(f"**Session ID:** {session.session_id}")
+        # Convert status enum to value if it's an enum
+        status_value = session.status.value if hasattr(session.status, 'value') else session.status
+        sections.append(f"**Status:** {status_value}")
+        sections.append("")
+        sections.append("**Alert Data:**")
+        sections.append("```json")
+        import json
+        sections.append(json.dumps(session.alert_data, indent=2))
+        sections.append("```")
+        sections.append("")
+        
+        # Append investigation conversation (already includes alert + runbook)
+        sections.append(conversation_text)
+        
+        return "\n".join(sections)
+    
     # Pod Tracking & Orphan Detection
     
     async def start_chat_message_processing(self, chat_id: str, pod_id: str) -> bool:

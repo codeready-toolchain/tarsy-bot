@@ -360,9 +360,8 @@ class TestChatService:
         self, chat_service, mock_history_service, sample_session, sample_llm_interactions
     ):
         """Test capturing session context from LLM interactions."""
-        mock_history_service.get_llm_interactions_for_session = AsyncMock(
-            return_value=sample_llm_interactions
-        )
+        # Mock the new history service method
+        mock_history_service.get_formatted_session_conversation.return_value = "📋 INVESTIGATION HISTORY\n\nPod crashed in production"
         mock_history_service.get_session.return_value = sample_session
         
         context = await chat_service._capture_session_context("test-session-123")
@@ -377,9 +376,10 @@ class TestChatService:
         self, chat_service, mock_history_service
     ):
         """Test context capture fails when no LLM interactions exist."""
-        mock_history_service.get_llm_interactions_for_session = AsyncMock(return_value=[])
+        # Mock the new history service method to raise ValueError
+        mock_history_service.get_formatted_session_conversation.side_effect = ValueError("Failed to get formatted conversation")
         
-        with pytest.raises(ValueError, match="No LLM interactions"):
+        with pytest.raises(ValueError, match="Failed to get formatted conversation"):
             await chat_service._capture_session_context("test-session-123")
     
     @pytest.mark.asyncio
@@ -398,9 +398,8 @@ class TestChatService:
             created_at_us=now_us(),
         )
         
-        mock_history_service.get_llm_interactions_for_session = AsyncMock(
-            return_value=[cancelled_interaction]
-        )
+        # Mock the new history service method to return cancellation message
+        mock_history_service.get_formatted_session_conversation.return_value = "📋 INVESTIGATION HISTORY\n\n⚠️  This investigation was cancelled before completion."
         mock_history_service.get_session.return_value = sample_session
         
         # Should not raise AttributeError and should return context with cancellation message
@@ -408,7 +407,7 @@ class TestChatService:
         
         assert isinstance(context, SessionContextData)
         assert context.chain_id == "kubernetes-investigation"
-        assert "[Investigation was cancelled before completion]" in context.conversation_history
+        assert "cancelled before completion" in context.conversation_history
         assert context.captured_at_us > 0
     
     @pytest.mark.asyncio
@@ -458,9 +457,8 @@ class TestChatService:
             success=False,
         )
         
-        mock_history_service.get_llm_interactions_for_session = AsyncMock(
-            return_value=[successful_interaction_1, successful_interaction_2, cancelled_interaction]
-        )
+        # Mock the new history service method
+        mock_history_service.get_formatted_session_conversation.return_value = "📋 INVESTIGATION HISTORY\n\nThe pod crashed due to OOM"
         mock_history_service.get_session.return_value = sample_session
         
         # Should use the last successful interaction (interaction_2)
@@ -470,7 +468,7 @@ class TestChatService:
         assert context.chain_id == "kubernetes-investigation"
         # Should contain data from the last successful interaction
         assert "The pod crashed due to OOM" in context.conversation_history
-        assert "[Investigation was cancelled before completion]" not in context.conversation_history
+        assert "cancelled before completion" not in context.conversation_history
         assert context.captured_at_us > 0
     
     @pytest.mark.asyncio
@@ -531,9 +529,8 @@ class TestChatService:
             created_at_us=now_us(),
         )
         
-        mock_history_service.get_llm_interactions_for_session = AsyncMock(
-            return_value=[investigation_interaction, summarization_interaction, investigation_interaction_2]
-        )
+        # Mock the new history service method
+        mock_history_service.get_formatted_session_conversation.return_value = "📋 INVESTIGATION HISTORY\n\nRoot cause: Memory leak"
         mock_history_service.get_session.return_value = sample_session
         
         # Should use the last investigation interaction, skipping summarization
@@ -595,9 +592,8 @@ class TestChatService:
             success=False,
         )
         
-        mock_history_service.get_llm_interactions_for_session = AsyncMock(
-            return_value=[investigation_interaction, summarization_interaction, cancelled_interaction]
-        )
+        # Mock the new history service method
+        mock_history_service.get_formatted_session_conversation.return_value = "📋 INVESTIGATION HISTORY\n\nFound the problem"
         mock_history_service.get_session.return_value = sample_session
         
         # Should use the investigation interaction, skipping both summarization and cancelled
@@ -643,9 +639,8 @@ class TestChatService:
         
         mock_history_service.get_session.return_value = sample_session
         mock_history_service.get_chat_by_session = AsyncMock(return_value=None)
-        mock_history_service.get_llm_interactions_for_session = AsyncMock(
-            return_value=[successful_interaction, cancelled_interaction]
-        )
+        # Mock the new history service method
+        mock_history_service.get_formatted_session_conversation.return_value = "📋 INVESTIGATION HISTORY\n\nFound the issue"
         
         # Mock create_chat to capture what would be saved
         captured_chat = None

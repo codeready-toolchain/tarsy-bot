@@ -2335,3 +2335,340 @@ class TestConversationHistory:
         # Assert
         assert session_conv is None
         assert chat_conv is None
+    
+    # ===== Tests for Session History Formatting =====
+    
+    @pytest.mark.unit
+    def test_get_formatted_session_conversation_success(self, history_service):
+        """Test get_formatted_session_conversation returns formatted text."""
+        # Setup: Create session with LLM interaction
+        session = SessionFactory.create_test_session(
+            session_id="test-session",
+            alert_type="PodCrashLoop",
+            status=AlertSessionStatus.COMPLETED
+        )
+        
+        # Create LLM interaction with conversation
+        from tarsy.models.unified_interactions import LLMInteraction, LLMInteractionType
+        interaction = Mock(spec=LLMInteraction)
+        interaction.conversation = LLMConversation(
+            messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System instructions"),
+                LLMMessage(role=MessageRole.USER, content="Check pod status in namespace prod"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Thought: I need to check pods\nAction: kubectl get pods"),
+            ]
+        )
+        interaction.interaction_type = LLMInteractionType.INVESTIGATION
+        interaction.thinking_content = None
+        
+        # Setup mock repository
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        dependencies['repository'].get_llm_interactions_for_session.return_value = [interaction]
+        
+        with patch.object(history_service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+            mock_get_repo.return_value.__exit__.return_value = None
+            
+            # Act
+            result = history_service.get_formatted_session_conversation(
+                session_id="test-session",
+                exclude_chat_stages=True,
+                include_thinking=False
+            )
+        
+        # Assert
+        assert result is not None
+        assert "📋 INVESTIGATION HISTORY" in result
+        assert "### Initial Investigation Request" in result
+        assert "**Agent Response:**" in result
+        assert "Check pod status in namespace prod" in result
+        # Should NOT include thinking_content when include_thinking=False
+        assert "**Internal Reasoning:**" not in result
+    
+    @pytest.mark.unit
+    def test_get_formatted_session_conversation_with_thinking(self, history_service):
+        """Test get_formatted_session_conversation includes thinking_content."""
+        # Setup: Create session with native thinking interaction
+        from tarsy.models.unified_interactions import LLMInteraction, LLMInteractionType
+        
+        interaction = Mock(spec=LLMInteraction)
+        interaction.conversation = LLMConversation(
+            messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System instructions"),
+                LLMMessage(role=MessageRole.USER, content="Check pod status"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Let me check the pods"),
+            ]
+        )
+        interaction.interaction_type = LLMInteractionType.INVESTIGATION
+        interaction.thinking_content = "I should start by examining the namespace for any crash loop patterns"
+        
+        # Setup mock repository
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        dependencies['repository'].get_llm_interactions_for_session.return_value = [interaction]
+        
+        with patch.object(history_service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+            mock_get_repo.return_value.__exit__.return_value = None
+            
+            # Act
+            result = history_service.get_formatted_session_conversation(
+                session_id="test-session",
+                include_thinking=True
+            )
+        
+        # Assert
+        assert result is not None
+        assert "📋 INVESTIGATION HISTORY" in result
+        assert "**Internal Reasoning:**" in result
+        assert "I should start by examining the namespace" in result
+        # Thinking should appear BEFORE agent response
+        thinking_pos = result.find("**Internal Reasoning:**")
+        response_pos = result.find("**Agent Response:**")
+        assert thinking_pos < response_pos
+    
+    @pytest.mark.unit
+    def test_get_formatted_session_conversation_mixed_interactions(self, history_service):
+        """Test thinking correlation with mix of ReAct and Native Thinking."""
+        # Setup: Create multiple interactions, some with thinking, some without
+        from tarsy.models.unified_interactions import LLMInteraction, LLMInteractionType
+        
+        # First interaction: ReAct (no thinking)
+        interaction1 = Mock(spec=LLMInteraction)
+        interaction1.conversation = LLMConversation(
+            messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                LLMMessage(role=MessageRole.USER, content="Check pods"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Response 1"),
+            ]
+        )
+        interaction1.interaction_type = LLMInteractionType.INVESTIGATION
+        interaction1.thinking_content = None
+        
+        # Second interaction: Native thinking (with thinking)
+        interaction2 = Mock(spec=LLMInteraction)
+        interaction2.conversation = LLMConversation(
+            messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                LLMMessage(role=MessageRole.USER, content="Check pods"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Response 1"),
+                LLMMessage(role=MessageRole.USER, content="Tool result"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Response 2"),
+            ]
+        )
+        interaction2.interaction_type = LLMInteractionType.INVESTIGATION
+        interaction2.thinking_content = "Now I need to analyze the events"
+        
+        # Setup mock repository
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        dependencies['repository'].get_llm_interactions_for_session.return_value = [interaction1, interaction2]
+        
+        with patch.object(history_service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+            mock_get_repo.return_value.__exit__.return_value = None
+            
+            # Act
+            result = history_service.get_formatted_session_conversation(
+                session_id="test-session",
+                include_thinking=True
+            )
+        
+        # Assert
+        assert result is not None
+        # Should have both responses
+        assert "Response 1" in result
+        assert "Response 2" in result
+        # Only second interaction has thinking
+        assert result.count("**Internal Reasoning:**") == 1
+        assert "Now I need to analyze the events" in result
+    
+    @pytest.mark.unit
+    def test_get_formatted_session_conversation_cancelled_session(self, history_service):
+        """Test handling of cancelled sessions with no valid conversation."""
+        # Setup: Create interaction with None conversation
+        from tarsy.models.unified_interactions import LLMInteraction, LLMInteractionType
+        
+        interaction = Mock(spec=LLMInteraction)
+        interaction.conversation = None
+        interaction.interaction_type = LLMInteractionType.INVESTIGATION
+        interaction.thinking_content = None
+        
+        # Setup mock repository
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        dependencies['repository'].get_llm_interactions_for_session.return_value = [interaction]
+        
+        with patch.object(history_service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+            mock_get_repo.return_value.__exit__.return_value = None
+            
+            # Act
+            result = history_service.get_formatted_session_conversation(
+                session_id="test-session"
+            )
+        
+        # Assert
+        assert result is not None
+        assert "📋 INVESTIGATION HISTORY" in result
+        assert "⚠️  This investigation was cancelled before completion." in result
+    
+    @pytest.mark.unit
+    def test_get_formatted_session_conversation_filters_by_interaction_type(self, history_service):
+        """Test that only CHAT_CONTEXT_INTERACTION_TYPES are used."""
+        # Setup: Mix of interaction types
+        from tarsy.models.unified_interactions import LLMInteraction, LLMInteractionType
+        
+        # Investigation interaction (should be used)
+        investigation = Mock(spec=LLMInteraction)
+        investigation.conversation = LLMConversation(
+            messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                LLMMessage(role=MessageRole.USER, content="User message"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Investigation response"),
+            ]
+        )
+        investigation.interaction_type = LLMInteractionType.INVESTIGATION
+        investigation.thinking_content = None
+        
+        # Summarization interaction (should be skipped)
+        summarization = Mock(spec=LLMInteraction)
+        summarization.conversation = LLMConversation(
+            messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                LLMMessage(role=MessageRole.USER, content="Summarization prompt"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Summary"),
+            ]
+        )
+        summarization.interaction_type = LLMInteractionType.SUMMARIZATION
+        summarization.thinking_content = None
+        
+        # Setup mock repository
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        dependencies['repository'].get_llm_interactions_for_session.return_value = [investigation, summarization]
+        
+        with patch.object(history_service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+            mock_get_repo.return_value.__exit__.return_value = None
+            
+            # Act
+            result = history_service.get_formatted_session_conversation(
+                session_id="test-session"
+            )
+        
+        # Assert
+        assert "Investigation response" in result
+        # Summarization should be filtered out
+        assert "Summary" not in result
+    
+    @pytest.mark.unit
+    def test_get_formatted_session_conversation_no_interactions(self, history_service):
+        """Test error handling when no interactions exist."""
+        # Setup mock repository with empty interactions
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        dependencies['repository'].get_llm_interactions_for_session.return_value = []
+        
+        with patch.object(history_service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+            mock_get_repo.return_value.__exit__.return_value = None
+            
+            # Act & Assert
+            with pytest.raises(ValueError, match="Failed to get formatted conversation"):
+                history_service.get_formatted_session_conversation(
+                    session_id="test-session"
+                )
+    
+    @pytest.mark.unit
+    def test_build_comprehensive_session_history_with_alert_section(self, history_service):
+        """Test comprehensive history with separate alert section."""
+        # Setup: Create session
+        session = SessionFactory.create_test_session(
+            session_id="test-session",
+            alert_type="PodCrashLoop",
+            status=AlertSessionStatus.COMPLETED,
+            alert_data={"pod": "my-pod", "namespace": "production"}
+        )
+        
+        # Mock get_formatted_session_conversation to return formatted text
+        with patch.object(history_service, 'get_formatted_session_conversation') as mock_get_formatted:
+            mock_get_formatted.return_value = "📋 INVESTIGATION HISTORY\n\nInvestigation content"
+            
+            # Mock get_session to return the actual session
+            with patch.object(history_service, 'get_session') as mock_get_session:
+                mock_get_session.return_value = session
+                
+                # Act
+                result = history_service.build_comprehensive_session_history(
+                    session_id="test-session",
+                    include_separate_alert_section=True
+                )
+        
+        # Assert
+        assert result is not None
+        assert "ALERT INFORMATION" in result
+        assert "**Alert Type:** PodCrashLoop" in result
+        assert "**Session ID:** test-session" in result
+        assert "**Status:** completed" in result
+        assert "**Alert Data:**" in result
+        assert '"pod": "my-pod"' in result
+        assert '"namespace": "production"' in result
+        assert "📋 INVESTIGATION HISTORY" in result
+    
+    @pytest.mark.unit
+    def test_build_comprehensive_session_history_without_alert_section(self, history_service):
+        """Test comprehensive history without separate alert section."""
+        # Setup: Create session and interaction
+        session = SessionFactory.create_test_session(
+            session_id="test-session",
+            alert_type="PodCrashLoop",
+            status=AlertSessionStatus.COMPLETED
+        )
+        
+        from tarsy.models.unified_interactions import LLMInteraction, LLMInteractionType
+        interaction = Mock(spec=LLMInteraction)
+        interaction.conversation = LLMConversation(
+            messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                LLMMessage(role=MessageRole.USER, content="Check pod"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Response"),
+            ]
+        )
+        interaction.interaction_type = LLMInteractionType.INVESTIGATION
+        interaction.thinking_content = None
+        
+        # Setup mock repository
+        dependencies = MockFactory.create_mock_history_service_dependencies()
+        dependencies['repository'].get_llm_interactions_for_session.return_value = [interaction]
+        dependencies['repository'].get_session.return_value = session
+        
+        with patch.object(history_service, 'get_repository') as mock_get_repo:
+            mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+            mock_get_repo.return_value.__exit__.return_value = None
+            
+            # Act
+            result = history_service.build_comprehensive_session_history(
+                session_id="test-session",
+                include_separate_alert_section=False
+            )
+        
+        # Assert
+        assert result is not None
+        # Should NOT include ALERT INFORMATION header
+        assert "ALERT INFORMATION" not in result
+        # Should still have investigation history
+        assert "📋 INVESTIGATION HISTORY" in result
+    
+    @pytest.mark.unit
+    def test_build_comprehensive_session_history_session_not_found(self, history_service):
+        """Test error when session doesn't exist."""
+        # Mock get_formatted_session_conversation to return formatted text
+        with patch.object(history_service, 'get_formatted_session_conversation') as mock_get_formatted:
+            mock_get_formatted.return_value = "📋 INVESTIGATION HISTORY\n\nInvestigation content"
+            
+            # Mock get_session to return None (session not found)
+            with patch.object(history_service, 'get_session') as mock_get_session:
+                mock_get_session.return_value = None
+                
+                # Act & Assert
+                with pytest.raises(ValueError, match="Session test-session not found"):
+                    history_service.build_comprehensive_session_history(
+                        session_id="test-session",
+                        include_separate_alert_section=True
+                    )

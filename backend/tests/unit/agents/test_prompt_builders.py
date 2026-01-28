@@ -572,7 +572,7 @@ class TestInvestigationContextFormatting:
         result = builder.format_investigation_context(conversation)
         
         # Should contain investigation context markers
-        assert "INVESTIGATION CONTEXT" in result
+        assert "INVESTIGATION HISTORY" in result
         assert "Original Investigation" in result
         
         # Should contain user and assistant messages (but not system)
@@ -589,7 +589,7 @@ class TestInvestigationContextFormatting:
         result = builder.format_investigation_context(None)
         
         # Should contain investigation context markers
-        assert "INVESTIGATION CONTEXT" in result
+        assert "INVESTIGATION HISTORY" in result
         assert "Original Investigation" in result
         
         # Should contain cancellation message
@@ -990,3 +990,226 @@ class TestNativeThinkingPromptBuilding:
         assert "Previous Stage Data" in prompt
         assert "parallel stage" in prompt.lower() or "KubernetesAgent" in prompt
         assert "Pod memory exceeded" in prompt or "Node under pressure" in prompt
+
+
+@pytest.mark.unit
+class TestThinkingContentCorrelation:
+    """Test thinking_content correlation in PromptBuilder."""
+    
+    @pytest.fixture
+    def builder(self):
+        """Create PromptBuilder instance."""
+        return PromptBuilder()
+    
+    def test_build_thinking_map_single_interaction(self, builder):
+        """Test thinking map with single interaction."""
+        from tarsy.models.unified_interactions import LLMInteraction
+        
+        # Create interaction with one assistant message and thinking
+        interaction = Mock(spec=LLMInteraction)
+        interaction.conversation = LLMConversation(
+            messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                LLMMessage(role=MessageRole.USER, content="User message"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Assistant response"),
+            ]
+        )
+        interaction.thinking_content = "My reasoning for this response"
+        
+        # Act
+        thinking_map = builder._build_thinking_map([interaction])
+        
+        # Assert
+        assert thinking_map == {0: "My reasoning for this response"}
+    
+    def test_build_thinking_map_multiple_interactions(self, builder):
+        """Test thinking map with accumulating interactions."""
+        from tarsy.models.unified_interactions import LLMInteraction
+        
+        # First interaction: 1 assistant message
+        interaction1 = Mock(spec=LLMInteraction)
+        interaction1.conversation = LLMConversation(
+            messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                LLMMessage(role=MessageRole.USER, content="Message 1"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Response 1"),
+            ]
+        )
+        interaction1.thinking_content = "Thinking for response 1"
+        
+        # Second interaction: 2 assistant messages (accumulative)
+        interaction2 = Mock(spec=LLMInteraction)
+        interaction2.conversation = LLMConversation(
+            messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                LLMMessage(role=MessageRole.USER, content="Message 1"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Response 1"),
+                LLMMessage(role=MessageRole.USER, content="Message 2"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Response 2"),
+            ]
+        )
+        interaction2.thinking_content = "Thinking for response 2"
+        
+        # Third interaction: 3 assistant messages (accumulative)
+        interaction3 = Mock(spec=LLMInteraction)
+        interaction3.conversation = LLMConversation(
+            messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                LLMMessage(role=MessageRole.USER, content="Message 1"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Response 1"),
+                LLMMessage(role=MessageRole.USER, content="Message 2"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Response 2"),
+                LLMMessage(role=MessageRole.USER, content="Message 3"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Response 3"),
+            ]
+        )
+        interaction3.thinking_content = "Thinking for response 3"
+        
+        # Act
+        thinking_map = builder._build_thinking_map([interaction1, interaction2, interaction3])
+        
+        # Assert
+        assert thinking_map == {
+            0: "Thinking for response 1",
+            1: "Thinking for response 2",
+            2: "Thinking for response 3"
+        }
+    
+    def test_build_thinking_map_mixed_thinking(self, builder):
+        """Test thinking map when some interactions have no thinking."""
+        from tarsy.models.unified_interactions import LLMInteraction
+        
+        # First interaction: Has thinking
+        interaction1 = Mock(spec=LLMInteraction)
+        interaction1.conversation = LLMConversation(
+            messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                LLMMessage(role=MessageRole.USER, content="Message 1"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Response 1"),
+            ]
+        )
+        interaction1.thinking_content = "Thinking 1"
+        
+        # Second interaction: No thinking (ReAct)
+        interaction2 = Mock(spec=LLMInteraction)
+        interaction2.conversation = LLMConversation(
+            messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                LLMMessage(role=MessageRole.USER, content="Message 1"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Response 1"),
+                LLMMessage(role=MessageRole.USER, content="Message 2"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Response 2"),
+            ]
+        )
+        interaction2.thinking_content = None
+        
+        # Third interaction: Has thinking again
+        interaction3 = Mock(spec=LLMInteraction)
+        interaction3.conversation = LLMConversation(
+            messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                LLMMessage(role=MessageRole.USER, content="Message 1"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Response 1"),
+                LLMMessage(role=MessageRole.USER, content="Message 2"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Response 2"),
+                LLMMessage(role=MessageRole.USER, content="Message 3"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Response 3"),
+            ]
+        )
+        interaction3.thinking_content = "Thinking 3"
+        
+        # Act
+        thinking_map = builder._build_thinking_map([interaction1, interaction2, interaction3])
+        
+        # Assert
+        # Only interactions with thinking_content should be in map
+        assert thinking_map == {
+            0: "Thinking 1",
+            2: "Thinking 3"
+        }
+        # Index 1 should not be in map (no thinking for that response)
+        assert 1 not in thinking_map
+    
+    def test_format_investigation_context_with_thinking(self, builder):
+        """Test format_investigation_context includes thinking."""
+        from tarsy.models.unified_interactions import LLMInteraction
+        
+        # Create conversation
+        conversation = LLMConversation(
+            messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System instructions"),
+                LLMMessage(role=MessageRole.USER, content="Check pod status"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Checking pods now"),
+                LLMMessage(role=MessageRole.USER, content="Tool result: Pod is crashing"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Final analysis complete"),
+            ]
+        )
+        
+        # Create interactions with thinking
+        interaction1 = Mock(spec=LLMInteraction)
+        interaction1.conversation = LLMConversation(
+            messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System instructions"),
+                LLMMessage(role=MessageRole.USER, content="Check pod status"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Checking pods now"),
+            ]
+        )
+        interaction1.thinking_content = "I should start by examining the pod namespace"
+        
+        interaction2 = Mock(spec=LLMInteraction)
+        interaction2.conversation = conversation
+        interaction2.thinking_content = "Based on the crash, I should check events"
+        
+        # Act
+        result = builder.format_investigation_context(
+            conversation=conversation,
+            interactions=[interaction1, interaction2],
+            include_thinking=True
+        )
+        
+        # Assert
+        assert result is not None
+        assert "📋 INVESTIGATION HISTORY" in result
+        assert "**Internal Reasoning:**" in result
+        assert "I should start by examining the pod namespace" in result
+        assert "Based on the crash, I should check events" in result
+        
+        # Verify thinking appears BEFORE corresponding agent responses
+        thinking1_pos = result.find("I should start by examining")
+        response1_pos = result.find("Checking pods now")
+        assert thinking1_pos < response1_pos
+        
+        thinking2_pos = result.find("Based on the crash")
+        response2_pos = result.find("Final analysis complete")
+        assert thinking2_pos < response2_pos
+    
+    def test_format_investigation_context_without_thinking(self, builder):
+        """Test format_investigation_context excludes thinking when flag is False."""
+        from tarsy.models.unified_interactions import LLMInteraction
+        
+        # Create conversation
+        conversation = LLMConversation(
+            messages=[
+                LLMMessage(role=MessageRole.SYSTEM, content="System"),
+                LLMMessage(role=MessageRole.USER, content="Check pod"),
+                LLMMessage(role=MessageRole.ASSISTANT, content="Response"),
+            ]
+        )
+        
+        # Create interaction with thinking
+        interaction = Mock(spec=LLMInteraction)
+        interaction.conversation = conversation
+        interaction.thinking_content = "This thinking should NOT appear"
+        
+        # Act
+        result = builder.format_investigation_context(
+            conversation=conversation,
+            interactions=[interaction],
+            include_thinking=False  # Explicitly False
+        )
+        
+        # Assert
+        assert result is not None
+        assert "**Internal Reasoning:**" not in result
+        assert "This thinking should NOT appear" not in result
+        assert "Response" in result
