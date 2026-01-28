@@ -31,6 +31,7 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
   error = null,
   onRefresh,
   onSessionClick,
+  onScoreClick,
   // Phase 4: Filter props
   filters,
   filteredCount,
@@ -82,8 +83,8 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
   ];
 
   // Calculate total column count dynamically:
-  // 1 (Status) + 1 (Parallel Agents icon) + sortableColumns.length + 1 (Tokens) + 1 (Follow-up Chats icon) + 1 (Actions)
-  const totalColumns = 1 + 1 + sortableColumns.length + 1 + 1 + 1;
+  // 1 (Status) + 1 (Parallel Agents icon) + sortableColumns.length + 1 (Tokens) + 1 (Score) + 1 (Follow-up Chats icon) + 1 (Actions)
+  const totalColumns = 1 + 1 + sortableColumns.length + 1 + 1 + 1 + 1;
 
   return (
     <Paper sx={{ p: 3 }}>
@@ -185,6 +186,8 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
                     </TableCell>
                   ))}
                   <TableCell sx={{ fontWeight: 600 }}>Tokens</TableCell>
+                  {/* EP-0028: Score column */}
+                  <TableCell sx={{ fontWeight: 600 }}>Score</TableCell>
                   <TableCell sx={{ width: 40, px: 0.5, textAlign: 'center' }}>
                     <Tooltip title="Follow-up Chats" arrow>
                       <ChatIcon 
@@ -237,6 +240,7 @@ const HistoricalAlertsList: React.FC<EnhancedHistoricalAlertsListProps> = ({
                       key={session.session_id || `session-${Math.random()}`}
                       session={session}
                       onClick={handleSessionClick}
+                      onScoreClick={onScoreClick}
                       searchTerm={searchTerm || filters?.search}
                     />
                   ))

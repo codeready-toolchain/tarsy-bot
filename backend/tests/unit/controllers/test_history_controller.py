@@ -1776,7 +1776,11 @@ class TestHistoryControllerResponseFormat:
             # Pause/resume metadata
             "pause_metadata",
             # Parallel stages indicator
-            "has_parallel_stages"
+            "has_parallel_stages",
+            # session scores
+            "score_total",
+            "score_status",
+
         }
         actual_fields = set(session.keys())
         assert required_fields.issubset(actual_fields)

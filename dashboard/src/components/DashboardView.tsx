@@ -503,6 +503,11 @@ function DashboardView() {
     navigate(`/sessions/${sessionId}`);
   };
 
+  // Handle score badge click - navigate to score tab
+  const handleScoreClick = (sessionId: string) => {
+    navigate(`/sessions/${sessionId}/score`);
+  };
+
   // Handle refresh actions
   const handleRefreshActive = () => {
     fetchActiveAlerts();
@@ -793,6 +798,7 @@ function DashboardView() {
           onRefreshActive={handleRefreshActive}
           onRefreshHistorical={handleRefreshHistorical}
           onSessionClick={handleSessionClick}
+          onScoreClick={handleScoreClick}
           filters={filters}
           filteredCount={filteredCount}
           // Phase 6: Additional props for enhanced functionality

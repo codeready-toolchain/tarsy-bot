@@ -24,7 +24,7 @@ import {
   Tooltip,
   alpha,
 } from '@mui/material';
-import { Psychology, BugReport, KeyboardDoubleArrowDown, KeyboardDoubleArrowUp, PauseCircle, PlayArrow } from '@mui/icons-material';
+import { Psychology, BugReport, Assessment, KeyboardDoubleArrowDown, KeyboardDoubleArrowUp, PauseCircle, PlayArrow } from '@mui/icons-material';
 import SharedHeader from './SharedHeader';
 import VersionFooter from './VersionFooter';
 import FloatingSubmitAlertFab from './FloatingSubmitAlertFab';
@@ -90,7 +90,7 @@ const TimelineSkeleton = () => (
 );
 
 interface SessionDetailPageBaseProps {
-  viewType: 'conversation' | 'technical';
+  viewType: 'conversation' | 'technical' | 'score';
   timelineComponent: (
     session: DetailedSession,
     autoScroll?: boolean,
@@ -99,7 +99,7 @@ interface SessionDetailPageBaseProps {
     onSelectedAgentChange?: (executionId: string | null) => void
   ) => ReactNode;
   timelineSkeleton?: ReactNode;
-  onViewChange?: (newView: 'conversation' | 'technical') => void;
+  onViewChange?: (newView: 'conversation' | 'technical' | 'score') => void;
 }
 
 /**
@@ -729,14 +729,16 @@ function SessionDetailPageBase({
   // Navigation handlers (back navigation now handled by SharedHeader)
 
   const handleViewChange = (_event: React.MouseEvent<HTMLElement>, newView: string) => {
-    if (newView !== null && (newView === 'conversation' || newView === 'technical')) {
+    if (newView !== null && (newView === 'conversation' || newView === 'technical' || newView === 'score')) {
       if (onViewChange) {
         // Use external view change handler if provided (for unified wrapper)
-        onViewChange(newView);
+        onViewChange(newView as 'conversation' | 'technical' | 'score');
       } else {
         // Fallback to direct navigation (for legacy usage)
         if (newView === 'technical' && sessionId) {
           navigate(`/sessions/${sessionId}/technical`);
+        } else if (newView === 'score' && sessionId) {
+          navigate(`/sessions/${sessionId}/score`);
         } else if (newView === 'conversation' && sessionId) {
           navigate(`/sessions/${sessionId}`);
         }
@@ -758,8 +760,8 @@ function SessionDetailPageBase({
   return (
     <Container maxWidth={false} sx={{ py: 2, px: { xs: 1, sm: 2 } }}>
       {/* Header with navigation and controls */}
-      <SharedHeader 
-        title={`${viewType === 'conversation' ? 'AI Reasoning View' : 'Debug View'}${session ? ` - ${session.session_id?.slice(-8) || sessionId}` : ''}`}
+      <SharedHeader
+        title={`${viewType === 'conversation' ? 'AI Reasoning View' : viewType === 'score' ? 'Score Analysis' : 'Debug View'}${session ? ` - ${session.session_id?.slice(-8) || sessionId}` : ''}`}
         showBackButton={true}
       >
         {/* Session info */}
@@ -826,6 +828,10 @@ function SessionDetailPageBase({
             <ToggleButton value="technical">
               <BugReport fontSize="small" sx={{ mr: 1 }} />
               Debug
+            </ToggleButton>
+            <ToggleButton value="score">
+              <Assessment fontSize="small" sx={{ mr: 1 }} />
+              Score
             </ToggleButton>
           </ToggleButtonGroup>
           
@@ -900,9 +906,10 @@ function SessionDetailPageBase({
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {/* Session Header - Lazy loaded */}
             <Suspense fallback={<HeaderSkeleton />}>
-              <SessionHeader 
-                session={session} 
-                onRefresh={() => sessionId && refreshSessionSummary(sessionId)} 
+              <SessionHeader
+                session={session}
+                onRefresh={() => sessionId && refreshSessionSummary(sessionId)}
+                onScoreClick={() => onViewChange && onViewChange('score')}
               />
             </Suspense>
 

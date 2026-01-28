@@ -1,5 +1,5 @@
 import axios, { type AxiosInstance, AxiosError } from 'axios';
-import type { SessionsResponse, Session, DetailedSession, SessionFilter, FilterOptions, SearchResult, SystemWarning, MCPServersResponse, Chat, ChatUserMessage, ChatAvailabilityResponse, MCPSelectionConfig } from '../types';
+import type { SessionsResponse, Session, DetailedSession, SessionFilter, FilterOptions, SearchResult, SystemWarning, MCPServersResponse, Chat, ChatUserMessage, ChatAvailabilityResponse, MCPSelectionConfig, SessionScore, ScoreSessionRequest, ScoreSessionResponse } from '../types';
 import { authService } from './auth';
 import { TERMINAL_SESSION_STATUSES } from '../utils/statusConstants';
 
@@ -732,6 +732,40 @@ class APIClient {
       return response.data;
     } catch (error) {
       console.error('Error checking chat availability:', error);
+      throw error;
+    }
+  }
+
+  // EP-0028: Session Scoring methods
+
+  /**
+   * Trigger async scoring for a session
+   * Returns immediately with score_id and status (202 for new scoring, 200 for existing)
+   */
+  async scoreSession(sessionId: string, request?: ScoreSessionRequest): Promise<ScoreSessionResponse> {
+    try {
+      const response = await this.client.post<ScoreSessionResponse>(
+        `/api/v1/scoring/sessions/${sessionId}/score`,
+        request || {}
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error scoring session:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get session score (any status: pending, in_progress, completed, failed)
+   */
+  async getSessionScore(sessionId: string): Promise<SessionScore> {
+    try {
+      const response = await this.client.get<SessionScore>(
+        `/api/v1/scoring/sessions/${sessionId}/score`
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching session score:', error);
       throw error;
     }
   }
