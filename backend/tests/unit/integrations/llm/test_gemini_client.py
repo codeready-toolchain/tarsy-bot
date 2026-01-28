@@ -8,6 +8,7 @@ from typing import AsyncIterator, List
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from google.genai import types as google_genai_types
 from mcp.types import Tool
 
 from tarsy.integrations.llm.gemini_client import (
@@ -584,7 +585,6 @@ class TestGeminiNativeThinkingClientGenerate:
             conversation=sample_conversation,
             session_id="test-session",
             mcp_tools=[],
-            thinking_level="high",
         )
 
         assert result.is_final is True
@@ -836,30 +836,90 @@ class TestGeminiNativeThinkingClientGenerate:
 
 
 @pytest.mark.unit
-class TestGeminiNativeThinkingClientThinkingLevel:
-    """Tests for thinking level configuration."""
+class TestGeminiNativeThinkingClientModelSpecificConfig:
+    """Tests for model-specific thinking configuration."""
 
-    @pytest.fixture
-    def client(self) -> GeminiNativeThinkingClient:
-        """Create a GeminiNativeThinkingClient for testing."""
+    def test_get_thinking_config_gemini_25_pro(self) -> None:
+        """Test that Gemini 2.5 Pro uses 32768 token thinking budget."""
         config = LLMProviderConfig(
             type=LLMProviderType.GOOGLE,
             model="gemini-2.5-pro",
             api_key_env="GOOGLE_API_KEY",
             api_key="test-key",
         )
-        return GeminiNativeThinkingClient(config)
+        client = GeminiNativeThinkingClient(config)
+        
+        thinking_config = client._get_thinking_config("test-request-id")
+        
+        assert thinking_config.thinking_budget == 32768
+        assert thinking_config.include_thoughts is True
+        assert not hasattr(thinking_config, 'thinking_level') or thinking_config.thinking_level is None
+
+    def test_get_thinking_config_gemini_25_flash(self) -> None:
+        """Test that Gemini 2.5 Flash uses 24576 token thinking budget."""
+        config = LLMProviderConfig(
+            type=LLMProviderType.GOOGLE,
+            model="gemini-2.5-flash",
+            api_key_env="GOOGLE_API_KEY",
+            api_key="test-key",
+        )
+        client = GeminiNativeThinkingClient(config)
+        
+        thinking_config = client._get_thinking_config("test-request-id")
+        
+        assert thinking_config.thinking_budget == 24576
+        assert thinking_config.include_thoughts is True
+        assert not hasattr(thinking_config, 'thinking_level') or thinking_config.thinking_level is None
+
+    def test_get_thinking_config_gemini_3_pro(self) -> None:
+        """Test that Gemini 3 Pro uses 'high' thinking level."""
+        config = LLMProviderConfig(
+            type=LLMProviderType.GOOGLE,
+            model="gemini-3-pro-preview",
+            api_key_env="GOOGLE_API_KEY",
+            api_key="test-key",
+        )
+        client = GeminiNativeThinkingClient(config)
+        
+        thinking_config = client._get_thinking_config("test-request-id")
+        
+        assert thinking_config.thinking_level == google_genai_types.ThinkingLevel.HIGH
+        assert thinking_config.include_thoughts is True
+        assert not hasattr(thinking_config, 'thinking_budget') or thinking_config.thinking_budget is None
+
+    def test_get_thinking_config_unknown_model(self) -> None:
+        """Test that unknown models fall back to 24576 token thinking budget."""
+        config = LLMProviderConfig(
+            type=LLMProviderType.GOOGLE,
+            model="gemini-unknown-model",
+            api_key_env="GOOGLE_API_KEY",
+            api_key="test-key",
+        )
+        client = GeminiNativeThinkingClient(config)
+        
+        thinking_config = client._get_thinking_config("test-request-id")
+        
+        assert thinking_config.thinking_budget == 24576
+        assert thinking_config.include_thoughts is True
 
     @pytest.mark.asyncio
     @patch("tarsy.integrations.llm.gemini_client.genai")
     @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
-    async def test_high_thinking_level_uses_larger_budget(
+    async def test_generate_applies_model_specific_config(
         self,
         mock_context: MagicMock,
         mock_genai: MagicMock,
-        client: GeminiNativeThinkingClient,
     ) -> None:
-        """Test that 'high' thinking level uses larger thinking budget."""
+        """Test that generate() applies model-specific thinking config automatically."""
+        # Create client with 2.5 Pro model
+        config = LLMProviderConfig(
+            type=LLMProviderType.GOOGLE,
+            model="gemini-2.5-pro",
+            api_key_env="GOOGLE_API_KEY",
+            api_key="test-key",
+        )
+        client = GeminiNativeThinkingClient(config)
+        
         # Create a valid response to avoid triggering retry logic
         response = MagicMock()
         part = MagicMock()
@@ -891,73 +951,20 @@ class TestGeminiNativeThinkingClientThinkingLevel:
             ]
         )
 
+        # Note: No thinking_level parameter passed
         await client.generate(
             conversation=conversation,
             session_id="test",
             mcp_tools=[],
-            thinking_level="high",
         )
 
-        # Verify generate_content_stream was called
+        # Verify generate_content_stream was called with correct thinking config
         call_args = mock_native_client.aio.models.generate_content_stream.call_args
         config = call_args.kwargs.get("config")
 
-        # The thinking_budget for "high" should be 24576
-        assert config.thinking_config.thinking_budget == 24576
-
-    @pytest.mark.asyncio
-    @patch("tarsy.integrations.llm.gemini_client.genai")
-    @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
-    async def test_low_thinking_level_uses_smaller_budget(
-        self,
-        mock_context: MagicMock,
-        mock_genai: MagicMock,
-        client: GeminiNativeThinkingClient,
-    ) -> None:
-        """Test that 'low' thinking level uses smaller thinking budget."""
-        # Create a valid response to avoid triggering retry logic
-        response = MagicMock()
-        part = MagicMock()
-        part.thought = False
-        part.text = "Test response"
-        part.thought_signature = None
-        response.candidates = [MagicMock(content=MagicMock(parts=[part]))]
-        response.function_calls = None
-        response.usage_metadata = None
-
-        mock_native_client = MagicMock()
-        mock_native_client.aio.models.generate_content_stream = AsyncMock(
-            return_value=mock_stream_response(response)
-        )
-        mock_genai.Client.return_value = mock_native_client
-
-        mock_ctx = MagicMock()
-        mock_ctx.interaction = MagicMock()
-        mock_ctx.complete_success = AsyncMock()
-        mock_context_cm = MagicMock()
-        mock_context_cm.__aenter__ = AsyncMock(return_value=mock_ctx)
-        mock_context_cm.__aexit__ = AsyncMock(return_value=None)
-        mock_context.return_value = mock_context_cm
-
-        conversation = LLMConversation(
-            messages=[
-                LLMMessage(role=MessageRole.SYSTEM, content="System prompt."),
-                LLMMessage(role=MessageRole.USER, content="Test"),
-            ]
-        )
-
-        await client.generate(
-            conversation=conversation,
-            session_id="test",
-            mcp_tools=[],
-            thinking_level="low",
-        )
-
-        call_args = mock_native_client.aio.models.generate_content_stream.call_args
-        config = call_args.kwargs.get("config")
-
-        # The thinking_budget for "low" should be 4096
-        assert config.thinking_config.thinking_budget == 4096
+        # The thinking_budget for 2.5 Pro should be 32768
+        assert config.thinking_config.thinking_budget == 32768
+        assert config.thinking_config.include_thoughts is True
 
 
 @pytest.mark.unit

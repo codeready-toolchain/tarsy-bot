@@ -193,7 +193,6 @@ class TestNativeThinkingController:
         # Verify MCP tools were passed
         call_args = mock_native_client.generate.call_args
         assert len(call_args.kwargs['mcp_tools']) == 1
-        assert call_args.kwargs['thinking_level'] == "high"
     
     @pytest.mark.asyncio
     async def test_execute_analysis_loop_with_tool_calls(

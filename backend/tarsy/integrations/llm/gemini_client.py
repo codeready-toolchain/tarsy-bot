@@ -115,6 +115,44 @@ class GeminiNativeThinkingClient:
         
         logger.info(f"Initialized GeminiNativeThinkingClient for model {self.model}")
     
+    def _get_thinking_config(self, request_id: str) -> google_genai_types.ThinkingConfig:
+        """
+        Get model-specific thinking configuration.
+        
+        Gemini 2.5 models use thinkingBudget, Gemini 3 models use thinkingLevel.
+        All models use maximum thinking capacity for complex SRE analysis.
+        
+        Args:
+            request_id: Request ID for logging
+            
+        Returns:
+            ThinkingConfig with model-appropriate thinking settings
+        """
+        if "gemini-2.5-pro" in self.model.lower():
+            logger.debug(f"[{request_id}] Using 2.5 Pro thinking budget: 32768 tokens")
+            return google_genai_types.ThinkingConfig(
+                thinking_budget=32768,  # Max for 2.5 Pro
+                include_thoughts=True
+            )
+        elif "gemini-2.5-flash" in self.model.lower():
+            logger.debug(f"[{request_id}] Using 2.5 Flash thinking budget: 24576 tokens")
+            return google_genai_types.ThinkingConfig(
+                thinking_budget=24576,  # Max for 2.5 Flash
+                include_thoughts=True
+            )
+        elif "gemini-3" in self.model.lower():
+            logger.debug(f"[{request_id}] Using Gemini 3 thinking level: high")
+            return google_genai_types.ThinkingConfig(
+                thinking_level=google_genai_types.ThinkingLevel.HIGH,  # Recommended for complex SRE tasks
+                include_thoughts=True
+            )
+        else:
+            logger.warning(f"[{request_id}] Unknown model '{self.model}', using fallback thinking budget")
+            return google_genai_types.ThinkingConfig(
+                thinking_budget=24576,
+                include_thoughts=True
+            )
+    
     def _parse_function_name(self, func_name: str) -> tuple[str, str]:
         """
         Parse Gemini function name back to server and tool names.
@@ -215,7 +253,6 @@ class GeminiNativeThinkingClient:
         session_id: str,
         mcp_tools: List[ToolWithServer],
         stage_execution_id: Optional[str] = None,
-        thinking_level: str = "high",
         thought_signature: Optional[bytes] = None,
         max_tokens: Optional[int] = None,
         timeout_seconds: int = 180,
@@ -243,7 +280,6 @@ class GeminiNativeThinkingClient:
             session_id: Session ID for tracking
             mcp_tools: MCP tools to bind as native functions
             stage_execution_id: Optional stage execution ID
-            thinking_level: Thinking depth ("low" or "high", default "high")
             thought_signature: Opaque bytes from previous turn for reasoning continuity
             max_tokens: Optional max tokens configuration
             timeout_seconds: Timeout for LLM call (default 180s for thinking)
@@ -263,7 +299,7 @@ class GeminiNativeThinkingClient:
         request_id = str(uuid.uuid4())[:8]
         
         logger.info(f"[{request_id}] Starting native thinking generation for {session_id}")
-        logger.debug(f"[{request_id}] Thinking level: {thinking_level}, MCP tools: {len(mcp_tools)}")
+        logger.debug(f"[{request_id}] MCP tools: {len(mcp_tools)}")
         
         # Prepare request data for typed context (ensure JSON serializable)
         request_data = {
@@ -271,7 +307,6 @@ class GeminiNativeThinkingClient:
             'model': self.model,
             'provider': self.provider_name,
             'temperature': self.temperature,
-            'thinking_level': thinking_level,
             'mcp_tools_count': len(mcp_tools)
         }
         
@@ -351,12 +386,8 @@ class GeminiNativeThinkingClient:
                 enabled_names = [name for name, enabled in native_tools_config.items() if enabled]
                 logger.info(f"[{request_id}] Bound native Google tools: {enabled_names}")
         
-        # Configure thinking with include_thoughts=True to get reasoning content
-        thinking_budget = 24576 if thinking_level == "high" else 4096
-        thinking_config = google_genai_types.ThinkingConfig(
-            thinking_budget=thinking_budget,
-            include_thoughts=True  # This enables access to thinking content!
-        )
+        # Configure thinking based on model type (uses helper method)
+        thinking_config = self._get_thinking_config(request_id)
         
         # Build generation config once (before retry loop)
         # temperature=None lets the model use its default (varies by model)

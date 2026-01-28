@@ -163,7 +163,7 @@ class NativeThinkingController(IterationController):
         1. Checks for paused session and resumes if found
         2. Builds initial conversation with simplified prompt (no ReAct format)
         3. Converts MCP tools to Gemini function declarations
-        4. Calls LLM with thinking_level + bound functions + thought_signature
+        4. Calls LLM with bound functions + thought_signature
         5. Extracts thinking_content for audit
         6. If tool_calls in response: execute MCP tools, append results
         7. If no tool_calls: final answer reached
@@ -237,7 +237,6 @@ class NativeThinkingController(IterationController):
                         session_id=context.session_id,
                         mcp_tools=mcp_tools,
                         stage_execution_id=agent.get_current_stage_execution_id(),
-                        thinking_level="high",  # Use high thinking for complex SRE analysis
                         thought_signature=thought_signature,
                         native_tools_override=native_tools_override,
                         parallel_metadata=parallel_metadata
@@ -447,7 +446,6 @@ class NativeThinkingController(IterationController):
                 session_id=context.session_id,
                 mcp_tools=[],  # NO tools for forced conclusion
                 stage_execution_id=agent.get_current_stage_execution_id(),
-                thinking_level="high",
                 thought_signature=None,
                 parallel_metadata=agent.get_parallel_execution_metadata(),
                 interaction_type=LLMInteractionType.FORCED_CONCLUSION.value

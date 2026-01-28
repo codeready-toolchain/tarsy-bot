@@ -91,7 +91,6 @@ class SynthesisNativeThinkingController(NativeThinkingController):
                 session_id=context.session_id,
                 mcp_tools=[],  # Synthesis doesn't use tools
                 stage_execution_id=stage_execution_id,
-                thinking_level="high",  # Enable deep thinking for synthesis
                 native_tools_override=native_tools_override,
                 parallel_metadata=parallel_metadata
             )
