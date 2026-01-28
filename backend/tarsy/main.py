@@ -23,6 +23,7 @@ from tarsy.controllers.alert_controller import router as alert_router
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.controllers.chat_controller import router as chat_router
 from tarsy.controllers.history_controller import router as history_router
+from tarsy.controllers.scoring_controller import router as scoring_router
 from tarsy.controllers.websocket_controller import websocket_router
 from tarsy.database.init_db import (
     dispose_async_database,
@@ -492,6 +493,7 @@ app.add_middleware(
 # Register API routers
 app.include_router(history_router, tags=["history"])
 app.include_router(alert_router, tags=["alerts"])
+app.include_router(scoring_router, tags=["scoring"])
 app.include_router(websocket_router, tags=["websocket"])
 
 from tarsy.controllers.system_controller import router as system_router

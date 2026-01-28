@@ -184,6 +184,19 @@ class SessionScoreResponse(BaseModel):
         return self.prompt_hash == CURRENT_PROMPT_HASH
 
 
+class SessionScoreRequest(BaseModel):
+    """
+    Request body for session scoring endpoint.
+
+    Controls whether to force re-scoring even if a score already exists.
+    """
+
+    force_rescore: bool = Field(
+        default=False,
+        description="If true, re-score even if score already exists. Returns 409 if scoring is in progress."
+    )
+
+
 # ===== Session Control API Models =====
 
 
