@@ -6,7 +6,7 @@ function calling instead of text-based ReAct parsing. This eliminates
 format compliance issues while providing full observability of reasoning.
 
 Key features:
-- Uses thinkingLevel parameter for reasoning depth control
+- Model-specific thinking configuration determined internally via _get_thinking_config
 - Native function calling for tool execution (no text parsing)
 - Thought signatures for multi-turn reasoning continuity
 - Stores thinking_content for audit/observability
@@ -69,7 +69,7 @@ class NativeThinkingController(IterationController):
     Gemini-specific controller using native thinking and function calling.
     
     Eliminates text-based ReAct parsing by leveraging:
-    - thinkingLevel parameter for reasoning depth control
+    - Model-specific thinking configuration (determined internally)
     - Native function calling for tool execution
     - Thought signatures for multi-turn reasoning continuity
     
