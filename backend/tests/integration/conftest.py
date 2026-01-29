@@ -1233,23 +1233,22 @@ def history_service_with_test_db(history_test_database_engine):
     mock_settings.database_url = "sqlite:///:memory:"
     mock_settings.history_retention_days = 90
     
-    with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
+    with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
         service = HistoryService()
         
         # CRITICAL: Replace the DatabaseManager's engine with our test engine
         # that already has the tables created, to avoid separate in-memory databases
-        service.db_manager = DatabaseManager("sqlite:///:memory:")
-        service.db_manager.engine = history_test_database_engine  # Use the same engine with tables
+        service._infra.db_manager = DatabaseManager("sqlite:///:memory:")
+        service._infra.db_manager.engine = history_test_database_engine  # Use the same engine with tables
         
         # Create session factory using the existing engine
-        service.db_manager.session_factory = sessionmaker(
+        service._infra.db_manager.session_factory = sessionmaker(
             bind=history_test_database_engine,
             class_=Session,
             expire_on_commit=False
         )
         
-        service._is_healthy = True
-        service._initialization_attempted = True
+        service._infra._set_healthy_for_testing()
         
         return service
 

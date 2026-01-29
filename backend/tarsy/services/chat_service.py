@@ -7,6 +7,7 @@ patterns as AlertService for consistency and reliability.
 
 import asyncio
 from contextlib import suppress
+from functools import partial
 from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
@@ -520,94 +521,48 @@ class ChatService:
     #
     # Flow:
     # 1. create_chat() → _capture_session_context() 
-    #                   → _get_formatted_conversation_from_llm_interactions()
+    #                   → history_service.get_formatted_session_conversation()
     #                   → Stores formatted text in chat.conversation_history
     #
     # 2. send_message() → _build_message_context()
     #    First message:  → Returns chat.conversation_history (pre-formatted)
-    #    Later messages: → _get_formatted_conversation_from_llm_interactions()
+    #    Later messages: → history_service.get_formatted_session_conversation()
     #                    → Formats conversation from last chat execution
-    
-    async def _get_formatted_conversation_from_llm_interactions(
-        self,
-        llm_interactions: List[LLMInteraction]
-    ) -> str:
-        """
-        Extract and format conversation history from LLM interactions.
-        
-        Takes the LAST interaction (which contains complete cumulative history)
-        and formats it as readable text for the chat agent using PromptBuilder.
-        
-        This is the core helper used by both:
-        - create_chat(): Gets conversation from session's LLM interactions
-        - send_message(): Gets conversation from previous chat execution's LLM interactions
-        
-        Args:
-            llm_interactions: List of LLM interactions (ordered by timestamp)
-        
-        Returns:
-            Formatted conversation history as text
-        """
-        if not llm_interactions:
-            raise ValueError("No LLM interactions provided for formatting")
-        
-        # Find the last interaction with a valid conversation suitable for chat context
-        # - Exclude interactions with None conversation (cancelled/failed)
-        # - Only include interaction types suitable for chat context (see CHAT_CONTEXT_INTERACTION_TYPES)
-        from tarsy.models.constants import CHAT_CONTEXT_INTERACTION_TYPES
-        
-        last_valid_interaction = None
-        for interaction in reversed(llm_interactions):
-            if (interaction.conversation is not None and 
-                interaction.interaction_type in CHAT_CONTEXT_INTERACTION_TYPES):
-                last_valid_interaction = interaction
-                break
-        
-        # If no valid interaction found, return cancellation message
-        if last_valid_interaction is None:
-            return "[Investigation was cancelled before completion]"
-        
-        # Use PromptBuilder to format investigation context
-        from tarsy.agents.prompts.builders import PromptBuilder
-        prompt_builder = PromptBuilder()
-        
-        return prompt_builder.format_investigation_context(last_valid_interaction.conversation)
     
     async def _capture_session_context(self, session_id: str) -> SessionContextData:
         """
         Capture session context for initial chat creation.
         
-        Gets the complete investigation history from the session's
-        LLM interactions and formats it for chat use.
+        Delegates conversation formatting to HistoryService for consistency.
         
         Args:
             session_id: Session identifier
             
         Returns:
             SessionContextData with conversation_history, chain_id, and timestamp
+            
+        Raises:
+            ValueError: If session not found or no valid interactions
         """
-        # Get session's LLM interactions
-        llm_interactions = await self.history_service.get_llm_interactions_for_session(
-            session_id
+        # Get formatted conversation using shared HistoryService method
+        # Note: include_thinking=False (default) - chat doesn't need thinking_content
+        get_conversation = partial(
+            self.history_service.get_formatted_session_conversation,
+            session_id=session_id,
+            exclude_chat_stages=True,  # Only main investigation for initial chat context
+            include_thinking=False  # Chat doesn't need thinking_content
         )
+        history_text = await asyncio.to_thread(get_conversation)
         
-        if not llm_interactions:
-            raise ValueError(f"No LLM interactions found for session {session_id}")
-        
-        # Format conversation using common helper
-        history_text = await self._get_formatted_conversation_from_llm_interactions(
-            llm_interactions
-        )
-        
-        # Get session for metadata (wrap synchronous call in to_thread to avoid blocking)
-        session = await asyncio.to_thread(self.history_service.get_session, session_id)
+        # Get session metadata
+        get_session = partial(self.history_service.get_session, session_id)
+        session = await asyncio.to_thread(get_session)
         if not session:
             raise ValueError(
                 f"Session {session_id} not found when capturing context. "
                 "Cannot create chat without valid session metadata."
             )
         
-        # Return typed dataclass
         return SessionContextData(
             conversation_history=history_text,
             chain_id=session.chain_id,
