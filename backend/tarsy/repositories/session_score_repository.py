@@ -21,7 +21,7 @@ logger = get_logger(__name__)
 class SessionScoreRepository:
     """Repository for session scoring data operations."""
 
-    def __init__(self, session: Session):
+    def __init__(self, session: Session) -> None:
         """
         Initialize session score repository with database session.
 
@@ -52,11 +52,8 @@ class SessionScoreRepository:
         except IntegrityError as e:
             # Partial unique constraint violation (both PostgreSQL and SQLite)
             self.session.rollback()
-            logger.warning(
-                f"Cannot create duplicate active scoring for session {score.session_id}: {str(e)}"
-            )
             raise ValueError(
-                f"Session {score.session_id} already has active scoring in progress"
+                f"Cannot create active scoring for session {score.session_id} due to constraint violation: {str(e)}"
             ) from e
 
     def get_score_by_id(self, score_id: str) -> Optional[SessionScore]:

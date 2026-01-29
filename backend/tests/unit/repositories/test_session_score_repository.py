@@ -80,7 +80,7 @@ class TestSessionScoreRepository:
             status=ScoringStatus.IN_PROGRESS.value
         )
 
-        with pytest.raises(ValueError, match="already has active scoring"):
+        with pytest.raises(ValueError, match="due to constraint violation"):
             repository.create_session_score(score2)
 
     def test_create_allows_new_score_after_previous_completed(self, repository, sample_alert_session):
