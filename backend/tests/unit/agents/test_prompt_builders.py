@@ -25,7 +25,12 @@ from tarsy.models.processing_context import (
     StageContext,
     ToolWithServer,
 )
-from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
+from tarsy.models.unified_interactions import (
+    LLMConversation,
+    LLMInteraction,
+    LLMMessage,
+    MessageRole,
+)
 from tarsy.utils.timestamp import now_us
 
 
@@ -1003,8 +1008,6 @@ class TestThinkingContentCorrelation:
     
     def test_build_thinking_map_single_interaction(self, builder):
         """Test thinking map with single interaction."""
-        from tarsy.models.unified_interactions import LLMInteraction
-        
         # Create interaction with one assistant message and thinking
         interaction = Mock(spec=LLMInteraction)
         interaction.conversation = LLMConversation(
@@ -1024,8 +1027,6 @@ class TestThinkingContentCorrelation:
     
     def test_build_thinking_map_multiple_interactions(self, builder):
         """Test thinking map with accumulating interactions."""
-        from tarsy.models.unified_interactions import LLMInteraction
-        
         # First interaction: 1 assistant message
         interaction1 = Mock(spec=LLMInteraction)
         interaction1.conversation = LLMConversation(
@@ -1077,8 +1078,6 @@ class TestThinkingContentCorrelation:
     
     def test_build_thinking_map_mixed_thinking(self, builder):
         """Test thinking map when some interactions have no thinking."""
-        from tarsy.models.unified_interactions import LLMInteraction
-        
         # First interaction: Has thinking
         interaction1 = Mock(spec=LLMInteraction)
         interaction1.conversation = LLMConversation(
@@ -1132,8 +1131,6 @@ class TestThinkingContentCorrelation:
     
     def test_format_investigation_context_with_thinking(self, builder):
         """Test format_investigation_context includes thinking."""
-        from tarsy.models.unified_interactions import LLMInteraction
-        
         # Create conversation
         conversation = LLMConversation(
             messages=[
@@ -1185,8 +1182,6 @@ class TestThinkingContentCorrelation:
     
     def test_format_investigation_context_without_thinking(self, builder):
         """Test format_investigation_context excludes thinking when flag is False."""
-        from tarsy.models.unified_interactions import LLMInteraction
-        
         # Create conversation
         conversation = LLMConversation(
             messages=[

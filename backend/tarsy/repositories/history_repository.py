@@ -205,24 +205,48 @@ class HistoryRepository:
             logger.error(f"Failed to check LLM interactions for session {session_id}: {str(e)}")
             raise
     
-    def get_llm_interactions_for_session(self, session_id: str) -> List[LLMInteraction]:
+    def get_llm_interactions_for_session(
+        self, 
+        session_id: str,
+        exclude_chat_stages: bool = False
+    ) -> List[LLMInteraction]:
         """
         Get all LLM interactions for a session ordered by timestamp.
         
         Args:
             session_id: The session identifier
+            exclude_chat_stages: If True, exclude interactions from chat stages
             
         Returns:
             List of LLMInteraction instances ordered by timestamp
         """
         try:
+            from tarsy.models.db_models import StageExecution
+            
             statement = select(LLMInteraction).where(
                 LLMInteraction.session_id == session_id
-            ).order_by(asc(LLMInteraction.timestamp_us))
+            )
+            
+            # Exclude chat stage interactions if requested
+            if exclude_chat_stages:
+                # Join with stage_executions to filter out chat stages
+                statement = statement.outerjoin(
+                    StageExecution,
+                    LLMInteraction.stage_execution_id == StageExecution.execution_id
+                ).where(
+                    # Include interactions with no stage (shouldn't happen in practice)
+                    # or interactions from stages without a chat_id
+                    (LLMInteraction.stage_execution_id.is_(None)) | 
+                    (StageExecution.chat_id.is_(None))
+                )
+            
+            statement = statement.order_by(asc(LLMInteraction.timestamp_us))
             
             return self.session.exec(statement).all()
         except Exception as e:
-            logger.error(f"Failed to get LLM interactions for session {session_id}: {str(e)}")
+            logger.error(
+                f"Failed to get LLM interactions for session {session_id}: {str(e)}"
+            )
             raise
     
     def get_llm_interactions_for_stage(self, stage_execution_id: str) -> List[LLMInteraction]:

@@ -1351,22 +1351,19 @@ class HistoryService:
                 if not repo:
                     return None
                 
-                # Get ALL LLM interactions (needed for thinking_content correlation)
-                all_interactions = repo.get_llm_interactions_for_session(session_id=session_id)
+                # Get LLM interactions (with optional chat stage filtering)
+                all_interactions = repo.get_llm_interactions_for_session(
+                    session_id=session_id,
+                    exclude_chat_stages=exclude_chat_stages
+                )
                 
                 if not all_interactions:
-                    raise ValueError(f"No LLM interactions found for session {session_id}")
+                    raise ValueError(
+                        f"No LLM interactions found for session {session_id}"
+                    )
                 
                 # Filter to valid interactions
-                from tarsy.models.constants import CHAT_CONTEXT_INTERACTION_TYPES, LLMInteractionType
-                
-                # Filter by interaction type if requested
-                if exclude_chat_stages:
-                    # Exclude CHAT interaction types
-                    all_interactions = [
-                        i for i in all_interactions
-                        if i.interaction_type != LLMInteractionType.CHAT.value
-                    ]
+                from tarsy.models.constants import CHAT_CONTEXT_INTERACTION_TYPES
                 
                 valid_interactions = [
                     interaction for interaction in all_interactions
