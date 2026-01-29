@@ -430,14 +430,15 @@ async def get_filter_options(
     """Get available filter options for the dashboard."""
     try:
         filter_options = history_service.get_filter_options()
+        if filter_options is None:
+            raise HTTPException(
+                status_code=503,
+                detail="History service unavailable: failed to retrieve filter options"
+            )
         return filter_options
         
-    except RuntimeError as e:
-        # Database unavailable - return 503
-        raise HTTPException(
-            status_code=503, 
-            detail=f"History service unavailable: {str(e)}"
-        ) from e
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get filter options: {str(e)}") from e
 

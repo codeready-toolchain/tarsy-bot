@@ -5,13 +5,15 @@ import logging
 import random
 import time
 from contextlib import contextmanager, suppress
-from typing import Final, Optional
+from typing import Callable, Final, Generator, Optional, TypeVar
 
 from sqlalchemy.exc import DBAPIError
 
-from tarsy.config.settings import get_settings
+from tarsy.config.settings import Settings, get_settings
 from tarsy.repositories.base_repository import DatabaseManager
 from tarsy.repositories.history_repository import HistoryRepository
+
+T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
 
@@ -74,13 +76,13 @@ class BaseHistoryInfra:
     """Core infrastructure: DB access, retry logic, health tracking."""
     
     def __init__(self) -> None:
-        self.settings = get_settings()
+        self.settings: Settings = get_settings()
         self.db_manager: Optional[DatabaseManager] = None
-        self._initialization_attempted = False
-        self._is_healthy = False
-        self.max_retries = 3
-        self.base_delay = 0.1
-        self.max_delay = 2.0
+        self._initialization_attempted: bool = False
+        self._is_healthy: bool = False
+        self.max_retries: int = 3
+        self.base_delay: float = 0.1
+        self.max_delay: float = 2.0
     
     def _set_healthy_for_testing(self, is_healthy: bool = True) -> None:
         """
@@ -185,7 +187,7 @@ class BaseHistoryInfra:
         return False
     
     @contextmanager
-    def get_repository(self):
+    def get_repository(self) -> Generator[Optional[HistoryRepository], None, None]:
         """Context manager for getting repository with error handling."""
         if not self._is_healthy:
             yield None
@@ -218,10 +220,10 @@ class BaseHistoryInfra:
     def _retry_database_operation(
         self,
         operation_name: str,
-        operation_func,
+        operation_func: Callable[[], T],
         *,
         treat_none_as_success: bool = False,
-    ):
+    ) -> Optional[T]:
         """Retry database operations with exponential backoff."""
         last_exception = None
         
@@ -240,7 +242,7 @@ class BaseHistoryInfra:
                 last_exception = e
                 is_retryable = self._is_retryable_error(e)
                 
-                if operation_name == "create_session" and attempt > 0:
+                if operation_name == "create_session":
                     logger.warning(f"Not retrying session creation after database error to prevent duplicates: {str(e)}")
                     return None
                 
@@ -261,10 +263,10 @@ class BaseHistoryInfra:
     async def _retry_database_operation_async(
         self,
         operation_name: str,
-        operation_func,
+        operation_func: Callable[[], T],
         *,
         treat_none_as_success: bool = False,
-    ):
+    ) -> Optional[T]:
         """Async retry database operations with exponential backoff."""
         last_exception = None
         for attempt in range(self.max_retries + 1):
@@ -278,7 +280,7 @@ class BaseHistoryInfra:
             except Exception as e:
                 last_exception = e
                 is_retryable = self._is_retryable_error(e)
-                if operation_name == "create_session" and attempt > 0:
+                if operation_name == "create_session":
                     logger.warning("Not retrying session creation after database error to prevent duplicates: %s", str(e))
                     return None
                 if not is_retryable or attempt == self.max_retries:

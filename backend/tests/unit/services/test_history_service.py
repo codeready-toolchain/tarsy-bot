@@ -6,7 +6,7 @@ MCP communication tracking, and timeline reconstruction with graceful
 degradation when database operations fail.
 """
 
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
@@ -366,13 +366,13 @@ class TestHistoryService:
                 assert result.pagination.total_items == expected_count
                 dependencies['repository'].get_alert_sessions.assert_called_once()
             else:
-                # When repository is unavailable, should raise RuntimeError
-                with pytest.raises(RuntimeError, match="History repository unavailable"):
-                    history_service.get_sessions_list(
-                        filters=None,
-                        page=1,
-                        page_size=20
-                    )
+                # When repository is unavailable, should return None (with retry logic)
+                result = history_service.get_sessions_list(
+                    filters=None,
+                    page=1,
+                    page_size=20
+                )
+                assert result is None
     
     @pytest.mark.unit
     def test_get_session_details_success(self, history_service):
@@ -766,7 +766,7 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock the retry mechanism to return None (simulating all retries failed)
-        with patch.object(service._infra, '_retry_database_operation_async', return_value=None):
+        with patch.object(service._infra, '_retry_database_operation_async', new=AsyncMock(return_value=None)):
             # Should raise RuntimeError instead of returning fallback ID  
             with pytest.raises(RuntimeError, match="Failed to create stage execution record"):
                 await service.create_stage_execution(sample_stage_execution)
@@ -777,7 +777,7 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock successful repository operation
-        with patch.object(service._infra, '_retry_database_operation_async', return_value="stage-exec-123"):
+        with patch.object(service._infra, '_retry_database_operation_async', new=AsyncMock(return_value="stage-exec-123")):
             result = await service.create_stage_execution(sample_stage_execution)
             assert result == "stage-exec-123"
     
@@ -794,7 +794,7 @@ class TestHistoryServiceStageExecution:
         sample_stage_execution.duration_ms = 5000
         
         # Mock successful repository operation
-        with patch.object(service._infra, '_retry_database_operation_async', return_value=True):
+        with patch.object(service._infra, '_retry_database_operation_async', new=AsyncMock(return_value=True)):
             result = await service.update_stage_execution(sample_stage_execution)
             assert result == True
             
@@ -809,7 +809,7 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock failed repository operation
-        with patch.object(service._infra, '_retry_database_operation_async', return_value=None):
+        with patch.object(service._infra, '_retry_database_operation_async', new=AsyncMock(return_value=None)):
             result = await service.update_stage_execution(sample_stage_execution)
             assert result == False
     
@@ -830,11 +830,11 @@ class TestHistoryServiceStageExecution:
             mock_get_repo.return_value.__enter__.return_value = None
             mock_get_repo.return_value.__exit__.return_value = None
             
-            with patch.object(service._infra, '_retry_database_operation_async') as mock_retry:
+            with patch.object(service._infra, '_retry_database_operation_async', new=AsyncMock()) as mock_retry:
                 mock_retry.side_effect = lambda name, func: func()
                 
                 # Should call retry operation which should return None/False
-                with patch.object(service._infra, '_retry_database_operation_async', return_value=None):
+                with patch.object(service._infra, '_retry_database_operation_async', new=AsyncMock(return_value=None)):
                     result = await service.update_stage_execution(sample_stage_execution)
                     assert result == False
     
@@ -844,7 +844,7 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock successful repository operation
-        with patch.object(service._infra, '_retry_database_operation_async', return_value=True):
+        with patch.object(service._infra, '_retry_database_operation_async', new=AsyncMock(return_value=True)):
             result = await service.update_session_current_stage(
                 session_id="test-session",
                 current_stage_index=2,
@@ -863,7 +863,7 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock failed repository operation
-        with patch.object(service._infra, '_retry_database_operation_async', return_value=None):
+        with patch.object(service._infra, '_retry_database_operation_async', new=AsyncMock(return_value=None)):
             result = await service.update_session_current_stage(
                 session_id="test-session",
                 current_stage_index=2,
@@ -881,7 +881,7 @@ class TestHistoryServiceStageExecution:
             mock_get_repo.return_value.__enter__.return_value = None
             mock_get_repo.return_value.__exit__.return_value = None
             
-            with patch.object(service._infra, '_retry_database_operation_async', return_value=None):
+            with patch.object(service._infra, '_retry_database_operation_async', new=AsyncMock(return_value=None)):
                 result = await service.update_session_current_stage(
                     session_id="test-session",
                     current_stage_index=2,
@@ -895,7 +895,7 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock successful repository operation
-        with patch.object(service._infra, '_retry_database_operation_async', return_value=sample_stage_execution):
+        with patch.object(service._infra, '_retry_database_operation_async', new=AsyncMock(return_value=sample_stage_execution)):
             result = await service.get_stage_execution("stage-exec-123")
             
             assert result == sample_stage_execution
@@ -914,7 +914,7 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock repository returning None (execution not found)
-        with patch.object(service._infra, '_retry_database_operation_async', return_value=None):
+        with patch.object(service._infra, '_retry_database_operation_async', new=AsyncMock(return_value=None)):
             result = await service.get_stage_execution("non-existent-exec")
             
             assert result is None
@@ -935,7 +935,7 @@ class TestHistoryServiceStageExecution:
             mock_get_repo.return_value.__enter__.return_value = None
             mock_get_repo.return_value.__exit__.return_value = None
             
-            with patch.object(service._infra, '_retry_database_operation_async', return_value=None):
+            with patch.object(service._infra, '_retry_database_operation_async', new=AsyncMock(return_value=None)):
                 result = await service.get_stage_execution("stage-exec-123")
                 assert result is None
 
@@ -1004,17 +1004,17 @@ class TestHistoryServiceErrorHandling:
             result = history_service_with_errors.update_session_status("test", "completed")
             assert result == False
             
-            # get_sessions_list raises RuntimeError when repository unavailable
-            with pytest.raises(RuntimeError, match="History repository unavailable"):
-                history_service_with_errors.get_sessions_list()
+            # get_sessions_list returns None when repository unavailable (with retry logic)
+            result = history_service_with_errors.get_sessions_list()
+            assert result is None
             
-            # get_active_sessions raises RuntimeError when repository unavailable
-            with pytest.raises(RuntimeError, match="History repository unavailable"):
-                history_service_with_errors.get_active_sessions()
+            # get_active_sessions returns empty list when repository unavailable (with retry logic)
+            result = history_service_with_errors.get_active_sessions()
+            assert result == []
             
-            # get_filter_options raises RuntimeError when repository unavailable
-            with pytest.raises(RuntimeError, match="History repository unavailable"):
-                history_service_with_errors.get_filter_options()
+            # get_filter_options returns None when repository unavailable (with retry logic)
+            result = history_service_with_errors.get_filter_options()
+            assert result is None
     
     @pytest.mark.unit
     def test_exception_handling_in_operations(self, history_service_with_errors):
@@ -1123,8 +1123,8 @@ class TestDashboardMethods:
                 dependencies['repository'].get_filter_options.assert_called_once()
     
     @pytest.mark.unit
-    def test_get_filter_options_no_repository_raises_runtime_error(self):
-        """Test that RuntimeError is raised when repository is unavailable."""
+    def test_get_filter_options_no_repository_returns_none(self):
+        """Test that None is returned when repository is unavailable (with retry logic)."""
         service = HistoryService()
         service._infra._set_healthy_for_testing(is_healthy=False)
         
@@ -1132,8 +1132,8 @@ class TestDashboardMethods:
             mock_get_repo.return_value.__enter__.return_value = None
             mock_get_repo.return_value.__exit__.return_value = None
             
-            with pytest.raises(RuntimeError, match="History repository unavailable - cannot retrieve filter options"):
-                service.get_filter_options()
+            result = service.get_filter_options()
+            assert result is None
 
 @pytest.mark.unit
 class TestHistoryServiceRetryLogicDuplicatePrevention:
@@ -1235,7 +1235,7 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
         result = history_service._infra._retry_database_operation("create_session", operation)
         
         assert result is None  # Should return None after first failure
-        assert call_count == 2   # First attempt + one retry, then stops to prevent duplicates
+        assert call_count == 1   # First attempt only, no retries to prevent duplicates
     
     def test_retry_operation_non_create_session_retries_normally(self, history_service):
         """Test that non-create_session operations retry normally."""

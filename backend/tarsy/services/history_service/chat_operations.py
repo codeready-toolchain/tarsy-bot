@@ -17,7 +17,17 @@ class ChatOperations:
         self._infra: BaseHistoryInfra = infra
     
     async def create_chat(self, chat: Chat) -> Chat:
-        """Create a new chat record."""
+        """Create a new chat record.
+        
+        Args:
+            chat: Chat model instance to persist.
+        
+        Returns:
+            The created Chat record with database-assigned fields populated.
+        
+        Raises:
+            ValueError: If the chat could not be created.
+        """
         def _create_operation() -> Chat:
             with self._infra.get_repository() as repo:
                 if not repo:
@@ -30,7 +40,14 @@ class ChatOperations:
         return result
     
     async def get_chat_by_id(self, chat_id: str) -> Optional[Chat]:
-        """Get chat by ID."""
+        """Get chat by ID.
+        
+        Args:
+            chat_id: Unique identifier of the chat to retrieve.
+        
+        Returns:
+            The Chat record if found, None otherwise.
+        """
         def _get_operation() -> Optional[Chat]:
             with self._infra.get_repository() as repo:
                 if not repo:
@@ -44,7 +61,14 @@ class ChatOperations:
         )
     
     async def get_chat_by_session(self, session_id: str) -> Optional[Chat]:
-        """Get chat for a session (if exists)."""
+        """Get chat for a session (if exists).
+        
+        Args:
+            session_id: Unique identifier of the session.
+        
+        Returns:
+            The Chat record associated with the session, or None if no chat exists.
+        """
         def _get_operation() -> Optional[Chat]:
             with self._infra.get_repository() as repo:
                 if not repo:
@@ -58,7 +82,17 @@ class ChatOperations:
         )
     
     async def create_chat_user_message(self, message: ChatUserMessage) -> ChatUserMessage:
-        """Create a new chat user message."""
+        """Create a new chat user message.
+        
+        Args:
+            message: ChatUserMessage model instance to persist.
+        
+        Returns:
+            The created ChatUserMessage record.
+        
+        Raises:
+            ValueError: If the message could not be created.
+        """
         def _create_operation() -> ChatUserMessage:
             with self._infra.get_repository() as repo:
                 if not repo:
@@ -71,7 +105,14 @@ class ChatOperations:
         return result
     
     async def get_stage_executions_for_chat(self, chat_id: str) -> List[StageExecution]:
-        """Get all stage executions for a chat."""
+        """Get all stage executions for a chat.
+        
+        Args:
+            chat_id: Unique identifier of the chat.
+        
+        Returns:
+            List of StageExecution records for the chat, empty list if none found.
+        """
         def _get_operation() -> List[StageExecution]:
             with self._infra.get_repository() as repo:
                 if not repo:
@@ -84,7 +125,14 @@ class ChatOperations:
         ) or []
     
     async def has_llm_interactions(self, session_id: str) -> bool:
-        """Check if session has any LLM interactions."""
+        """Check if session has any LLM interactions.
+        
+        Args:
+            session_id: Unique identifier of the session.
+        
+        Returns:
+            True if the session has at least one LLM interaction, False otherwise.
+        """
         def _has_operation() -> bool:
             with self._infra.get_repository() as repo:
                 if not repo:
@@ -97,7 +145,14 @@ class ChatOperations:
         ) or False
     
     async def get_llm_interactions_for_session(self, session_id: str) -> List[LLMInteraction]:
-        """Get all LLM interactions for a session."""
+        """Get all LLM interactions for a session.
+        
+        Args:
+            session_id: Unique identifier of the session.
+        
+        Returns:
+            List of LLMInteraction records for the session, empty list if none found.
+        """
         def _get_operation() -> List[LLMInteraction]:
             with self._infra.get_repository() as repo:
                 if not repo:
@@ -110,7 +165,14 @@ class ChatOperations:
         ) or []
     
     async def get_llm_interactions_for_stage(self, stage_execution_id: str) -> List[LLMInteraction]:
-        """Get all LLM interactions for a stage execution."""
+        """Get all LLM interactions for a stage execution.
+        
+        Args:
+            stage_execution_id: Unique identifier of the stage execution.
+        
+        Returns:
+            List of LLMInteraction records for the stage, empty list if none found.
+        """
         def _get_operation() -> List[LLMInteraction]:
             with self._infra.get_repository() as repo:
                 if not repo:
@@ -123,7 +185,14 @@ class ChatOperations:
         ) or []
     
     async def get_chat_user_message_count(self, chat_id: str) -> int:
-        """Get total user message count for a chat."""
+        """Get total user message count for a chat.
+        
+        Args:
+            chat_id: Unique identifier of the chat.
+        
+        Returns:
+            Total number of user messages in the chat.
+        """
         def _count_operation() -> int:
             with self._infra.get_repository() as repo:
                 if not repo:
@@ -141,7 +210,16 @@ class ChatOperations:
         limit: int = 50,
         offset: int = 0,
     ) -> List[ChatUserMessage]:
-        """Get user messages for a chat with pagination."""
+        """Get user messages for a chat with pagination.
+        
+        Args:
+            chat_id: Unique identifier of the chat.
+            limit: Maximum number of messages to return. Defaults to 50.
+            offset: Number of messages to skip for pagination. Defaults to 0.
+        
+        Returns:
+            List of ChatUserMessage records, empty list if none found.
+        """
         def _get_operation() -> List[ChatUserMessage]:
             with self._infra.get_repository() as repo:
                 if not repo:

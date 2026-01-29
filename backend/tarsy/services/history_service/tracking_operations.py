@@ -11,11 +11,22 @@ logger = logging.getLogger(__name__)
 class TrackingOperations:
     """Pod tracking for sessions and chats."""
     
-    def __init__(self, infra: BaseHistoryInfra):
-        self._infra = infra
+    def __init__(self, infra: BaseHistoryInfra) -> None:
+        self._infra: BaseHistoryInfra = infra
     
     async def start_chat_message_processing(self, chat_id: str, pod_id: str) -> bool:
-        """Mark chat as processing a message on a specific pod."""
+        """Mark chat as processing a message on a specific pod.
+        
+        Updates the chat's pod tracking to indicate which pod is handling
+        the current message processing.
+        
+        Args:
+            chat_id: Unique identifier of the chat.
+            pod_id: Identifier of the pod processing the message.
+        
+        Returns:
+            True if tracking was successfully updated, False otherwise.
+        """
         def _start_operation():
             with self._infra.get_repository() as repo:
                 if not repo:
@@ -29,7 +40,17 @@ class TrackingOperations:
         return result or False
     
     def record_chat_interaction(self, chat_id: str) -> bool:
-        """Update chat last_interaction_at timestamp."""
+        """Update chat last_interaction_at timestamp.
+        
+        Called to record activity on a chat, preventing it from being
+        marked as orphaned during cleanup.
+        
+        Args:
+            chat_id: Unique identifier of the chat to update.
+        
+        Returns:
+            True if the timestamp was successfully updated, False otherwise.
+        """
         def _record_operation():
             with self._infra.get_repository() as repo:
                 if not repo:
@@ -46,7 +67,18 @@ class TrackingOperations:
         ) or False
     
     def cleanup_orphaned_chats(self, timeout_minutes: int = 30) -> int:
-        """Find and clear stale processing markers from orphaned chats."""
+        """Find and clear stale processing markers from orphaned chats.
+        
+        Chats that have been inactive longer than the timeout have their
+        pod tracking cleared, allowing them to be processed by another pod.
+        
+        Args:
+            timeout_minutes: Minutes of inactivity before a chat is considered
+                orphaned. Defaults to 30.
+        
+        Returns:
+            Number of orphaned chats that were cleaned up.
+        """
         def _cleanup_operation():
             with self._infra.get_repository() as repo:
                 if not repo:
@@ -78,7 +110,17 @@ class TrackingOperations:
         return count or 0
     
     async def mark_pod_chats_interrupted(self, pod_id: str) -> int:
-        """Clear processing markers for chats on a shutting-down pod."""
+        """Clear processing markers for chats on a shutting-down pod.
+        
+        Called during pod shutdown to clear pod tracking for all chats
+        being processed by this pod, allowing them to be handled elsewhere.
+        
+        Args:
+            pod_id: Identifier of the pod that is shutting down.
+        
+        Returns:
+            Number of chats that had their processing markers cleared.
+        """
         def _interrupt_operation():
             with self._infra.get_repository() as repo:
                 if not repo:

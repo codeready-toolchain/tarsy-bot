@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 class MaintenanceOperations:
     """Cleanup and maintenance operations."""
     
-    def __init__(self, infra: BaseHistoryInfra):
-        self._infra = infra
+    def __init__(self, infra: BaseHistoryInfra) -> None:
+        self._infra: BaseHistoryInfra = infra
     
     def _cleanup_orphaned_stages_for_session(self, repo: HistoryRepository, session_id: str) -> int:
         """Mark all non-terminal stages in a session as failed."""
@@ -69,7 +69,18 @@ class MaintenanceOperations:
             return 0
 
     def cleanup_orphaned_sessions(self, timeout_minutes: int = 30) -> int:
-        """Find and mark orphaned sessions as failed based on inactivity timeout."""
+        """Find and mark orphaned sessions as failed based on inactivity timeout.
+        
+        Sessions that have been inactive longer than the timeout are marked as failed
+        with an appropriate error message. Their active stages are also cleaned up.
+        
+        Args:
+            timeout_minutes: Minutes of inactivity before a session is considered
+                orphaned. Defaults to 30.
+        
+        Returns:
+            Number of orphaned sessions that were cleaned up.
+        """
         def _cleanup_operation():
             with self._infra.get_repository() as repo:
                 if not repo:
@@ -100,7 +111,17 @@ class MaintenanceOperations:
         return count or 0
     
     async def mark_pod_sessions_interrupted(self, pod_id: str) -> int:
-        """Mark sessions being processed by a pod as failed during graceful shutdown."""
+        """Mark sessions being processed by a pod as failed during graceful shutdown.
+        
+        Called during pod shutdown to mark all in-progress sessions as failed
+        so they can be picked up by another pod or retried.
+        
+        Args:
+            pod_id: Identifier of the pod that is shutting down.
+        
+        Returns:
+            Number of sessions that were marked as interrupted.
+        """
         def _interrupt_operation():
             with self._infra.get_repository() as repo:
                 if not repo:
@@ -129,7 +150,17 @@ class MaintenanceOperations:
         return count or 0
     
     async def start_session_processing(self, session_id: str, pod_id: str) -> bool:
-        """Mark session as being processed by a specific pod."""
+        """Mark session as being processed by a specific pod.
+        
+        Updates the session's pod tracking information and sets status to IN_PROGRESS.
+        
+        Args:
+            session_id: Unique identifier of the session to start processing.
+            pod_id: Identifier of the pod that will process this session.
+        
+        Returns:
+            True if the session was successfully marked as processing, False otherwise.
+        """
         def _start_operation():
             with self._infra.get_repository() as repo:
                 if not repo:
@@ -146,7 +177,17 @@ class MaintenanceOperations:
         return result or False
     
     def record_session_interaction(self, session_id: str) -> bool:
-        """Update session last_interaction_at timestamp."""
+        """Update session last_interaction_at timestamp.
+        
+        Called to record activity on a session, preventing it from being
+        marked as orphaned during cleanup.
+        
+        Args:
+            session_id: Unique identifier of the session to update.
+        
+        Returns:
+            True if the timestamp was successfully updated, False otherwise.
+        """
         def _interaction_operation():
             with self._infra.get_repository() as repo:
                 if not repo:

@@ -149,7 +149,7 @@ class HistoryService:
         """Get all currently active sessions."""
         return self._queries.get_active_sessions()
 
-    def get_filter_options(self) -> FilterOptions:
+    def get_filter_options(self) -> Optional[FilterOptions]:
         """Get available filter options for the dashboard."""
         return self._queries.get_filter_options()
     

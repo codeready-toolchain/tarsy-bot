@@ -27,7 +27,21 @@ class ConversationOperations:
         session_id: str,
         include_chat: bool = False
     ) -> Tuple[Optional[LLMConversationHistory], Optional[LLMConversationHistory]]:
-        """Get LLM conversation history for a session and optionally its chat."""
+        """Get LLM conversation history for a session and optionally its chat.
+        
+        Retrieves the conversation history from the most recent LLM interaction
+        that includes conversation data. Optionally retrieves chat conversation
+        history as well.
+        
+        Args:
+            session_id: Unique identifier of the session.
+            include_chat: If True, also retrieves conversation history for the
+                session's associated chat (if one exists).
+        
+        Returns:
+            A tuple of (session_conversation, chat_conversation). Either or both
+            may be None if no conversation history is found.
+        """
         def _get_conversation_history() -> Tuple[Optional[LLMConversationHistory], Optional[LLMConversationHistory]]:
             with self._infra.get_repository() as repo:
                 if not repo:
@@ -95,7 +109,25 @@ class ConversationOperations:
         exclude_chat_stages: bool = True,
         include_thinking: bool = False
     ) -> str:
-        """Get formatted conversation text for any session."""
+        """Get formatted conversation text for any session.
+        
+        Retrieves and formats the conversation history as human-readable text,
+        suitable for display or use as context in subsequent interactions.
+        
+        Args:
+            session_id: Unique identifier of the session.
+            exclude_chat_stages: If True, excludes interactions from chat stages
+                from the formatted output.
+            include_thinking: If True, includes model thinking/reasoning content
+                in the formatted output.
+        
+        Returns:
+            Formatted conversation text.
+        
+        Raises:
+            ValueError: If no LLM interactions are found for the session or if
+                the operation fails.
+        """
         def _get_formatted_conversation() -> Union[str, _NoInteractionsSentinel, None]:
             with self._infra.get_repository() as repo:
                 if not repo:
@@ -151,7 +183,26 @@ class ConversationOperations:
         include_separate_alert_section: bool = True,
         include_thinking: bool = False
     ) -> str:
-        """Build comprehensive session history for external analysis."""
+        """Build comprehensive session history for external analysis.
+        
+        Creates a complete session history document including alert information
+        and full conversation history, formatted for external analysis or
+        documentation purposes.
+        
+        Args:
+            session_id: Unique identifier of the session.
+            include_separate_alert_section: If True, includes a dedicated section
+                with alert metadata and data at the beginning of the output.
+            include_thinking: If True, includes model thinking/reasoning content
+                in the conversation output.
+        
+        Returns:
+            Complete formatted session history as a string.
+        
+        Raises:
+            ValueError: If the session is not found or if conversation retrieval
+                fails.
+        """
         # Verify session exists first for clearer error messages
         def _get_session() -> Optional[AlertSession]:
             with self._infra.get_repository() as repo:
