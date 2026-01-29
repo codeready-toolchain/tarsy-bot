@@ -371,7 +371,8 @@ class TestAlertProcessing:
             )
         mock_history_service.get_stage_execution = AsyncMock(side_effect=create_mock_stage_execution)
         # Mock database verification for stage creation
-        mock_history_service._retry_database_operation_async = AsyncMock(return_value=True)
+        mock_history_service._infra = Mock()
+        mock_history_service._infra._retry_database_operation_async = AsyncMock(return_value=True)
         service.history_service = mock_history_service
         
         # Initialize manager classes
@@ -1223,7 +1224,8 @@ class TestEnhancedChainExecution:
         service.history_service.record_session_interaction = AsyncMock()
         service.history_service.start_session_processing = AsyncMock(return_value=True)
         # Mock database verification for stage creation
-        service.history_service._retry_database_operation_async = AsyncMock(return_value=True)
+        service.history_service._infra = Mock()
+        service.history_service._infra._retry_database_operation_async = AsyncMock(return_value=True)
         
         # Initialize manager classes
         service.stage_manager = StageExecutionManager(service.history_service)
@@ -1581,7 +1583,8 @@ class TestFullErrorPropagation:
             )
         service.history_service.get_stage_execution = AsyncMock(side_effect=create_mock_stage_execution)
         # Mock database verification for stage creation
-        service.history_service._retry_database_operation_async = AsyncMock(return_value=True)
+        service.history_service._infra = Mock()
+        service.history_service._infra._retry_database_operation_async = AsyncMock(return_value=True)
         
         # Initialize manager classes
         service.stage_manager = StageExecutionManager(service.history_service)

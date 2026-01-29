@@ -52,10 +52,10 @@ class TestGetPausedStages:
     @pytest.fixture
     def history_service(self, mock_settings):
         """Create HistoryService instance with mocked dependencies."""
-        with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
+        with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
             service = HistoryService()
-            service._initialization_attempted = True
-            service._is_healthy = True
+            service._infra._initialization_attempted = True
+            service._infra._is_healthy = True
             return service
 
     @pytest.mark.asyncio
@@ -86,7 +86,7 @@ class TestGetPausedStages:
             paused_stage, completed_stage, failed_stage
         ]
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = mock_repo
             
             result = await history_service.get_paused_stages(session_id)
@@ -116,7 +116,7 @@ class TestGetPausedStages:
             completed_stage, failed_stage
         ]
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = mock_repo
             
             result = await history_service.get_paused_stages(session_id)
@@ -148,7 +148,7 @@ class TestGetPausedStages:
             paused_stage1, paused_stage2, completed_stage
         ]
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = mock_repo
             
             result = await history_service.get_paused_stages(session_id)
@@ -197,7 +197,7 @@ class TestGetPausedStages:
             parent_stage, top_level_paused
         ]
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = mock_repo
             
             result = await history_service.get_paused_stages(session_id)
@@ -243,7 +243,7 @@ class TestGetPausedStages:
         mock_repo = Mock()
         mock_repo.get_stage_executions_for_session.return_value = [parent_stage]
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = mock_repo
             
             result = await history_service.get_paused_stages(session_id)
@@ -268,10 +268,10 @@ class TestCancelAllPausedStages:
     @pytest.fixture
     def history_service(self, mock_settings):
         """Create HistoryService instance with mocked dependencies."""
-        with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
+        with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
             service = HistoryService()
-            service._initialization_attempted = True
-            service._is_healthy = True
+            service._infra._initialization_attempted = True
+            service._infra._is_healthy = True
             return service
 
     @pytest.mark.asyncio
@@ -288,15 +288,15 @@ class TestCancelAllPausedStages:
         )
         
         # Mock get_paused_stages to return our paused stage
-        history_service.get_paused_stages = AsyncMock(return_value=[paused_stage])
-        history_service.update_stage_execution = AsyncMock()
+        history_service._stages.get_paused_stages = AsyncMock(return_value=[paused_stage])
+        history_service._stages.update_stage_execution = AsyncMock()
         
         count = await history_service.cancel_all_paused_stages(session_id)
         
         assert count == 1
         assert paused_stage.status == StageStatus.CANCELLED.value
         assert paused_stage.error_message == "Cancelled by user"
-        history_service.update_stage_execution.assert_called_once_with(paused_stage)
+        history_service._stages.update_stage_execution.assert_called_once_with(paused_stage)
 
     @pytest.mark.asyncio
     async def test_cancel_all_paused_stages_uses_paused_at_us_for_completed_at(
@@ -313,8 +313,8 @@ class TestCancelAllPausedStages:
             paused_at_us=paused_timestamp
         )
         
-        history_service.get_paused_stages = AsyncMock(return_value=[paused_stage])
-        history_service.update_stage_execution = AsyncMock()
+        history_service._stages.get_paused_stages = AsyncMock(return_value=[paused_stage])
+        history_service._stages.update_stage_execution = AsyncMock()
         
         await history_service.cancel_all_paused_stages(session_id)
         
@@ -338,8 +338,8 @@ class TestCancelAllPausedStages:
             paused_at_us=paused_at
         )
         
-        history_service.get_paused_stages = AsyncMock(return_value=[paused_stage])
-        history_service.update_stage_execution = AsyncMock()
+        history_service._stages.get_paused_stages = AsyncMock(return_value=[paused_stage])
+        history_service._stages.update_stage_execution = AsyncMock()
         
         await history_service.cancel_all_paused_stages(session_id)
         
@@ -361,13 +361,13 @@ class TestCancelAllPausedStages:
             for i in range(3)
         ]
         
-        history_service.get_paused_stages = AsyncMock(return_value=paused_stages)
-        history_service.update_stage_execution = AsyncMock()
+        history_service._stages.get_paused_stages = AsyncMock(return_value=paused_stages)
+        history_service._stages.update_stage_execution = AsyncMock()
         
         count = await history_service.cancel_all_paused_stages(session_id)
         
         assert count == 3
-        assert history_service.update_stage_execution.call_count == 3
+        assert history_service._stages.update_stage_execution.call_count == 3
 
     @pytest.mark.asyncio
     async def test_cancel_all_paused_stages_returns_zero_when_no_paused(
@@ -376,13 +376,13 @@ class TestCancelAllPausedStages:
         """Test that cancel_all_paused_stages returns 0 when no paused stages."""
         session_id = "test-session-123"
         
-        history_service.get_paused_stages = AsyncMock(return_value=[])
-        history_service.update_stage_execution = AsyncMock()
+        history_service._stages.get_paused_stages = AsyncMock(return_value=[])
+        history_service._stages.update_stage_execution = AsyncMock()
         
         count = await history_service.cancel_all_paused_stages(session_id)
         
         assert count == 0
-        history_service.update_stage_execution.assert_not_called()
+        history_service._stages.update_stage_execution.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_cancel_all_paused_stages_fallback_when_paused_at_us_is_none(
@@ -398,8 +398,8 @@ class TestCancelAllPausedStages:
         )
         paused_stage.paused_at_us = None  # Explicitly set to None
         
-        history_service.get_paused_stages = AsyncMock(return_value=[paused_stage])
-        history_service.update_stage_execution = AsyncMock()
+        history_service._stages.get_paused_stages = AsyncMock(return_value=[paused_stage])
+        history_service._stages.update_stage_execution = AsyncMock()
         
         before_cancel = now_us()
         await history_service.cancel_all_paused_stages(session_id)

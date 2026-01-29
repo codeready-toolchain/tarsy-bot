@@ -106,24 +106,24 @@ class TestHistoryServiceIntegration:
         mock_settings.database_url = "sqlite:///:memory:"
         mock_settings.history_retention_days = 90
         
-        with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
+        with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
             service = HistoryService()
             
             # CRITICAL: Replace the DatabaseManager's engine with our test engine
             # that already has the tables created, to avoid separate in-memory databases
             from tarsy.repositories.base_repository import DatabaseManager
-            service.db_manager = DatabaseManager("sqlite:///:memory:")
-            service.db_manager.engine = in_memory_engine  # Use the same engine with tables
+            service._infra.db_manager = DatabaseManager("sqlite:///:memory:")
+            service._infra.db_manager.engine = in_memory_engine  # Use the same engine with tables
             
             # Create session factory using the existing engine
             from sqlalchemy.orm import sessionmaker
             from sqlmodel import Session
-            service.db_manager.session_factory = sessionmaker(
+            service._infra.db_manager.session_factory = sessionmaker(
                 bind=in_memory_engine,
                 class_=Session,
                 expire_on_commit=False
             )
-            service._is_healthy = True  # Mark as healthy since we have a working engine
+            service._infra._is_healthy = True  # Mark as healthy since we have a working engine
             
             logger.info("Using shared in-memory database engine with tables already created")
             
@@ -1304,7 +1304,7 @@ class TestDuplicatePreventionIntegration:
     
     def test_retry_logic_doesnt_create_duplicates(self, history_service_with_test_db, sample_alert_data):
         """Test that retry logic doesn't create duplicate sessions."""
-        with patch.object(history_service_with_test_db, '_retry_database_operation') as mock_retry:
+        with patch.object(history_service_with_test_db._infra, '_retry_database_operation') as mock_retry:
             # First call succeeds, second call would create duplicate
             mock_retry.return_value = True
             
@@ -1386,7 +1386,7 @@ class TestDuplicatePreventionIntegration:
         assert result is True
         
         # Simulate database error during duplicate check
-        with patch.object(history_service_with_test_db, 'get_repository') as mock_get_repo:
+        with patch.object(history_service_with_test_db._infra, 'get_repository') as mock_get_repo:
             mock_repo = Mock()
             mock_repo.__enter__ = Mock(return_value=mock_repo)
             mock_repo.__exit__ = Mock(return_value=None)

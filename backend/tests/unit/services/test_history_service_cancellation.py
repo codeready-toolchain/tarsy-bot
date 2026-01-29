@@ -26,10 +26,10 @@ class TestHistoryServiceCancellation:
     @pytest.fixture
     def history_service(self, mock_settings):
         """Create HistoryService instance with mocked dependencies."""
-        with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
+        with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
             service = HistoryService()
-            service._initialization_attempted = True
-            service._is_healthy = True
+            service._infra._initialization_attempted = True
+            service._infra._is_healthy = True
             return service
     
     @pytest.mark.unit
@@ -48,7 +48,7 @@ class TestHistoryServiceCancellation:
         mock_repo = Mock()
         mock_repo.get_alert_session.return_value = expected_session
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = mock_repo
             
             result = history_service.get_session(session_id)
@@ -66,7 +66,7 @@ class TestHistoryServiceCancellation:
         mock_repo = Mock()
         mock_repo.get_alert_session.return_value = None
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = mock_repo
             
             result = history_service.get_session(session_id)
@@ -113,7 +113,7 @@ class TestHistoryServiceCancellation:
             # Only for non-idempotent cases, expect update to be called
             mock_repo.update_alert_session.return_value = True
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = mock_repo
             
             success, returned_status = history_service.update_session_to_canceling(session_id)
@@ -138,7 +138,7 @@ class TestHistoryServiceCancellation:
         mock_repo = Mock()
         mock_repo.get_alert_session.return_value = None
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = mock_repo
             
             success, status = history_service.update_session_to_canceling(session_id)
@@ -165,7 +165,7 @@ class TestHistoryServiceCancellation:
         mock_repo = Mock()
         mock_repo.get_alert_session.return_value = mock_session
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = mock_repo
             
             success, status = history_service.update_session_to_canceling(session_id)
@@ -195,7 +195,7 @@ class TestHistoryServiceCancellation:
         mock_repo.get_alert_session.return_value = mock_session
         mock_repo.update_alert_session.return_value = False  # Simulate update failure
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = mock_repo
             
             success, status = history_service.update_session_to_canceling(session_id)

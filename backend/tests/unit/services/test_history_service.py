@@ -29,10 +29,10 @@ class TestHistoryService:
     @pytest.fixture
     def history_service(self, mock_settings):
         """Create HistoryService instance with mocked dependencies."""
-        with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
+        with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
             service = HistoryService()
-            service._initialization_attempted = True
-            service._is_healthy = True
+            service._infra._initialization_attempted = True
+            service._infra._is_healthy = True
             return service
     
     @pytest.mark.unit
@@ -43,9 +43,9 @@ class TestHistoryService:
             database_url=expected_url
         )
         
-        with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
+        with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
             service = HistoryService()
-            assert service.settings.database_url == expected_url
+            assert service._infra.settings.database_url == expected_url
     
     @pytest.mark.parametrize("failure_type,expected_result,expected_attempted,expected_healthy", [
         ("success", True, True, True),  # Successful initialization
@@ -53,7 +53,7 @@ class TestHistoryService:
         ("schema_failure", False, True, False),  # Schema creation failure
     ])
     @pytest.mark.unit
-    @patch('tarsy.services.history_service.DatabaseManager')
+    @patch('tarsy.services.history_service.base_infrastructure.DatabaseManager')
     def test_initialize_scenarios(self, mock_db_manager_class, failure_type, expected_result, expected_attempted, expected_healthy):
         """Test service initialization for various failure scenarios."""
         # Create mock settings based on scenario
@@ -73,13 +73,13 @@ class TestHistoryService:
             mock_db_instance.create_tables.side_effect = Exception("Schema creation failed")
             mock_db_manager_class.return_value = mock_db_instance
         
-        with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
+        with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
             service = HistoryService()
             result = service.initialize()
             
             assert result == expected_result
-            assert service._initialization_attempted == expected_attempted
-            assert service._is_healthy == expected_healthy
+            assert service._infra._initialization_attempted == expected_attempted
+            assert service._infra._is_healthy == expected_healthy
             
             if failure_type == "success":
                 mock_db_instance.initialize.assert_called_once()
@@ -90,16 +90,16 @@ class TestHistoryService:
         (False, None),  # Service disabled
     ])
     @pytest.mark.unit
-    @patch('tarsy.services.history_service.HistoryRepository')
+    @patch('tarsy.services.history_service.base_infrastructure.HistoryRepository')
     def test_get_repository_scenarios(self, mock_repo_class, history_service, service_enabled, expected_repo):
         """Test repository access for various scenarios."""
         dependencies = MockFactory.create_mock_history_service_dependencies()
         
         if service_enabled:
-            history_service.db_manager = dependencies['db_manager']
+            history_service._infra.db_manager = dependencies['db_manager']
             mock_repo_class.return_value = dependencies['repository']
         
-        with history_service.get_repository() as repo:
+        with history_service._infra.get_repository() as repo:
             if expected_repo == "mock_repo":
                 assert repo == dependencies['repository']
             else:
@@ -115,7 +115,7 @@ class TestHistoryService:
         dependencies = MockFactory.create_mock_history_service_dependencies()
         
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             if repo_side_effect:
                 mock_get_repo.side_effect = repo_side_effect
             else:
@@ -227,7 +227,7 @@ class TestHistoryService:
             stages=[ChainStageConfigModel(name="analysis", agent="KubernetesAgent")]
         )
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -261,7 +261,7 @@ class TestHistoryService:
         )
         dependencies['repository'].get_alert_session.return_value = mock_session
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -307,7 +307,7 @@ class TestHistoryService:
         """Test successful interaction logging for both LLM and MCP."""
         dependencies = MockFactory.create_mock_history_service_dependencies()
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -344,7 +344,7 @@ class TestHistoryService:
             dependencies = None
         
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             if service_enabled:
                 mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
                 mock_get_repo.return_value.__exit__.return_value = None
@@ -432,7 +432,7 @@ class TestHistoryService:
             "mcp_communications": []
         }
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -485,7 +485,7 @@ class TestHistoryService:
         
         dependencies['repository'].get_session_details.return_value = mock_detailed_session
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -581,7 +581,7 @@ class TestHistoryService:
         
         dependencies['repository'].get_session_details.return_value = mock_detailed_session
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -612,7 +612,7 @@ class TestHistoryService:
         """Test database connection for various scenarios."""
         dependencies = MockFactory.create_mock_history_service_dependencies()
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             if connection_success:
                 mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
                 mock_get_repo.return_value.__exit__.return_value = None
@@ -633,7 +633,7 @@ class TestHistoryService:
         mock_active_sessions = [SessionFactory.create_in_progress_session() for _ in range(2)]
         dependencies['repository'].get_active_sessions.return_value = mock_active_sessions
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -661,7 +661,7 @@ class TestHistoryService:
                 raise Exception(error_type)
             return "success"
         
-        result = history_service._retry_database_operation("test_operation", mock_operation)
+        result = history_service._infra._retry_database_operation("test_operation", mock_operation)
         
         assert result == expected_result
         assert call_count == expected_calls
@@ -669,7 +669,7 @@ class TestHistoryService:
         if operation_type == "success_after_retry":
             mock_sleep.assert_called_once()  # Should have slept once for retry
         elif operation_type == "exhausts_retries":
-            assert mock_sleep.call_count == history_service.max_retries  # Should retry max_retries times
+            assert mock_sleep.call_count == history_service._infra.max_retries  # Should retry max_retries times
         else:  # non_retryable
             mock_sleep.assert_not_called()  # Should not retry for non-retryable errors
 
@@ -732,7 +732,7 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock get_repository to return None (repository unavailable)
-        with patch.object(service, 'get_repository') as mock_get_repo:
+        with patch.object(service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = None
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -746,7 +746,7 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock the retry mechanism to return None (simulating all retries failed)
-        with patch.object(service, '_retry_database_operation_async', return_value=None):
+        with patch.object(service._infra, '_retry_database_operation_async', return_value=None):
             # Should raise RuntimeError instead of returning fallback ID  
             with pytest.raises(RuntimeError, match="Failed to create stage execution record"):
                 await service.create_stage_execution(sample_stage_execution)
@@ -757,7 +757,7 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock successful repository operation
-        with patch.object(service, '_retry_database_operation_async', return_value="stage-exec-123"):
+        with patch.object(service._infra, '_retry_database_operation_async', return_value="stage-exec-123"):
             result = await service.create_stage_execution(sample_stage_execution)
             assert result == "stage-exec-123"
     
@@ -774,13 +774,13 @@ class TestHistoryServiceStageExecution:
         sample_stage_execution.duration_ms = 5000
         
         # Mock successful repository operation
-        with patch.object(service, '_retry_database_operation_async', return_value=True):
+        with patch.object(service._infra, '_retry_database_operation_async', return_value=True):
             result = await service.update_stage_execution(sample_stage_execution)
             assert result == True
             
             # Verify retry operation was called with correct operation name
-            service._retry_database_operation_async.assert_called_once()
-            args, kwargs = service._retry_database_operation_async.call_args
+            service._infra._retry_database_operation_async.assert_called_once()
+            args, kwargs = service._infra._retry_database_operation_async.call_args
             assert args[0] == "update_stage_execution"
     
     @pytest.mark.asyncio
@@ -789,7 +789,7 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock failed repository operation
-        with patch.object(service, '_retry_database_operation_async', return_value=None):
+        with patch.object(service._infra, '_retry_database_operation_async', return_value=None):
             result = await service.update_stage_execution(sample_stage_execution)
             assert result == False
     
@@ -800,21 +800,21 @@ class TestHistoryServiceStageExecution:
         
         # Mock get_repository to return None (repository unavailable)
         def mock_operation():
-            with service.get_repository() as repo:
+            with service._infra.get_repository() as repo:
                 if not repo:
                     raise RuntimeError("History repository unavailable - cannot update stage execution")
                 return repo.update_stage_execution(sample_stage_execution)
         
         # Mock the actual implementation to test error path
-        with patch.object(service, 'get_repository') as mock_get_repo:
+        with patch.object(service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = None
             mock_get_repo.return_value.__exit__.return_value = None
             
-            with patch.object(service, '_retry_database_operation_async') as mock_retry:
+            with patch.object(service._infra, '_retry_database_operation_async') as mock_retry:
                 mock_retry.side_effect = lambda name, func: func()
                 
                 # Should call retry operation which should return None/False
-                with patch.object(service, '_retry_database_operation_async', return_value=None):
+                with patch.object(service._infra, '_retry_database_operation_async', return_value=None):
                     result = await service.update_stage_execution(sample_stage_execution)
                     assert result == False
     
@@ -824,7 +824,7 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock successful repository operation
-        with patch.object(service, '_retry_database_operation_async', return_value=True):
+        with patch.object(service._infra, '_retry_database_operation_async', return_value=True):
             result = await service.update_session_current_stage(
                 session_id="test-session",
                 current_stage_index=2,
@@ -833,8 +833,8 @@ class TestHistoryServiceStageExecution:
             assert result == True
             
             # Verify retry operation was called with correct operation name
-            service._retry_database_operation_async.assert_called_once()
-            args, kwargs = service._retry_database_operation_async.call_args
+            service._infra._retry_database_operation_async.assert_called_once()
+            args, kwargs = service._infra._retry_database_operation_async.call_args
             assert args[0] == "update_session_current_stage"
     
     @pytest.mark.asyncio
@@ -843,7 +843,7 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock failed repository operation
-        with patch.object(service, '_retry_database_operation_async', return_value=None):
+        with patch.object(service._infra, '_retry_database_operation_async', return_value=None):
             result = await service.update_session_current_stage(
                 session_id="test-session",
                 current_stage_index=2,
@@ -857,11 +857,11 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock get_repository to return None (repository unavailable)
-        with patch.object(service, 'get_repository') as mock_get_repo:
+        with patch.object(service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = None
             mock_get_repo.return_value.__exit__.return_value = None
             
-            with patch.object(service, '_retry_database_operation_async', return_value=None):
+            with patch.object(service._infra, '_retry_database_operation_async', return_value=None):
                 result = await service.update_session_current_stage(
                     session_id="test-session",
                     current_stage_index=2,
@@ -875,7 +875,7 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock successful repository operation
-        with patch.object(service, '_retry_database_operation_async', return_value=sample_stage_execution):
+        with patch.object(service._infra, '_retry_database_operation_async', return_value=sample_stage_execution):
             result = await service.get_stage_execution("stage-exec-123")
             
             assert result == sample_stage_execution
@@ -883,8 +883,8 @@ class TestHistoryServiceStageExecution:
             assert result.stage_name == "Test Stage"
             
             # Verify retry operation was called with correct parameters
-            service._retry_database_operation_async.assert_called_once()
-            args, kwargs = service._retry_database_operation_async.call_args
+            service._infra._retry_database_operation_async.assert_called_once()
+            args, kwargs = service._infra._retry_database_operation_async.call_args
             assert args[0] == "get_stage_execution"
             assert kwargs.get("treat_none_as_success") == True
     
@@ -894,14 +894,14 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock repository returning None (execution not found)
-        with patch.object(service, '_retry_database_operation_async', return_value=None):
+        with patch.object(service._infra, '_retry_database_operation_async', return_value=None):
             result = await service.get_stage_execution("non-existent-exec")
             
             assert result is None
             
             # Verify retry operation was called with treat_none_as_success=True
-            service._retry_database_operation_async.assert_called_once()
-            args, kwargs = service._retry_database_operation_async.call_args
+            service._infra._retry_database_operation_async.assert_called_once()
+            args, kwargs = service._infra._retry_database_operation_async.call_args
             assert args[0] == "get_stage_execution"
             assert kwargs.get("treat_none_as_success") == True
     
@@ -911,11 +911,11 @@ class TestHistoryServiceStageExecution:
         service = HistoryService()
         
         # Mock get_repository to return None (repository unavailable)
-        with patch.object(service, 'get_repository') as mock_get_repo:
+        with patch.object(service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = None
             mock_get_repo.return_value.__exit__.return_value = None
             
-            with patch.object(service, '_retry_database_operation_async', return_value=None):
+            with patch.object(service._infra, '_retry_database_operation_async', return_value=None):
                 result = await service.get_stage_execution("stage-exec-123")
                 assert result is None
 
@@ -930,16 +930,16 @@ class TestHistoryServiceErrorHandling:
         mock_settings.database_url = "sqlite:///test_history.db"
         mock_settings.history_retention_days = 90
         
-        with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
+        with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
             service = HistoryService()
-            service._initialization_attempted = True
-            service._is_healthy = False  # Simulate unhealthy state
+            service._infra._initialization_attempted = True
+            service._infra._is_healthy = False  # Simulate unhealthy state
             return service
     
     @pytest.mark.unit
     def test_repository_unavailable_raises_runtime_error(self, history_service_with_errors):
         """Test that RuntimeError is raised when repository is unavailable."""
-        with patch.object(history_service_with_errors, 'get_repository') as mock_get_repo:
+        with patch.object(history_service_with_errors._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = None
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -1000,7 +1000,7 @@ class TestHistoryServiceErrorHandling:
     @pytest.mark.unit
     def test_exception_handling_in_operations(self, history_service_with_errors):
         """Test exception handling in various operations."""
-        with patch.object(history_service_with_errors, 'get_repository') as mock_get_repo:
+        with patch.object(history_service_with_errors._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.side_effect = Exception("Simulated error")
             
             # All operations should handle exceptions gracefully
@@ -1053,7 +1053,7 @@ class TestHistoryServiceErrorHandling:
                 ])
             )
             # Test that store methods return False when repository unavailable
-            with patch.object(history_service_with_errors, 'get_repository') as mock_get_repo_inner:
+            with patch.object(history_service_with_errors._infra, 'get_repository') as mock_get_repo_inner:
                 mock_get_repo_inner.return_value.__enter__.return_value = None
                 mock_get_repo_inner.return_value.__exit__.return_value = None
                 
@@ -1088,10 +1088,10 @@ class TestDashboardMethods:
         service = HistoryService()
         
         if scenario == "success":
-            service._is_healthy = True
+            service._infra._is_healthy = True
             dependencies = MockFactory.create_mock_history_service_dependencies()
             
-            with patch.object(service, 'get_repository') as mock_get_repo:
+            with patch.object(service._infra, 'get_repository') as mock_get_repo:
                 mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
                 mock_get_repo.return_value.__exit__.return_value = None
                 
@@ -1107,9 +1107,9 @@ class TestDashboardMethods:
     def test_get_filter_options_no_repository_raises_runtime_error(self):
         """Test that RuntimeError is raised when repository is unavailable."""
         service = HistoryService()
-        service._is_healthy = False
+        service._infra._is_healthy = False
         
-        with patch.object(service, 'get_repository') as mock_get_repo:
+        with patch.object(service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = None
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -1123,7 +1123,7 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
     @pytest.fixture
     def history_service(self):
         """Create HistoryService instance for testing."""
-        with patch('tarsy.services.history_service.get_settings') as mock_settings:
+        with patch('tarsy.services.history_service.base_infrastructure.get_settings') as mock_settings:
             mock_settings.return_value.database_url = "sqlite:///test.db"
             mock_settings.return_value.history_retention_days = 90
             
@@ -1139,7 +1139,7 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
             call_count += 1
             return "success"
         
-        result = history_service._retry_database_operation("test_operation", operation)
+        result = history_service._infra._retry_database_operation("test_operation", operation)
         
         assert result == "success"
         assert call_count == 1  # Should only be called once
@@ -1155,7 +1155,7 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
                 raise Exception("database is locked")
             return "success"
         
-        result = history_service._retry_database_operation("test_operation", operation)
+        result = history_service._infra._retry_database_operation("test_operation", operation)
         
         assert result == "success"
         assert call_count == 3  # Should retry twice, succeed on third
@@ -1169,7 +1169,7 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
             call_count += 1
             raise Exception("database is locked")
         
-        result = history_service._retry_database_operation("test_operation", operation)
+        result = history_service._infra._retry_database_operation("test_operation", operation)
         
         assert result is None
         assert call_count == 4  # Initial attempt + 3 retries
@@ -1183,7 +1183,7 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
             call_count += 1
             raise ValueError("Invalid data")  # Not a retryable error
         
-        result = history_service._retry_database_operation("test_operation", operation)
+        result = history_service._infra._retry_database_operation("test_operation", operation)
         
         assert result is None
         assert call_count == 1  # Should not retry
@@ -1199,7 +1199,7 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
                 return True  # First attempt succeeds
             raise Exception("database is locked")  # Shouldn't reach here
         
-        result = history_service._retry_database_operation("create_session", operation)
+        result = history_service._infra._retry_database_operation("create_session", operation)
         
         assert result == True
         assert call_count == 1
@@ -1213,7 +1213,7 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
             call_count += 1
             raise Exception("connection timeout")  # Always fails
         
-        result = history_service._retry_database_operation("create_session", operation)
+        result = history_service._infra._retry_database_operation("create_session", operation)
         
         assert result is None  # Should return None after first failure
         assert call_count == 2   # First attempt + one retry, then stops to prevent duplicates
@@ -1229,7 +1229,7 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
                 raise Exception("database is locked")
             return "success"
         
-        result = history_service._retry_database_operation("update_session", operation)
+        result = history_service._infra._retry_database_operation("update_session", operation)
         
         assert result == "success"
         assert call_count == 3  # Should retry normally
@@ -1245,8 +1245,8 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
                 return None  # Failed operation
             return "success"
         
-        with patch.object(history_service, 'max_retries', 3):
-            result = history_service._retry_database_operation("test_operation", operation)
+        with patch.object(history_service._infra, 'max_retries', 3):
+            result = history_service._infra._retry_database_operation("test_operation", operation)
         
         assert result == "success"
         assert call_count == 3  # Should retry on None results
@@ -1265,7 +1265,7 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
                 raise Exception("database is locked")
             return "success"
         
-        result = history_service._retry_database_operation("test_operation", operation)
+        result = history_service._infra._retry_database_operation("test_operation", operation)
         
         assert result == "success"
         
@@ -1296,7 +1296,7 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
         history_service.max_delay = 0.1    # 100ms max delay
         
         start_time = time.time()
-        result = history_service._retry_database_operation("test_operation", operation)
+        result = history_service._infra._retry_database_operation("test_operation", operation)
         end_time = time.time()
         
         assert result == "success"
@@ -1334,7 +1334,7 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
                     raise Exception(error_msg)
                 return "success"
             
-            result = history_service._retry_database_operation("test_operation", operation)
+            result = history_service._infra._retry_database_operation("test_operation", operation)
             
             assert result == "success", f"Should retry for error: {error_msg}"
             assert call_count == 2, f"Should have retried once for error: {error_msg}"
@@ -1347,7 +1347,7 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
         def operation():
             raise Exception("Final error message")
         
-        result = history_service._retry_database_operation("test_operation", operation)
+        result = history_service._infra._retry_database_operation("test_operation", operation)
         
         assert result is None
         
@@ -1368,7 +1368,7 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
             call_count += 1
             return None  # Entity not found
         
-        result = history_service._retry_database_operation(
+        result = history_service._infra._retry_database_operation(
             "get_chat_by_session",
             operation,
             treat_none_as_success=True
@@ -1394,7 +1394,7 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
             call_count += 1
             return None  # Failed operation
         
-        result = history_service._retry_database_operation("test_operation", operation)
+        result = history_service._infra._retry_database_operation("test_operation", operation)
         
         assert result is None
         assert call_count == 4  # Initial + 3 retries
@@ -1440,7 +1440,7 @@ async def test_cleanup_orphaned_sessions():
     mock_repo.update_alert_session.return_value = True
     
     # Mock the context manager
-    history_service.get_repository = Mock(return_value=Mock(
+    history_service._infra.get_repository = Mock(return_value=Mock(
         __enter__=Mock(return_value=mock_repo), 
         __exit__=Mock(return_value=None)
     ))
@@ -1476,7 +1476,7 @@ async def test_cleanup_orphaned_sessions():
 async def test_cleanup_orphaned_sessions_no_repository():
     """Test cleanup handles gracefully when repository is unavailable."""
     history_service = HistoryService()
-    history_service.get_repository = Mock(return_value=Mock(__enter__=Mock(return_value=None), __exit__=Mock(return_value=None)))
+    history_service._infra.get_repository = Mock(return_value=Mock(__enter__=Mock(return_value=None), __exit__=Mock(return_value=None)))
     
     cleaned_count = history_service.cleanup_orphaned_sessions()
     
@@ -1492,7 +1492,7 @@ async def test_cleanup_orphaned_sessions_no_active_sessions():
     mock_repo = Mock()
     mock_repo.find_orphaned_sessions.return_value = []  # No orphaned sessions found
     
-    history_service.get_repository = Mock(return_value=Mock(
+    history_service._infra.get_repository = Mock(return_value=Mock(
         __enter__=Mock(return_value=mock_repo), 
         __exit__=Mock(return_value=None)
     ))
@@ -1535,7 +1535,7 @@ async def test_cleanup_never_touches_failed_sessions():
     mock_repo = Mock()
     mock_repo.find_orphaned_sessions.return_value = []  # Correctly excludes FAILED sessions
     
-    history_service.get_repository = Mock(return_value=Mock(
+    history_service._infra.get_repository = Mock(return_value=Mock(
         __enter__=Mock(return_value=mock_repo), 
         __exit__=Mock(return_value=None)
     ))
@@ -1578,7 +1578,7 @@ async def test_cleanup_never_touches_completed_sessions():
     mock_repo = Mock()
     mock_repo.find_orphaned_sessions.return_value = []
     
-    history_service.get_repository = Mock(return_value=Mock(
+    history_service._infra.get_repository = Mock(return_value=Mock(
         __enter__=Mock(return_value=mock_repo), 
         __exit__=Mock(return_value=None)
     ))
@@ -1619,7 +1619,7 @@ async def test_cleanup_never_touches_null_last_interaction():
     mock_repo = Mock()
     mock_repo.find_orphaned_sessions.return_value = []  # Correctly excludes NULL
     
-    history_service.get_repository = Mock(return_value=Mock(
+    history_service._infra.get_repository = Mock(return_value=Mock(
         __enter__=Mock(return_value=mock_repo), 
         __exit__=Mock(return_value=None)
     ))
@@ -1661,7 +1661,7 @@ async def test_cleanup_only_touches_in_progress_with_old_interaction():
     mock_repo.find_orphaned_sessions.return_value = [orphaned_session]
     mock_repo.update_alert_session.return_value = True
     
-    history_service.get_repository = Mock(return_value=Mock(
+    history_service._infra.get_repository = Mock(return_value=Mock(
         __enter__=Mock(return_value=mock_repo), 
         __exit__=Mock(return_value=None)
     ))
@@ -1701,7 +1701,7 @@ async def test_cleanup_orphaned_sessions_session_not_found():
     mock_repo.find_orphaned_sessions.return_value = [orphaned_session]
     mock_repo.update_alert_session.return_value = False  # Update fails
     
-    history_service.get_repository = Mock(return_value=Mock(
+    history_service._infra.get_repository = Mock(return_value=Mock(
         __enter__=Mock(return_value=mock_repo),
         __exit__=Mock(return_value=None)
     ))
@@ -1723,10 +1723,10 @@ class TestHistoryAPIResponseStructure:
     @pytest.fixture
     def history_service(self, isolated_test_settings):
         """Create HistoryService instance for testing."""
-        with patch('tarsy.services.history_service.get_settings', return_value=isolated_test_settings):
+        with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=isolated_test_settings):
             service = HistoryService()
-            service._initialization_attempted = True
-            service._is_healthy = True
+            service._infra._initialization_attempted = True
+            service._infra._is_healthy = True
             return service
     
     @pytest.mark.unit
@@ -1796,7 +1796,7 @@ class TestHistoryAPIResponseStructure:
         dependencies = MockFactory.create_mock_history_service_dependencies()
         dependencies['repository'].get_session_overview.return_value = mock_session_overview
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -1825,7 +1825,7 @@ class TestHistoryAPIResponseStructure:
         dependencies = MockFactory.create_mock_history_service_dependencies()
         dependencies['repository'].get_session_overview.return_value = None
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -1859,7 +1859,7 @@ class TestHistoryAPIResponseStructure:
         dependencies = MockFactory.create_mock_history_service_dependencies()
         dependencies['repository'].get_session_overview.return_value = mock_session_overview
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -1886,7 +1886,7 @@ class TestHistoryAPIResponseStructure:
         dependencies = MockFactory.create_mock_history_service_dependencies()
         dependencies['repository'].get_session_overview.return_value = None  # Simulate error/not found
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -1908,10 +1908,10 @@ class TestHistoryServiceTokenAggregations:
     @pytest.fixture
     def history_service(self, isolated_test_settings):
         """Create HistoryService instance for testing."""
-        with patch('tarsy.services.history_service.get_settings', return_value=isolated_test_settings):
+        with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=isolated_test_settings):
             service = HistoryService()
-            service._initialization_attempted = True
-            service._is_healthy = True
+            service._infra._initialization_attempted = True
+            service._infra._is_healthy = True
             return service
     
     @pytest.mark.asyncio
@@ -1958,7 +1958,7 @@ class TestHistoryServiceTokenAggregations:
         dependencies['repository'].get_session_overview.return_value = mock_session_overview
         dependencies['repository'].get_session_details.return_value = mock_detailed_session
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -2006,7 +2006,7 @@ class TestHistoryServiceTokenAggregations:
         dependencies['repository'].get_session_overview.return_value = mock_session_overview
         dependencies['repository'].get_session_details.return_value = mock_detailed_session
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -2035,7 +2035,7 @@ class TestHistoryServiceTokenAggregations:
         dependencies['repository'].get_session_overview.return_value = mock_session_overview
         dependencies['repository'].get_session_details.return_value = None  # No detailed session
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -2093,7 +2093,7 @@ class TestHistoryServiceTokenAggregations:
         dependencies['repository'].get_session_overview.return_value = mock_session_overview
         dependencies['repository'].get_session_details.return_value = mock_detailed_session
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -2118,10 +2118,10 @@ class TestConversationHistory:
     @pytest.fixture
     def history_service(self, mock_settings):
         """Create HistoryService instance with mocked dependencies."""
-        with patch('tarsy.services.history_service.get_settings', return_value=mock_settings):
+        with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
             service = HistoryService()
-            service._initialization_attempted = True
-            service._is_healthy = True
+            service._infra._initialization_attempted = True
+            service._infra._is_healthy = True
             return service
     
     @pytest.mark.unit
@@ -2152,7 +2152,7 @@ class TestConversationHistory:
         )
         
         # Act
-        result = history_service._build_conversation_history(interaction)
+        result = history_service._conversations._build_conversation_history(interaction)
         
         # Assert
         assert result is not None
@@ -2171,7 +2171,7 @@ class TestConversationHistory:
     @pytest.mark.unit
     def test_build_conversation_history_with_none_interaction(self, history_service):
         """Test _build_conversation_history with None interaction."""
-        result = history_service._build_conversation_history(None)
+        result = history_service._conversations._build_conversation_history(None)
         assert result is None
     
     @pytest.mark.unit
@@ -2188,7 +2188,7 @@ class TestConversationHistory:
             conversation=None
         )
         
-        result = history_service._build_conversation_history(interaction)
+        result = history_service._conversations._build_conversation_history(interaction)
         assert result is None
     
     @pytest.mark.unit
@@ -2251,7 +2251,7 @@ class TestConversationHistory:
         ]
         dependencies['repository'].get_chat_by_session.return_value = mock_chat
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -2300,7 +2300,7 @@ class TestConversationHistory:
         dependencies['repository'].get_last_llm_interaction_with_conversation.return_value = session_interaction
         dependencies['repository'].get_chat_by_session.return_value = None  # No chat
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -2322,7 +2322,7 @@ class TestConversationHistory:
         dependencies['repository'].get_last_llm_interaction_with_conversation.return_value = None
         dependencies['repository'].get_chat_by_session.return_value = None
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -2365,7 +2365,7 @@ class TestConversationHistory:
         dependencies = MockFactory.create_mock_history_service_dependencies()
         dependencies['repository'].get_llm_interactions_for_session.return_value = [interaction]
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -2406,7 +2406,7 @@ class TestConversationHistory:
         dependencies = MockFactory.create_mock_history_service_dependencies()
         dependencies['repository'].get_llm_interactions_for_session.return_value = [interaction]
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -2462,7 +2462,7 @@ class TestConversationHistory:
         dependencies = MockFactory.create_mock_history_service_dependencies()
         dependencies['repository'].get_llm_interactions_for_session.return_value = [interaction1, interaction2]
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -2496,7 +2496,7 @@ class TestConversationHistory:
         dependencies = MockFactory.create_mock_history_service_dependencies()
         dependencies['repository'].get_llm_interactions_for_session.return_value = [interaction]
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -2544,7 +2544,7 @@ class TestConversationHistory:
         dependencies = MockFactory.create_mock_history_service_dependencies()
         dependencies['repository'].get_llm_interactions_for_session.return_value = [investigation, summarization]
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -2565,7 +2565,7 @@ class TestConversationHistory:
         dependencies = MockFactory.create_mock_history_service_dependencies()
         dependencies['repository'].get_llm_interactions_for_session.return_value = []
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -2586,13 +2586,17 @@ class TestConversationHistory:
             alert_data={"pod": "my-pod", "namespace": "production"}
         )
         
-        # Mock get_formatted_session_conversation to return formatted text
-        with patch.object(history_service, 'get_formatted_session_conversation') as mock_get_formatted:
+        # Mock get_formatted_session_conversation on the _conversations operation class
+        with patch.object(history_service._conversations, 'get_formatted_session_conversation') as mock_get_formatted:
             mock_get_formatted.return_value = "📋 INVESTIGATION HISTORY\n\nInvestigation content"
             
-            # Mock get_session to return the actual session
-            with patch.object(history_service, 'get_session') as mock_get_session:
-                mock_get_session.return_value = session
+            # Mock the repo to return the session
+            dependencies = MockFactory.create_mock_history_service_dependencies()
+            dependencies['repository'].get_alert_session.return_value = session
+            
+            with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
+                mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+                mock_get_repo.return_value.__exit__.return_value = None
                 
                 # Act
                 result = history_service.build_comprehensive_session_history(
@@ -2638,7 +2642,7 @@ class TestConversationHistory:
         dependencies['repository'].get_llm_interactions_for_session.return_value = [interaction]
         dependencies['repository'].get_session.return_value = session
         
-        with patch.object(history_service, 'get_repository') as mock_get_repo:
+        with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
@@ -2658,13 +2662,17 @@ class TestConversationHistory:
     @pytest.mark.unit
     def test_build_comprehensive_session_history_session_not_found(self, history_service):
         """Test error when session doesn't exist."""
-        # Mock get_formatted_session_conversation to return formatted text
-        with patch.object(history_service, 'get_formatted_session_conversation') as mock_get_formatted:
+        # Mock get_formatted_session_conversation on the _conversations operation class
+        with patch.object(history_service._conversations, 'get_formatted_session_conversation') as mock_get_formatted:
             mock_get_formatted.return_value = "📋 INVESTIGATION HISTORY\n\nInvestigation content"
             
-            # Mock get_session to return None (session not found)
-            with patch.object(history_service, 'get_session') as mock_get_session:
-                mock_get_session.return_value = None
+            # Mock the repo to return None for the session (not found)
+            dependencies = MockFactory.create_mock_history_service_dependencies()
+            dependencies['repository'].get_alert_session.return_value = None
+            
+            with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
+                mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
+                mock_get_repo.return_value.__exit__.return_value = None
                 
                 # Act & Assert
                 with pytest.raises(ValueError, match="Session test-session not found"):
