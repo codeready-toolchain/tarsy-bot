@@ -33,6 +33,14 @@ from tarsy.utils.timestamp import now_us
 
 logger = logging.getLogger(__name__)
 
+# Sentinel value to indicate no LLM interactions found (distinct from None/failure)
+class _NoInteractionsSentinel:
+    """Sentinel to distinguish 'no interactions found' from database failures."""
+    def __repr__(self):
+        return "<NO_INTERACTIONS>"
+
+NO_INTERACTIONS = _NoInteractionsSentinel()
+
 
 class HistoryService:
     """
@@ -1358,9 +1366,8 @@ class HistoryService:
                 )
                 
                 if not all_interactions:
-                    raise ValueError(
-                        f"No LLM interactions found for session {session_id}"
-                    )
+                    # Return sentinel instead of raising to preserve error message
+                    return NO_INTERACTIONS
                 
                 # Filter to valid interactions
                 from tarsy.models.constants import CHAT_CONTEXT_INTERACTION_TYPES
@@ -1393,6 +1400,10 @@ class HistoryService:
             "get_formatted_session_conversation",
             _get_formatted_conversation
         )
+        
+        # Check for sentinel indicating no interactions found
+        if result is NO_INTERACTIONS:
+            raise ValueError(f"No LLM interactions found for session {session_id}")
         
         if result is None:
             raise ValueError(f"Failed to get formatted conversation for session {session_id}")

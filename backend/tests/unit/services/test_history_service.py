@@ -2569,8 +2569,8 @@ class TestConversationHistory:
             mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
             mock_get_repo.return_value.__exit__.return_value = None
             
-            # Act & Assert
-            with pytest.raises(ValueError, match="Failed to get formatted conversation"):
+            # Act & Assert - Should get specific "no interactions" error
+            with pytest.raises(ValueError, match="No LLM interactions found for session"):
                 history_service.get_formatted_session_conversation(
                     session_id="test-session"
                 )
