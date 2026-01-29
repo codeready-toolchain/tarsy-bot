@@ -32,7 +32,9 @@ class TestAlertServiceInitialization:
         """Mock settings for testing."""
         return MockFactory.create_mock_settings(
             github_token="test_token",
-            agent_config_path=None  # No agent config for unit tests
+            agent_config_path=None,  # No agent config for unit tests
+            slack_bot_token=None,
+            slack_channel=None
         )
     
     @pytest.fixture
@@ -101,6 +103,8 @@ class TestAlertServiceAsyncInitialization:
         mock_settings = Mock(spec=Settings)
         mock_settings.agent_config_path = None  # Prevent agent config loading
         mock_settings.llm_provider = "test-provider"  # Add configured provider
+        mock_settings.slack_bot_token = None
+        mock_settings.slack_channel = None
         
         with patch('tarsy.services.alert_service.RunbookService'), \
              patch('tarsy.services.alert_service.get_history_service'), \
@@ -634,6 +638,8 @@ class TestHistorySessionManagement:
         
         mock_settings = Mock(spec=Settings)
         mock_settings.agent_config_path = None  # No agent config for unit tests
+        mock_settings.slack_bot_token = None
+        mock_settings.slack_channel = None
         
         with patch('tarsy.services.alert_service.RunbookService'), \
              patch('tarsy.services.alert_service.get_history_service') as mock_history, \
@@ -833,6 +839,8 @@ class TestCleanup:
         """Create AlertService with resource mocks."""
         mock_settings = Mock(spec=Settings)
         mock_settings.agent_config_path = None  # No agent config for unit tests
+        mock_settings.slack_bot_token = None
+        mock_settings.slack_channel = None
         
         with patch('tarsy.services.alert_service.RunbookService') as mock_runbook, \
              patch('tarsy.services.alert_service.get_history_service'), \
@@ -917,6 +925,8 @@ class TestAlertServiceDuplicatePrevention:
         """Create AlertService with mocked dependencies."""
         mock_settings = Mock(spec=Settings) 
         mock_settings.github_token = "test_token"
+        mock_settings.slack_bot_token = None
+        mock_settings.slack_channel = None
         mock_settings.agent_config_path = None  # No agent config for unit tests
         
         service = AlertService(mock_settings)
@@ -972,6 +982,8 @@ class TestChainErrorAggregation:
         """Create basic AlertService for error aggregation tests."""
         mock_settings = Mock(spec=Settings)
         mock_settings.agent_config_path = None
+        mock_settings.slack_bot_token = None
+        mock_settings.slack_channel = None
         
         with patch('tarsy.services.alert_service.RunbookService'), \
              patch('tarsy.services.alert_service.get_history_service'), \

@@ -45,10 +45,11 @@ TARSy is an AI-powered incident analysis system that processes alerts through se
 - [9. Follow-up Chat Capability](#9-follow-up-chat-capability)
 - [10. Dashboard & Real-time Monitoring](#10-dashboard--real-time-monitoring)
   - [WebSocket & Real-time Communication Architecture](#websocket--real-time-communication-architecture)
+- [11. Slack Notifications](#11-slack-notifications)
 
 ### Cross-Cutting Concerns
-- [11. Security & Data Protection](#11-security--data-protection)
-- [12. Authentication & Access Control](#12-authentication--access-control)
+- [12. Security & Data Protection](#12-security--data-protection)
+- [13. Authentication & Access Control](#13-authentication--access-control)
 
 ---
 
@@ -1901,6 +1902,16 @@ graph TB
     style DB fill:#f0f8ff
 ```
 
+### 11. Slack Notifications
+**Purpose**: External notification integration for alert processing outcomes  
+**Key Responsibility**: Delivering analysis results to Slack channels
+
+TARSy provides optional Slack integration for automatic notifications when alert processing completes or fails. The system supports both standard channel notifications and threaded replies to alert messages for correlation.
+
+**For complete setup guide**: See [docs/slack-integration.md](slack-integration.md)
+**For architecture details**: See [docs/enhancements/pending/EP-0029-slack-integration.md](enhancements/pending/EP-0029-slack-integration.md)
+
+
 **📍 SRE Dashboard**: `dashboard/src/` (React TypeScript)
 - **Session list view** with filtering and real-time updates
 - **Timeline visualization** for processing stages
@@ -2069,7 +2080,7 @@ Hook Event → Event Publisher → Database (INSERT + NOTIFY) →
 
 **Chat Integration**: Chat messages (user questions and AI responses) are streamed through the same WebSocket infrastructure, appearing in real-time in the unified conversation timeline.
 
-### 11. Security & Data Protection
+### 12. Security & Data Protection
 **Purpose**: Sensitive data protection and secure operations  
 **Key Responsibility**: Preventing sensitive data exposure
 
@@ -2226,7 +2237,7 @@ mcp_servers:
 
 ---
 
-### 12. Authentication & Access Control
+### 13. Authentication & Access Control
 **Purpose**: Optional OAuth2-based authentication for enhanced security  
 **Key Responsibility**: Protecting dashboard and API access in development and production environments
 

@@ -42,6 +42,7 @@ class SessionOperations:
                     chain_definition=chain_definition.model_dump(),
                     author=chain_context.author,
                     runbook_url=chain_context.processing_alert.runbook_url,
+                    slack_message_fingerprint=chain_context.processing_alert.slack_message_fingerprint,  # Slack message fingerprint for threading
                     mcp_selection=chain_context.mcp.model_dump() if chain_context.mcp else None
                 )
                 

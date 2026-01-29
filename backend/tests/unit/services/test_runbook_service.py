@@ -401,6 +401,8 @@ class TestErrorScenariosAndEdgeCases:
         """Create RunbookService instance with mocked client."""
         settings = Mock(spec=Settings)
         settings.github_token = "test_token"
+        settings.slack_bot_token = None
+        settings.slack_channel = None
         
         with patch('httpx.AsyncClient') as mock_client:
             mock_client_instance = AsyncMock()

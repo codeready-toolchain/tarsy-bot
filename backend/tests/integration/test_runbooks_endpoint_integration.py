@@ -138,6 +138,8 @@ class TestRunbooksEndpointIntegration:
         ) as mock_get_settings:
             mock_settings = AsyncMock()
             mock_settings.github_token = "test_token"
+            mock_settings.slack_bot_token = None
+            mock_settings.slack_channel = None
             mock_settings.runbooks_repo_url = "https://github.com/org/repo/tree/master/docs"
             mock_get_settings.return_value = mock_settings
 
@@ -192,6 +194,8 @@ class TestRunbooksEndpointWithRealService:
                 ) as mock_get_settings:
                     mock_settings = Mock()
                     mock_settings.github_token = "test_token"
+                    mock_settings.slack_bot_token = None
+                    mock_settings.slack_channel = None
                     mock_settings.runbooks_repo_url = (
                         "https://github.com/test-org/test-repo/tree/master/runbooks"
                     )

@@ -32,6 +32,7 @@ class TestAlertServiceResumePausedSession:
         mock_session.alert_data = {"severity": "warning", "message": "Test alert"}
         mock_session.started_at_us = 1000000
         mock_session.runbook_url = None
+        mock_session.slack_message_fingerprint = None
         mock_session.mcp_selection = None
         mock_session.author = None
         mock_chain_config = MagicMock()
@@ -53,6 +54,8 @@ class TestAlertServiceResumePausedSession:
         # Create mock settings
         mock_settings = MagicMock()
         mock_settings.agent_config_path = None
+        mock_settings.slack_bot_token = None
+        mock_settings.slack_channel = None
         mock_settings.llm_iteration_timeout = 180  # Required for asyncio.wait_for
         
         # Create alert service
@@ -153,6 +156,8 @@ class TestAlertServiceResumePausedSession:
         
         mock_settings = MagicMock()
         mock_settings.agent_config_path = None
+        mock_settings.slack_bot_token = None
+        mock_settings.slack_channel = None
         
         with patch('tarsy.services.alert_service.RunbookService'):
             alert_service = AlertService(settings=mock_settings)
@@ -175,6 +180,8 @@ class TestAlertServiceResumePausedSession:
         
         mock_settings = MagicMock()
         mock_settings.agent_config_path = None
+        mock_settings.slack_bot_token = None
+        mock_settings.slack_channel = None
         
         with patch('tarsy.services.alert_service.RunbookService'):
             alert_service = AlertService(settings=mock_settings)
@@ -202,6 +209,8 @@ class TestAlertServiceResumePausedSession:
         
         mock_settings = MagicMock()
         mock_settings.agent_config_path = None
+        mock_settings.slack_bot_token = None
+        mock_settings.slack_channel = None
         
         with patch('tarsy.services.alert_service.RunbookService'):
             alert_service = AlertService(settings=mock_settings)
@@ -247,6 +256,7 @@ class TestAlertServiceResumePausedSession:
         mock_session.alert_data = {}
         mock_session.started_at_us = 1000000
         mock_session.runbook_url = None
+        mock_session.slack_message_fingerprint = None
         mock_session.mcp_selection = None
         mock_session.author = None
         mock_chain_config = MagicMock()
@@ -259,6 +269,8 @@ class TestAlertServiceResumePausedSession:
         
         mock_settings = MagicMock()
         mock_settings.agent_config_path = None
+        mock_settings.slack_bot_token = None
+        mock_settings.slack_channel = None
         mock_settings.llm_iteration_timeout = 180  # Required for asyncio.wait_for
         
         with patch('tarsy.services.alert_service.RunbookService'):
@@ -315,6 +327,7 @@ class TestAlertServiceResumePausedSession:
         mock_session.alert_data = {}
         mock_session.started_at_us = 1000000
         mock_session.runbook_url = None
+        mock_session.slack_message_fingerprint = None
         mock_session.mcp_selection = None
         mock_session.author = None
         mock_chain_config = MagicMock()
@@ -333,6 +346,8 @@ class TestAlertServiceResumePausedSession:
         
         mock_settings = MagicMock()
         mock_settings.agent_config_path = None
+        mock_settings.slack_bot_token = None
+        mock_settings.slack_channel = None
         
         with patch('tarsy.services.alert_service.RunbookService'):
             alert_service = AlertService(settings=mock_settings)
@@ -386,6 +401,7 @@ class TestAlertServiceResumePausedSession:
         mock_session.alert_data = {}
         mock_session.started_at_us = 1000000
         mock_session.runbook_url = None
+        mock_session.slack_message_fingerprint = None
         mock_session.mcp_selection = None
         mock_session.author = None
         mock_chain_config = MagicMock()
@@ -404,6 +420,8 @@ class TestAlertServiceResumePausedSession:
         
         mock_settings = MagicMock()
         mock_settings.agent_config_path = None
+        mock_settings.slack_bot_token = None
+        mock_settings.slack_channel = None
         
         with patch('tarsy.services.alert_service.RunbookService'):
             alert_service = AlertService(settings=mock_settings)
@@ -449,6 +467,8 @@ class TestAlertServiceResumePausedSession:
         """Test resume fails gracefully when history service unavailable."""
         mock_settings = MagicMock()
         mock_settings.agent_config_path = None
+        mock_settings.slack_bot_token = None
+        mock_settings.slack_channel = None
         
         with patch('tarsy.services.alert_service.RunbookService'):
             alert_service = AlertService(settings=mock_settings)
@@ -470,6 +490,7 @@ class TestAlertServiceResumePausedSession:
         mock_session.alert_data = {"severity": "critical", "environment": "production"}
         mock_session.started_at_us = 1000000
         mock_session.runbook_url = None
+        mock_session.slack_message_fingerprint = None
         mock_session.mcp_selection = None
         mock_session.author = None
         mock_chain_config = MagicMock()
@@ -489,7 +510,9 @@ class TestAlertServiceResumePausedSession:
         
         mock_settings = MagicMock()
         mock_settings.agent_config_path = None
-        
+        mock_settings.slack_bot_token = None
+        mock_settings.slack_channel = None
+            
         with patch('tarsy.services.alert_service.RunbookService'):
             alert_service = AlertService(settings=mock_settings)
         

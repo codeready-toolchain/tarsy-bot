@@ -234,6 +234,7 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = () => {
   // Common fields
   const [alertType, setAlertType] = useState('');
   const [runbook, setRunbook] = useState<string | null>(DEFAULT_RUNBOOK);
+  const [slackMessageFingerprint, setSlackMessageFingerprint] = useState('');
   const [mcpSelection, setMcpSelection] = useState<MCPSelectionConfig | undefined>(undefined);
   
   // Mode selection (0 = Structured, 1 = Text) - Default to Text
@@ -451,6 +452,11 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = () => {
         alertData.runbook = runbook;
       }
 
+      // Add slack_fingerprint if provided
+      if (slackMessageFingerprint && slackMessageFingerprint.trim()) {
+        alertData.slack_message_fingerprint = slackMessageFingerprint.trim();
+      }
+
       // Add MCP selection if configured (only when user made changes from defaults)
       // Filter out servers with no tools selected (tools: [])
       const filteredMCP = filterMCPSelection(mcpSelection);
@@ -527,6 +533,11 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = () => {
       // Add runbook only if not "Default Runbook"
       if (runbook && runbook !== DEFAULT_RUNBOOK) {
         alertData.runbook = runbook;
+      }
+
+      // Add slack_fingerprint if provided
+      if (slackMessageFingerprint && slackMessageFingerprint.trim()) {
+        alertData.slack_message_fingerprint = slackMessageFingerprint.trim();
       }
 
       // Add MCP selection if configured (only when user made changes from defaults)
@@ -741,6 +752,26 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = () => {
                     }}
                   />
                 )}
+              />
+
+              {/* Slack Message Fingerprint Field */}
+              <TextField
+                fullWidth
+                label="Slack Message Fingerprint"
+                value={slackMessageFingerprint}
+                onChange={(e) => setSlackMessageFingerprint(e.target.value)}
+                placeholder="e.g., fingerprint-abc123"
+                helperText="Optional: Used for Slack notification threading"
+                disabled={loading}
+                variant="filled"
+                sx={{
+                  '& .MuiFilledInput-root': {
+                    borderRadius: 2,
+                    '&:before, &:after': {
+                      display: 'none'
+                    }
+                  }
+                }}
               />
             </Stack>
 

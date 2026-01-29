@@ -206,6 +206,7 @@ class SessionClaimWorker:
                 "alert_type": session.alert_type,
                 "author": session.author,
                 "runbook_url": session.runbook_url,
+                "slack_message_fingerprint": session.slack_message_fingerprint,
                 "mcp_selection": session.mcp_selection,
                 "session_metadata": session.session_metadata,
                 "started_at_us": session.started_at_us  # Timestamp for ProcessingAlert
@@ -235,6 +236,7 @@ class SessionClaimWorker:
                 alert_data=session_data["alert_data"],
                 timestamp=session_data["started_at_us"],  # Required field - use session start time
                 runbook_url=session_data.get("runbook_url"),
+                slack_message_fingerprint=session_data.get("slack_message_fingerprint"),
                 mcp_selection=session_data.get("mcp_selection")
             )
             

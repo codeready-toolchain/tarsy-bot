@@ -264,6 +264,17 @@ class Settings(BaseSettings):
         default_factory=lambda: os.path.expanduser("~/.kube/config"),
         description="Default kubeconfig path for Kubernetes MCP server (tilde expanded)"
     )
+
+    # Slack Configuration
+    slack_bot_token: str = Field(
+        default="",
+        description="Slack bot token for sending notifications"
+    )
+
+    slack_channel: str = Field(
+        default="",
+        description="Slack channel for sending notifications"
+    )
     
     def __init__(self, **kwargs):
         super().__init__(**kwargs)

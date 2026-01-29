@@ -153,7 +153,11 @@ class AlertSession(SQLModel, table=True):
         sa_column=Column[Any](BIGINT),
         description="Last interaction timestamp (microseconds) for orphan detection"
     )
-    
+
+    slack_message_fingerprint: Optional[str] = Field(
+        default=None,
+        description="Slack message fingerprint for Slack message threading"
+    )
     # Note: Relationships removed to avoid circular import issues with unified models
     # Use queries with session_id foreign key for data access instead
     

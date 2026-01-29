@@ -711,6 +711,8 @@ class MockFactory:
             "alert_processing_timeout": 900,  # Default 15 minute timeout
             "llm_iteration_timeout": 210,  # Default 3.5 minute iteration timeout
             "mcp_tool_call_timeout": 70,  # Default 70 second tool timeout
+            "slack_bot_token": None,
+            "slack_channel": None,
             "llm_providers": {
                 "gemini": {
                     "model": "gemini-2.5-pro",

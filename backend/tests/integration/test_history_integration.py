@@ -614,6 +614,8 @@ class TestAlertServiceHistoryIntegration:
         settings.alert_processing_timeout = 900  # Default 15 minute timeout
         settings.llm_iteration_timeout = 210  # Default 3.5 minute iteration timeout
         settings.mcp_tool_call_timeout = 70  # Default 70 second tool timeout
+        settings.slack_bot_token = None
+        settings.slack_channel = None
         return settings
     
     @pytest.fixture

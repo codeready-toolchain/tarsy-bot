@@ -17,6 +17,7 @@ Inspired by the spirit of sci-fi AI, TARSy is your reliable companion for SRE op
 - **[README.md](README.md)**: This file - project overview and quick start
 - **[docs/architecture-overview.md](docs/architecture-overview.md)**: High-level architecture concepts and design principles
 - **[docs/functional-areas-design.md](docs/functional-areas-design.md)**: Functional areas design and architecture documentation
+- **[docs/slack-integration.md](docs/slack-integration.md)**: Slack notifications setup and configuration guide
 
 ## Prerequisites
 
@@ -124,6 +125,7 @@ This deployment is designed for development and testing environments, serving as
 - **🏁 Force Conclusion**: Alternatively, configure automatic conclusion at iteration limits instead of pausing. Agents generate final summaries and complete the investigation gracefully. Configurable via hierarchical `force_conclusion_at_max_iterations` setting (system, agent, chain, stage, or parallel agent level)
 - **🔒 Data Masking**: Hybrid masking system combining code-based structural analysis (Kubernetes Secrets) with regex patterns (API keys, passwords, certificates, emails, SSH keys) to automatically protect sensitive data in MCP responses and alert payloads
 - **🔍 Tool Result Summarization**: Automatic summarization of verbose MCP tool outputs using LLM-powered analysis. Reduces token usage and improves agent reasoning by focusing on relevant information while preserving full results in audit logs
+- **📢 Slack Notifications**: Automatic Slack messages when alert processing completes or fails, with analysis summary and dashboard link. Optional message threading via message fingerprint for correlated notifications. Disabled by default
 
 ## Architecture
 

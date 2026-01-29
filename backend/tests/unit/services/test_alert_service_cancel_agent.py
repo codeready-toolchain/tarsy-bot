@@ -72,6 +72,8 @@ class TestCancelAgentValidation:
         """Create AlertService instance with mocked dependencies."""
         mock_settings = MagicMock()
         mock_settings.agent_config_path = None
+        mock_settings.slack_bot_token = None
+        mock_settings.slack_channel = None
         
         with patch('tarsy.services.alert_service.RunbookService'):
             service = AlertService(settings=mock_settings)
@@ -182,6 +184,8 @@ class TestCancelAgentStatusUpdate:
         """Create AlertService instance with mocked dependencies."""
         mock_settings = MagicMock()
         mock_settings.agent_config_path = None
+        mock_settings.slack_bot_token = None
+        mock_settings.slack_channel = None
         
         with patch('tarsy.services.alert_service.RunbookService'):
             service = AlertService(settings=mock_settings)
@@ -344,6 +348,8 @@ class TestCancelAgentPolicyEvaluation:
         """Create AlertService instance with mocked dependencies."""
         mock_settings = MagicMock()
         mock_settings.agent_config_path = None
+        mock_settings.slack_bot_token = None
+        mock_settings.slack_channel = None
         
         with patch('tarsy.services.alert_service.RunbookService'):
             service = AlertService(settings=mock_settings)
@@ -546,6 +552,8 @@ class TestCancelAgentMixedStatuses:
         """Create AlertService instance with mocked dependencies."""
         mock_settings = MagicMock()
         mock_settings.agent_config_path = None
+        mock_settings.slack_bot_token = None
+        mock_settings.slack_channel = None
         
         with patch('tarsy.services.alert_service.RunbookService'):
             service = AlertService(settings=mock_settings)
