@@ -64,17 +64,11 @@ class QueryOperations:
 
     def get_session_details(self, session_id: str) -> Optional[DetailedSession]:
         """Get complete session details including timeline and interactions."""
-        try:
-            with self._infra.get_repository() as repo:
-                if not repo:
-                    raise RuntimeError("History repository unavailable - cannot retrieve session details")
-                
-                detailed_session = repo.get_session_details(session_id)
-                return detailed_session
-                
-        except Exception as e:
-            logger.error(f"Failed to get session details for {session_id}: {str(e)}")
-            return None
+        with self._infra.get_repository() as repo:
+            if not repo:
+                raise RuntimeError("History repository unavailable - cannot retrieve session details")
+            
+            return repo.get_session_details(session_id)
     
     def get_active_sessions(self) -> List[AlertSession]:
         """Get all currently active sessions."""

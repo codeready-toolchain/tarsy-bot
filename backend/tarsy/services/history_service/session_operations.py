@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 class SessionOperations:
     """Session lifecycle operations."""
     
-    def __init__(self, infra: BaseHistoryInfra):
-        self._infra = infra
+    def __init__(self, infra: BaseHistoryInfra) -> None:
+        self._infra: BaseHistoryInfra = infra
     
     def create_session(
         self,

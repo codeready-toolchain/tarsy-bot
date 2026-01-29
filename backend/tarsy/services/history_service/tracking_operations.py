@@ -22,10 +22,11 @@ class TrackingOperations:
                     return False
                 return repo.update_chat_pod_tracking(chat_id, pod_id)
         
-        return self._infra._retry_database_operation(
+        result = await self._infra._retry_database_operation_async(
             "start_chat_message_processing",
             _start_operation
-        ) or False
+        )
+        return result or False
     
     def record_chat_interaction(self, chat_id: str) -> bool:
         """Update chat last_interaction_at timestamp."""
@@ -93,7 +94,7 @@ class TrackingOperations:
                 
                 return len(active_chats)
         
-        count = self._infra._retry_database_operation(
+        count = await self._infra._retry_database_operation_async(
             "mark_interrupted_chats",
             _interrupt_operation
         )

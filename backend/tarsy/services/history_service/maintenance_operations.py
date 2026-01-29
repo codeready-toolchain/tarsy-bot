@@ -86,6 +86,9 @@ class MaintenanceOperations:
                     )
                     session_record.completed_at_us = now_us()
                     repo.update_alert_session(session_record)
+                    
+                    # Also mark orphaned stages as failed for this session
+                    self._cleanup_orphaned_stages_for_session(repo, session_record.session_id)
                 
                 return len(orphaned_sessions)
         
@@ -116,7 +119,9 @@ class MaintenanceOperations:
                 
                 return len(in_progress_sessions)
         
-        count = self._infra._retry_database_operation("mark_interrupted_sessions", _interrupt_operation)
+        count = await self._infra._retry_database_operation_async(
+            "mark_interrupted_sessions", _interrupt_operation
+        )
         
         if count and count > 0:
             logger.info(f"Marked {count} sessions as failed (interrupted) for pod {pod_id}")
@@ -135,7 +140,10 @@ class MaintenanceOperations:
                     AlertSessionStatus.IN_PROGRESS.value
                 )
         
-        return self._infra._retry_database_operation("start_session_processing", _start_operation) or False
+        result = await self._infra._retry_database_operation_async(
+            "start_session_processing", _start_operation
+        )
+        return result or False
     
     def record_session_interaction(self, session_id: str) -> bool:
         """Update session last_interaction_at timestamp."""

@@ -14,7 +14,11 @@ from tarsy.config.settings import Settings
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.models.db_models import AlertSession
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
-from tarsy.services.history_service import HistoryService, get_history_service
+from tarsy.services.history_service import (
+    HistoryService,
+    HistoryServiceInitializationError,
+    get_history_service,
+)
 from tests.utils import MockFactory, SessionFactory
 
 
@@ -31,8 +35,7 @@ class TestHistoryService:
         """Create HistoryService instance with mocked dependencies."""
         with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
             service = HistoryService()
-            service._infra._initialization_attempted = True
-            service._infra._is_healthy = True
+            service._infra._set_healthy_for_testing()
             return service
     
     @pytest.mark.unit
@@ -675,35 +678,52 @@ class TestHistoryService:
 
 class TestHistoryServiceGlobalInstance:
     """Test suite for global history service instance management."""
-    
+
     @pytest.mark.unit
     @patch('tarsy.services.history_service._history_service', None)
     def test_get_history_service_singleton(self):
         """Test that get_history_service returns a singleton instance."""
         with patch('tarsy.services.history_service.HistoryService') as mock_service_class:
             mock_instance = Mock()
+            mock_instance.initialize.return_value = True
             mock_service_class.return_value = mock_instance
-            
+
             # First call should create instance
             service1 = get_history_service()
-            
+
             # Second call should return same instance
             service2 = get_history_service()
-            
+
             assert service1 == service2
             mock_service_class.assert_called_once()
-    
+
     @pytest.mark.unit
     @patch('tarsy.services.history_service._history_service', None)
     def test_get_history_service_initialization(self):
         """Test that get_history_service initializes the service."""
         with patch('tarsy.services.history_service.HistoryService') as mock_service_class:
             mock_instance = Mock()
+            mock_instance.initialize.return_value = True
             mock_service_class.return_value = mock_instance
-            
+
             service = get_history_service()
-            
+
             assert service == mock_instance
+            mock_instance.initialize.assert_called_once()
+
+    @pytest.mark.unit
+    @patch('tarsy.services.history_service._history_service', None)
+    def test_get_history_service_initialization_failure_raises_exception(self):
+        """Test that get_history_service raises exception when initialization fails."""
+        with patch('tarsy.services.history_service.HistoryService') as mock_service_class:
+            mock_instance = Mock()
+            mock_instance.initialize.return_value = False
+            mock_service_class.return_value = mock_instance
+
+            with pytest.raises(HistoryServiceInitializationError) as exc_info:
+                get_history_service()
+
+            assert "Failed to initialize HistoryService" in str(exc_info.value)
             mock_instance.initialize.assert_called_once()
 
 
@@ -932,8 +952,7 @@ class TestHistoryServiceErrorHandling:
         
         with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
             service = HistoryService()
-            service._infra._initialization_attempted = True
-            service._infra._is_healthy = False  # Simulate unhealthy state
+            service._infra._set_healthy_for_testing(is_healthy=False)
             return service
     
     @pytest.mark.unit
@@ -1088,7 +1107,7 @@ class TestDashboardMethods:
         service = HistoryService()
         
         if scenario == "success":
-            service._infra._is_healthy = True
+            service._infra._set_healthy_for_testing()
             dependencies = MockFactory.create_mock_history_service_dependencies()
             
             with patch.object(service._infra, 'get_repository') as mock_get_repo:
@@ -1107,7 +1126,7 @@ class TestDashboardMethods:
     def test_get_filter_options_no_repository_raises_runtime_error(self):
         """Test that RuntimeError is raised when repository is unavailable."""
         service = HistoryService()
-        service._infra._is_healthy = False
+        service._infra._set_healthy_for_testing(is_healthy=False)
         
         with patch.object(service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = None
@@ -1312,19 +1331,24 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
             second_gap = retry_times[2] - retry_times[1]
             assert second_gap > first_gap, "Second retry should have longer delay than first"
     
-    def test_retry_operation_handles_all_retryable_errors(self, history_service):
-        """Test that all configured retryable errors trigger retries."""
-        retryable_errors = [
+    def test_retry_operation_handles_sqlite_retryable_errors(self, history_service):
+        """Test that SQLite-specific retryable errors trigger retries (SQLite backend)."""
+        # These are SQLite-specific errors and common connection errors
+        sqlite_retryable_errors = [
             "database is locked",
             "database disk image is malformed",
             "sqlite3.operationalerror",
-            "connection timeout",
             "database table is locked",
+        ]
+        
+        # Common errors that apply to both SQLite and PostgreSQL
+        common_retryable_errors = [
+            "connection timeout",
             "connection pool",
             "connection closed"
         ]
         
-        for error_msg in retryable_errors:
+        for error_msg in sqlite_retryable_errors + common_retryable_errors:
             call_count = 0
             
             def operation():
@@ -1405,13 +1429,343 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
         assert len(none_warnings) >= 3, "Should log warnings for each retry when None is treated as failure" 
 
 
+@pytest.mark.unit
+class TestHistoryServicePostgreSQLRetryLogic:
+    """Test HistoryService retry logic for PostgreSQL-specific error patterns."""
+    
+    @pytest.fixture
+    def history_service_postgresql(self):
+        """Create HistoryService instance with PostgreSQL database URL."""
+        with patch('tarsy.services.history_service.base_infrastructure.get_settings') as mock_settings:
+            mock_settings.return_value.database_url = "postgresql://user:pass@localhost/testdb"
+            mock_settings.return_value.history_retention_days = 90
+            
+            service = HistoryService()
+            # Set up db_manager with PostgreSQL URL
+            service._infra._set_healthy_for_testing()
+            mock_db_manager = Mock()
+            mock_db_manager.database_url = "postgresql://user:pass@localhost/testdb"
+            service._infra.db_manager = mock_db_manager
+            return service
+    
+    def test_is_postgresql_detection(self, history_service_postgresql):
+        """Test that _is_postgresql correctly detects PostgreSQL backend."""
+        assert history_service_postgresql._infra._is_postgresql() is True
+        
+        # Also test with postgres:// URL variant
+        history_service_postgresql._infra.db_manager.database_url = "postgres://user:pass@localhost/testdb"
+        assert history_service_postgresql._infra._is_postgresql() is True
+    
+    def test_is_postgresql_returns_false_for_sqlite(self):
+        """Test that _is_postgresql returns False for SQLite backend."""
+        with patch('tarsy.services.history_service.base_infrastructure.get_settings') as mock_settings:
+            mock_settings.return_value.database_url = "sqlite:///test.db"
+            mock_settings.return_value.history_retention_days = 90
+            
+            service = HistoryService()
+            service._infra._set_healthy_for_testing()
+            mock_db_manager = Mock()
+            mock_db_manager.database_url = "sqlite:///test.db"
+            service._infra.db_manager = mock_db_manager
+            
+            assert service._infra._is_postgresql() is False
+    
+    def test_is_postgresql_returns_false_when_no_db_manager(self):
+        """Test that _is_postgresql returns False when db_manager is not initialized."""
+        with patch('tarsy.services.history_service.base_infrastructure.get_settings') as mock_settings:
+            mock_settings.return_value.database_url = "postgresql://user:pass@localhost/testdb"
+            mock_settings.return_value.history_retention_days = 90
+            
+            service = HistoryService()
+            service._infra.db_manager = None
+            
+            assert service._infra._is_postgresql() is False
+    
+    def test_get_sqlstate_extracts_pgcode(self, history_service_postgresql):
+        """Test that _get_sqlstate extracts SQLSTATE from psycopg2/psycopg3 errors."""
+        from sqlalchemy.exc import DBAPIError
+        
+        # Mock a psycopg-style error with pgcode
+        mock_orig = Mock()
+        mock_orig.pgcode = '40001'
+        mock_exc = DBAPIError(statement="SELECT 1", params=None, orig=mock_orig)
+        
+        sqlstate = history_service_postgresql._infra._get_sqlstate(mock_exc)
+        assert sqlstate == '40001'
+    
+    def test_get_sqlstate_extracts_sqlstate_attribute(self, history_service_postgresql):
+        """Test that _get_sqlstate falls back to sqlstate attribute if pgcode unavailable."""
+        from sqlalchemy.exc import DBAPIError
+        
+        # Mock an error with sqlstate attribute but no pgcode
+        mock_orig = Mock()
+        mock_orig.pgcode = None
+        mock_orig.sqlstate = '40P01'
+        mock_exc = DBAPIError(statement="SELECT 1", params=None, orig=mock_orig)
+        
+        sqlstate = history_service_postgresql._infra._get_sqlstate(mock_exc)
+        assert sqlstate == '40P01'
+    
+    def test_get_sqlstate_returns_none_for_non_dbapi_error(self, history_service_postgresql):
+        """Test that _get_sqlstate returns None for non-DBAPIError exceptions."""
+        exc = ValueError("Not a database error")
+        sqlstate = history_service_postgresql._infra._get_sqlstate(exc)
+        assert sqlstate is None
+    
+    def test_retry_postgresql_sqlstate_serialization_failure(self, history_service_postgresql):
+        """Test retry on PostgreSQL SQLSTATE 40001 (serialization_failure)."""
+        from sqlalchemy.exc import DBAPIError
+        
+        call_count = 0
+        
+        def operation():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                mock_orig = Mock()
+                mock_orig.pgcode = '40001'
+                raise DBAPIError(statement="SELECT 1", params=None, orig=mock_orig)
+            return "success"
+        
+        result = history_service_postgresql._infra._retry_database_operation("test_operation", operation)
+        
+        assert result == "success"
+        assert call_count == 2  # Should have retried once
+    
+    def test_retry_postgresql_sqlstate_deadlock(self, history_service_postgresql):
+        """Test retry on PostgreSQL SQLSTATE 40P01 (deadlock_detected)."""
+        from sqlalchemy.exc import DBAPIError
+        
+        call_count = 0
+        
+        def operation():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                mock_orig = Mock()
+                mock_orig.pgcode = '40P01'
+                raise DBAPIError(statement="UPDATE table", params=None, orig=mock_orig)
+            return "success"
+        
+        result = history_service_postgresql._infra._retry_database_operation("test_operation", operation)
+        
+        assert result == "success"
+        assert call_count == 2
+    
+    def test_retry_postgresql_sqlstate_lock_not_available(self, history_service_postgresql):
+        """Test retry on PostgreSQL SQLSTATE 55P03 (lock_not_available)."""
+        from sqlalchemy.exc import DBAPIError
+        
+        call_count = 0
+        
+        def operation():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                mock_orig = Mock()
+                mock_orig.pgcode = '55P03'
+                raise DBAPIError(statement="SELECT FOR UPDATE", params=None, orig=mock_orig)
+            return "success"
+        
+        result = history_service_postgresql._infra._retry_database_operation("test_operation", operation)
+        
+        assert result == "success"
+        assert call_count == 2
+    
+    def test_retry_postgresql_sqlstate_too_many_connections(self, history_service_postgresql):
+        """Test retry on PostgreSQL SQLSTATE 53300 (too_many_connections)."""
+        from sqlalchemy.exc import DBAPIError
+        
+        call_count = 0
+        
+        def operation():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                mock_orig = Mock()
+                mock_orig.pgcode = '53300'
+                raise DBAPIError(statement="SELECT 1", params=None, orig=mock_orig)
+            return "success"
+        
+        result = history_service_postgresql._infra._retry_database_operation("test_operation", operation)
+        
+        assert result == "success"
+        assert call_count == 2
+    
+    def test_retry_postgresql_sqlstate_query_canceled(self, history_service_postgresql):
+        """Test retry on PostgreSQL SQLSTATE 57014 (query_canceled)."""
+        from sqlalchemy.exc import DBAPIError
+        
+        call_count = 0
+        
+        def operation():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                mock_orig = Mock()
+                mock_orig.pgcode = '57014'
+                raise DBAPIError(statement="SELECT * FROM big_table", params=None, orig=mock_orig)
+            return "success"
+        
+        result = history_service_postgresql._infra._retry_database_operation("test_operation", operation)
+        
+        assert result == "success"
+        assert call_count == 2
+    
+    def test_retry_postgresql_sqlstate_class_08_connection_exceptions(self, history_service_postgresql):
+        """Test retry on PostgreSQL SQLSTATE class 08 (connection exceptions)."""
+        from sqlalchemy.exc import DBAPIError
+        
+        connection_sqlstates = ['08000', '08003', '08006', '08001', '08004', '08007', '08P01']
+        
+        for sqlstate in connection_sqlstates:
+            call_count = 0
+            
+            def operation():
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    mock_orig = Mock()
+                    mock_orig.pgcode = sqlstate
+                    raise DBAPIError(statement="SELECT 1", params=None, orig=mock_orig)
+                return "success"
+            
+            result = history_service_postgresql._infra._retry_database_operation("test_operation", operation)
+            
+            assert result == "success", f"Should retry for SQLSTATE: {sqlstate}"
+            assert call_count == 2, f"Should have retried once for SQLSTATE: {sqlstate}"
+    
+    def test_retry_postgresql_message_fallback_deadlock_detected(self, history_service_postgresql):
+        """Test retry on PostgreSQL message pattern when SQLSTATE unavailable."""
+        call_count = 0
+        
+        def operation():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # Plain exception without SQLSTATE
+                raise Exception("deadlock detected")
+            return "success"
+        
+        result = history_service_postgresql._infra._retry_database_operation("test_operation", operation)
+        
+        assert result == "success"
+        assert call_count == 2
+    
+    def test_retry_postgresql_message_fallback_serialization_failure(self, history_service_postgresql):
+        """Test retry on PostgreSQL 'serialization failure' message pattern."""
+        call_count = 0
+        
+        def operation():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise Exception("ERROR: could not serialize access due to concurrent update - serialization failure")
+            return "success"
+        
+        result = history_service_postgresql._infra._retry_database_operation("test_operation", operation)
+        
+        assert result == "success"
+        assert call_count == 2
+    
+    def test_retry_postgresql_message_fallback_all_patterns(self, history_service_postgresql):
+        """Test all PostgreSQL message pattern fallbacks."""
+        postgresql_patterns = [
+            "serialization failure",
+            "deadlock detected",
+            "could not obtain lock",
+            "too many connections",
+            "could not connect",
+            "connection refused",
+            "server closed the connection",
+            "connection timed out",
+            "connection reset",
+        ]
+        
+        for pattern in postgresql_patterns:
+            call_count = 0
+            
+            def operation():
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    raise Exception(f"PostgreSQL error: {pattern}")
+                return "success"
+            
+            result = history_service_postgresql._infra._retry_database_operation("test_operation", operation)
+            
+            assert result == "success", f"Should retry for pattern: {pattern}"
+            assert call_count == 2, f"Should have retried once for pattern: {pattern}"
+    
+    def test_no_retry_postgresql_non_retryable_sqlstate(self, history_service_postgresql):
+        """Test that non-retryable SQLSTATE codes don't trigger retries."""
+        from sqlalchemy.exc import DBAPIError
+        
+        call_count = 0
+        
+        def operation():
+            nonlocal call_count
+            call_count += 1
+            # SQLSTATE 23505 = unique_violation (not retryable)
+            mock_orig = Mock()
+            mock_orig.pgcode = '23505'
+            raise DBAPIError(statement="INSERT INTO", params=None, orig=mock_orig)
+        
+        result = history_service_postgresql._infra._retry_database_operation("test_operation", operation)
+        
+        assert result is None
+        assert call_count == 1  # Should not retry
+    
+    def test_no_retry_postgresql_non_retryable_message(self, history_service_postgresql):
+        """Test that non-retryable messages don't trigger retries on PostgreSQL."""
+        call_count = 0
+        
+        def operation():
+            nonlocal call_count
+            call_count += 1
+            raise Exception("duplicate key value violates unique constraint")
+        
+        result = history_service_postgresql._infra._retry_database_operation("test_operation", operation)
+        
+        assert result is None
+        assert call_count == 1  # Should not retry
+    
+    def test_postgresql_sqlstate_takes_precedence_over_message(self, history_service_postgresql, caplog):
+        """Test that SQLSTATE is checked before message patterns for PostgreSQL."""
+        import logging
+        from sqlalchemy.exc import DBAPIError
+        
+        caplog.set_level(logging.DEBUG)
+        call_count = 0
+        
+        def operation():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                # Error with retryable SQLSTATE
+                mock_orig = Mock()
+                mock_orig.pgcode = '40001'  # serialization_failure
+                raise DBAPIError(statement="SELECT 1", params=None, orig=mock_orig)
+            return "success"
+        
+        result = history_service_postgresql._infra._retry_database_operation("test_operation", operation)
+        
+        assert result == "success"
+        assert call_count == 2
+        
+        # Verify SQLSTATE was detected (debug log)
+        debug_logs = [r.message for r in caplog.records if r.levelno == logging.DEBUG]
+        assert any('40001' in msg for msg in debug_logs), "Should log SQLSTATE detection"
+
+
 @pytest.mark.asyncio
 @pytest.mark.unit
 async def test_cleanup_orphaned_sessions():
     """Test cleanup of orphaned sessions based on timeout."""
     history_service = HistoryService()
     
-    from tarsy.models.constants import AlertSessionStatus
+    from tarsy.models.constants import AlertSessionStatus, StageStatus
+    from tarsy.models.db_models import StageExecution
     
     # Create test data - orphaned sessions with old last_interaction_at
     orphaned_session_1 = AlertSession(
@@ -1434,10 +1788,41 @@ async def test_cleanup_orphaned_sessions():
         pod_id='pod-2'
     )
     
+    # Create mock stages for each session
+    mock_stage_1 = Mock(spec=StageExecution)
+    mock_stage_1.stage_id = 'stage-1'
+    mock_stage_1.session_id = 'orphaned-1'
+    mock_stage_1.stage_index = 0
+    mock_stage_1.status = StageStatus.ACTIVE.value
+    mock_stage_1.started_at_us = 1640995200000000
+    
+    mock_stage_2 = Mock(spec=StageExecution)
+    mock_stage_2.stage_id = 'stage-2'
+    mock_stage_2.session_id = 'orphaned-2'
+    mock_stage_2.stage_index = 0
+    mock_stage_2.status = StageStatus.PENDING.value
+    mock_stage_2.started_at_us = None
+    
     # Mock repository
     mock_repo = Mock()
     mock_repo.find_orphaned_sessions.return_value = [orphaned_session_1, orphaned_session_2]
     mock_repo.update_alert_session.return_value = True
+    mock_repo.update_stage_execution.return_value = True
+    
+    # Mock session.exec to return stages for each session
+    def mock_exec(stmt):
+        result = Mock()
+        # Return stages based on the session_id in the where clause
+        # The statement contains session_id comparison, so we check which session
+        # by tracking call count
+        if mock_repo.session.exec.call_count == 1:
+            result.all.return_value = [mock_stage_1]
+        else:
+            result.all.return_value = [mock_stage_2]
+        return result
+    
+    mock_repo.session = Mock()
+    mock_repo.session.exec = Mock(side_effect=mock_exec)
     
     # Mock the context manager
     history_service._infra.get_repository = Mock(return_value=Mock(
@@ -1469,6 +1854,19 @@ async def test_cleanup_orphaned_sessions():
         assert updated_session.status == AlertSessionStatus.FAILED.value
         assert 'Processing failed - session became unresponsive' in updated_session.error_message
         assert updated_session.completed_at_us is not None
+    
+    # Verify stages were also cleaned up for each orphaned session
+    assert mock_repo.session.exec.call_count == 2, "Should query stages for each orphaned session"
+    assert mock_repo.update_stage_execution.call_count == 2, "Should update stage for each orphaned session"
+    
+    # Verify stages were marked as failed
+    assert mock_stage_1.status == StageStatus.FAILED.value
+    assert mock_stage_1.error_message == "Session terminated due to backend restart"
+    assert mock_stage_1.completed_at_us is not None
+    
+    assert mock_stage_2.status == StageStatus.FAILED.value
+    assert mock_stage_2.error_message == "Session terminated due to backend restart"
+    assert mock_stage_2.completed_at_us is not None
 
 
 @pytest.mark.asyncio
@@ -1725,8 +2123,7 @@ class TestHistoryAPIResponseStructure:
         """Create HistoryService instance for testing."""
         with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=isolated_test_settings):
             service = HistoryService()
-            service._infra._initialization_attempted = True
-            service._infra._is_healthy = True
+            service._infra._set_healthy_for_testing()
             return service
     
     @pytest.mark.unit
@@ -1910,8 +2307,7 @@ class TestHistoryServiceTokenAggregations:
         """Create HistoryService instance for testing."""
         with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=isolated_test_settings):
             service = HistoryService()
-            service._infra._initialization_attempted = True
-            service._infra._is_healthy = True
+            service._infra._set_healthy_for_testing()
             return service
     
     @pytest.mark.asyncio
@@ -2120,8 +2516,7 @@ class TestConversationHistory:
         """Create HistoryService instance with mocked dependencies."""
         with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
             service = HistoryService()
-            service._infra._initialization_attempted = True
-            service._infra._is_healthy = True
+            service._infra._set_healthy_for_testing()
             return service
     
     @pytest.mark.unit

@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 class ChatOperations:
     """Chat CRUD operations."""
     
-    def __init__(self, infra: BaseHistoryInfra):
-        self._infra = infra
+    def __init__(self, infra: BaseHistoryInfra) -> None:
+        self._infra: BaseHistoryInfra = infra
     
     async def create_chat(self, chat: Chat) -> Chat:
         """Create a new chat record."""
@@ -24,7 +24,7 @@ class ChatOperations:
                     raise ValueError("Repository unavailable")
                 return repo.create_chat(chat)
         
-        result = self._infra._retry_database_operation("create_chat", _create_operation)
+        result = await self._infra._retry_database_operation_async("create_chat", _create_operation)
         if result is None:
             raise ValueError("Failed to create chat")
         return result
@@ -37,10 +37,10 @@ class ChatOperations:
                     return None
                 return repo.get_chat_by_id(chat_id)
         
-        return self._infra._retry_database_operation(
+        return await self._infra._retry_database_operation_async(
             "get_chat_by_id",
             _get_operation,
-            treat_none_as_success=True
+            treat_none_as_success=True,
         )
     
     async def get_chat_by_session(self, session_id: str) -> Optional[Chat]:
@@ -51,10 +51,10 @@ class ChatOperations:
                     return None
                 return repo.get_chat_by_session(session_id)
         
-        return self._infra._retry_database_operation(
+        return await self._infra._retry_database_operation_async(
             "get_chat_by_session",
             _get_operation,
-            treat_none_as_success=True
+            treat_none_as_success=True,
         )
     
     async def create_chat_user_message(self, message: ChatUserMessage) -> ChatUserMessage:
@@ -65,7 +65,7 @@ class ChatOperations:
                     raise ValueError("Repository unavailable")
                 return repo.create_chat_user_message(message)
         
-        result = self._infra._retry_database_operation("create_chat_user_message", _create_operation)
+        result = await self._infra._retry_database_operation_async("create_chat_user_message", _create_operation)
         if result is None:
             raise ValueError("Failed to create chat user message")
         return result
@@ -78,9 +78,9 @@ class ChatOperations:
                     return []
                 return repo.get_stage_executions_for_chat(chat_id)
         
-        return self._infra._retry_database_operation(
+        return await self._infra._retry_database_operation_async(
             "get_stage_executions_for_chat",
-            _get_operation
+            _get_operation,
         ) or []
     
     async def has_llm_interactions(self, session_id: str) -> bool:
@@ -104,9 +104,9 @@ class ChatOperations:
                     return []
                 return repo.get_llm_interactions_for_session(session_id)
         
-        return self._infra._retry_database_operation(
+        return await self._infra._retry_database_operation_async(
             "get_llm_interactions_for_session",
-            _get_operation
+            _get_operation,
         ) or []
     
     async def get_llm_interactions_for_stage(self, stage_execution_id: str) -> List[LLMInteraction]:
@@ -117,9 +117,9 @@ class ChatOperations:
                     return []
                 return repo.get_llm_interactions_for_stage(stage_execution_id)
         
-        return self._infra._retry_database_operation(
+        return await self._infra._retry_database_operation_async(
             "get_llm_interactions_for_stage",
-            _get_operation
+            _get_operation,
         ) or []
     
     async def get_chat_user_message_count(self, chat_id: str) -> int:
@@ -130,16 +130,16 @@ class ChatOperations:
                     return 0
                 return repo.get_chat_user_message_count(chat_id)
         
-        return self._infra._retry_database_operation(
+        return await self._infra._retry_database_operation_async(
             "get_chat_user_message_count",
-            _count_operation
+            _count_operation,
         ) or 0
     
     async def get_chat_user_messages(
         self,
         chat_id: str,
         limit: int = 50,
-        offset: int = 0
+        offset: int = 0,
     ) -> List[ChatUserMessage]:
         """Get user messages for a chat with pagination."""
         def _get_operation() -> List[ChatUserMessage]:
@@ -148,7 +148,7 @@ class ChatOperations:
                     return []
                 return repo.get_chat_user_messages(chat_id, limit, offset)
         
-        return self._infra._retry_database_operation(
+        return await self._infra._retry_database_operation_async(
             "get_chat_user_messages",
-            _get_operation
+            _get_operation,
         ) or []

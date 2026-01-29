@@ -15,12 +15,12 @@ logger = logging.getLogger(__name__)
 class StageOperations:
     """Stage execution CRUD operations."""
     
-    def __init__(self, infra: BaseHistoryInfra):
-        self._infra = infra
+    def __init__(self, infra: BaseHistoryInfra) -> None:
+        self._infra: BaseHistoryInfra = infra
     
     async def create_stage_execution(self, stage_execution: StageExecution) -> str:
         """Create a new stage execution record."""
-        def _create_stage_operation():
+        def _create_stage_operation() -> str:
             with self._infra.get_repository() as repo:
                 if not repo:
                     raise RuntimeError("History repository unavailable - cannot create stage execution record")
@@ -31,9 +31,9 @@ class StageOperations:
             raise RuntimeError(f"Failed to create stage execution record for stage '{stage_execution.stage_name}'. Chain processing cannot continue without proper stage tracking.")
         return result
     
-    async def update_stage_execution(self, stage_execution: StageExecution):
+    async def update_stage_execution(self, stage_execution: StageExecution) -> bool:
         """Update an existing stage execution record."""
-        def _update_stage_operation():
+        def _update_stage_operation() -> bool:
             with self._infra.get_repository() as repo:
                 if not repo:
                     raise RuntimeError("History repository unavailable - cannot update stage execution")
@@ -47,9 +47,9 @@ class StageOperations:
         session_id: str, 
         current_stage_index: int, 
         current_stage_id: str
-    ):
+    ) -> bool:
         """Update the current stage information for a session."""
-        def _update_current_stage_operation():
+        def _update_current_stage_operation() -> bool:
             with self._infra.get_repository() as repo:
                 if not repo:
                     raise RuntimeError("History repository unavailable - cannot update session current stage")
@@ -61,7 +61,7 @@ class StageOperations:
     async def get_session_summary(self, session_id: str) -> Optional[SessionStats]:
         """Get summary statistics for a session."""
         try:
-            def _get_session_summary_operation():
+            def _get_session_summary_operation() -> Optional[SessionStats]:
                 with self._infra.get_repository() as repo:
                     if not repo:
                         raise RuntimeError("History repository unavailable - cannot retrieve session summary")
@@ -140,7 +140,7 @@ class StageOperations:
     
     async def get_stage_execution(self, execution_id: str) -> Optional[StageExecution]:
         """Get a single stage execution by ID."""
-        def _get_stage_execution_operation():
+        def _get_stage_execution_operation() -> Optional[StageExecution]:
             with self._infra.get_repository() as repo:
                 if not repo:
                     raise RuntimeError("History repository unavailable - cannot retrieve stage execution")
@@ -155,7 +155,7 @@ class StageOperations:
     
     async def get_stage_executions(self, session_id: str) -> List[StageExecution]:
         """Get all stage executions for a session."""
-        def _get_stage_executions_operation():
+        def _get_stage_executions_operation() -> List[StageExecution]:
             with self._infra.get_repository() as repo:
                 if not repo:
                     raise RuntimeError("History repository unavailable - cannot retrieve stage executions")
@@ -170,7 +170,7 @@ class StageOperations:
     
     async def get_parallel_stage_children(self, parent_execution_id: str) -> List[StageExecution]:
         """Get all child stage executions for a parallel stage parent."""
-        def _get_children_operation():
+        def _get_children_operation() -> List[StageExecution]:
             with self._infra.get_repository() as repo:
                 if not repo:
                     raise RuntimeError("History repository unavailable - cannot retrieve parallel stage children")
@@ -185,7 +185,7 @@ class StageOperations:
     
     async def get_paused_stages(self, session_id: str) -> List[StageExecution]:
         """Get all paused stage executions for a session, including parallel children."""
-        def _get_paused_stages_operation():
+        def _get_paused_stages_operation() -> List[StageExecution]:
             with self._infra.get_repository() as repo:
                 if not repo:
                     raise RuntimeError("History repository unavailable - cannot retrieve paused stages")

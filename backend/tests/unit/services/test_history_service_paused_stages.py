@@ -54,8 +54,7 @@ class TestGetPausedStages:
         """Create HistoryService instance with mocked dependencies."""
         with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
             service = HistoryService()
-            service._infra._initialization_attempted = True
-            service._infra._is_healthy = True
+            service._infra._set_healthy_for_testing()
             return service
 
     @pytest.mark.asyncio
@@ -270,8 +269,7 @@ class TestCancelAllPausedStages:
         """Create HistoryService instance with mocked dependencies."""
         with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
             service = HistoryService()
-            service._infra._initialization_attempted = True
-            service._infra._is_healthy = True
+            service._infra._set_healthy_for_testing()
             return service
 
     @pytest.mark.asyncio

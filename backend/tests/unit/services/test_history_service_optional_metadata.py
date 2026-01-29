@@ -31,8 +31,7 @@ class TestHistoryServiceOptionalMetadata:
         """Create HistoryService instance with mocked dependencies."""
         with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
             service = HistoryService()
-            service._infra._initialization_attempted = True
-            service._infra._is_healthy = True
+            service._infra._set_healthy_for_testing()
             return service
 
     @pytest.fixture
@@ -160,10 +159,10 @@ class TestHistoryServiceOptionalMetadata:
             assert created_session.author is None
             assert created_session.runbook_url is None
 
-    def test_create_session_preserves_metadata_through_retry(
+    def test_create_session_saves_author_and_runbook_url(
         self, history_service, sample_chain_definition
     ):
-        """Test that optional metadata fields are preserved through retry logic."""
+        """Test that create_session correctly saves both author and runbook_url together."""
         # Create context with both author and runbook
         alert = Alert(
             alert_type="test",
@@ -191,13 +190,12 @@ class TestHistoryServiceOptionalMetadata:
         with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = mock_repo
 
-            # Create session should succeed
             result = history_service.create_session(context, sample_chain_definition)
 
             assert result is True
             assert len(captured_sessions) == 1
             
-            # Both author and runbook_url should be preserved
+            # Both author and runbook_url should be saved
             assert captured_sessions[0].author == "test-user"
             assert captured_sessions[0].runbook_url == "https://example.com/runbook-preserved.md"
 

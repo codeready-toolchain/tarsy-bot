@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 class InteractionOperations:
     """LLM and MCP interaction logging."""
     
-    def __init__(self, infra: BaseHistoryInfra):
-        self._infra = infra
+    def __init__(self, infra: BaseHistoryInfra) -> None:
+        self._infra: BaseHistoryInfra = infra
     
     def store_llm_interaction(self, interaction: LLMInteraction) -> bool:
         """Store an LLM interaction to the database."""
@@ -31,7 +31,10 @@ class InteractionOperations:
         return bool(result)
     
     def store_mcp_interaction(self, interaction: MCPInteraction) -> bool:
-        """Store an MCP interaction to the database."""
+        """Store an MCP interaction to the database.
+        
+        Note: May populate interaction.step_description if not set.
+        """
         if not interaction.session_id:
             return False
             

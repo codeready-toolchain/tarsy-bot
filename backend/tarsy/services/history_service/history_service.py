@@ -1,6 +1,6 @@
 """History Service - Main Facade."""
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, ContextManager, Dict, List, Optional, Tuple
 
 from tarsy.models.agent_config import ChainConfigModel
 from tarsy.models.db_models import AlertSession, Chat, ChatUserMessage, StageExecution
@@ -13,6 +13,7 @@ from tarsy.models.history_models import (
 )
 from tarsy.models.processing_context import ChainContext
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
+from tarsy.repositories.history_repository import HistoryRepository
 from tarsy.services.history_service.base_infrastructure import BaseHistoryInfra
 from tarsy.services.history_service.chat_operations import ChatOperations
 from tarsy.services.history_service.conversation_operations import ConversationOperations
@@ -29,23 +30,23 @@ class HistoryService:
     """Manages session data and audit trails via composed operations."""
     
     def __init__(self) -> None:
-        self._infra = BaseHistoryInfra()
-        self._sessions = SessionOperations(self._infra)
-        self._stages = StageOperations(self._infra)
-        self._interactions = InteractionOperations(self._infra)
-        self._queries = QueryOperations(self._infra)
-        self._maintenance = MaintenanceOperations(self._infra)
-        self._chats = ChatOperations(self._infra)
-        self._conversations = ConversationOperations(self._infra)
-        self._tracking = TrackingOperations(self._infra)
-        self._queue = QueueOperations(self._infra)
+        self._infra: BaseHistoryInfra = BaseHistoryInfra()
+        self._sessions: SessionOperations = SessionOperations(self._infra)
+        self._stages: StageOperations = StageOperations(self._infra)
+        self._interactions: InteractionOperations = InteractionOperations(self._infra)
+        self._queries: QueryOperations = QueryOperations(self._infra)
+        self._maintenance: MaintenanceOperations = MaintenanceOperations(self._infra)
+        self._chats: ChatOperations = ChatOperations(self._infra)
+        self._conversations: ConversationOperations = ConversationOperations(self._infra)
+        self._tracking: TrackingOperations = TrackingOperations(self._infra)
+        self._queue: QueueOperations = QueueOperations(self._infra)
     
     # Infrastructure
     def initialize(self) -> bool:
         """Initialize database connection."""
         return self._infra.initialize()
     
-    def get_repository(self):  # type: ignore[no-untyped-def]
+    def get_repository(self) -> ContextManager[HistoryRepository | None]:
         """Get repository context manager (delegates to _infra)."""
         return self._infra.get_repository()
     

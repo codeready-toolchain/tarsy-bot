@@ -19,8 +19,8 @@ logger = logging.getLogger(__name__)
 class ConversationOperations:
     """Conversation history formatting operations."""
     
-    def __init__(self, infra: BaseHistoryInfra):
-        self._infra = infra
+    def __init__(self, infra: BaseHistoryInfra) -> None:
+        self._infra: BaseHistoryInfra = infra
     
     def get_session_conversation_history(
         self,
@@ -152,15 +152,7 @@ class ConversationOperations:
         include_thinking: bool = False
     ) -> str:
         """Build comprehensive session history for external analysis."""
-        conversation_text = self.get_formatted_session_conversation(
-            session_id,
-            include_thinking=include_thinking
-        )
-        
-        if not include_separate_alert_section:
-            return conversation_text
-        
-        # Need to get session for alert metadata
+        # Verify session exists first for clearer error messages
         def _get_session() -> Optional[AlertSession]:
             with self._infra.get_repository() as repo:
                 if not repo:
@@ -175,6 +167,14 @@ class ConversationOperations:
         
         if not session:
             raise ValueError(f"Session {session_id} not found")
+        
+        conversation_text = self.get_formatted_session_conversation(
+            session_id,
+            include_thinking=include_thinking
+        )
+        
+        if not include_separate_alert_section:
+            return conversation_text
         
         sections = []
         sections.append("=" * 79)

@@ -123,7 +123,7 @@ class TestHistoryServiceIntegration:
                 class_=Session,
                 expire_on_commit=False
             )
-            service._infra._is_healthy = True  # Mark as healthy since we have a working engine
+            service._infra._set_healthy_for_testing()
             
             logger.info("Using shared in-memory database engine with tables already created")
             

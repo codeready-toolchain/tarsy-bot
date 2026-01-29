@@ -1248,8 +1248,7 @@ def history_service_with_test_db(history_test_database_engine):
             expire_on_commit=False
         )
         
-        service._infra._is_healthy = True
-        service._infra._initialization_attempted = True
+        service._infra._set_healthy_for_testing()
         
         return service
 
