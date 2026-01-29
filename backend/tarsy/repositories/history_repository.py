@@ -221,8 +221,6 @@ class HistoryRepository:
             List of LLMInteraction instances ordered by timestamp
         """
         try:
-            from tarsy.models.db_models import StageExecution
-            
             statement = select(LLMInteraction).where(
                 LLMInteraction.session_id == session_id
             )
