@@ -11,7 +11,7 @@ import logging
 import random
 import time
 from contextlib import contextmanager
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Final, List, Optional, Tuple
 
 from tarsy.config.settings import get_settings
 from tarsy.models.agent_config import ChainConfigModel
@@ -36,10 +36,10 @@ logger = logging.getLogger(__name__)
 # Sentinel value to indicate no LLM interactions found (distinct from None/failure)
 class _NoInteractionsSentinel:
     """Sentinel to distinguish 'no interactions found' from database failures."""
-    def __repr__(self):
+    def __repr__(self) -> str:
         return "<NO_INTERACTIONS>"
 
-NO_INTERACTIONS = _NoInteractionsSentinel()
+NO_INTERACTIONS: Final[_NoInteractionsSentinel] = _NoInteractionsSentinel()
 
 
 class HistoryService:
@@ -1349,10 +1349,12 @@ class HistoryService:
             include_thinking: If True, include internal reasoning from native thinking models (default: False)
             
         Returns:
-            Formatted conversation text with optional thinking_content
+            Formatted conversation text with optional thinking_content. When interactions exist
+            but none are valid (e.g., session was cancelled before processing), returns a
+            cancellation history object rather than raising an error.
             
         Raises:
-            ValueError: If no valid interactions found for the session
+            ValueError: If no interactions exist for the session (no LLM interactions recorded at all)
         """
         def _get_formatted_conversation():
             with self.get_repository() as repo:
