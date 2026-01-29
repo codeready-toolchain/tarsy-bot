@@ -10,8 +10,9 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Optional
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, event, func, text
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Table, event, func, text
 from sqlalchemy.dialects.postgresql import BIGINT
+from sqlalchemy.engine import Connection
 from sqlmodel import Column, Field, Index, SQLModel
 
 from tarsy.models.constants import AlertSessionStatus, ScoringStatus
@@ -415,7 +416,7 @@ class SessionScore(SQLModel, table=True):
     )
 
 
-# Event listener to create partial unique index for SessionScoreDB
+# Event listener to create partial unique index for the SessionScore table.
 # This prevents duplicate active (pending/in_progress) scores for the same session
 # Both PostgreSQL and SQLite support this syntax
 # The index is defined in the DB migration scripts, but we also need it here
@@ -423,7 +424,7 @@ class SessionScore(SQLModel, table=True):
 # Having this listener here ensures that the DB is correctly initialized even
 # in the tests where we only use sqlalchemy and don't run the migrations.
 @event.listens_for(SessionScore.__table__, "after_create")
-def create_session_scores_partial_index(target, connection, **kw):
+def create_session_scores_partial_index(target: Table, connection: Connection, **kw: Any) -> None:
     """Create partial unique index on session_scores after table creation."""
     connection.execute(
         text("""

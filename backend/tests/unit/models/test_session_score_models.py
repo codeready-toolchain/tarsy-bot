@@ -7,6 +7,7 @@ from tarsy.models.api_models import SessionScoreResponse
 from tarsy.utils.timestamp import now_us
 
 
+@pytest.mark.unit
 class TestScoringStatusEnum:
     """Test ScoringStatus enum."""
 
@@ -26,7 +27,7 @@ class TestScoringStatusEnum:
         assert "completed" in all_values
         assert "failed" in all_values
 
-
+@pytest.mark.unit
 class TestSessionScoreDB:
     """Test SessionScoreDB model validation."""
 
@@ -65,7 +66,7 @@ class TestSessionScoreDB:
         assert score1.score_id != score2.score_id
         assert len(score1.score_id) == 36  # UUID format
 
-
+@pytest.mark.unit
 class TestSessionScoreAPIModel:
     """Test SessionScore API model."""
 
