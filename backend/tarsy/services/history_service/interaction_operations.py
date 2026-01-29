@@ -19,7 +19,7 @@ class InteractionOperations:
         if not interaction.session_id:
             return False
             
-        def _store_llm_operation():
+        def _store_llm_operation() -> bool:
             with self._infra.get_repository() as repo:
                 if not repo:
                     raise RuntimeError("History repository unavailable - cannot store LLM interaction")

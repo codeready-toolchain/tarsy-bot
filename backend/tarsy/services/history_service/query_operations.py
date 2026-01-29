@@ -81,7 +81,9 @@ class QueryOperations:
             with self._infra.get_repository() as repo:
                 if not repo:
                     raise RuntimeError("History repository unavailable - cannot check health")
-                repo.get_alert_sessions(page=1, page_size=1)
+                result = repo.get_alert_sessions(page=1, page_size=1)
+                if result is None:
+                    raise RuntimeError("Database query failed - health check unsuccessful")
                 return True
         
         result = self._infra._retry_database_operation(

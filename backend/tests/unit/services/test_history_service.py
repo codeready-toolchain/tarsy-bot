@@ -6,7 +6,7 @@ MCP communication tracking, and timeline reconstruction with graceful
 degradation when database operations fail.
 """
 
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
 
@@ -606,26 +606,28 @@ class TestHistoryService:
             assert chat_stage_result.chat_id == "chat-abc-123"
             assert chat_stage_result.chat_user_message_id == "msg-xyz-456"
     
-    @pytest.mark.parametrize("connection_success,expected_result", [
-        (True, True),  # Connection successful
-        (False, False),  # Connection failed
+    @pytest.mark.parametrize("query_result,connection_exception,expected_result", [
+        (MagicMock(), None, True),  # Connection and query successful
+        (None, None, False),  # Connection works but query returns None (failure)
+        (MagicMock(), Exception("Connection failed"), False),  # Connection failed
     ])
     @pytest.mark.unit
-    def test_database_connection_scenarios(self, history_service, connection_success, expected_result):
+    def test_database_connection_scenarios(self, history_service, query_result, connection_exception, expected_result):
         """Test database connection for various scenarios."""
         dependencies = MockFactory.create_mock_history_service_dependencies()
         
         with patch.object(history_service._infra, 'get_repository') as mock_get_repo:
-            if connection_success:
+            if connection_exception:
+                mock_get_repo.side_effect = connection_exception
+            else:
+                dependencies['repository'].get_alert_sessions.return_value = query_result
                 mock_get_repo.return_value.__enter__.return_value = dependencies['repository']
                 mock_get_repo.return_value.__exit__.return_value = None
-            else:
-                mock_get_repo.side_effect = Exception("Connection failed")
             
             result = history_service.test_database_connection()
             
             assert result == expected_result
-            if connection_success:
+            if not connection_exception:
                 dependencies['repository'].get_alert_sessions.assert_called_once_with(page=1, page_size=1)
     
 
@@ -796,7 +798,7 @@ class TestHistoryServiceStageExecution:
         # Mock successful repository operation
         with patch.object(service._infra, '_retry_database_operation_async', new=AsyncMock(return_value=True)):
             result = await service.update_stage_execution(sample_stage_execution)
-            assert result == True
+            assert result
             
             # Verify retry operation was called with correct operation name
             service._infra._retry_database_operation_async.assert_called_once()
@@ -1621,7 +1623,7 @@ class TestHistoryServicePostgreSQLRetryLogic:
         for sqlstate in connection_sqlstates:
             call_count = 0
             
-            def operation():
+            def operation(sqlstate=sqlstate):  # Bind loop variable
                 nonlocal call_count
                 call_count += 1
                 if call_count == 1:
@@ -1685,7 +1687,7 @@ class TestHistoryServicePostgreSQLRetryLogic:
         for pattern in postgresql_patterns:
             call_count = 0
             
-            def operation():
+            def operation(pattern=pattern):  # Bind loop variable
                 nonlocal call_count
                 call_count += 1
                 if call_count == 1:

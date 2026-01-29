@@ -27,7 +27,7 @@ class TrackingOperations:
         Returns:
             True if tracking was successfully updated, False otherwise.
         """
-        def _start_operation():
+        def _start_operation() -> bool:
             with self._infra.get_repository() as repo:
                 if not repo:
                     return False
@@ -51,7 +51,7 @@ class TrackingOperations:
         Returns:
             True if the timestamp was successfully updated, False otherwise.
         """
-        def _record_operation():
+        def _record_operation() -> bool:
             with self._infra.get_repository() as repo:
                 if not repo:
                     return False
@@ -79,7 +79,7 @@ class TrackingOperations:
         Returns:
             Number of orphaned chats that were cleaned up.
         """
-        def _cleanup_operation():
+        def _cleanup_operation() -> int:
             with self._infra.get_repository() as repo:
                 if not repo:
                     return 0
@@ -121,7 +121,7 @@ class TrackingOperations:
         Returns:
             Number of chats that had their processing markers cleared.
         """
-        def _interrupt_operation():
+        def _interrupt_operation() -> int:
             with self._infra.get_repository() as repo:
                 if not repo:
                     return 0

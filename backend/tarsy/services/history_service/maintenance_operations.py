@@ -81,7 +81,7 @@ class MaintenanceOperations:
         Returns:
             Number of orphaned sessions that were cleaned up.
         """
-        def _cleanup_operation():
+        def _cleanup_operation() -> int:
             with self._infra.get_repository() as repo:
                 if not repo:
                     return 0
@@ -122,7 +122,7 @@ class MaintenanceOperations:
         Returns:
             Number of sessions that were marked as interrupted.
         """
-        def _interrupt_operation():
+        def _interrupt_operation() -> int:
             with self._infra.get_repository() as repo:
                 if not repo:
                     return 0
@@ -161,7 +161,7 @@ class MaintenanceOperations:
         Returns:
             True if the session was successfully marked as processing, False otherwise.
         """
-        def _start_operation():
+        def _start_operation() -> bool:
             with self._infra.get_repository() as repo:
                 if not repo:
                     return False
@@ -188,7 +188,7 @@ class MaintenanceOperations:
         Returns:
             True if the timestamp was successfully updated, False otherwise.
         """
-        def _interaction_operation():
+        def _interaction_operation() -> bool:
             with self._infra.get_repository() as repo:
                 if not repo:
                     return False
