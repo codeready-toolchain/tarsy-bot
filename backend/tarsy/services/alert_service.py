@@ -50,9 +50,10 @@ from tarsy.services.response_formatter import (
 from tarsy.services.runbook_service import RunbookService
 from tarsy.services.session_manager import SessionManager
 from tarsy.services.stage_execution_manager import StageExecutionManager
-from tarsy.utils.agent_execution_utils import extract_cancellation_reason, get_stage_agent_label
+from tarsy.utils.agent_execution_utils import get_stage_agent_label
 from tarsy.utils.logger import get_module_logger
 from tarsy.utils.timestamp import now_us
+from tarsy.services.slack_service import SlackService
 
 logger = get_module_logger(__name__)
 
@@ -80,6 +81,7 @@ class AlertService:
 
         # Initialize services
         self.runbook_service = RunbookService(settings, runbook_http_client)
+        self.slack_service = SlackService(settings)
         self.history_service = get_history_service()
         
         # Initialize registries with loaded configuration
@@ -325,6 +327,8 @@ class AlertService:
                 
                 # Update history session with error
                 self.session_manager.update_session_error(chain_context.session_id, error_msg)
+
+                await self.slack_service.send_alert_error_notification(chain_context, error_msg=error_msg)
                     
                 return format_error_response(chain_context, error_msg)
             
@@ -369,6 +373,9 @@ class AlertService:
                 chain_context.session_id,
                 chain_context.processing_alert.alert_type
             )
+            
+            # Send Slack notification for start (only if fingerprint exists)
+            await self.slack_service.send_alert_started_notification(chain_context)
             
             # Step 4: Extract runbook from alert data and download once per chain
             # If no runbook URL provided, use the built-in default runbook
@@ -417,6 +424,8 @@ class AlertService:
                     from tarsy.services.events.event_helpers import publish_session_timed_out
                     await publish_session_timed_out(chain_context.session_id)
                 
+                await self.slack_service.send_alert_error_notification(chain_context, error_msg=error_msg)
+
                 return format_error_response(chain_context, error_msg)
             
             # Step 7: Format and return results
@@ -457,7 +466,12 @@ class AlertService:
                     final_analysis_summary=summary_result.summary,
                     executive_summary_error=summary_result.error
                 )
-                
+
+                if summary_result.summary:
+                    await self.slack_service.send_alert_analysis_notification(chain_context, analysis=summary_result.summary)
+                elif summary_result.error:
+                    await self.slack_service.send_alert_error_notification(chain_context, error_msg=summary_result.error)
+
                 # Publish session.completed event
                 from tarsy.services.events.event_helpers import (
                     publish_session_completed,
@@ -471,6 +485,10 @@ class AlertService:
                 
                 # Return a response indicating pause (not an error)
                 pause_message = chain_result.final_analysis or "Session paused - waiting for user to resume"
+                
+                # Send Slack notification for pause
+                await self.slack_service.send_alert_paused_notification(chain_context, pause_message)
+                
                 return format_chain_success_response(
                     chain_context,
                     chain_definition,
@@ -492,7 +510,9 @@ class AlertService:
                 # Publish session.timed_out event
                 from tarsy.services.events.event_helpers import publish_session_timed_out
                 await publish_session_timed_out(chain_context.session_id)
-                
+
+                await self.slack_service.send_alert_error_notification(chain_context, error_msg=error_msg)
+
                 return format_error_response(chain_context, error_msg)
             else:
                 # Handle chain processing error
@@ -506,6 +526,8 @@ class AlertService:
                 from tarsy.services.events.event_helpers import publish_session_failed
                 await publish_session_failed(chain_context.session_id)
                 
+                await self.slack_service.send_alert_error_notification(chain_context, error_msg=error_msg)
+
                 return format_error_response(chain_context, error_msg)
                 
         except Exception as e:
@@ -519,6 +541,8 @@ class AlertService:
             from tarsy.services.events.event_helpers import publish_session_failed
             await publish_session_failed(chain_context.session_id)
             
+            await self.slack_service.send_alert_error_notification(chain_context, error_msg=error_msg)
+
             return format_error_response(chain_context, error_msg)
         
         finally:
@@ -865,7 +889,8 @@ class AlertService:
             alert_type=session.alert_type or "unknown",
             timestamp=session.started_at_us,
             runbook_url=session.runbook_url,
-            alert_data=session.alert_data
+            alert_data=session.alert_data,
+            slack_message_fingerprint=session.slack_message_fingerprint
         )
         
         chain_context = ChainContext.from_processing_alert(
@@ -1179,6 +1204,10 @@ class AlertService:
                     )
                     await publish_session_paused(session_id)
                     
+                    # Send Slack notification for pause
+                    pause_message = f"Parallel stage '{paused_stage.stage_name}' paused again - resume to continue"
+                    await self.slack_service.send_alert_paused_notification(chain_context, pause_message)
+                    
                     result = ChainExecutionResult(
                         status=ChainStatus.PAUSED,
                         final_analysis=f"Parallel stage '{paused_stage.stage_name}' paused again",
@@ -1237,6 +1266,12 @@ class AlertService:
                     publish_session_completed,
                 )
                 await publish_session_completed(session_id)
+
+                if summary_result.summary:
+                    await self.slack_service.send_alert_analysis_notification(chain_context, analysis=summary_result.summary)
+                elif summary_result.error:
+                    await self.slack_service.send_alert_error_notification(chain_context, error_msg=summary_result.error)
+
                 return final_result
             elif result.status == ChainStatus.PAUSED:
                 # Session paused again - this is normal, not an error
@@ -1245,6 +1280,10 @@ class AlertService:
                 logger.info(f"Resumed session {session_id} paused again (hit max iterations)")
                 # Format the pause message consistently with initial execution path
                 pause_message = result.final_analysis or "Session paused again - waiting for user to resume"
+                
+                # Send Slack notification for pause
+                await self.slack_service.send_alert_paused_notification(chain_context, pause_message)
+                
                 return format_chain_success_response(
                     chain_context,
                     chain_definition,
@@ -1261,6 +1300,9 @@ class AlertService:
                 )
                 from tarsy.services.events.event_helpers import publish_session_timed_out
                 await publish_session_timed_out(session_id)
+
+                await self.slack_service.send_alert_error_notification(chain_context, error_msg=error_msg)
+
                 return format_error_response(chain_context, error_msg)
             else:
                 # Chain failed for other reasons
@@ -1268,6 +1310,9 @@ class AlertService:
                 self.session_manager.update_session_status(session_id, AlertSessionStatus.FAILED.value)
                 from tarsy.services.events.event_helpers import publish_session_failed
                 await publish_session_failed(session_id)
+
+                await self.slack_service.send_alert_error_notification(chain_context, error_msg=error_msg)
+
                 return format_error_response(chain_context, error_msg)
         
         except Exception as e:
@@ -1497,6 +1542,10 @@ class AlertService:
                             )
                             await publish_session_paused(chain_context.session_id, pause_metadata=pause_meta_dict)
                             
+                            # Send Slack notification for pause
+                            pause_message = f"Parallel stage '{stage.name}' paused - one or more agents need more iterations. Resume to continue."
+                            await self.slack_service.send_alert_paused_notification(chain_context, pause_message)
+                            
                             # Return paused result (not failed)
                             return ChainExecutionResult(
                                 status=ChainStatus.PAUSED,
@@ -1682,6 +1731,10 @@ class AlertService:
                         )
                         await publish_session_paused(chain_context.session_id, pause_metadata=pause_meta_dict)
                         
+                        # Send Slack notification for pause
+                        pause_message = f"Stage '{stage.name}' paused after {e.iteration} iterations. Resume to continue."
+                        await self.slack_service.send_alert_paused_notification(chain_context, pause_message)
+                        
                         # Return paused result (not failed)
                         return ChainExecutionResult(
                             status=ChainStatus.PAUSED,
@@ -1847,6 +1900,12 @@ class AlertService:
             # Safely close health check MCP client (handle both sync and async close methods)
             if hasattr(self.health_check_mcp_client, 'close'):
                 result = self.health_check_mcp_client.close()
+                if asyncio.iscoroutine(result):
+                    await result
+
+            # Safely close Slack service (handle both sync and async close methods)
+            if hasattr(self.slack_service, 'close'):
+                result = self.slack_service.close()
                 if asyncio.iscoroutine(result):
                     await result
             

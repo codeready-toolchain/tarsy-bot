@@ -44,6 +44,9 @@ export interface Session {
   session_output_tokens: number | null;  
   session_total_tokens: number | null;
   
+  // Slack integration
+  slack_message_fingerprint: string | null;
+  
   // Final analysis and summary
   final_analysis?: string | null;
   final_analysis_summary?: string | null;

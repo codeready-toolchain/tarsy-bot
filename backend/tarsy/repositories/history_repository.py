@@ -730,6 +730,9 @@ class HistoryRepository:
                     # MCP configuration override
                     mcp_selection=alert_session.mcp_selection,
                     
+                    # Slack integration
+                    slack_message_fingerprint=alert_session.slack_message_fingerprint,
+                    
                     chat_message_count=session_counts.get('chat_message_count'),
                     
                     # Optional fields that may need calculation elsewhere (defaults from SessionOverview)
@@ -986,6 +989,9 @@ class HistoryRepository:
                 current_stage_index=session.current_stage_index,
                 current_stage_id=session.current_stage_id,
                 
+                # Slack integration
+                slack_message_fingerprint=session.slack_message_fingerprint,
+                
                 # Interaction counts
                 total_interactions=total_llm + total_mcp,
                 llm_interaction_count=total_llm,
@@ -1146,6 +1152,9 @@ class HistoryRepository:
                 
                 # MCP configuration override
                 mcp_selection=session.mcp_selection,
+                
+                # Slack integration
+                slack_message_fingerprint=session.slack_message_fingerprint,
                 
                 chat_message_count=chat_message_count
             )

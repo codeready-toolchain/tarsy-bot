@@ -1043,6 +1043,8 @@ class TestMCPClientSummarization:
         # Mock settings with short timeout for testing
         mock_settings = Mock(spec=Settings)
         mock_settings.llm_iteration_timeout = 0.5  # 500ms timeout for testing
+        mock_settings.slack_bot_token = None
+        mock_settings.slack_channel = None
         client = MCPClient(mock_settings, mock_registry_with_summarization, slow_summarizer)
         
         # Mock data masking service to return large result

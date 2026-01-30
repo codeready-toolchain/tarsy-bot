@@ -768,6 +768,7 @@ async def mark_session_as_failed(alert: Optional[ChainContext], error_msg: str) 
         from tarsy.services.events.event_helpers import publish_session_failed
         await publish_session_failed(alert.session_id)
 
+        await alert_service.slack_service.send_alert_error_notification(alert, error_msg=error_msg)
 
 async def mark_session_cancelled_or_timed_out(
     session_id: str,

@@ -20,6 +20,8 @@ import {
   IconButton,
   Autocomplete,
   Paper,
+  Chip,
+  Collapse,
 } from '@mui/material';
 import { 
   Send as SendIcon, 
@@ -227,6 +229,9 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = () => {
   // Default alert type to use (set by resubmit or will use API default)
   const defaultAlertTypeRef = useRef<string | null>(null);
   
+  // Advanced options accordion state
+  const [advancedOptionsExpanded, setAdvancedOptionsExpanded] = useState(false);
+  
   // Re-submission state
   const [sourceSessionId, setSourceSessionId] = useState<string | null>(null);
   const [showResubmitBanner, setShowResubmitBanner] = useState(false);
@@ -234,6 +239,7 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = () => {
   // Common fields
   const [alertType, setAlertType] = useState('');
   const [runbook, setRunbook] = useState<string | null>(DEFAULT_RUNBOOK);
+  const [slackMessageFingerprint, setSlackMessageFingerprint] = useState('');
   const [mcpSelection, setMcpSelection] = useState<MCPSelectionConfig | undefined>(undefined);
   
   // Mode selection (0 = Structured, 1 = Text) - Default to Text
@@ -285,6 +291,13 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = () => {
       // Set MCP selection
       if (state.mcpSelection) {
         setMcpSelection(state.mcpSelection);
+      }
+      
+      // Set Slack fingerprint if present (auto-fill from original alert)
+      if (state.slackFingerprint) {
+        setSlackMessageFingerprint(state.slackFingerprint);
+        // Expand advanced options to show the auto-filled field
+        setAdvancedOptionsExpanded(true);
       }
       
       // Process alert data
@@ -451,6 +464,11 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = () => {
         alertData.runbook = runbook;
       }
 
+      // Add slack_fingerprint if provided
+      if (slackMessageFingerprint && slackMessageFingerprint.trim()) {
+        alertData.slack_message_fingerprint = slackMessageFingerprint.trim();
+      }
+
       // Add MCP selection if configured (only when user made changes from defaults)
       // Filter out servers with no tools selected (tools: [])
       const filteredMCP = filterMCPSelection(mcpSelection);
@@ -527,6 +545,11 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = () => {
       // Add runbook only if not "Default Runbook"
       if (runbook && runbook !== DEFAULT_RUNBOOK) {
         alertData.runbook = runbook;
+      }
+
+      // Add slack_fingerprint if provided
+      if (slackMessageFingerprint && slackMessageFingerprint.trim()) {
+        alertData.slack_message_fingerprint = slackMessageFingerprint.trim();
       }
 
       // Add MCP selection if configured (only when user made changes from defaults)
@@ -744,6 +767,52 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = () => {
               />
             </Stack>
 
+          </Box>
+
+          {/* Advanced Options Section - Hybrid of Option 2 & 4 */}
+          <Box sx={{ px: 4, py: 2 }}>
+            {/* Helper text link (Option 4 style) */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography
+                variant="caption"
+                sx={{ 
+                  color: 'text.secondary', 
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 0.5,
+                  '&:hover': { color: 'primary.main' }
+                }}
+                onClick={() => setAdvancedOptionsExpanded(!advancedOptionsExpanded)}
+              >
+                {advancedOptionsExpanded ? '▼' : '▶'} Advanced: Slack Threading
+              </Typography>
+              {slackMessageFingerprint && !advancedOptionsExpanded && (
+                <Chip 
+                  label="Set" 
+                  size="small" 
+                  color="primary" 
+                  sx={{ height: 18, fontSize: '0.65rem' }}
+                />
+              )}
+            </Box>
+
+            {/* Slide down field with border (Option 2 style) */}
+            <Collapse in={advancedOptionsExpanded}>
+              <Box sx={{ mt: 2, pl: 2, borderLeft: '2px solid', borderColor: 'primary.main' }}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Slack Message Fingerprint"
+                  value={slackMessageFingerprint}
+                  onChange={(e) => setSlackMessageFingerprint(e.target.value)}
+                  placeholder="e.g., fingerprint-abc123"
+                  helperText="Links this analysis to a specific Slack message thread"
+                  disabled={loading}
+                  variant="outlined"
+                />
+              </Box>
+            </Collapse>
           </Box>
 
           {/* MCP Server Configuration (Advanced) */}

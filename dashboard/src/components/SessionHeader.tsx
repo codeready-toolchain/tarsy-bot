@@ -558,7 +558,8 @@ function SessionHeader({ session, onRefresh }: SessionHeaderProps) {
         runbook: session.runbook_url || null,
         alertData: session.alert_data,
         sessionId: session.session_id,
-        mcpSelection: session.mcp_selection || null
+        mcpSelection: session.mcp_selection || null,
+        slackFingerprint: session.slack_message_fingerprint || null
       }
     });
   };

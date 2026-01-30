@@ -224,6 +224,9 @@ class SessionOverview(BaseModel):
     # MCP configuration override
     mcp_selection: Optional[MCPSelectionConfig] = None
     
+    # Slack integration
+    slack_message_fingerprint: Optional[str] = None
+    
     chat_message_count: Optional[int] = None  # Number of user messages in follow-up chat (if chat exists)
     
     # Calculated properties
@@ -419,6 +422,9 @@ class DetailedSession(BaseModel):
     
     # MCP configuration override
     mcp_selection: Optional[MCPSelectionConfig] = None
+    
+    # Slack integration
+    slack_message_fingerprint: Optional[str] = None
     
     # Complete interaction data
     total_interactions: int = 0

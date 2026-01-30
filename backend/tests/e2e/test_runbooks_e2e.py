@@ -225,6 +225,8 @@ class TestRunbooksE2E:
         with patch("tarsy.config.settings.get_settings") as mock_get_settings:
             test_settings = Mock()
             test_settings.github_token = "test_token"
+            test_settings.slack_bot_token = None
+            test_settings.slack_channel = None
             test_settings.runbooks_repo_url = (
                 "https://github.com/org/repo/tree/master/runbooks"
             )
@@ -259,6 +261,8 @@ class TestRunbooksE2E:
         with patch("tarsy.config.settings.get_settings") as mock_get_settings:
             test_settings = Mock()
             test_settings.github_token = "test_token"
+            test_settings.slack_bot_token = None
+            test_settings.slack_channel = None
             test_settings.runbooks_repo_url = (
                 "https://github.com/org/repo/tree/master/runbooks"
             )
@@ -300,6 +304,8 @@ class TestRunbooksE2E:
         with patch("tarsy.config.settings.get_settings") as mock_get_settings:
             test_settings = Mock()
             test_settings.github_token = "test_token"
+            test_settings.slack_bot_token = None
+            test_settings.slack_channel = None
             test_settings.runbooks_repo_url = (
                 "https://github.com/org/repo/tree/master/runbooks"
             )

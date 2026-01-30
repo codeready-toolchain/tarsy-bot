@@ -77,6 +77,18 @@ graph LR
 - **Real-time Streaming**: Follow-up questions trigger investigation reasoning (ReAct or NativeThinking, auto-determined or explicitly configured)
 - **Per-chain Configuration**: Chat capability fully configurable per chain (agent, iteration strategy, LLM provider, enabled/disabled)
 
+### 7. Slack Notifications
+
+TARSy can automatically send Slack notifications when alert processing completes or fails. The system supports both standard channel notifications and threaded replies to alert messages via message fingerprint correlation.
+
+**Key Features:**
+- Automatic notifications on processing completion or failure
+- Analysis summary with direct dashboard link
+- Optional message threading via `slack_message_fingerprint` for reply-style notifications
+- Configurable (disabled by default)
+
+**For complete Slack setup guide**: See [Slack Integration Documentation](slack-integration.md)
+
 ## How It Works
 
 ### Alert Processing Flow

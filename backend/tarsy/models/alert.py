@@ -39,6 +39,10 @@ class Alert(BaseModel):
         None, 
         description="Alert timestamp in unix microseconds (auto-generated if not provided)"
     )
+    slack_message_fingerprint: Optional[str] = Field(
+        None,
+        description="Optional Slack message fingerprint for Slack message threading"
+    )
     data: Dict[str, Any] = Field(
         default_factory=dict, 
         description="Client's alert data - can be any complex nested JSON structure"
@@ -101,7 +105,10 @@ class ProcessingAlert(BaseModel):
         None, 
         description="Runbook URL if provided"
     )
-    
+    slack_message_fingerprint: Optional[str] = Field(
+        None,
+        description="Slack message fingerprint for Slack message threading"
+    )
     # === Client's Pristine Data ===
     alert_data: Dict[str, Any] = Field(
         default_factory=dict,
@@ -138,7 +145,7 @@ class ProcessingAlert(BaseModel):
         # Extract severity and environment from client data if present (but keep them there too)
         severity = alert.data.get('severity', 'warning')
         environment = alert.data.get('environment', 'production')
-        
+
         # Generate timestamp if not provided
         if alert.timestamp is None:
             timestamp = now_us()
@@ -156,6 +163,7 @@ class ProcessingAlert(BaseModel):
             timestamp=timestamp,
             environment=environment,
             runbook_url=alert.runbook,
+            slack_message_fingerprint=alert.slack_message_fingerprint,
             alert_data=alert.data,  # ← PRISTINE!
             mcp=alert.mcp  # Pass through MCP selection config
         )

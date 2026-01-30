@@ -1776,7 +1776,9 @@ class TestHistoryControllerResponseFormat:
             # Pause/resume metadata
             "pause_metadata",
             # Parallel stages indicator
-            "has_parallel_stages"
+            "has_parallel_stages",
+            # Slack message fingerprint for notification threading
+            "slack_message_fingerprint"
         }
         actual_fields = set(session.keys())
         assert required_fields.issubset(actual_fields)
