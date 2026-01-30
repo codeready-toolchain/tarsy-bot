@@ -17,7 +17,7 @@ Perform thorough internet research to gather the most current and comprehensive 
    - Check for version-specific information when relevant
 
 3. **Stay Current** (when version/recency matters):
-   - Prioritize recent sources (2024-2026)
+   - Prioritize sources published within the last 1–3 years (adjust timeframe by domain; use longer windows for historical or foundational topics)
    - Look for deprecation notices or updates
    - Check for new features or alternatives
    - Identify emerging patterns and trends
