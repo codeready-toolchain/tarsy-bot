@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Optional
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Table, event, func, text
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Table, event, func, text, Enum as SAEnum
 from sqlalchemy.dialects.postgresql import BIGINT
 from sqlalchemy.engine import Connection
 from sqlmodel import Column, Field, Index, SQLModel
@@ -395,7 +395,8 @@ class SessionScore(SQLModel, table=True):
     )
 
     # Async processing status fields
-    status: str = Field(
+    status: ScoringStatus = Field(
+        sa_column=Column(SAEnum(ScoringStatus, values_callable=lambda x: [e.value for e in x], native_enum=False, length=50)),
         description=f"Scoring status ({', '.join(ScoringStatus.values())})"
     )
 

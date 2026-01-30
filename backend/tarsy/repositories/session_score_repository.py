@@ -63,7 +63,7 @@ class SessionScoreRepository:
     def get_scores_for_session(
         self,
         session_id: str,
-        status: Optional[str] = None
+        status: Optional[ScoringStatus] = None
     ) -> List[SessionScore]:
         """Get all scoring attempts for a session, ordered by scored_at_us descending."""
         statement = select(SessionScore).where(
@@ -100,7 +100,7 @@ class SessionScoreRepository:
     def update_score_status(
         self,
         score_id: str,
-        status: str,
+        status: ScoringStatus,
         completed_at_us: Optional[int] = None,
         error_message: Optional[str] = None,
         total_score: Optional[int] = None,

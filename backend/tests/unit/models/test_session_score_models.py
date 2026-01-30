@@ -12,10 +12,10 @@ class TestScoringStatusEnum:
     """Test ScoringStatus enum."""
 
     def test_active_values(self):
-        """Test active_values() returns pending and in_progress."""
+        """Test active_values() returns pending and in_progress enum instances."""
         active = ScoringStatus.active_values()
-        assert "pending" in active
-        assert "in_progress" in active
+        assert ScoringStatus.PENDING in active
+        assert ScoringStatus.IN_PROGRESS in active
         assert len(active) == 2
 
     def test_values(self):
@@ -37,13 +37,13 @@ class TestSessionScoreDB:
             session_id="test-session-123",
             prompt_hash="abc123",
             score_triggered_by="user:test",
-            status=ScoringStatus.PENDING.value,
+            status=ScoringStatus.PENDING,
         )
 
         assert score.session_id == "test-session-123"
         assert score.prompt_hash == "abc123"
         assert score.score_triggered_by == "user:test"
-        assert score.status == "pending"
+        assert score.status == ScoringStatus.PENDING
         assert score.score_id is not None  # Auto-generated
         assert score.started_at_us is not None  # Auto-generated
         assert score.scored_at_us is not None  # Auto-generated
@@ -54,13 +54,13 @@ class TestSessionScoreDB:
             session_id="test-session-123",
             prompt_hash="abc123",
             score_triggered_by="user:test",
-            status=ScoringStatus.PENDING.value,
+            status=ScoringStatus.PENDING,
         )
         score2 = SessionScore(
             session_id="test-session-456",
             prompt_hash="abc123",
             score_triggered_by="user:test",
-            status=ScoringStatus.PENDING.value,
+            status=ScoringStatus.PENDING,
         )
 
         assert score1.score_id != score2.score_id
@@ -82,7 +82,7 @@ class TestSessionScoreAPIModel:
             missing_tools_analysis="No missing tools",
             score_triggered_by="user:alice",
             scored_at_us=timestamp,
-            status=ScoringStatus.COMPLETED.value,
+            status=ScoringStatus.COMPLETED,
             started_at_us=timestamp,
             completed_at_us=timestamp,
         )
@@ -116,7 +116,7 @@ class TestSessionScoreAPIModel:
             session_id="session-456",
             prompt_hash="oldhash",
             score_triggered_by="user:alice",
-            status=ScoringStatus.COMPLETED.value,
+            status=ScoringStatus.COMPLETED,
         )
 
         api_score = SessionScoreResponse(

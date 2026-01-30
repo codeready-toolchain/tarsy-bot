@@ -184,9 +184,9 @@ class ScoringStatus(Enum):
     FAILED = "failed"            # Scoring failed with error
 
     @classmethod
-    def active_values(cls) -> List[str]:
-        """Active status values (scoring in progress)."""
-        return [cls.PENDING.value, cls.IN_PROGRESS.value]
+    def active_values(cls) -> list['ScoringStatus']:
+        """Active status enum instances (scoring in progress)."""
+        return [cls.PENDING, cls.IN_PROGRESS]
 
     @classmethod
     def values(cls) -> List[str]:
