@@ -175,13 +175,10 @@ fix: lint-fix format ## Auto-fix linting issues and format code
 
 # Development Server
 .PHONY: check-venv
-check-venv: ## Check if virtual environment exists and sync dependencies
+check-venv: ## Check if virtual environment exists and create if needed
 	@if [ ! -f .venv/bin/uvicorn ]; then \
 		echo "$(YELLOW)Virtual environment not found or incomplete. Running setup...$(NC)"; \
 		$(MAKE) install; \
-	else \
-		echo "$(GREEN)Syncing dependencies...$(NC)"; \
-		$(UV) sync; \
 	fi
 
 .PHONY: check-test-deps

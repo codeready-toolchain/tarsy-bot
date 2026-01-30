@@ -182,7 +182,7 @@ check-config: ## Ensure required configuration files exist (internal target)
 	@echo -e "$(GREEN)✅ OAuth2-proxy config generated and secured (permissions: 644)$(NC)"
 	@echo -e "$(GREEN)✅ Configuration files ready$(NC)"
 
-containers-deploy: sync-backend-deps check-config ## Deploy Tarsy stack (smart default: rebuild apps, preserve database)
+containers-deploy: check-config ## Deploy Tarsy stack (smart default: rebuild apps, preserve database)
 	@echo -e "$(GREEN)Deploying Tarsy application stack (preserving database)...$(NC)"
 	@echo -e "$(YELLOW)Stopping all containers...$(NC)"
 	-$(PODMAN_COMPOSE) down 2>/dev/null || true
@@ -224,7 +224,7 @@ containers-hard-redeploy: containers-kill-all containers-rebuild check-config ##
 	@echo -e "$(GREEN)━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━$(NC)"
 	@echo -e "$(GREEN)✅ Hard redeploy completed (all Tarsy containers killed and recreated)$(NC)"
 
-containers-deploy-fresh: sync-backend-deps containers-clean check-config ## Deploy complete fresh Tarsy stack (rebuild everything including database)
+containers-deploy-fresh: containers-clean check-config ## Deploy complete fresh Tarsy stack (rebuild everything including database)
 	@echo -e "$(GREEN)Starting complete fresh Tarsy container stack...$(NC)"
 	$(PODMAN_COMPOSE) up -d --build
 	@echo ""
