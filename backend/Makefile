@@ -188,7 +188,7 @@ check-venv-and-sync: ## Check venv and sync dependencies (for development)
 		$(MAKE) install; \
 	else \
 		echo "$(GREEN)Syncing dependencies...$(NC)"; \
-		$(UV) sync; \
+		$(UV) sync --extra dev --extra test; \
 	fi
 
 .PHONY: check-test-deps
