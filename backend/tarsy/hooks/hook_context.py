@@ -83,48 +83,43 @@ def _apply_mcp_interaction_truncation(interaction: MCPInteraction) -> MCPInterac
     
     # Check and truncate tool_result if needed
     if interaction.tool_result:
-        # Fast pre-check: estimate size without serialization
-        estimated_size = sys.getsizeof(interaction.tool_result)
-        
-        # Only serialize if we're anywhere near the limit
-        if estimated_size > MAX_MCP_TOOL_RESULT_SIZE // 10:
+        # Fast path: if it's {"result": "string"}, handle directly without serialization
+        if isinstance(interaction.tool_result, dict) and "result" in interaction.tool_result:
+            content = interaction.tool_result["result"]
+            if isinstance(content, str) and len(content) > MAX_MCP_TOOL_RESULT_SIZE:
+                # String content is too large, truncate directly without serialization
+                original_size = len(content)
+                truncated_content = content[:MAX_MCP_TOOL_RESULT_SIZE]
+                last_newline = truncated_content.rfind('\n')
+                if last_newline > 0:
+                    truncated_content = truncated_content[:last_newline]
+                
+                truncated_content += (
+                    f"\n\n... [TRUNCATED - Original size: {original_size//1024}KB, "
+                    f"limit: {MAX_MCP_TOOL_RESULT_SIZE//1024}KB]"
+                )
+                
+                interaction.tool_result = {"result": truncated_content}
+                logger.info(
+                    f"Truncated MCP tool_result from {original_size:,} bytes "
+                    f"for {interaction.tool_name or 'tool_list'}"
+                )
+        else:
+            # Complex structure or non-string result: serialize to check size
             result_str = json.dumps(interaction.tool_result, indent=2, default=str)
             if len(result_str) > MAX_MCP_TOOL_RESULT_SIZE:
                 original_size = len(result_str)
                 
-                # If tool_result has a "result" key with string content, truncate just that
-                if isinstance(interaction.tool_result, dict) and "result" in interaction.tool_result:
-                    content = interaction.tool_result["result"]
-                    if isinstance(content, str) and len(content) > MAX_MCP_TOOL_RESULT_SIZE:
-                        # Truncate at line boundary
-                        truncated_content = content[:MAX_MCP_TOOL_RESULT_SIZE]
-                        last_newline = truncated_content.rfind('\n')
-                        if last_newline > 0:
-                            truncated_content = truncated_content[:last_newline]
-                        
-                        truncated_content += (
-                            f"\n\n... [TRUNCATED - Original size: {len(content)//1024}KB, "
-                            f"limit: {MAX_MCP_TOOL_RESULT_SIZE//1024}KB]"
-                        )
-                        
-                        interaction.tool_result = {"result": truncated_content}
-                    else:
-                        # Content is not a string or already small, wrap the whole thing
-                        interaction.tool_result = {
-                            "result": result_str[:MAX_MCP_TOOL_RESULT_SIZE] + 
-                            f"\n\n... [TRUNCATED - Original size: {original_size//1024}KB, limit: {MAX_MCP_TOOL_RESULT_SIZE//1024}KB]"
-                        }
-                else:
-                    # Not the expected format, wrap the serialized version
-                    truncated_str = result_str[:MAX_MCP_TOOL_RESULT_SIZE]
-                    last_newline = truncated_str.rfind('\n')
-                    if last_newline > 0:
-                        truncated_str = truncated_str[:last_newline]
-                    
-                    interaction.tool_result = {
-                        "result": truncated_str + 
-                        f"\n\n... [TRUNCATED - Original size: {original_size//1024}KB, limit: {MAX_MCP_TOOL_RESULT_SIZE//1024}KB]"
-                    }
+                # Wrap the serialized version
+                truncated_str = result_str[:MAX_MCP_TOOL_RESULT_SIZE]
+                last_newline = truncated_str.rfind('\n')
+                if last_newline > 0:
+                    truncated_str = truncated_str[:last_newline]
+                
+                interaction.tool_result = {
+                    "result": truncated_str + 
+                    f"\n\n... [TRUNCATED - Original size: {original_size//1024}KB, limit: {MAX_MCP_TOOL_RESULT_SIZE//1024}KB]"
+                }
                 
                 logger.info(
                     f"Truncated MCP tool_result from {original_size:,} bytes "

@@ -957,3 +957,331 @@ class TestLLMInteractionTruncation:
         assert result.conversation is system_only_conversation
         assert len(result.conversation.messages) == 1
         assert result.conversation.messages[0].role == MessageRole.SYSTEM
+
+
+@pytest.mark.unit
+class TestMCPInteractionTruncation:
+    """Test the _apply_mcp_interaction_truncation utility function."""
+    
+    @pytest.fixture
+    def small_tool_result(self):
+        """Create a small tool result under the size limit."""
+        return {"result": "APIVERSION   KIND        NAME\nv1           Namespace   default"}
+    
+    @pytest.fixture
+    def large_tool_result_with_result_key(self):
+        """Create a large tool result with 'result' key exceeding size limit."""
+        large_text = "LINE " + ("X" * 100 + "\n") * 10000  # ~1MB of text
+        return {"result": large_text}
+    
+    @pytest.fixture
+    def large_tool_result_without_result_key(self):
+        """Create a large tool result without 'result' key."""
+        large_dict = {f"key_{i}": "Y" * 10000 for i in range(100)}  # Large dict
+        return large_dict
+    
+    @pytest.fixture
+    def tool_result_with_non_string_content(self):
+        """Create a tool result with 'result' key but non-string content."""
+        return {"result": {"nested": "data", "items": [1, 2, 3]}}
+    
+    def test_no_tool_result_returns_original(self):
+        """Test that interaction without tool_result returns unchanged."""
+        interaction = MCPInteraction(
+            communication_id="test-comm-id",
+            session_id="test-session",
+            request_id="test-req",
+            server_name="test-server",
+            communication_type="tool_call",
+            tool_name="test_tool",
+            timestamp_us=1234567890,
+            duration_ms=100,
+            success=True,
+            step_description="Test tool execution"
+        )
+        
+        result = _apply_mcp_interaction_truncation(interaction)
+        
+        assert result is interaction
+        assert result.tool_result is None
+    
+    def test_small_tool_result_returns_original(self, small_tool_result):
+        """Test that small tool results return unchanged."""
+        interaction = MCPInteraction(
+            communication_id="test-comm-id",
+            session_id="test-session",
+            request_id="test-req",
+            server_name="test-server",
+            communication_type="tool_call",
+            tool_name="namespaces_list",
+            timestamp_us=1234567890,
+            duration_ms=100,
+            success=True,
+            tool_result=small_tool_result,
+            step_description="List namespaces"
+        )
+        
+        result = _apply_mcp_interaction_truncation(interaction)
+        
+        assert result is interaction
+        assert result.tool_result == small_tool_result
+    
+    def test_large_tool_result_with_result_key_gets_truncated(self, large_tool_result_with_result_key):
+        """Test that large tool results with 'result' key are truncated."""
+        interaction = MCPInteraction(
+            communication_id="test-comm-id",
+            session_id="test-session",
+            request_id="test-req",
+            server_name="kubernetes-server",
+            communication_type="tool_call",
+            tool_name="events_list",
+            timestamp_us=1234567890,
+            duration_ms=500,
+            success=True,
+            tool_result=large_tool_result_with_result_key,
+            step_description="List events"
+        )
+        
+        original_size = len(large_tool_result_with_result_key["result"])
+        result = _apply_mcp_interaction_truncation(interaction)
+        
+        # Should modify in-place (same object)
+        assert result is interaction
+        assert "result" in result.tool_result
+        
+        # Check truncation
+        truncated_content = result.tool_result["result"]
+        assert len(truncated_content) < original_size
+        assert len(truncated_content) <= MAX_MCP_TOOL_RESULT_SIZE + 200  # Allow for truncation marker
+        assert "[TRUNCATED" in truncated_content
+        assert "Original size:" in truncated_content
+        assert "KB" in truncated_content
+        assert "limit:" in truncated_content
+    
+    def test_truncation_at_line_boundary(self, large_tool_result_with_result_key):
+        """Test that truncation occurs at line boundaries for clean output."""
+        interaction = MCPInteraction(
+            communication_id="test-comm-id",
+            session_id="test-session",
+            request_id="test-req",
+            server_name="kubernetes-server",
+            communication_type="tool_call",
+            tool_name="pods_list",
+            timestamp_us=1234567890,
+            duration_ms=300,
+            success=True,
+            tool_result=large_tool_result_with_result_key,
+            step_description="List pods"
+        )
+        
+        result = _apply_mcp_interaction_truncation(interaction)
+        truncated_content = result.tool_result["result"]
+        
+        # Find where truncation marker starts
+        marker_pos = truncated_content.find("[TRUNCATED")
+        if marker_pos > 0:
+            content_before_marker = truncated_content[:marker_pos].rstrip()
+            # Should end at a newline (line boundary)
+            # Original content has newlines, so truncated content should too
+            assert content_before_marker.count('\n') > 0
+    
+    def test_large_tool_result_without_result_key_gets_wrapped(self, large_tool_result_without_result_key):
+        """Test that large tool results without 'result' key are serialized and truncated."""
+        interaction = MCPInteraction(
+            communication_id="test-comm-id",
+            session_id="test-session",
+            request_id="test-req",
+            server_name="test-server",
+            communication_type="tool_call",
+            tool_name="complex_data",
+            timestamp_us=1234567890,
+            duration_ms=400,
+            success=True,
+            tool_result=large_tool_result_without_result_key,
+            step_description="Get complex data"
+        )
+        
+        result = _apply_mcp_interaction_truncation(interaction)
+        
+        # Should modify in-place
+        assert result is interaction
+        assert "result" in result.tool_result
+        
+        # Check truncation
+        truncated_content = result.tool_result["result"]
+        assert isinstance(truncated_content, str)
+        assert "[TRUNCATED" in truncated_content
+        assert "KB" in truncated_content
+    
+    def test_truncation_metadata_format(self, large_tool_result_with_result_key):
+        """Test that truncation metadata follows expected format with KB units."""
+        interaction = MCPInteraction(
+            communication_id="test-comm-id",
+            session_id="test-session",
+            request_id="test-req",
+            server_name="kubernetes-server",
+            communication_type="tool_call",
+            tool_name="logs_get",
+            timestamp_us=1234567890,
+            duration_ms=600,
+            success=True,
+            tool_result=large_tool_result_with_result_key,
+            step_description="Get logs"
+        )
+        
+        result = _apply_mcp_interaction_truncation(interaction)
+        truncated_content = result.tool_result["result"]
+        
+        # Check metadata format includes KB units
+        assert "[TRUNCATED - Original size:" in truncated_content
+        assert "KB, limit:" in truncated_content
+        assert f"{MAX_MCP_TOOL_RESULT_SIZE//1024}KB]" in truncated_content
+        
+        # Verify it starts with original content
+        original_content = large_tool_result_with_result_key["result"]
+        expected_start = original_content[:1000]  # Check first 1KB
+        assert truncated_content.startswith(expected_start)
+    
+    def test_empty_tool_result_returns_original(self):
+        """Test that empty tool result dict returns unchanged."""
+        interaction = MCPInteraction(
+            communication_id="test-comm-id",
+            session_id="test-session",
+            request_id="test-req",
+            server_name="test-server",
+            communication_type="tool_call",
+            tool_name="empty_tool",
+            timestamp_us=1234567890,
+            duration_ms=50,
+            success=True,
+            tool_result={},
+            step_description="Empty tool"
+        )
+        
+        result = _apply_mcp_interaction_truncation(interaction)
+        
+        assert result is interaction
+        assert result.tool_result == {}
+    
+    def test_tool_result_with_non_string_result_value(self, tool_result_with_non_string_content):
+        """Test tool result with 'result' key but non-string content."""
+        interaction = MCPInteraction(
+            communication_id="test-comm-id",
+            session_id="test-session",
+            request_id="test-req",
+            server_name="test-server",
+            communication_type="tool_call",
+            tool_name="structured_data",
+            timestamp_us=1234567890,
+            duration_ms=100,
+            success=True,
+            tool_result=tool_result_with_non_string_content,
+            step_description="Get structured data"
+        )
+        
+        result = _apply_mcp_interaction_truncation(interaction)
+        
+        # Should return unchanged since the "result" value is not a string
+        assert result is interaction
+        assert result.tool_result == tool_result_with_non_string_content
+    
+    def test_fast_path_for_small_results(self, small_tool_result):
+        """Test that small results skip serialization (performance optimization)."""
+        interaction = MCPInteraction(
+            communication_id="test-comm-id",
+            session_id="test-session",
+            request_id="test-req",
+            server_name="test-server",
+            communication_type="tool_call",
+            tool_name="quick_tool",
+            timestamp_us=1234567890,
+            duration_ms=10,
+            success=True,
+            tool_result=small_tool_result,
+            step_description="Quick tool"
+        )
+        
+        result = _apply_mcp_interaction_truncation(interaction)
+        
+        # Should return original unchanged (fast path)
+        assert result is interaction
+        assert result.tool_result == small_tool_result
+    
+    def test_small_complex_structure_without_result_key_returns_original(self):
+        """Test that small complex structures without 'result' key return unchanged."""
+        small_complex_result = {
+            "status": "success",
+            "items": ["item1", "item2", "item3"],
+            "metadata": {"count": 3, "page": 1}
+        }
+        interaction = MCPInteraction(
+            communication_id="test-comm-id",
+            session_id="test-session",
+            request_id="test-req",
+            server_name="test-server",
+            communication_type="tool_call",
+            tool_name="custom_tool",
+            timestamp_us=1234567890,
+            duration_ms=150,
+            success=True,
+            tool_result=small_complex_result,
+            step_description="Custom tool"
+        )
+        
+        result = _apply_mcp_interaction_truncation(interaction)
+        
+        # Should return original unchanged (serializes but is small)
+        assert result is interaction
+        assert result.tool_result == small_complex_result
+    
+    def test_truncation_with_no_newlines_in_content(self):
+        """Test that truncation handles content without newlines gracefully."""
+        # Create large content with no newlines
+        large_text_no_newlines = "X" * (MAX_MCP_TOOL_RESULT_SIZE + 10000)
+        interaction = MCPInteraction(
+            communication_id="test-comm-id",
+            session_id="test-session",
+            request_id="test-req",
+            server_name="test-server",
+            communication_type="tool_call",
+            tool_name="no_newlines_tool",
+            timestamp_us=1234567890,
+            duration_ms=200,
+            success=True,
+            tool_result={"result": large_text_no_newlines},
+            step_description="No newlines tool"
+        )
+        
+        result = _apply_mcp_interaction_truncation(interaction)
+        truncated_content = result.tool_result["result"]
+        
+        # Should still truncate even without newlines (no line boundary found)
+        assert len(truncated_content) < len(large_text_no_newlines)
+        assert "[TRUNCATED" in truncated_content
+        # Content should start with original
+        assert truncated_content.startswith("X" * 1000)
+    
+    def test_content_exactly_at_size_limit_not_truncated(self):
+        """Test that content exactly at the size limit is not truncated."""
+        # Create content exactly at the limit
+        exact_limit_text = "Y" * MAX_MCP_TOOL_RESULT_SIZE
+        interaction = MCPInteraction(
+            communication_id="test-comm-id",
+            session_id="test-session",
+            request_id="test-req",
+            server_name="test-server",
+            communication_type="tool_call",
+            tool_name="exact_limit_tool",
+            timestamp_us=1234567890,
+            duration_ms=250,
+            success=True,
+            tool_result={"result": exact_limit_text},
+            step_description="Exact limit tool"
+        )
+        
+        result = _apply_mcp_interaction_truncation(interaction)
+        
+        # Should NOT truncate (condition is > not >=)
+        assert result is interaction
+        assert result.tool_result["result"] == exact_limit_text
+        assert "[TRUNCATED" not in result.tool_result["result"]
