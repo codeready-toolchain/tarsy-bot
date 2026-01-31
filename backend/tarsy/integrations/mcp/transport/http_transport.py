@@ -46,13 +46,12 @@ class HTTPTransport(MCPTransport):
         
         logger.info(f"Creating HTTP session for server: {self.server_id}")
         
-        # Wrap in a new task to isolate anyio cancel scopes from parent context
-        # This prevents "Attempted to exit cancel scope in a different task" errors
-        # when MCP SDK cleanup runs after connection failures
-        return await asyncio.create_task(self._create_session_impl())
+        # Call session creation directly in the same task context to ensure
+        # cleanup happens in the same task, preventing cancel scope mismatches
+        return await self._create_session_impl()
     
     async def _create_session_impl(self) -> ClientSession:
-        """Internal implementation of session creation, isolated in its own task."""
+        """Internal implementation of session creation with detailed error handling."""
         try:
             # Prepare headers with bearer token if configured
             request_headers = dict(self.config.headers or {})

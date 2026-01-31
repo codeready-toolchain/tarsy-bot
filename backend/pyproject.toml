@@ -37,6 +37,7 @@ dependencies = [
     "PyJWT>=2.8.0",
     "alembic>=1.16.5",
     "slack-sdk>=3.34.0",
+    "anyio==4.12.1",
 ]
 requires-python = ">= 3.13"
 
