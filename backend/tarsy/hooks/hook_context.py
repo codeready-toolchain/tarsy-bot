@@ -39,10 +39,6 @@ __all__ = [
 # Type variables for generic hook context
 TInteraction = TypeVar('TInteraction', LLMInteraction, MCPInteraction, StageExecution)
 
-# Note: TypedHookContext forward declaration for __all__ compatibility
-# The actual class is defined below as InteractionHookContext
-TypedHookContext = None  # Will be set after InteractionHookContext definition
-
 
 def _apply_llm_interaction_truncation(interaction: LLMInteraction) -> LLMInteraction:
     """Apply content truncation to LLM interaction for hook processing."""
