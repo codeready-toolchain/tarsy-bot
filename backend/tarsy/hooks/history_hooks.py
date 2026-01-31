@@ -9,7 +9,11 @@ contamination between hook context and actual results.
 import asyncio
 import logging
 
-from tarsy.hooks.hook_context import BaseHook, _apply_llm_interaction_truncation
+from tarsy.hooks.hook_context import (
+    BaseHook,
+    _apply_llm_interaction_truncation,
+    _apply_mcp_interaction_truncation,
+)
 from tarsy.models.db_models import StageExecution
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
 from tarsy.services.history_service import HistoryService
@@ -73,14 +77,21 @@ class MCPHistoryHook(BaseHook[MCPInteraction]):
 
     async def execute(self, interaction: MCPInteraction) -> None:
         """
-        Log MCP interaction to history database.
+        Log MCP interaction to history database with content truncation.
+        
+        Applies truncation to tool_result and available_tools before database storage
+        to prevent bloat from large outputs while preserving full results in memory
+        for summarization.
         
         Args:
             interaction: Unified MCP interaction data
         """
         try:
+            # Apply content truncation before database write
+            truncated_interaction = _apply_mcp_interaction_truncation(interaction)
+            
             ok = await asyncio.to_thread(
-                self.history_service.store_mcp_interaction, interaction
+                self.history_service.store_mcp_interaction, truncated_interaction
             )
             if ok:
                 logger.debug(
