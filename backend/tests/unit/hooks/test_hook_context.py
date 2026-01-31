@@ -16,12 +16,13 @@ from tarsy.hooks.hook_context import (
     InteractionHookContext,
     StageExecutionHookContext,
     _apply_llm_interaction_truncation,
+    _apply_mcp_interaction_truncation,
     get_hook_manager,
     llm_interaction_context,
     mcp_interaction_context,
     stage_execution_context,
 )
-from tarsy.models.constants import MAX_LLM_MESSAGE_CONTENT_SIZE
+from tarsy.models.constants import MAX_LLM_MESSAGE_CONTENT_SIZE, MAX_MCP_TOOL_RESULT_SIZE
 from tarsy.models.db_models import StageExecution
 from tarsy.models.unified_interactions import (
     LLMConversation,

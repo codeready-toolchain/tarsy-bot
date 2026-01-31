@@ -11,7 +11,11 @@ from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
 from typing import Any, AsyncContextManager, Dict, Generic, Optional, TypeVar, Union
 
-from tarsy.models.constants import MAX_LLM_MESSAGE_CONTENT_SIZE, LLMInteractionType
+from tarsy.models.constants import (
+    MAX_LLM_MESSAGE_CONTENT_SIZE,
+    MAX_MCP_TOOL_RESULT_SIZE,
+    LLMInteractionType,
+)
 from tarsy.models.db_models import StageExecution
 from tarsy.models.unified_interactions import (
     LLMInteraction,
@@ -21,6 +25,17 @@ from tarsy.models.unified_interactions import (
 from tarsy.utils.timestamp import now_us
 
 logger = logging.getLogger(__name__)
+
+# Export public API - truncation utilities are used by history hooks
+__all__ = [
+    '_apply_llm_interaction_truncation',
+    '_apply_mcp_interaction_truncation',
+    'BaseHook',
+    'TypedHookContext',
+    'llm_interaction_context',
+    'mcp_interaction_context',
+    'stage_execution_context',
+]
 
 # Type variables for generic hook context
 TInteraction = TypeVar('TInteraction', LLMInteraction, MCPInteraction, StageExecution)
@@ -52,6 +67,69 @@ def _apply_llm_interaction_truncation(interaction: LLMInteraction) -> LLMInterac
         truncated_interaction = interaction.model_copy()
         truncated_interaction.conversation = truncated_conversation
         return truncated_interaction
+    
+    return interaction
+
+
+def _apply_mcp_interaction_truncation(interaction: MCPInteraction) -> MCPInteraction:
+    """
+    Apply content truncation to MCP tool results for hook processing.
+    
+    Truncates large tool_result content while preserving the dict structure.
+    Uses fast size estimation to avoid serializing small results.
+    """
+    import json
+    import sys
+    
+    # Check and truncate tool_result if needed
+    if interaction.tool_result:
+        # Fast pre-check: estimate size without serialization
+        estimated_size = sys.getsizeof(interaction.tool_result)
+        
+        # Only serialize if we're anywhere near the limit
+        if estimated_size > MAX_MCP_TOOL_RESULT_SIZE // 10:
+            result_str = json.dumps(interaction.tool_result, indent=2, default=str)
+            if len(result_str) > MAX_MCP_TOOL_RESULT_SIZE:
+                original_size = len(result_str)
+                
+                # If tool_result has a "result" key with string content, truncate just that
+                if isinstance(interaction.tool_result, dict) and "result" in interaction.tool_result:
+                    content = interaction.tool_result["result"]
+                    if isinstance(content, str) and len(content) > MAX_MCP_TOOL_RESULT_SIZE:
+                        # Truncate at line boundary
+                        truncated_content = content[:MAX_MCP_TOOL_RESULT_SIZE]
+                        last_newline = truncated_content.rfind('\n')
+                        if last_newline > 0:
+                            truncated_content = truncated_content[:last_newline]
+                        
+                        truncated_content += (
+                            f"\n\n... [TRUNCATED - Original size: {len(content)//1024}KB, "
+                            f"limit: {MAX_MCP_TOOL_RESULT_SIZE//1024}KB]"
+                        )
+                        
+                        interaction.tool_result = {"result": truncated_content}
+                    else:
+                        # Content is not a string or already small, wrap the whole thing
+                        interaction.tool_result = {
+                            "result": result_str[:MAX_MCP_TOOL_RESULT_SIZE] + 
+                            f"\n\n... [TRUNCATED - Original size: {original_size//1024}KB, limit: {MAX_MCP_TOOL_RESULT_SIZE//1024}KB]"
+                        }
+                else:
+                    # Not the expected format, wrap the serialized version
+                    truncated_str = result_str[:MAX_MCP_TOOL_RESULT_SIZE]
+                    last_newline = truncated_str.rfind('\n')
+                    if last_newline > 0:
+                        truncated_str = truncated_str[:last_newline]
+                    
+                    interaction.tool_result = {
+                        "result": truncated_str + 
+                        f"\n\n... [TRUNCATED - Original size: {original_size//1024}KB, limit: {MAX_MCP_TOOL_RESULT_SIZE//1024}KB]"
+                    }
+                
+                logger.info(
+                    f"Truncated MCP tool_result from {original_size:,} bytes "
+                    f"for {interaction.tool_name or 'tool_list'}"
+                )
     
     return interaction
 
