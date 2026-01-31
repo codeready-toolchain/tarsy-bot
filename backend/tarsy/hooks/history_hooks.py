@@ -79,19 +79,21 @@ class MCPHistoryHook(BaseHook[MCPInteraction]):
         """
         Log MCP interaction to history database with content truncation.
         
-        Applies truncation to tool_result and available_tools before database storage
-        to prevent bloat from large outputs while preserving full results in memory
-        for summarization.
+        Applies truncation to tool_result before database storage via
+        _apply_mcp_interaction_truncation to prevent bloat from large outputs.
+        Note: Truncation happens in-place for performance (avoids deep-copying large results).
+        
+        Note: available_tools is stored as-is without truncation.
         
         Args:
-            interaction: Unified MCP interaction data
+            interaction: Unified MCP interaction data (modified in-place if truncated)
         """
         try:
-            # Apply content truncation before database write
-            truncated_interaction = _apply_mcp_interaction_truncation(interaction)
+            # Apply content truncation before database write (modifies interaction in-place)
+            _apply_mcp_interaction_truncation(interaction)
             
             ok = await asyncio.to_thread(
-                self.history_service.store_mcp_interaction, truncated_interaction
+                self.history_service.store_mcp_interaction, interaction
             )
             if ok:
                 logger.debug(

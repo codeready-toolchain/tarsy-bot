@@ -40,6 +40,10 @@ __all__ = [
 # Type variables for generic hook context
 TInteraction = TypeVar('TInteraction', LLMInteraction, MCPInteraction, StageExecution)
 
+# Note: TypedHookContext forward declaration for __all__ compatibility
+# The actual class is defined below as InteractionHookContext
+TypedHookContext = None  # Will be set after InteractionHookContext definition
+
 
 def _apply_llm_interaction_truncation(interaction: LLMInteraction) -> LLMInteraction:
     """Apply content truncation to LLM interaction for hook processing."""
@@ -75,11 +79,18 @@ def _apply_mcp_interaction_truncation(interaction: MCPInteraction) -> MCPInterac
     """
     Apply content truncation to MCP tool results for hook processing.
     
-    Truncates large tool_result content while preserving the dict structure.
+    Truncates large tool_result content in-place while preserving the dict structure.
+    Note: Unlike _apply_llm_interaction_truncation, this function mutates the input
+    interaction directly for performance reasons (avoids deep-copying large results).
     Uses fast size estimation to avoid serializing small results.
+    
+    Args:
+        interaction: MCPInteraction to truncate (modified in-place)
+        
+    Returns:
+        The same MCPInteraction object (mutated)
     """
     import json
-    import sys
     
     # Check and truncate tool_result if needed
     if interaction.tool_result:
@@ -426,6 +437,10 @@ class InteractionHookContext(Generic[TInteraction]):
             return self.interaction.interaction_id
         else:
             return f"unknown_{id(self.interaction)}"
+
+
+# API alias for backward compatibility
+TypedHookContext = InteractionHookContext
 
 
 # Global hook manager instance
