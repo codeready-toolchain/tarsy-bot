@@ -77,11 +77,13 @@ def _apply_llm_interaction_truncation(interaction: LLMInteraction) -> LLMInterac
 
 def _apply_mcp_interaction_truncation(interaction: MCPInteraction) -> MCPInteraction:
     """
-    Apply content truncation to MCP tool results for hook processing.
+    Apply content truncation to MCP tool results (utility function for testing).
+    
+    NOTE: In production, truncation happens automatically in InteractionHookContext
+    before hooks are triggered. This function is mainly used for testing.
     
     Uses copy-on-write to preserve all metadata keys in tool_result while
-    truncating only the "result" value. Returns a new MCPInteraction instance
-    to prevent cross-hook contamination.
+    truncating only the "result" value. Returns a new MCPInteraction instance.
     
     Args:
         interaction: MCPInteraction to truncate (not modified)
@@ -399,6 +401,11 @@ class InteractionHookContext(Generic[TInteraction]):
             # Update template with result data
             self._update_interaction_with_result(result_data)
         
+        # Apply truncation to MCP interactions BEFORE distributing to hooks
+        # This ensures ALL hooks (history, event, etc.) see the same truncated data
+        if isinstance(self.interaction, MCPInteraction):
+            self._apply_mcp_truncation_inplace()
+        
         self.interaction.success = True
         await self._trigger_appropriate_hooks()
 
@@ -418,6 +425,66 @@ class InteractionHookContext(Generic[TInteraction]):
                 self.interaction.tool_result = result_data['tool_result']
             if 'available_tools' in result_data:
                 self.interaction.available_tools = result_data['available_tools']
+    
+    def _apply_mcp_truncation_inplace(self) -> None:
+        """
+        Apply content truncation to MCP tool results in-place.
+        
+        Truncates large tool_result content while preserving all metadata keys.
+        This modifies the interaction's tool_result dict to create a NEW dict
+        with preserved keys, avoiding cross-hook contamination issues.
+        """
+        import json
+        
+        # Check and truncate tool_result if needed
+        if not self.interaction.tool_result:
+            return
+        
+        # Fast path: if it's {"result": "string"}, handle directly without serialization
+        if isinstance(self.interaction.tool_result, dict) and "result" in self.interaction.tool_result:
+            content = self.interaction.tool_result["result"]
+            if isinstance(content, str) and len(content) > MAX_MCP_TOOL_RESULT_SIZE:
+                # String content is too large, truncate directly without serialization
+                original_size = len(content)
+                truncated_content = content[:MAX_MCP_TOOL_RESULT_SIZE]
+                last_newline = truncated_content.rfind('\n')
+                if last_newline > 0:
+                    truncated_content = truncated_content[:last_newline]
+                
+                truncated_content += (
+                    f"\n\n... [TRUNCATED - Original size: {original_size//1024}KB, "
+                    f"limit: {MAX_MCP_TOOL_RESULT_SIZE//1024}KB]"
+                )
+                
+                # Create new dict preserving all existing keys, only update "result"
+                self.interaction.tool_result = {**self.interaction.tool_result, "result": truncated_content}
+                logger.info(
+                    f"Truncated MCP tool_result from {original_size:,} bytes "
+                    f"for {self.interaction.tool_name or 'tool_list'}"
+                )
+        else:
+            # Complex structure or non-string result: serialize to check size
+            result_str = json.dumps(self.interaction.tool_result, indent=2, default=str)
+            if len(result_str) > MAX_MCP_TOOL_RESULT_SIZE:
+                original_size = len(result_str)
+                
+                # Wrap the serialized version
+                truncated_str = result_str[:MAX_MCP_TOOL_RESULT_SIZE]
+                last_newline = truncated_str.rfind('\n')
+                if last_newline > 0:
+                    truncated_str = truncated_str[:last_newline]
+                
+                # Create new dict preserving all existing keys, wrap as "result" string
+                self.interaction.tool_result = {
+                    **self.interaction.tool_result,
+                    "result": truncated_str + 
+                    f"\n\n... [TRUNCATED - Original size: {original_size//1024}KB, limit: {MAX_MCP_TOOL_RESULT_SIZE//1024}KB]"
+                }
+                
+                logger.info(
+                    f"Truncated MCP tool_result from {original_size:,} bytes "
+                    f"for {self.interaction.tool_name or 'tool_list'}"
+                )
 
     async def _trigger_appropriate_hooks(self) -> None:
         """Trigger the appropriate typed hooks based on interaction type."""

@@ -12,7 +12,6 @@ import logging
 from tarsy.hooks.hook_context import (
     BaseHook,
     _apply_llm_interaction_truncation,
-    _apply_mcp_interaction_truncation,
 )
 from tarsy.models.db_models import StageExecution
 from tarsy.models.unified_interactions import LLMInteraction, MCPInteraction
@@ -77,20 +76,17 @@ class MCPHistoryHook(BaseHook[MCPInteraction]):
 
     async def execute(self, interaction: MCPInteraction) -> None:
         """
-        Log MCP interaction to history database with content truncation.
+        Log MCP interaction to history database.
         
-        Applies truncation to tool_result before database storage via
-        _apply_mcp_interaction_truncation to prevent bloat from large outputs.
-        Note: Truncation happens in-place for performance (avoids deep-copying large results).
+        Content truncation is applied at the source (InteractionHookContext) before
+        hooks are triggered, so interaction is already truncated when it reaches here.
         
         Note: available_tools is stored as-is without truncation.
         
         Args:
-            interaction: Unified MCP interaction data
+            interaction: Unified MCP interaction data (already truncated)
         """
         try:
-            # Apply content truncation before database write (copy-on-write)
-            interaction = _apply_mcp_interaction_truncation(interaction)
             
             ok = await asyncio.to_thread(
                 self.history_service.store_mcp_interaction, interaction
