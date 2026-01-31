@@ -856,6 +856,29 @@ class AlertService:
                 chain_definition=chain_definition,
                 session_mcp_client=session_mcp_client
             )
+        
+        except asyncio.CancelledError:
+            # Task/pod is shutting down - check if session already in terminal state
+            logger.warning(f"Session {session_id} cancelled during parallel continuation")
+            if self.history_service:
+                session = self.history_service.get_session(session_id)
+                if session and session.status in AlertSessionStatus.terminal_values():
+                    logger.info(f"Session {session_id} already in terminal state ({session.status}) - exiting gracefully without overwriting status")
+                    raise
+            
+            # Session not in terminal state - mark as failed
+            logger.warning(f"Session {session_id} cancelled but not in terminal state - marking as failed")
+            self.session_manager.update_session_status(
+                session_id,
+                AlertSessionStatus.FAILED.value,
+                error_message="Processing interrupted during parallel stage continuation"
+            )
+            from tarsy.services.events.event_helpers import publish_session_failed
+            try:
+                await publish_session_failed(session_id)
+            except asyncio.CancelledError:
+                logger.warning(f"Event publishing cancelled for session {session_id} - session already marked failed")
+            raise
                 
         except Exception as e:
             logger.error(f"Failed to continue chain after parallel completion: {e}", exc_info=True)
@@ -996,6 +1019,7 @@ class AlertService:
                     provider=chain_definition.llm_provider
                 )
 
+                # Mark as completed FIRST (database commit)
                 self.session_manager.update_session_status(
                     session_id,
                     AlertSessionStatus.COMPLETED.value,
@@ -1003,8 +1027,14 @@ class AlertService:
                     final_analysis_summary=summary_result.summary,
                     executive_summary_error=summary_result.error
                 )
-                from tarsy.services.events.event_helpers import publish_session_completed
-                await publish_session_completed(session_id)
+                
+                # Then try to publish event (can fail without affecting status)
+                try:
+                    from tarsy.services.events.event_helpers import publish_session_completed
+                    await publish_session_completed(session_id)
+                except asyncio.CancelledError:
+                    logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down) - session already marked complete")
+                    raise
             elif result.status == ChainStatus.TIMED_OUT:
                 # Chain timed out - use TIMED_OUT status for better visibility
                 self.session_manager.update_session_status(
@@ -1035,6 +1065,7 @@ class AlertService:
                 provider=chain_definition.llm_provider
             )
             
+            # Mark as completed FIRST (database commit)
             self.session_manager.update_session_status(
                 session_id,
                 AlertSessionStatus.COMPLETED.value,
@@ -1042,8 +1073,14 @@ class AlertService:
                 final_analysis_summary=summary_result.summary,
                 executive_summary_error=summary_result.error
             )
-            from tarsy.services.events.event_helpers import publish_session_completed
-            await publish_session_completed(session_id)
+            
+            # Then try to publish event (can fail without affecting status)
+            try:
+                from tarsy.services.events.event_helpers import publish_session_completed
+                await publish_session_completed(session_id)
+            except asyncio.CancelledError:
+                logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down) - session already marked complete")
+                raise
     
     async def resume_paused_session(self, session_id: str) -> str:
         """
@@ -1161,17 +1198,39 @@ class AlertService:
                     # Note: This is called in async context, not returned
                     # We still need to capture the result for the rest of the resume flow
                     # So we'll inline the continuation logic but keep it consistent
-                    await self._continue_from_parallel_completion(
-                        session_id=session_id,
-                        parallel_result=parallel_result,
-                        completed_parent_stage=paused_stage,
-                        stage_config=stage_config,
-                        stage_index=stage_index,
-                        stage_executions=existing_stages,
-                        chain_context=chain_context,
-                        chain_definition=chain_definition,
-                        session_mcp_client=session_mcp_client
-                    )
+                    try:
+                        await self._continue_from_parallel_completion(
+                            session_id=session_id,
+                            parallel_result=parallel_result,
+                            completed_parent_stage=paused_stage,
+                            stage_config=stage_config,
+                            stage_index=stage_index,
+                            stage_executions=existing_stages,
+                            chain_context=chain_context,
+                            chain_definition=chain_definition,
+                            session_mcp_client=session_mcp_client
+                        )
+                    except asyncio.CancelledError:
+                        # Task/pod shutting down - check if session already in terminal state
+                        logger.warning(f"Session {session_id} cancelled during parallel continuation (resume path)")
+                        session = self.history_service.get_session(session_id)
+                        if session and session.status in AlertSessionStatus.terminal_values():
+                            logger.info(f"Session {session_id} already in terminal state ({session.status}) - exiting gracefully without overwriting status")
+                            raise
+                        
+                        # Session not in terminal state - mark as failed
+                        logger.warning(f"Session {session_id} cancelled but not in terminal state - marking as failed")
+                        self.session_manager.update_session_status(
+                            session_id,
+                            AlertSessionStatus.FAILED.value,
+                            error_message="Processing interrupted during parallel stage continuation (resume)"
+                        )
+                        from tarsy.services.events.event_helpers import publish_session_failed
+                        try:
+                            await publish_session_failed(session_id)
+                        except asyncio.CancelledError:
+                            logger.warning(f"Event publishing cancelled for session {session_id} - session already marked failed")
+                        raise
                     
                     # Return early - continuation helper handles everything
                     return "Session completed after parallel stage continuation"
@@ -1263,6 +1322,7 @@ class AlertService:
                     provider=chain_definition.llm_provider
                 )
                 
+                # Mark as completed FIRST (database commit)
                 self.session_manager.update_session_status(
                     session_id,
                     AlertSessionStatus.COMPLETED.value,
@@ -1270,15 +1330,21 @@ class AlertService:
                     final_analysis_summary=summary_result.summary,
                     executive_summary_error=summary_result.error,
                 )
-                from tarsy.services.events.event_helpers import (
-                    publish_session_completed,
-                )
-                await publish_session_completed(session_id)
+                
+                # Then try notifications and events (can fail without affecting status)
+                try:
+                    from tarsy.services.events.event_helpers import (
+                        publish_session_completed,
+                    )
+                    await publish_session_completed(session_id)
 
-                if summary_result.summary:
-                    await self.slack_service.send_alert_analysis_notification(chain_context, analysis=summary_result.summary)
-                elif summary_result.error:
-                    await self.slack_service.send_alert_error_notification(chain_context, error_msg=summary_result.error)
+                    if summary_result.summary:
+                        await self.slack_service.send_alert_analysis_notification(chain_context, analysis=summary_result.summary)
+                    elif summary_result.error:
+                        await self.slack_service.send_alert_error_notification(chain_context, error_msg=summary_result.error)
+                except asyncio.CancelledError:
+                    logger.warning(f"Notifications cancelled for session {session_id} (task/pod shutting down) - session already marked complete")
+                    raise
 
                 return final_result
             elif result.status == ChainStatus.PAUSED:
