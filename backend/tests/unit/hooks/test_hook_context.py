@@ -16,7 +16,6 @@ from tarsy.hooks.hook_context import (
     InteractionHookContext,
     StageExecutionHookContext,
     _apply_llm_interaction_truncation,
-    _apply_mcp_interaction_truncation,
     get_hook_manager,
     llm_interaction_context,
     mcp_interaction_context,
@@ -961,7 +960,12 @@ class TestLLMInteractionTruncation:
 
 @pytest.mark.unit
 class TestMCPInteractionTruncation:
-    """Test the _apply_mcp_interaction_truncation utility function."""
+    """Test MCP interaction truncation in InteractionHookContext."""
+    
+    @pytest.fixture
+    def hook_manager(self):
+        """Create a mock hook manager for testing."""
+        return Mock(spec=HookManager)
     
     @pytest.fixture
     def small_tool_result(self):
@@ -982,11 +986,24 @@ class TestMCPInteractionTruncation:
     
     @pytest.fixture
     def tool_result_with_non_string_content(self):
-        """Create a tool result with 'result' key but non-string content."""
+        """Create a tool result with 'result' key but non-string content (small)."""
         return {"result": {"nested": "data", "items": [1, 2, 3]}}
     
-    def test_no_tool_result_returns_original(self):
-        """Test that interaction without tool_result returns unchanged."""
+    @pytest.fixture
+    def large_tool_result_with_non_string_content(self):
+        """Create a tool result with 'result' key and large non-string content."""
+        # Create a large nested structure
+        large_nested = {
+            f"field_{i}": {
+                "data": "X" * 1000,
+                "items": list(range(100))
+            }
+            for i in range(500)  # Creates ~500KB+ when serialized
+        }
+        return {"result": large_nested, "metadata": "important_metadata", "status": "success"}
+    
+    def test_no_tool_result_returns_unchanged(self, hook_manager):
+        """Test that interaction without tool_result remains unchanged."""
         interaction = MCPInteraction(
             communication_id="test-comm-id",
             session_id="test-session",
@@ -1000,13 +1017,13 @@ class TestMCPInteractionTruncation:
             step_description="Test tool execution"
         )
         
-        result = _apply_mcp_interaction_truncation(interaction)
+        ctx = InteractionHookContext(interaction, hook_manager)
+        ctx._apply_mcp_truncation_inplace()
         
-        assert result is interaction
-        assert result.tool_result is None
+        assert interaction.tool_result is None
     
-    def test_small_tool_result_returns_original(self, small_tool_result):
-        """Test that small tool results return unchanged."""
+    def test_small_tool_result_returns_unchanged(self, hook_manager, small_tool_result):
+        """Test that small tool results remain unchanged."""
         interaction = MCPInteraction(
             communication_id="test-comm-id",
             session_id="test-session",
@@ -1021,13 +1038,13 @@ class TestMCPInteractionTruncation:
             step_description="List namespaces"
         )
         
-        result = _apply_mcp_interaction_truncation(interaction)
+        ctx = InteractionHookContext(interaction, hook_manager)
+        ctx._apply_mcp_truncation_inplace()
         
-        assert result is interaction
-        assert result.tool_result == small_tool_result
+        assert interaction.tool_result == small_tool_result
     
-    def test_large_tool_result_with_result_key_gets_truncated(self, large_tool_result_with_result_key):
-        """Test that large tool results with 'result' key are truncated."""
+    def test_large_tool_result_with_result_key_gets_truncated(self, hook_manager, large_tool_result_with_result_key):
+        """Test that large tool results with 'result' key are truncated in-place."""
         interaction = MCPInteraction(
             communication_id="test-comm-id",
             session_id="test-session",
@@ -1038,19 +1055,18 @@ class TestMCPInteractionTruncation:
             timestamp_us=1234567890,
             duration_ms=500,
             success=True,
-            tool_result=large_tool_result_with_result_key,
+            tool_result=large_tool_result_with_result_key.copy(),  # Copy to avoid modifying fixture
             step_description="List events"
         )
         
         original_size = len(large_tool_result_with_result_key["result"])
-        result = _apply_mcp_interaction_truncation(interaction)
         
-        # Should return new copy (copy-on-write)
-        assert result is not interaction
-        assert "result" in result.tool_result
+        ctx = InteractionHookContext(interaction, hook_manager)
+        ctx._apply_mcp_truncation_inplace()
         
-        # Check truncation
-        truncated_content = result.tool_result["result"]
+        # Check truncation happened in-place
+        assert "result" in interaction.tool_result
+        truncated_content = interaction.tool_result["result"]
         assert len(truncated_content) < original_size
         assert len(truncated_content) <= MAX_MCP_TOOL_RESULT_SIZE + 200  # Allow for truncation marker
         assert "[TRUNCATED" in truncated_content
@@ -1058,7 +1074,7 @@ class TestMCPInteractionTruncation:
         assert "KB" in truncated_content
         assert "limit:" in truncated_content
     
-    def test_truncation_at_line_boundary(self, large_tool_result_with_result_key):
+    def test_truncation_at_line_boundary(self, hook_manager, large_tool_result_with_result_key):
         """Test that truncation occurs at line boundaries for clean output."""
         interaction = MCPInteraction(
             communication_id="test-comm-id",
@@ -1070,12 +1086,14 @@ class TestMCPInteractionTruncation:
             timestamp_us=1234567890,
             duration_ms=300,
             success=True,
-            tool_result=large_tool_result_with_result_key,
+            tool_result=large_tool_result_with_result_key.copy(),
             step_description="List pods"
         )
         
-        result = _apply_mcp_interaction_truncation(interaction)
-        truncated_content = result.tool_result["result"]
+        ctx = InteractionHookContext(interaction, hook_manager)
+        ctx._apply_mcp_truncation_inplace()
+        
+        truncated_content = interaction.tool_result["result"]
         
         # Find where truncation marker starts
         marker_pos = truncated_content.find("[TRUNCATED")
@@ -1085,7 +1103,7 @@ class TestMCPInteractionTruncation:
             # Original content has newlines, so truncated content should too
             assert content_before_marker.count('\n') > 0
     
-    def test_large_tool_result_without_result_key_gets_wrapped(self, large_tool_result_without_result_key):
+    def test_large_tool_result_without_result_key_gets_wrapped(self, hook_manager, large_tool_result_without_result_key):
         """Test that large tool results without 'result' key are serialized and truncated."""
         interaction = MCPInteraction(
             communication_id="test-comm-id",
@@ -1097,23 +1115,21 @@ class TestMCPInteractionTruncation:
             timestamp_us=1234567890,
             duration_ms=400,
             success=True,
-            tool_result=large_tool_result_without_result_key,
+            tool_result=large_tool_result_without_result_key.copy(),
             step_description="Get complex data"
         )
         
-        result = _apply_mcp_interaction_truncation(interaction)
+        ctx = InteractionHookContext(interaction, hook_manager)
+        ctx._apply_mcp_truncation_inplace()
         
-        # Should return new copy (copy-on-write)
-        assert result is not interaction
-        assert "result" in result.tool_result
-        
-        # Check truncation
-        truncated_content = result.tool_result["result"]
+        # Check truncation happened in-place
+        assert "result" in interaction.tool_result
+        truncated_content = interaction.tool_result["result"]
         assert isinstance(truncated_content, str)
         assert "[TRUNCATED" in truncated_content
         assert "KB" in truncated_content
     
-    def test_truncation_metadata_format(self, large_tool_result_with_result_key):
+    def test_truncation_metadata_format(self, hook_manager, large_tool_result_with_result_key):
         """Test that truncation metadata follows expected format with KB units."""
         interaction = MCPInteraction(
             communication_id="test-comm-id",
@@ -1125,25 +1141,29 @@ class TestMCPInteractionTruncation:
             timestamp_us=1234567890,
             duration_ms=600,
             success=True,
-            tool_result=large_tool_result_with_result_key,
+            tool_result=large_tool_result_with_result_key.copy(),
             step_description="Get logs"
         )
         
-        result = _apply_mcp_interaction_truncation(interaction)
-        truncated_content = result.tool_result["result"]
+        ctx = InteractionHookContext(interaction, hook_manager)
+        ctx._apply_mcp_truncation_inplace()
+        truncated_content = interaction.tool_result["result"]
         
         # Check metadata format includes KB units
         assert "[TRUNCATED - Original size:" in truncated_content
         assert "KB, limit:" in truncated_content
         assert f"{MAX_MCP_TOOL_RESULT_SIZE//1024}KB]" in truncated_content
         
-        # Verify it starts with original content
+        # Verify it starts with original content (or less if limit is very small)
         original_content = large_tool_result_with_result_key["result"]
-        expected_start = original_content[:1000]  # Check first 1KB
-        assert truncated_content.startswith(expected_start)
+        # With current small limit (512 bytes), we may not have 1KB of original content
+        expected_bytes = min(1000, MAX_MCP_TOOL_RESULT_SIZE)
+        if expected_bytes > 100:  # Only check if we have meaningful content
+            expected_start = original_content[:expected_bytes]
+            assert truncated_content.startswith(expected_start[:100])  # Check at least first 100 chars
     
-    def test_empty_tool_result_returns_original(self):
-        """Test that empty tool result dict returns unchanged."""
+    def test_empty_tool_result_returns_unchanged(self, hook_manager):
+        """Test that empty tool result dict remains unchanged."""
         interaction = MCPInteraction(
             communication_id="test-comm-id",
             session_id="test-session",
@@ -1158,13 +1178,12 @@ class TestMCPInteractionTruncation:
             step_description="Empty tool"
         )
         
-        result = _apply_mcp_interaction_truncation(interaction)
-        
-        assert result is interaction
-        assert result.tool_result == {}
+        ctx = InteractionHookContext(interaction, hook_manager)
+        ctx._apply_mcp_truncation_inplace()
+        assert interaction.tool_result == {}
     
-    def test_tool_result_with_non_string_result_value(self, tool_result_with_non_string_content):
-        """Test tool result with 'result' key but non-string content."""
+    def test_tool_result_with_small_non_string_result_value(self, hook_manager, tool_result_with_non_string_content):
+        """Test tool result with small non-string 'result' value remains unchanged."""
         interaction = MCPInteraction(
             communication_id="test-comm-id",
             session_id="test-session",
@@ -1179,13 +1198,48 @@ class TestMCPInteractionTruncation:
             step_description="Get structured data"
         )
         
-        result = _apply_mcp_interaction_truncation(interaction)
+        ctx = InteractionHookContext(interaction, hook_manager)
+        ctx._apply_mcp_truncation_inplace()
         
-        # Should return unchanged since the "result" value is not a string
-        assert result is interaction
-        assert result.tool_result == tool_result_with_non_string_content
+        # Should remain unchanged since the serialized size is small
+        assert interaction.tool_result == tool_result_with_non_string_content
     
-    def test_fast_path_for_small_results(self, small_tool_result):
+    def test_tool_result_with_large_non_string_result_value(self, hook_manager, large_tool_result_with_non_string_content):
+        """Test tool result with large non-string 'result' value gets serialized and truncated."""
+        import json
+        
+        interaction = MCPInteraction(
+            communication_id="test-comm-id",
+            session_id="test-session",
+            request_id="test-req",
+            server_name="test-server",
+            communication_type="tool_call",
+            tool_name="structured_data",
+            timestamp_us=1234567890,
+            duration_ms=100,
+            success=True,
+            tool_result=large_tool_result_with_non_string_content.copy(),
+            step_description="Get large structured data"
+        )
+        
+        # Calculate original size of just the "result" value
+        original_result_size = len(json.dumps(large_tool_result_with_non_string_content["result"], indent=2, default=str))
+        
+        ctx = InteractionHookContext(interaction, hook_manager)
+        ctx._apply_mcp_truncation_inplace()
+        
+        # Should be truncated and serialized as string
+        assert "result" in interaction.tool_result
+        truncated_result = interaction.tool_result["result"]
+        assert isinstance(truncated_result, str), "Result should be serialized to string"
+        assert len(truncated_result) < original_result_size
+        assert "[TRUNCATED" in truncated_result
+        
+        # Metadata should be preserved
+        assert interaction.tool_result["metadata"] == "important_metadata"
+        assert interaction.tool_result["status"] == "success"
+    
+    def test_fast_path_for_small_results(self, hook_manager, small_tool_result):
         """Test that small results skip serialization (performance optimization)."""
         interaction = MCPInteraction(
             communication_id="test-comm-id",
@@ -1201,14 +1255,14 @@ class TestMCPInteractionTruncation:
             step_description="Quick tool"
         )
         
-        result = _apply_mcp_interaction_truncation(interaction)
+        ctx = InteractionHookContext(interaction, hook_manager)
+        ctx._apply_mcp_truncation_inplace()
         
-        # Should return original unchanged (fast path)
-        assert result is interaction
-        assert result.tool_result == small_tool_result
+        # Should remain unchanged (fast path)
+        assert interaction.tool_result == small_tool_result
     
-    def test_small_complex_structure_without_result_key_returns_original(self):
-        """Test that small complex structures without 'result' key return unchanged."""
+    def test_small_complex_structure_without_result_key_returns_unchanged(self, hook_manager):
+        """Test that small complex structures without 'result' key remain unchanged."""
         small_complex_result = {
             "status": "success",
             "items": ["item1", "item2", "item3"],
@@ -1228,13 +1282,13 @@ class TestMCPInteractionTruncation:
             step_description="Custom tool"
         )
         
-        result = _apply_mcp_interaction_truncation(interaction)
+        ctx = InteractionHookContext(interaction, hook_manager)
+        ctx._apply_mcp_truncation_inplace()
         
-        # Should return original unchanged (serializes but is small)
-        assert result is interaction
-        assert result.tool_result == small_complex_result
+        # Should remain unchanged (serializes but is small)
+        assert interaction.tool_result == small_complex_result
     
-    def test_truncation_with_no_newlines_in_content(self):
+    def test_truncation_with_no_newlines_in_content(self, hook_manager):
         """Test that truncation handles content without newlines gracefully."""
         # Create large content with no newlines
         large_text_no_newlines = "X" * (MAX_MCP_TOOL_RESULT_SIZE + 10000)
@@ -1252,16 +1306,19 @@ class TestMCPInteractionTruncation:
             step_description="No newlines tool"
         )
         
-        result = _apply_mcp_interaction_truncation(interaction)
-        truncated_content = result.tool_result["result"]
+        ctx = InteractionHookContext(interaction, hook_manager)
+        ctx._apply_mcp_truncation_inplace()
+        truncated_content = interaction.tool_result["result"]
         
         # Should still truncate even without newlines (no line boundary found)
         assert len(truncated_content) < len(large_text_no_newlines)
         assert "[TRUNCATED" in truncated_content
-        # Content should start with original
-        assert truncated_content.startswith("X" * 1000)
+        # Content should start with original (or less if limit is very small)
+        expected_xs = min(500, MAX_MCP_TOOL_RESULT_SIZE // 2)  # Account for small limits
+        if expected_xs > 0:
+            assert truncated_content.startswith("X" * expected_xs)
     
-    def test_content_exactly_at_size_limit_not_truncated(self):
+    def test_content_exactly_at_size_limit_not_truncated(self, hook_manager):
         """Test that content exactly at the size limit is not truncated."""
         # Create content exactly at the limit
         exact_limit_text = "Y" * MAX_MCP_TOOL_RESULT_SIZE
@@ -1279,17 +1336,18 @@ class TestMCPInteractionTruncation:
             step_description="Exact limit tool"
         )
         
-        result = _apply_mcp_interaction_truncation(interaction)
+        ctx = InteractionHookContext(interaction, hook_manager)
+        ctx._apply_mcp_truncation_inplace()
         
         # Should NOT truncate (condition is > not >=)
-        assert result is interaction
-        assert result.tool_result["result"] == exact_limit_text
-        assert "[TRUNCATED" not in result.tool_result["result"]
+        assert interaction.tool_result["result"] == exact_limit_text
+        assert "[TRUNCATED" not in interaction.tool_result["result"]
     
-    def test_truncation_preserves_metadata_keys(self):
-        """Test that truncation preserves all metadata keys in tool_result (copy-on-write)."""
+    def test_truncation_preserves_metadata_keys(self, hook_manager):
+        """Test that truncation preserves all metadata keys in tool_result."""
         # Create large result with metadata fields that should be preserved
         large_text = "X" * (MAX_MCP_TOOL_RESULT_SIZE + 10000)
+        original_large_text = large_text  # Save original for comparison
         tool_result_with_metadata = {
             "result": large_text,
             "error": "Some error occurred",
@@ -1312,21 +1370,15 @@ class TestMCPInteractionTruncation:
             step_description="Tool with metadata"
         )
         
-        result = _apply_mcp_interaction_truncation(interaction)
+        ctx = InteractionHookContext(interaction, hook_manager)
+        ctx._apply_mcp_truncation_inplace()
         
-        # Should return new copy (copy-on-write)
-        assert result is not interaction
-        
-        # Verify "result" was truncated
-        assert len(result.tool_result["result"]) < len(large_text)
-        assert "[TRUNCATED" in result.tool_result["result"]
+        # Verify "result" was truncated in-place
+        assert len(interaction.tool_result["result"]) < len(original_large_text)
+        assert "[TRUNCATED" in interaction.tool_result["result"]
         
         # Verify ALL other metadata keys are preserved
-        assert result.tool_result["error"] == "Some error occurred"
-        assert result.tool_result["error_type"] == "TimeoutError"
-        assert result.tool_result["metadata"] == {"retries": 3, "duration": 1500}
-        assert result.tool_result["status_code"] == 500
-        
-        # Verify original interaction is unmodified
-        assert interaction.tool_result["result"] == large_text
-        assert "[TRUNCATED" not in interaction.tool_result["result"]
+        assert interaction.tool_result["error"] == "Some error occurred"
+        assert interaction.tool_result["error_type"] == "TimeoutError"
+        assert interaction.tool_result["metadata"] == {"retries": 3, "duration": 1500}
+        assert interaction.tool_result["status_code"] == 500
