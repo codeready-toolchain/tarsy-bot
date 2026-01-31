@@ -1,5 +1,6 @@
 """Helper functions for publishing events from sync/async contexts."""
 
+import asyncio
 import logging
 from typing import Optional, Union
 
@@ -91,6 +92,11 @@ async def publish_session_completed(session_id: str) -> None:
             # Also publish to session-specific channel for detail views
             await publish_event(session, f"session:{session_id}", event)
             logger.info(f"[EVENT] Published session.completed to channels: 'sessions' and 'session:{session_id}'")
+    except asyncio.CancelledError:
+        # Don't suppress CancelledError - it indicates task/pod shutdown
+        # but log that we couldn't publish the event
+        logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish session.completed event: {e}")
 
@@ -111,6 +117,9 @@ async def publish_session_failed(session_id: str) -> None:
             # Also publish to session-specific channel for detail views
             await publish_event(session, f"session:{session_id}", event)
             logger.info(f"[EVENT] Published session.failed to channels: 'sessions' and 'session:{session_id}'")
+    except asyncio.CancelledError:
+        logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish session.failed event: {e}")
 
@@ -131,6 +140,9 @@ async def publish_session_timed_out(session_id: str) -> None:
             # Also publish to session-specific channel for detail views
             await publish_event(session, f"session:{session_id}", event)
             logger.info(f"[EVENT] Published session.timed_out to channels: 'sessions' and 'session:{session_id}'")
+    except asyncio.CancelledError:
+        logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish session.timed_out event: {e}")
 
@@ -523,6 +535,9 @@ async def publish_session_cancelled(session_id: str) -> None:
             # Also publish to session-specific channel for detail views
             await publish_event(session, f"session:{session_id}", event)
             logger.info("[EVENT] Published session.cancelled to channels")
+    except asyncio.CancelledError:
+        logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish session.cancelled event: {e}")
 

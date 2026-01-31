@@ -467,16 +467,24 @@ class AlertService:
                     executive_summary_error=summary_result.error
                 )
 
-                if summary_result.summary:
-                    await self.slack_service.send_alert_analysis_notification(chain_context, analysis=summary_result.summary)
-                elif summary_result.error:
-                    await self.slack_service.send_alert_error_notification(chain_context, error_msg=summary_result.error)
+                # Try to send notifications and publish events, but don't fail the session if cancelled
+                try:
+                    if summary_result.summary:
+                        await self.slack_service.send_alert_analysis_notification(chain_context, analysis=summary_result.summary)
+                    elif summary_result.error:
+                        await self.slack_service.send_alert_error_notification(chain_context, error_msg=summary_result.error)
 
-                # Publish session.completed event
-                from tarsy.services.events.event_helpers import (
-                    publish_session_completed,
-                )
-                await publish_session_completed(chain_context.session_id)
+                    # Publish session.completed event
+                    from tarsy.services.events.event_helpers import (
+                        publish_session_completed,
+                    )
+                    await publish_session_completed(chain_context.session_id)
+                except asyncio.CancelledError:
+                    # Task/pod is shutting down, but session already marked complete in DB
+                    logger.warning(f"Session {chain_context.session_id} notifications/events cancelled (task/pod shutting down) - session already marked complete")
+                    # Re-raise to signal cancellation to caller
+                    raise
+                
                 return final_result
             elif chain_result.status == ChainStatus.PAUSED:
                 # Session was paused - this is not an error condition

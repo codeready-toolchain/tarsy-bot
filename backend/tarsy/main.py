@@ -891,10 +891,11 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
         if history_service:
             session = history_service.get_session(session_id)
             if session and session.status in AlertSessionStatus.terminal_values():
-                logger.info(f"Session {session_id} already in terminal state ({session.status}) - exiting gracefully")
+                logger.info(f"Session {session_id} already in terminal state ({session.status}) - exiting gracefully without overwriting status")
                 return
         
-        # Update status based on tracker (user cancel vs timeout)
+        # Session is not in terminal state - update status based on tracker (user cancel vs timeout)
+        logger.warning(f"Session {session_id} cancelled but not in terminal state - marking as cancelled/timed_out")
         await mark_session_cancelled_or_timed_out(session_id, timeout_error_msg="Session timed out")
         
     except ValueError as e:
