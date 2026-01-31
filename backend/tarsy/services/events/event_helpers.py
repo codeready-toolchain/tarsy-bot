@@ -1,5 +1,6 @@
 """Helper functions for publishing events from sync/async contexts."""
 
+import asyncio
 import logging
 from typing import Optional, Union
 
@@ -50,6 +51,9 @@ async def publish_session_created(session_id: str, alert_type: str) -> None:
             # Also publish to session-specific channel for detail views
             await publish_event(session, f"session:{session_id}", event)
             logger.info(f"[EVENT] Published session.created to channels: 'sessions' and 'session:{session_id}'")
+    except asyncio.CancelledError:
+        logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish session.created event: {e}")
 
@@ -71,6 +75,9 @@ async def publish_session_started(session_id: str, alert_type: str) -> None:
             # Also publish to session-specific channel for detail views
             await publish_event(session, f"session:{session_id}", event)
             logger.info(f"[EVENT] Published session.started to channels: 'sessions' and 'session:{session_id}'")
+    except asyncio.CancelledError:
+        logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish session.started event: {e}")
 
@@ -91,6 +98,11 @@ async def publish_session_completed(session_id: str) -> None:
             # Also publish to session-specific channel for detail views
             await publish_event(session, f"session:{session_id}", event)
             logger.info(f"[EVENT] Published session.completed to channels: 'sessions' and 'session:{session_id}'")
+    except asyncio.CancelledError:
+        # Don't suppress CancelledError - it indicates task/pod shutdown
+        # but log that we couldn't publish the event
+        logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish session.completed event: {e}")
 
@@ -111,6 +123,9 @@ async def publish_session_failed(session_id: str) -> None:
             # Also publish to session-specific channel for detail views
             await publish_event(session, f"session:{session_id}", event)
             logger.info(f"[EVENT] Published session.failed to channels: 'sessions' and 'session:{session_id}'")
+    except asyncio.CancelledError:
+        logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish session.failed event: {e}")
 
@@ -131,6 +146,9 @@ async def publish_session_timed_out(session_id: str) -> None:
             # Also publish to session-specific channel for detail views
             await publish_event(session, f"session:{session_id}", event)
             logger.info(f"[EVENT] Published session.timed_out to channels: 'sessions' and 'session:{session_id}'")
+    except asyncio.CancelledError:
+        logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish session.timed_out event: {e}")
 
@@ -156,6 +174,9 @@ async def publish_session_paused(session_id: str, pause_metadata: Optional[dict]
             # Also publish to session-specific channel for detail views
             await publish_event(session, f"session:{session_id}", event)
             logger.info(f"[EVENT] Published session.paused to channels: 'sessions' and 'session:{session_id}'")
+    except asyncio.CancelledError:
+        logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish session.paused event: {e}")
 
@@ -176,6 +197,9 @@ async def publish_session_resumed(session_id: str) -> None:
             # Also publish to session-specific channel for detail views
             await publish_event(session, f"session:{session_id}", event)
             logger.info(f"[EVENT] Published session.resumed to channels: 'sessions' and 'session:{session_id}'")
+    except asyncio.CancelledError:
+        logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish session.resumed event: {e}")
 
@@ -229,6 +253,9 @@ async def publish_session_progress_update(
                 )
             else:
                 logger.info(f"[EVENT] Published session.progress_update (phase={phase_value}) to channels: 'sessions' and 'session:{session_id}'")
+    except asyncio.CancelledError:
+        logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish session.progress_update event: {e}")
 
@@ -256,6 +283,9 @@ async def publish_llm_interaction(
                 session, EventChannel.session_details(session_id), event
             )
             logger.debug(f"Published llm.interaction event for {interaction_id}")
+    except asyncio.CancelledError:
+        logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish llm.interaction event: {e}")
 
@@ -294,6 +324,9 @@ async def publish_mcp_tool_call_started(
                 session, EventChannel.session_details(session_id), event
             )
             logger.debug(f"Published mcp.tool_call.started event for {communication_id}")
+    except asyncio.CancelledError:
+        logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish mcp.tool_call.started event: {e}")
 
@@ -326,6 +359,9 @@ async def publish_mcp_tool_call(
                 session, EventChannel.session_details(session_id), event
             )
             logger.debug(f"Published mcp.tool_call event for {interaction_id}")
+    except asyncio.CancelledError:
+        logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish mcp.tool_call event: {e}")
 
@@ -358,6 +394,9 @@ async def publish_mcp_tool_list(
                 session, EventChannel.session_details(session_id), event
             )
             logger.debug(f"Published mcp.tool_list event for {request_id}")
+    except asyncio.CancelledError:
+        logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish mcp.tool_list event: {e}")
 
@@ -411,6 +450,9 @@ async def publish_stage_started(
                 session, EventChannel.session_details(session_id), event
             )
             logger.debug(f"Published stage.started event for {stage_id}")
+    except asyncio.CancelledError:
+        logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish stage.started event: {e}")
 
@@ -455,6 +497,9 @@ async def publish_stage_completed(
                 session, EventChannel.session_details(session_id), event
             )
             logger.debug(f"Published stage.completed event for {stage_id}")
+    except asyncio.CancelledError:
+        logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish stage.completed event: {e}")
 
@@ -476,6 +521,9 @@ async def publish_cancel_request(session_id: str) -> None:
             # Publish to cancellations channel (backend-only)
             await publish_event(session, EventChannel.CANCELLATIONS, event)
             logger.info(f"[EVENT] Published session.cancel_requested for {session_id}")
+    except asyncio.CancelledError:
+        logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish cancel request: {e}")
 
@@ -500,6 +548,9 @@ async def publish_chat_cancel_request(stage_execution_id: str) -> None:
             # Publish to cancellations channel (backend-only)
             await publish_event(session, EventChannel.CANCELLATIONS, event)
             logger.info(f"[EVENT] Published chat.cancel_requested for {stage_execution_id}")
+    except asyncio.CancelledError:
+        logger.warning(f"Event publishing cancelled (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish chat cancel request: {e}")
 
@@ -523,6 +574,9 @@ async def publish_session_cancelled(session_id: str) -> None:
             # Also publish to session-specific channel for detail views
             await publish_event(session, f"session:{session_id}", event)
             logger.info("[EVENT] Published session.cancelled to channels")
+    except asyncio.CancelledError:
+        logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish session.cancelled event: {e}")
 
@@ -556,6 +610,9 @@ async def publish_agent_cancelled(
             # Publish to session-specific channel for real-time UI updates
             await publish_event(session, EventChannel.session_details(session_id), event)
             logger.info(f"[EVENT] Published agent.cancelled for {agent_name} (execution_id={execution_id})")
+    except asyncio.CancelledError:
+        logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish agent.cancelled event: {e}")
 
@@ -584,6 +641,9 @@ async def publish_chat_created(
             # Publish to session-specific channel (reuse existing subscription)
             await publish_event(session, EventChannel.session_details(session_id), event)
             logger.info(f"[EVENT] Published chat.created for chat {chat_id} to session:{session_id}")
+    except asyncio.CancelledError:
+        logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish chat.created event: {e}")
 
@@ -618,6 +678,9 @@ async def publish_chat_user_message(
             # Publish to session-specific channel (reuse existing subscription)
             await publish_event(session, EventChannel.session_details(session_id), event)
             logger.debug(f"Published chat.user_message for message {message_id}")
+    except asyncio.CancelledError:
+        logger.warning(f"Event publishing cancelled for session {session_id} (task/pod shutting down)")
+        raise
     except Exception as e:
         logger.warning(f"Failed to publish chat.user_message event: {e}")
 

@@ -227,3 +227,14 @@ class StreamingEventType(str, Enum):
 
 # Maximum size for LLM interaction message content before hook processing
 MAX_LLM_MESSAGE_CONTENT_SIZE = 1048576  # 1MB
+
+# ==============================================================================
+# MCP CONFIGURATION CONSTANTS
+# ==============================================================================
+
+# Maximum size for MCP tool results before hook processing
+# More conservative than LLM limit because:
+# - MCP results are often large data dumps (less critical than LLM reasoning)
+# - Higher probability of hitting limits with tools like events_list, logs
+# - Browser performance: smaller payloads = better dashboard responsiveness
+MAX_MCP_TOOL_RESULT_SIZE = 524288  # 512KB

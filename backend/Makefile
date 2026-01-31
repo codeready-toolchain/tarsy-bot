@@ -181,6 +181,16 @@ check-venv: ## Check if virtual environment exists and create if needed
 		$(MAKE) install; \
 	fi
 
+.PHONY: check-venv-and-sync
+check-venv-and-sync: ## Check venv and sync dependencies (for development)
+	@if [ ! -f .venv/bin/uvicorn ]; then \
+		echo "$(YELLOW)Virtual environment not found or incomplete. Running setup...$(NC)"; \
+		$(MAKE) install; \
+	else \
+		echo "$(GREEN)Syncing dependencies...$(NC)"; \
+		$(UV) sync --extra dev --extra test; \
+	fi
+
 .PHONY: check-test-deps
 check-test-deps: check-venv ## Ensure test dependencies are installed
 	@if ! .venv/bin/python -c "import pytest, xdist, respx" 2>/dev/null; then \
@@ -189,12 +199,12 @@ check-test-deps: check-venv ## Ensure test dependencies are installed
 	fi
 
 .PHONY: dev
-dev: check-venv ## Start development server with auto-reload
+dev: check-venv-and-sync ## Start development server with auto-reload
 	@echo "$(GREEN)Starting development server...$(NC)"
 	.venv/bin/uvicorn tarsy.main:app --reload --port 8000 --log-config uvicorn_logging_config.json --log-level info
 
 .PHONY: dev-debug
-dev-debug: check-venv ## Start development server with debug logging
+dev-debug: check-venv-and-sync ## Start development server with debug logging
 	@echo "$(GREEN)Starting development server (debug mode)...$(NC)"
 	LOG_LEVEL=DEBUG .venv/bin/uvicorn tarsy.main:app --reload --port 8000 --log-config uvicorn_logging_config.json --log-level debug
 
