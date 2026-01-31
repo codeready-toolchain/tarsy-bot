@@ -86,11 +86,11 @@ class MCPHistoryHook(BaseHook[MCPInteraction]):
         Note: available_tools is stored as-is without truncation.
         
         Args:
-            interaction: Unified MCP interaction data (modified in-place if truncated)
+            interaction: Unified MCP interaction data
         """
         try:
-            # Apply content truncation before database write (modifies interaction in-place)
-            _apply_mcp_interaction_truncation(interaction)
+            # Apply content truncation before database write (copy-on-write)
+            interaction = _apply_mcp_interaction_truncation(interaction)
             
             ok = await asyncio.to_thread(
                 self.history_service.store_mcp_interaction, interaction

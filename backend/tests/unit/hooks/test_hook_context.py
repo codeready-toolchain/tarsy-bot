@@ -1045,8 +1045,8 @@ class TestMCPInteractionTruncation:
         original_size = len(large_tool_result_with_result_key["result"])
         result = _apply_mcp_interaction_truncation(interaction)
         
-        # Should modify in-place (same object)
-        assert result is interaction
+        # Should return new copy (copy-on-write)
+        assert result is not interaction
         assert "result" in result.tool_result
         
         # Check truncation
@@ -1103,8 +1103,8 @@ class TestMCPInteractionTruncation:
         
         result = _apply_mcp_interaction_truncation(interaction)
         
-        # Should modify in-place
-        assert result is interaction
+        # Should return new copy (copy-on-write)
+        assert result is not interaction
         assert "result" in result.tool_result
         
         # Check truncation
@@ -1285,3 +1285,48 @@ class TestMCPInteractionTruncation:
         assert result is interaction
         assert result.tool_result["result"] == exact_limit_text
         assert "[TRUNCATED" not in result.tool_result["result"]
+    
+    def test_truncation_preserves_metadata_keys(self):
+        """Test that truncation preserves all metadata keys in tool_result (copy-on-write)."""
+        # Create large result with metadata fields that should be preserved
+        large_text = "X" * (MAX_MCP_TOOL_RESULT_SIZE + 10000)
+        tool_result_with_metadata = {
+            "result": large_text,
+            "error": "Some error occurred",
+            "error_type": "TimeoutError",
+            "metadata": {"retries": 3, "duration": 1500},
+            "status_code": 500
+        }
+        
+        interaction = MCPInteraction(
+            communication_id="test-comm-id",
+            session_id="test-session",
+            request_id="test-req",
+            server_name="test-server",
+            communication_type="tool_call",
+            tool_name="metadata_tool",
+            timestamp_us=1234567890,
+            duration_ms=1500,
+            success=False,
+            tool_result=tool_result_with_metadata,
+            step_description="Tool with metadata"
+        )
+        
+        result = _apply_mcp_interaction_truncation(interaction)
+        
+        # Should return new copy (copy-on-write)
+        assert result is not interaction
+        
+        # Verify "result" was truncated
+        assert len(result.tool_result["result"]) < len(large_text)
+        assert "[TRUNCATED" in result.tool_result["result"]
+        
+        # Verify ALL other metadata keys are preserved
+        assert result.tool_result["error"] == "Some error occurred"
+        assert result.tool_result["error_type"] == "TimeoutError"
+        assert result.tool_result["metadata"] == {"retries": 3, "duration": 1500}
+        assert result.tool_result["status_code"] == 500
+        
+        # Verify original interaction is unmodified
+        assert interaction.tool_result["result"] == large_text
+        assert "[TRUNCATED" not in interaction.tool_result["result"]

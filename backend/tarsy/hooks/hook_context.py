@@ -79,16 +79,15 @@ def _apply_mcp_interaction_truncation(interaction: MCPInteraction) -> MCPInterac
     """
     Apply content truncation to MCP tool results for hook processing.
     
-    Truncates large tool_result content in-place while preserving the dict structure.
-    Note: Unlike _apply_llm_interaction_truncation, this function mutates the input
-    interaction directly for performance reasons (avoids deep-copying large results).
-    Uses fast size estimation to avoid serializing small results.
+    Uses copy-on-write to preserve all metadata keys in tool_result while
+    truncating only the "result" value. Returns a new MCPInteraction instance
+    to prevent cross-hook contamination.
     
     Args:
-        interaction: MCPInteraction to truncate (modified in-place)
+        interaction: MCPInteraction to truncate (not modified)
         
     Returns:
-        The same MCPInteraction object (mutated)
+        New MCPInteraction with truncated tool_result (original unchanged)
     """
     import json
     
@@ -110,11 +109,13 @@ def _apply_mcp_interaction_truncation(interaction: MCPInteraction) -> MCPInterac
                     f"limit: {MAX_MCP_TOOL_RESULT_SIZE//1024}KB]"
                 )
                 
-                interaction.tool_result = {"result": truncated_content}
+                # Copy-on-write: preserve all existing keys, only update "result"
+                new_tool_result = {**interaction.tool_result, "result": truncated_content}
                 logger.info(
                     f"Truncated MCP tool_result from {original_size:,} bytes "
                     f"for {interaction.tool_name or 'tool_list'}"
                 )
+                return interaction.model_copy(update={"tool_result": new_tool_result})
         else:
             # Complex structure or non-string result: serialize to check size
             result_str = json.dumps(interaction.tool_result, indent=2, default=str)
@@ -127,7 +128,9 @@ def _apply_mcp_interaction_truncation(interaction: MCPInteraction) -> MCPInterac
                 if last_newline > 0:
                     truncated_str = truncated_str[:last_newline]
                 
-                interaction.tool_result = {
+                # Copy-on-write: preserve all existing keys, wrap result as string
+                new_tool_result = {
+                    **interaction.tool_result,
                     "result": truncated_str + 
                     f"\n\n... [TRUNCATED - Original size: {original_size//1024}KB, limit: {MAX_MCP_TOOL_RESULT_SIZE//1024}KB]"
                 }
@@ -136,6 +139,7 @@ def _apply_mcp_interaction_truncation(interaction: MCPInteraction) -> MCPInterac
                     f"Truncated MCP tool_result from {original_size:,} bytes "
                     f"for {interaction.tool_name or 'tool_list'}"
                 )
+                return interaction.model_copy(update={"tool_result": new_tool_result})
     
     return interaction
 
