@@ -1,7 +1,7 @@
 """add_session_scores_table
 
 Revision ID: 776dca9d9a2f
-Revises: c4d5e6f7g8h9
+Revises: b67c135119d7
 Create Date: 2026-01-13 17:21:32.869647
 
 Adds session_scores table for alert session scoring API (EP-0028):
@@ -20,7 +20,7 @@ from sqlalchemy import inspect
 
 # revision identifiers, used by Alembic.
 revision: str = "776dca9d9a2f"
-down_revision: Union[str, Sequence[str], None] = "c4d5e6f7g8h9"
+down_revision: Union[str, Sequence[str], None] = "b67c135119d7"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
