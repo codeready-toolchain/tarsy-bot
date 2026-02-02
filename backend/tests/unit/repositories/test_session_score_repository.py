@@ -10,29 +10,17 @@ from tarsy.repositories.session_score_repository import SessionScoreRepository
 from tarsy.utils.timestamp import now_us
 
 
+@pytest.mark.unit
 class TestSessionScoreRepository:
     """Test SessionScoreRepository CRUD operations."""
 
     @pytest.fixture
-    def in_memory_engine(self):
-        """Create in-memory SQLite engine for testing."""
-        engine = create_engine("sqlite:///:memory:", echo=False)
-        SQLModel.metadata.create_all(engine)
-        return engine
-
-    @pytest.fixture
-    def db_session(self, in_memory_engine):
-        """Create database session for testing."""
-        with Session(in_memory_engine) as session:
-            yield session
-
-    @pytest.fixture
-    def repository(self, db_session):
+    def repository(self, test_database_session):
         """Create repository instance."""
-        return SessionScoreRepository(db_session)
+        return SessionScoreRepository(test_database_session)
 
     @pytest.fixture
-    def sample_alert_session(self, db_session):
+    def sample_alert_session(self, test_database_session):
         """Create sample AlertSession for FK constraint."""
         session = AlertSession(
             session_id="test-session-123",
@@ -40,10 +28,10 @@ class TestSessionScoreRepository:
             agent_type="KubernetesAgent",
             status="completed",
             started_at_us=now_us(),
-            chain_id="test-chain-123"
+            chain_id="test-chain-123",
         )
-        db_session.add(session)
-        db_session.commit()
+        test_database_session.add(session)
+        test_database_session.commit()
         return session
 
     def test_create_session_score_success(self, repository, sample_alert_session):
@@ -52,7 +40,7 @@ class TestSessionScoreRepository:
             session_id=sample_alert_session.session_id,
             prompt_hash="abc123",
             score_triggered_by="user:test",
-            status=ScoringStatus.PENDING
+            status=ScoringStatus.PENDING,
         )
 
         created = repository.create_session_score(score)
@@ -62,13 +50,15 @@ class TestSessionScoreRepository:
         assert created.session_id == sample_alert_session.session_id
         assert created.status == ScoringStatus.PENDING
 
-    def test_create_duplicate_active_score_raises_error(self, repository, sample_alert_session):
+    def test_create_duplicate_active_score_raises_error(
+        self, repository, sample_alert_session
+    ):
         """Test that creating duplicate active score raises ValueError."""
         score1 = SessionScore(
             session_id=sample_alert_session.session_id,
             prompt_hash="abc123",
             score_triggered_by="user:test",
-            status=ScoringStatus.PENDING
+            status=ScoringStatus.PENDING,
         )
         repository.create_session_score(score1)
 
@@ -77,13 +67,15 @@ class TestSessionScoreRepository:
             session_id=sample_alert_session.session_id,
             prompt_hash="abc123",
             score_triggered_by="user:test",
-            status=ScoringStatus.IN_PROGRESS
+            status=ScoringStatus.IN_PROGRESS,
         )
 
         with pytest.raises(ValueError, match="due to constraint violation"):
             repository.create_session_score(score2)
 
-    def test_create_allows_new_score_after_previous_completed(self, repository, sample_alert_session):
+    def test_create_allows_new_score_after_previous_completed(
+        self, repository, sample_alert_session
+    ):
         """Test that new score can be created after previous completes."""
         # Create and complete first score
         score1 = SessionScore(
@@ -91,7 +83,7 @@ class TestSessionScoreRepository:
             prompt_hash="abc123",
             score_triggered_by="user:test",
             status=ScoringStatus.COMPLETED,
-            completed_at_us=now_us()
+            completed_at_us=now_us(),
         )
         repository.create_session_score(score1)
 
@@ -100,7 +92,7 @@ class TestSessionScoreRepository:
             session_id=sample_alert_session.session_id,
             prompt_hash="def456",
             score_triggered_by="user:test",
-            status=ScoringStatus.PENDING
+            status=ScoringStatus.PENDING,
         )
         created = repository.create_session_score(score2)
 
@@ -113,7 +105,7 @@ class TestSessionScoreRepository:
             session_id=sample_alert_session.session_id,
             prompt_hash="abc123",
             score_triggered_by="user:test",
-            status=ScoringStatus.PENDING
+            status=ScoringStatus.PENDING,
         )
         created = repository.create_session_score(score)
 
@@ -135,19 +127,21 @@ class TestSessionScoreRepository:
             prompt_hash="abc123",
             score_triggered_by="user:test",
             status=ScoringStatus.COMPLETED,
-            scored_at_us=now_us() - 1000000  # Earlier
+            scored_at_us=now_us() - 1000000,  # Earlier
         )
         score2 = SessionScore(
             session_id=sample_alert_session.session_id,
             prompt_hash="def456",
             score_triggered_by="user:test",
             status=ScoringStatus.PENDING,
-            scored_at_us=now_us()  # Later
+            scored_at_us=now_us(),  # Later
         )
         repository.create_session_score(score1)
         repository.create_session_score(score2)
 
-        latest = repository.get_latest_score_for_session(sample_alert_session.session_id)
+        latest = repository.get_latest_score_for_session(
+            sample_alert_session.session_id
+        )
 
         assert latest is not None
         assert latest.prompt_hash == "def456"  # Most recent
@@ -159,12 +153,14 @@ class TestSessionScoreRepository:
             session_id=sample_alert_session.session_id,
             prompt_hash="abc123",
             score_triggered_by="user:test",
-            status=ScoringStatus.COMPLETED
+            status=ScoringStatus.COMPLETED,
         )
         repository.create_session_score(score1)
 
         # Should return None (no active)
-        active = repository.get_active_score_for_session(sample_alert_session.session_id)
+        active = repository.get_active_score_for_session(
+            sample_alert_session.session_id
+        )
         assert active is None
 
         # Create pending score
@@ -172,12 +168,14 @@ class TestSessionScoreRepository:
             session_id=sample_alert_session.session_id,
             prompt_hash="def456",
             score_triggered_by="user:test",
-            status=ScoringStatus.PENDING
+            status=ScoringStatus.PENDING,
         )
         repository.create_session_score(score2)
 
         # Should return the pending score
-        active = repository.get_active_score_for_session(sample_alert_session.session_id)
+        active = repository.get_active_score_for_session(
+            sample_alert_session.session_id
+        )
         assert active is not None
         assert active.status == ScoringStatus.PENDING
 
@@ -187,7 +185,7 @@ class TestSessionScoreRepository:
             session_id=sample_alert_session.session_id,
             prompt_hash="abc123",
             score_triggered_by="user:test",
-            status=ScoringStatus.PENDING
+            status=ScoringStatus.PENDING,
         )
         created = repository.create_session_score(score)
 
@@ -198,7 +196,7 @@ class TestSessionScoreRepository:
             completed_at_us=now_us(),
             total_score=85,
             score_analysis="Excellent investigation",
-            missing_tools_analysis="No tools missing"
+            missing_tools_analysis="No tools missing",
         )
 
         assert updated is not None
@@ -212,7 +210,7 @@ class TestSessionScoreRepository:
             session_id=sample_alert_session.session_id,
             prompt_hash="abc123",
             score_triggered_by="user:test",
-            status=ScoringStatus.IN_PROGRESS
+            status=ScoringStatus.IN_PROGRESS,
         )
         created = repository.create_session_score(score)
 
@@ -221,7 +219,7 @@ class TestSessionScoreRepository:
             score_id=created.score_id,
             status=ScoringStatus.FAILED,
             completed_at_us=now_us(),
-            error_message="LLM API timeout"
+            error_message="LLM API timeout",
         )
 
         assert updated is not None
