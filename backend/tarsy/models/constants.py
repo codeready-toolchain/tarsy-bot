@@ -181,7 +181,8 @@ class ScoringStatus(Enum):
     PENDING = "pending"           # Scoring queued but not started
     IN_PROGRESS = "in_progress"   # LLM currently scoring the session
     COMPLETED = "completed"       # Scoring finished successfully
-    FAILED = "failed"            # Scoring failed with error
+    FAILED = "failed"             # Scoring failed with error
+    TIMED_OUT = "timed_out"       # Scoring timed out
 
     @classmethod
     def active_values(cls) -> list['ScoringStatus']:

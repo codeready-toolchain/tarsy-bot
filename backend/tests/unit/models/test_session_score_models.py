@@ -21,11 +21,12 @@ class TestScoringStatusEnum:
     def test_values(self):
         """Test values() returns all status strings."""
         all_values = ScoringStatus.values()
-        assert len(all_values) == 4
+        assert len(all_values) == 5
         assert "pending" in all_values
         assert "in_progress" in all_values
         assert "completed" in all_values
         assert "failed" in all_values
+        assert "timed_out" in all_values
 
 @pytest.mark.unit
 class TestSessionScoreDB:
