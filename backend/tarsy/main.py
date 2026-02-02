@@ -780,13 +780,17 @@ async def mark_session_cancelled_or_timed_out(
     
     Uses the cancellation tracker to determine the cause.
     
+    IMPORTANT: This function checks if the session is already in a terminal state
+    (COMPLETED, FAILED, CANCELLED, TIMED_OUT) before updating. This prevents race
+    conditions where a timeout fires after the session has already completed.
+    
     Args:
         session_id: Session ID to update
         timeout_error_msg: Error message to use if it's a timeout
         cancel_paused_stages: If True, also cancel all paused stages (for user cancellation)
         
     Returns:
-        True if status was updated, False if history service unavailable
+        True if status was updated, False if history service unavailable or session already terminal
     """
     from tarsy.models.constants import AlertSessionStatus
     from tarsy.services.cancellation_tracker import is_user_cancel
@@ -796,6 +800,16 @@ async def mark_session_cancelled_or_timed_out(
     history_service = get_history_service()
     if not history_service:
         logger.warning(f"Session {session_id} - history service unavailable for status update")
+        return False
+    
+    # CRITICAL: Check if session is already in a terminal state before updating.
+    # This prevents race conditions where timeout fires after session has completed.
+    session = history_service.get_session(session_id)
+    if session and session.status in AlertSessionStatus.terminal_values():
+        logger.info(
+            f"Session {session_id} already in terminal state ({session.status}) - "
+            f"not overwriting with cancelled/timed_out status"
+        )
         return False
     
     if is_user_cancel(session_id):
@@ -891,10 +905,11 @@ async def process_alert_background(session_id: str, alert: ChainContext) -> None
         if history_service:
             session = history_service.get_session(session_id)
             if session and session.status in AlertSessionStatus.terminal_values():
-                logger.info(f"Session {session_id} already in terminal state ({session.status}) - exiting gracefully")
+                logger.info(f"Session {session_id} already in terminal state ({session.status}) - exiting gracefully without overwriting status")
                 return
         
-        # Update status based on tracker (user cancel vs timeout)
+        # Session is not in terminal state - update status based on tracker (user cancel vs timeout)
+        logger.warning(f"Session {session_id} cancelled but not in terminal state - marking as cancelled/timed_out")
         await mark_session_cancelled_or_timed_out(session_id, timeout_error_msg="Session timed out")
         
     except ValueError as e:
