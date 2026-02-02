@@ -2,7 +2,7 @@
 Database models for alert processing audit trail.
 
 Defines SQLModel table classes for storing alert processing sessions
-and stage executions with Unix timestamp precision for optimal 
+and stage executions with Unix timestamp precision for optimal
 performance and consistency.
 """
 
@@ -10,257 +10,283 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Optional
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Table, event, func, text, Enum as SAEnum
 from sqlalchemy.dialects.postgresql import BIGINT
+from sqlalchemy.engine import Connection
 from sqlmodel import Column, Field, Index, SQLModel
 
-from tarsy.models.constants import AlertSessionStatus
+from tarsy.models.constants import AlertSessionStatus, ScoringStatus
 from tarsy.utils.timestamp import now_us
 
 if TYPE_CHECKING:
     from tarsy.models.agent_config import ChainConfigModel
 
+
 class AlertSession(SQLModel, table=True):
     """
     Represents an alert processing session with complete lifecycle tracking.
-    
+
     Captures the full context of alert processing from initiation to completion,
     including session metadata, processing status, and timing information.
     Uses Unix timestamps (microseconds since epoch) for optimal performance and precision.
     """
-    
+
     __tablename__ = "alert_sessions"
-    
+
     # Database-agnostic indexes for common query patterns
     __table_args__ = (
         # Individual column indexes for filtering
-        Index('ix_alert_sessions_status', 'status'),
-        Index('ix_alert_sessions_agent_type', 'agent_type'), 
-        Index('ix_alert_sessions_alert_type', 'alert_type'),
-        
+        Index("ix_alert_sessions_status", "status"),
+        Index("ix_alert_sessions_agent_type", "agent_type"),
+        Index("ix_alert_sessions_alert_type", "alert_type"),
         # Composite index for most common query pattern: filter by status + order by timestamp
-        Index('ix_alert_sessions_status_started_at', 'status', 'started_at_us'),
-        
+        Index("ix_alert_sessions_status_started_at", "status", "started_at_us"),
         # Composite index for efficient orphan detection
-        Index('ix_alert_sessions_status_last_interaction', 'status', 'last_interaction_at'),
-        
+        Index(
+            "ix_alert_sessions_status_last_interaction", "status", "last_interaction_at"
+        ),
         # Note: PostgreSQL-specific JSON indexes removed for database compatibility
         # In production with PostgreSQL, consider adding:
         # - GIN index on alert_data: Index('ix_alert_data_gin', 'alert_data', postgresql_using='gin')
         # - JSON field indexes: Index('ix_alert_data_severity', text("((alert_data->>'severity'))"))
     )
-    
+
     session_id: str = Field(
         ...,  # Required field - must be set from ChainContext.session_id
         primary_key=True,
-        description="Unique identifier for the alert processing session"
+        description="Unique identifier for the alert processing session",
     )
-    
+
     alert_data: dict = Field(
         default_factory=dict,
         sa_column=Column[Any](JSON),
-        description="Original alert payload and context data"
+        description="Original alert payload and context data",
     )
-    
+
     agent_type: str = Field(
         description="Type of processing agent (e.g., 'kubernetes', 'base')"
     )
-    
+
     alert_type: Optional[str] = Field(
         default=None,
-        description="Alert type for efficient filtering (e.g., 'NamespaceTerminating', 'UnidledPods', 'OutOfSyncApplication')"
+        description="Alert type for efficient filtering (e.g., 'NamespaceTerminating', 'UnidledPods', 'OutOfSyncApplication')",
     )
-    
+
     status: str = Field(
         description=f"Current processing status ({', '.join(AlertSessionStatus.values())})"
     )
-    
+
     started_at_us: int = Field(
         default_factory=now_us,
         sa_column=Column[Any](BIGINT, index=True),
-        description="Session start timestamp (microseconds since epoch UTC)"
+        description="Session start timestamp (microseconds since epoch UTC)",
     )
-    
+
     completed_at_us: Optional[int] = Field(
         default=None,
         sa_column=Column(BIGINT),
-        description="Session completion timestamp (microseconds since epoch UTC)"
+        description="Session completion timestamp (microseconds since epoch UTC)",
     )
-    
+
     error_message: Optional[str] = Field(
-        default=None,
-        description="Error message if processing failed"
+        default=None, description="Error message if processing failed"
     )
-    
+
     final_analysis: Optional[str] = Field(
         default=None,
-        description="Final formatted analysis result if processing completed successfully"
+        description="Final formatted analysis result if processing completed successfully",
     )
 
     final_analysis_summary: Optional[str] = Field(
         default=None,
-        description="Executive summary of the final analysis, displayed in dashboard and used in external notifications (e.g., Slack)"
+        description="Executive summary of the final analysis, displayed in dashboard and used in external notifications (e.g., Slack)",
     )
-    
+
     executive_summary_error: Optional[str] = Field(
         default=None,
-        description="Error message if executive summary generation failed (e.g., timeout, cancellation)"
+        description="Error message if executive summary generation failed (e.g., timeout, cancellation)",
     )
-    
+
     session_metadata: Optional[dict] = Field(
         default=None,
         sa_column=Column[Any](JSON),
-        description="Additional context and metadata for the session"
+        description="Additional context and metadata for the session",
     )
-    
+
     pause_metadata: Optional[dict] = Field(
         default=None,
         sa_column=Column[Any](JSON),
-        description="Metadata about why session paused (iteration count, reason, message)"
+        description="Metadata about why session paused (iteration count, reason, message)",
     )
-    
+
     author: Optional[str] = Field(
         default=None,
         max_length=255,
-        description="User or API Client who submitted the alert (from oauth2-proxy X-Forwarded-User header)"
+        description="User or API Client who submitted the alert (from oauth2-proxy X-Forwarded-User header)",
     )
-    
+
     runbook_url: Optional[str] = Field(
         default=None,
-        description="Runbook URL used for processing this alert (if provided)"
+        description="Runbook URL used for processing this alert (if provided)",
     )
-    
+
     mcp_selection: Optional[dict] = Field(
         default=None,
         sa_column=Column[Any](JSON),
-        description="MCP server/tool selection override (if provided)"
+        description="MCP server/tool selection override (if provided)",
     )
-    
+
     # Chain execution tracking
     chain_id: str = Field(description="Chain identifier for this execution")
-    chain_definition: Optional[dict] = Field(default=None, sa_column=Column(JSON), description="Complete chain definition snapshot")
-    current_stage_index: Optional[int] = Field(default=None, description="Current stage position (0-based)")
-    current_stage_id: Optional[str] = Field(default=None, description="Current stage identifier")
-    
+    chain_definition: Optional[dict] = Field(
+        default=None,
+        sa_column=Column(JSON),
+        description="Complete chain definition snapshot",
+    )
+    current_stage_index: Optional[int] = Field(
+        default=None, description="Current stage position (0-based)"
+    )
+    current_stage_id: Optional[str] = Field(
+        default=None, description="Current stage identifier"
+    )
+
     # Pod tracking for multi-replica support
     pod_id: Optional[str] = Field(
         default=None,
-        description="Kubernetes pod identifier for multi-replica session tracking"
+        description="Kubernetes pod identifier for multi-replica session tracking",
     )
-    
+
     last_interaction_at: Optional[int] = Field(
         default=None,
         sa_column=Column[Any](BIGINT),
-        description="Last interaction timestamp (microseconds) for orphan detection"
+        description="Last interaction timestamp (microseconds) for orphan detection",
     )
 
     slack_message_fingerprint: Optional[str] = Field(
         default=None,
         description="Slack message fingerprint for Slack message threading"
     )
+
     # Note: Relationships removed to avoid circular import issues with unified models
     # Use queries with session_id foreign key for data access instead
-    
+
     @property
-    def chain_config(self) -> Optional['ChainConfigModel']:
+    def chain_config(self) -> Optional["ChainConfigModel"]:
         """
         Parse chain_definition dict to typed ChainConfigModel.
-        
+
         Provides type-safe access to chain configuration with IDE autocomplete
         and Pydantic validation. Returns None if chain_definition is not set.
-        
+
         Returns:
             ChainConfigModel instance or None
         """
         if not self.chain_definition:
             return None
         from tarsy.models.agent_config import ChainConfigModel
+
         return ChainConfigModel(**self.chain_definition)
 
 
 class StageExecution(SQLModel, table=True):
     """
     Represents the execution of a single stage within a chain processing session.
-    
+
     Tracks detailed execution information for each chain stage including timing,
     status, outputs, and error information with Unix timestamp precision.
     """
-    
+
     __tablename__ = "stage_executions"
-    
+
     # Allow dynamic attribute assignment for parallel_executions
     model_config = {"arbitrary_types_allowed": True}
-    
+
     execution_id: str = Field(
         default_factory=lambda: str(uuid.uuid4()),
         primary_key=True,
-        description="Unique identifier for this stage execution"
+        description="Unique identifier for this stage execution",
     )
-    
+
     session_id: str = Field(
-        sa_column=Column[Any](String, ForeignKey("alert_sessions.session_id", ondelete="CASCADE"), index=True),
-        description="Reference to the parent alert session"
+        sa_column=Column[Any](
+            String,
+            ForeignKey("alert_sessions.session_id", ondelete="CASCADE"),
+            index=True,
+        ),
+        description="Reference to the parent alert session",
     )
-    
+
     # Stage identification
     stage_id: str = Field(description="Stage identifier (e.g., 'initial-analysis')")
-    stage_index: int = Field(description="Stage position in chain (0-based)", index=True)
+    stage_index: int = Field(
+        description="Stage position in chain (0-based)", index=True
+    )
     stage_name: str = Field(description="Human-readable stage name from configuration")
     agent: str = Field(description="Agent used for this stage")
-    
+
     # Execution tracking
-    status: str = Field(description="Stage execution status (pending|active|completed|failed|cancelled)")
-    started_at_us: Optional[int] = Field(default=None, sa_column=Column(BIGINT), description="Stage start timestamp")
-    paused_at_us: Optional[int] = Field(default=None, sa_column=Column(BIGINT), description="Timestamp when stage was paused")
-    completed_at_us: Optional[int] = Field(default=None, sa_column=Column(BIGINT), description="Stage completion timestamp")
-    duration_ms: Optional[int] = Field(default=None, description="Stage execution duration")
+    status: str = Field(
+        description="Stage execution status (pending|active|completed|failed|cancelled)"
+    )
+    started_at_us: Optional[int] = Field(
+        default=None, sa_column=Column(BIGINT), description="Stage start timestamp"
+    )
+    paused_at_us: Optional[int] = Field(
+        default=None,
+        sa_column=Column(BIGINT),
+        description="Timestamp when stage was paused",
+    )
+    completed_at_us: Optional[int] = Field(
+        default=None, sa_column=Column(BIGINT), description="Stage completion timestamp"
+    )
+    duration_ms: Optional[int] = Field(
+        default=None, description="Stage execution duration"
+    )
     stage_output: Optional[dict] = Field(
-        default=None, 
-        sa_column=Column[Any](JSON), 
-        description="Data produced by stage (only for successful completion)"
+        default=None,
+        sa_column=Column[Any](JSON),
+        description="Data produced by stage (only for successful completion)",
     )
     error_message: Optional[str] = Field(
-        default=None, 
-        description="Error message if stage failed (mutually exclusive with stage_output)"
+        default=None,
+        description="Error message if stage failed (mutually exclusive with stage_output)",
     )
     current_iteration: Optional[int] = Field(
         default=None,
-        description="Current iteration number when paused (for pause/resume)"
+        description="Current iteration number when paused (for pause/resume)",
     )
     iteration_strategy: Optional[str] = Field(
         default=None,
-        description="Iteration strategy for this stage (e.g., 'react', 'native_thinking')"
+        description="Iteration strategy for this stage (e.g., 'react', 'native_thinking')",
     )
-    
+
     # Chat context tracking
     chat_id: Optional[str] = Field(
-        default=None,
-        description="Chat ID if this execution is a chat response"
+        default=None, description="Chat ID if this execution is a chat response"
     )
     chat_user_message_id: Optional[str] = Field(
-        default=None,
-        description="User message ID this execution is responding to"
+        default=None, description="User message ID this execution is responding to"
     )
-    
+
     # Parallel execution tracking
     parent_stage_execution_id: Optional[str] = Field(
         default=None,
         sa_column=Column[Any](String, ForeignKey("stage_executions.execution_id")),
-        description="Parent stage execution ID for parallel execution grouping"
+        description="Parent stage execution ID for parallel execution grouping",
     )
     parallel_index: int = Field(
         default=0,
-        description="Position in parallel group (0 for single/parent, 1-N for parallel children)"
+        description="Position in parallel group (0 for single/parent, 1-N for parallel children)",
     )
     parallel_type: str = Field(
         default="single",
-        description="Execution type: 'single', 'multi_agent', or 'replica' (use ParallelType constants)"
+        description="Execution type: 'single', 'multi_agent', or 'replica' (use ParallelType constants)",
     )
     expected_parallel_count: Optional[int] = Field(
         default=None,
-        description="Expected number of parallel children (only set for parent parallel stages)"
+        description="Expected number of parallel children (only set for parent parallel stages)",
     )
-    
+
     # Note: Relationship to AlertSession would be: session: AlertSession = Relationship(back_populates="stage_executions")
     # Omitted to avoid circular imports - use session_id for queries instead
 
@@ -307,103 +333,204 @@ class Event(SQLModel, table=True):
     )
 
 
+class SessionScore(SQLModel, table=True):
+    """
+    Session scoring record with async processing tracking.
+
+    Stores scoring attempts for alert sessions including prompt hash
+    for detecting stale scores and async status tracking.
+    Uses Unix timestamps (microseconds since epoch) for consistency.
+    """
+
+    __tablename__ = "session_scores"
+
+    __table_args__ = (
+        # Individual column indexes
+        Index("ix_session_scores_session_id", "session_id"),
+        Index("ix_session_scores_prompt_hash", "prompt_hash"),
+        Index("ix_session_scores_total_score", "total_score"),
+        Index("ix_session_scores_status", "status"),
+        # Composite indexes for efficient queries
+        Index("ix_session_scores_session_status", "session_id", "status"),
+        Index("ix_session_scores_status_started", "status", "started_at_us"),
+    )
+
+    score_id: str = Field(
+        default_factory=lambda: str(uuid.uuid4()),
+        primary_key=True,
+        description="Unique identifier for this scoring attempt",
+    )
+
+    session_id: str = Field(
+        sa_column=Column[Any](
+            String,
+            ForeignKey("alert_sessions.session_id", ondelete="CASCADE"),
+            nullable=False,
+        ),
+        description="Alert session being scored",
+    )
+
+    prompt_hash: str = Field(
+        max_length=64,
+        description="SHA-256 hash of scoring prompt template for staleness detection",
+    )
+
+    total_score: Optional[int] = Field(
+        default=None, description="Total score (0-100), NULL until scoring completes"
+    )
+
+    score_analysis: Optional[str] = Field(
+        default=None, description="Detailed scoring analysis from LLM"
+    )
+
+    missing_tools_analysis: Optional[str] = Field(
+        default=None,
+        description="Analysis of tools that were missing but should have been used",
+    )
+
+    score_triggered_by: str = Field(
+        max_length=255,
+        description="Who/what triggered scoring (e.g., 'user:john.doe', 'system:auto')",
+    )
+
+    scored_at_us: int = Field(
+        default_factory=now_us,
+        sa_column=Column[Any](BIGINT),
+        description="Timestamp when scoring was initiated (microseconds since epoch)",
+    )
+
+    # Async processing status fields
+    status: ScoringStatus = Field(
+        sa_column=Column(SAEnum(ScoringStatus, values_callable=lambda x: [e.value for e in x], native_enum=False, length=50)),
+        description=f"Scoring status ({', '.join(ScoringStatus.values())})"
+    )
+
+    started_at_us: int = Field(
+        default_factory=now_us,
+        sa_column=Column[Any](BIGINT),
+        description="When scoring processing started (microseconds since epoch)",
+    )
+
+    completed_at_us: Optional[int] = Field(
+        default=None,
+        sa_column=Column(BIGINT),
+        description="When scoring processing completed (microseconds since epoch)",
+    )
+
+    error_message: Optional[str] = Field(
+        default=None, description="Error message if scoring failed"
+    )
+
+
+# Event listener to create partial unique index for the SessionScore table.
+# This prevents duplicate active (pending/in_progress) scores for the same session
+# Both PostgreSQL and SQLite support this syntax
+# The index is defined in the DB migration scripts, but we also need it here
+# because sqlalchemy doesn't support the partial index well.
+# Having this listener here ensures that the DB is correctly initialized even
+# in the tests where we only use sqlalchemy and don't run the migrations.
+@event.listens_for(SessionScore.__table__, "after_create")
+def create_session_scores_partial_index(target: Table, connection: Connection, **kw: Any) -> None:
+    """Create partial unique index on session_scores after table creation."""
+    connection.execute(
+        text("""
+        CREATE UNIQUE INDEX IF NOT EXISTS ix_session_scores_unique_active
+        ON session_scores(session_id)
+        WHERE status IN ('pending', 'in_progress')
+    """)
+    )
+
+
 class Chat(SQLModel, table=True):
     """Chat metadata and context snapshot from terminated session."""
-    
+
     __tablename__ = "chats"
-    
+
     __table_args__ = (
-        Index('ix_chats_session_id', 'session_id'),
-        Index('ix_chats_created_at', 'created_at_us'),
-        Index('ix_chats_pod_last_interaction', 'pod_id', 'last_interaction_at'),
+        Index("ix_chats_session_id", "session_id"),
+        Index("ix_chats_created_at", "created_at_us"),
+        Index("ix_chats_pod_last_interaction", "pod_id", "last_interaction_at"),
     )
-    
+
     chat_id: str = Field(
         default_factory=lambda: str(uuid.uuid4()),
         primary_key=True,
-        description="Unique chat identifier"
+        description="Unique chat identifier",
     )
-    
+
     session_id: str = Field(
         sa_column=Column[Any](String, ForeignKey("alert_sessions.session_id")),
-        description="Original session this chat extends"
+        description="Original session this chat extends",
     )
-    
+
     created_at_us: int = Field(
         default_factory=now_us,
         sa_column=Column[Any](BIGINT),
-        description="Chat creation timestamp"
+        description="Chat creation timestamp",
     )
-    
+
     created_by: Optional[str] = Field(
-        default=None,
-        description="User who initiated the chat"
+        default=None, description="User who initiated the chat"
     )
-    
+
     conversation_history: str = Field(
         description="Formatted session investigation text"
     )
-    
-    chain_id: str = Field(
-        description="Chain ID from original session"
-    )
-    
+
+    chain_id: str = Field(description="Chain ID from original session")
+
     mcp_selection: Optional[dict] = Field(
         default=None,
         sa_column=Column[Any](JSON),
-        description="MCP server/tool selection used in original session"
+        description="MCP server/tool selection used in original session",
     )
-    
+
     context_captured_at_us: int = Field(
         sa_column=Column[Any](BIGINT),
-        description="Timestamp when context was captured from session"
+        description="Timestamp when context was captured from session",
     )
-    
+
     pod_id: Optional[str] = Field(
         default=None,
-        description="Kubernetes pod identifier for multi-replica chat message tracking"
+        description="Kubernetes pod identifier for multi-replica chat message tracking",
     )
-    
+
     last_interaction_at: Optional[int] = Field(
         default=None,
         sa_column=Column[Any](BIGINT),
-        description="Last interaction timestamp for orphan detection during chat message processing"
+        description="Last interaction timestamp for orphan detection during chat message processing",
     )
 
 
 class ChatUserMessage(SQLModel, table=True):
     """User questions in a chat conversation."""
-    
+
     __tablename__ = "chat_user_messages"
-    
+
     __table_args__ = (
-        Index('ix_chat_user_messages_chat_id', 'chat_id'),
-        Index('ix_chat_user_messages_created_at', 'created_at_us'),
+        Index("ix_chat_user_messages_chat_id", "chat_id"),
+        Index("ix_chat_user_messages_created_at", "created_at_us"),
     )
-    
+
     message_id: str = Field(
         default_factory=lambda: str(uuid.uuid4()),
         primary_key=True,
-        description="Unique message identifier"
+        description="Unique message identifier",
     )
-    
+
     chat_id: str = Field(
         sa_column=Column[Any](String, ForeignKey("chats.chat_id", ondelete="CASCADE")),
-        description="Parent chat"
+        description="Parent chat",
     )
-    
-    content: str = Field(
-        description="User's question text"
-    )
-    
-    author: str = Field(
-        description="User email/ID who sent the message"
-    )
-    
+
+    content: str = Field(description="User's question text")
+
+    author: str = Field(description="User email/ID who sent the message")
+
     created_at_us: int = Field(
         default_factory=now_us,
         sa_column=Column[Any](BIGINT),
-        description="Message creation timestamp"
+        description="Message creation timestamp",
     )
 
 
