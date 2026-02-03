@@ -125,6 +125,13 @@ const ScoreDetailView: React.FC<ScoreDetailViewProps> = ({ session }) => {
           </Alert>
         )}
 
+        {score.status === 'timed_out' && (
+          <Alert severity="warning" sx={{ mb: 2 }}>
+            <AlertTitle>Scoring Timed Out</AlertTitle>
+            Scoring exceeded the maximum allowed duration and was terminated. The analysis is incomplete.
+          </Alert>
+        )}
+
         {score.status === 'failed' && (
           <Alert severity="error" sx={{ mb: 2 }}>
             <AlertTitle>Scoring Failed</AlertTitle>

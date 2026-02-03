@@ -680,22 +680,22 @@ class HistoryRepository:
                 # Fetch latest scores for sessions (most recent scoring attempt per session)
                 score_data = {}
                 try:
-                    from tarsy.models.db_models import SessionScoreDB
+                    from tarsy.models.db_models import SessionScore
 
                     # Get latest score for each session (most recent started_at_us)
                     # Use subquery to get max started_at_us per session, then join to get full record
                     subquery = select(
-                        SessionScoreDB.session_id,
-                        func.max(SessionScoreDB.started_at_us).label('max_started_at')
+                        SessionScore.session_id,
+                        func.max(SessionScore.started_at_us).label('max_started_at')
                     ).where(
-                        SessionScoreDB.session_id.in_(session_ids)
-                    ).group_by(SessionScoreDB.session_id).subquery()
+                        SessionScore.session_id.in_(session_ids)
+                    ).group_by(SessionScore.session_id).subquery()
 
-                    score_query = select(SessionScoreDB).join(
+                    score_query = select(SessionScore).join(
                         subquery,
                         and_(
-                            SessionScoreDB.session_id == subquery.c.session_id,
-                            SessionScoreDB.started_at_us == subquery.c.max_started_at
+                            SessionScore.session_id == subquery.c.session_id,
+                            SessionScore.started_at_us == subquery.c.max_started_at
                         )
                     )
 
@@ -707,9 +707,6 @@ class HistoryRepository:
                         }
                         for score in score_results
                     }
-                except ImportError:
-                    # SessionScoreDB not available (shouldn't happen but defensive)
-                    pass
                 except Exception as e:
                     # Don't fail entire query if score fetching fails
                     logger.error(f"Failed to fetch session scores: {e}")
@@ -1007,20 +1004,17 @@ class HistoryRepository:
             score_total = None
             score_status = None
             try:
-                from tarsy.models.db_models import SessionScoreDB
+                from tarsy.models.db_models import SessionScore
 
                 # Get latest score (most recent started_at_us)
-                score_query = select(SessionScoreDB).where(
-                    SessionScoreDB.session_id == session_id
-                ).order_by(SessionScoreDB.started_at_us.desc()).limit(1)
+                score_query = select(SessionScore).where(
+                    SessionScore.session_id == session_id
+                ).order_by(SessionScore.started_at_us.desc()).limit(1)
 
                 latest_score = self.session.exec(score_query).first()
                 if latest_score:
                     score_total = latest_score.total_score
                     score_status = latest_score.status
-            except ImportError:
-                # SessionScoreDB not available
-                pass
             except Exception as e:
                 logger.error(f"Failed to fetch score for session {session_id}: {e}")
 

@@ -602,6 +602,8 @@ function SessionHeader({ session, onRefresh, onScoreClick }: SessionHeaderProps)
         setScoringSuccess('Scoring initiated successfully! Check the Score tab for progress.');
       } else if (result.status === 'failed') {
         setScoringError('Previous scoring attempt failed. Try again.');
+      } else if (result.status === 'timed_out') {
+        setScoringError('Previous scoring attempt timed out. Try again.');
       }
 
       // Refresh session data to show updated score

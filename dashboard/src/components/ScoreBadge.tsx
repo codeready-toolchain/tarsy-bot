@@ -1,6 +1,6 @@
 import React from 'react';
 import { Chip, Tooltip, CircularProgress } from '@mui/material';
-import { CheckCircle, Error, Warning, HourglassEmpty } from '@mui/icons-material';
+import { CheckCircle, Error, Warning, HourglassEmpty, AccessAlarm } from '@mui/icons-material';
 import type { ScoringStatus } from '../types';
 
 interface ScoreBadgeProps {
@@ -38,6 +38,22 @@ const ScoreBadge: React.FC<ScoreBadgeProps> = ({
           size={size}
           variant="outlined"
           color="default"
+          onClick={onClick}
+          sx={{ cursor: onClick ? 'pointer' : 'default' }}
+        />
+      </Tooltip>
+    );
+  }
+
+  if (status === 'timed_out') {
+    return (
+      <Tooltip title="Scoring timed out" arrow>
+        <Chip
+          icon={<AccessAlarm />}
+          label="Score Timed Out"
+          size={size}
+          color="error"
+          variant="outlined"
           onClick={onClick}
           sx={{ cursor: onClick ? 'pointer' : 'default' }}
         />

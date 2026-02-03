@@ -802,7 +802,7 @@ export interface ChatUserMessageEvent {
 
 // EP-0028: Session Scoring types
 
-export type ScoringStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
+export type ScoringStatus = 'pending' | 'in_progress' | 'completed' | 'failed' | 'timed_out';
 
 export interface SessionScore {
   score_id: string;

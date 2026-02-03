@@ -441,7 +441,7 @@ class DetailedSession(BaseModel):
     session_total_tokens: Optional[int] = None
 
     score_total: Optional[int] = None  # 0-100, NULL if not scored or scoring incomplete
-    score_status: Optional[str] = None  # pending|in_progress|completed|failed
+    score_status: Optional[str] = None  # pending|in_progress|completed|failed|timed_out
 
     # Complete stage executions with all their interactions
     stages: List[DetailedStage] = Field(default_factory=list)  # Each stage contains its full interaction timeline
