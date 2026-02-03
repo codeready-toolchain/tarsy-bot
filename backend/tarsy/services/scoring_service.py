@@ -341,15 +341,20 @@ class ScoringService:
         )
 
     async def _update_score_status(
-        self, score_id: str, status: ScoringStatus, completed_at_us: Optional[int] = None
+        self,
+        score_id: str,
+        status: ScoringStatus,
+        completed_at_us: Optional[int] = None,
+        error_message: Optional[str] = None,
     ) -> bool:
         """
-        Update scoring status field.
+        Update scoring status and related fields.
 
         Args:
             score_id: Score identifier
             status: New status value
             completed_at_us: Optional completion timestamp
+            error_message: Optional error details (for FAILED/TIMED_OUT)
 
         Returns:
             True if successful, False otherwise
@@ -360,7 +365,10 @@ class ScoringService:
                 if not repo:
                     raise RuntimeError("Scoring repository unavailable")
                 return repo.update_score_status(
-                    score_id=score_id, status=status, completed_at_us=completed_at_us
+                    score_id=score_id,
+                    status=status,
+                    completed_at_us=completed_at_us,
+                    error_message=error_message,
                 )
 
         return (
@@ -405,34 +413,6 @@ class ScoringService:
             await self._retry_database_operation_async(
                 "update_score_completion", _update
             )
-            or False
-        )
-
-    async def _update_score_failure(self, score_id: str, error_message: str) -> bool:
-        """
-        Mark scoring as failed with error message.
-
-        Args:
-            score_id: Score identifier
-            error_message: Error details
-
-        Returns:
-            True if successful, False otherwise
-        """
-
-        async def _update():
-            async with self._get_repository() as repo:
-                if not repo:
-                    raise RuntimeError("Scoring repository unavailable")
-                return repo.update_score_status(
-                    score_id=score_id,
-                    status=ScoringStatus.FAILED,
-                    completed_at_us=now_us(),
-                    error_message=error_message,
-                )
-
-        return (
-            await self._retry_database_operation_async("update_score_failure", _update)
             or False
         )
 
@@ -543,13 +523,54 @@ class ScoringService:
             f"Created pending score {score_record.score_id} for session {session_id}"
         )
 
-        # Launch background scoring task
-        asyncio.create_task(self._execute_scoring(score_record.score_id, session_id))
+        # Launch background scoring task with timeout wrapper
+        asyncio.create_task(
+            self._execute_scoring_with_timeout(score_record.score_id, session_id)
+        )
         logger.debug(
             f"Launched background scoring task for score {score_record.score_id}"
         )
 
         return score_record
+
+    async def _execute_scoring_with_timeout(
+        self, score_id: str, session_id: str
+    ) -> None:
+        """
+        Wrapper for _execute_scoring() with timeout enforcement.
+
+        Wraps the scoring execution with asyncio.wait_for() to enforce
+        the configured timeout. Catches TimeoutError and marks score as
+        TIMED_OUT with elapsed time.
+
+        Args:
+            score_id: Score record identifier
+            session_id: Session to score
+        """
+        timeout = self.settings.scoring_timeout
+        start_time = now_us()
+
+        try:
+            await asyncio.wait_for(
+                self._execute_scoring(score_id, session_id),
+                timeout=timeout
+            )
+        except asyncio.TimeoutError:
+            # Calculate elapsed time in seconds
+            elapsed_us = now_us() - start_time
+            elapsed_s = elapsed_us // 1_000_000
+
+            error_msg = f"Scoring timed out after {elapsed_s}s (timeout: {timeout}s)"
+            await self._update_score_status(
+                score_id=score_id,
+                status=ScoringStatus.TIMED_OUT,
+                completed_at_us=now_us(),
+                error_message=error_msg,
+            )
+
+            logger.warning(
+                f"Scoring timed out for score {score_id}, session {session_id}: {error_msg}"
+            )
 
     async def _execute_scoring(self, score_id: str, session_id: str) -> None:
         """
@@ -696,7 +717,12 @@ class ScoringService:
         except Exception as e:
             # Mark as failed
             error_msg = f"{type(e).__name__}: {str(e)}"
-            await self._update_score_failure(score_id, error_msg)
+            await self._update_score_status(
+                score_id=score_id,
+                status=ScoringStatus.FAILED,
+                completed_at_us=now_us(),
+                error_message=error_msg,
+            )
             logger.error(
                 f"Scoring failed for score {score_id}, session {session_id}: {error_msg}",
                 exc_info=True,

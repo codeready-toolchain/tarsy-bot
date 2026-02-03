@@ -489,8 +489,8 @@ class TestDatabaseOperations:
             assert call_args[1]["status"] == ScoringStatus.COMPLETED
 
     @pytest.mark.asyncio
-    async def test_update_score_failure_success(self, scoring_service):
-        """Test successful score failure update."""
+    async def test_update_score_status_with_error_message_success(self, scoring_service):
+        """Test successful score status update with error message."""
         score_id = "test-score-123"
         error_message = "LLM client failed"
 
@@ -502,8 +502,11 @@ class TestDatabaseOperations:
             yield mock_repo
 
         with patch.object(scoring_service, "_get_repository", new=mock_get_repo):
-            result = await scoring_service._update_score_failure(
-                score_id, error_message
+            result = await scoring_service._update_score_status(
+                score_id=score_id,
+                status=ScoringStatus.FAILED,
+                completed_at_us=now_us(),
+                error_message=error_message,
             )
 
             assert result is True
@@ -820,3 +823,138 @@ class TestPromptHash:
                         call_args = mock_create.call_args
                         created_score = call_args[0][0]
                         assert created_score.prompt_hash == CURRENT_PROMPT_HASH
+
+
+# ==============================================================================
+# TIMEOUT TESTS
+# ==============================================================================
+
+
+def test_scoring_status_terminal_values():
+    """Test that terminal_values() returns all terminal statuses."""
+    terminal = ScoringStatus.terminal_values()
+    assert ScoringStatus.COMPLETED in terminal
+    assert ScoringStatus.FAILED in terminal
+    assert ScoringStatus.TIMED_OUT in terminal
+    assert ScoringStatus.PENDING not in terminal
+    assert ScoringStatus.IN_PROGRESS not in terminal
+    assert len(terminal) == 3
+
+
+@pytest.mark.asyncio
+async def test_scoring_timeout_marks_timed_out(
+    scoring_service, mock_session_completed
+):
+    """Test that scoring timeout marks score as TIMED_OUT."""
+    import asyncio
+
+    score_id = str(uuid4())
+    session_id = "test-session-timeout"
+
+    # Mock a long-running operation that will timeout
+    async def slow_scoring(sid, sess_id):
+        await asyncio.sleep(10)  # Sleep longer than timeout
+
+    with patch.object(
+        scoring_service, "_execute_scoring", side_effect=slow_scoring
+    ):
+        with patch.object(
+            scoring_service, "_update_score_status", return_value=True
+        ) as mock_update:
+            with patch.object(scoring_service.settings, "scoring_timeout", 0.1):
+                # Execute the timeout wrapper directly
+                await scoring_service._execute_scoring_with_timeout(score_id, session_id)
+
+                # Verify _update_score_status was called with TIMED_OUT
+                mock_update.assert_called_once()
+                call_args = mock_update.call_args
+                assert call_args[1]["score_id"] == score_id
+                assert call_args[1]["status"] == ScoringStatus.TIMED_OUT
+                assert call_args[1]["completed_at_us"] is not None
+                assert "timed out" in call_args[1]["error_message"].lower()
+
+
+@pytest.mark.asyncio
+async def test_scoring_timeout_error_message_includes_elapsed_time(
+    scoring_service
+):
+    """Test that timeout error message includes elapsed time and timeout value."""
+    import asyncio
+
+    score_id = str(uuid4())
+    session_id = "test-session-timeout"
+    timeout_value = 0.1  # 100ms
+
+    async def slow_scoring(sid, sess_id):
+        await asyncio.sleep(10)
+
+    with patch.object(
+        scoring_service, "_execute_scoring", side_effect=slow_scoring
+    ):
+        with patch.object(
+            scoring_service, "_update_score_status", return_value=True
+        ) as mock_update:
+            with patch.object(scoring_service.settings, "scoring_timeout", timeout_value):
+                await scoring_service._execute_scoring_with_timeout(score_id, session_id)
+
+                # Verify error message format
+                call_args = mock_update.call_args
+                error_msg = call_args[1]["error_message"]
+                assert "Scoring timed out after" in error_msg
+                assert f"timeout: {timeout_value}s" in error_msg or "timeout: 0s" in error_msg
+                # Elapsed time should be present (0s since we timeout immediately)
+                assert "after" in error_msg
+
+
+@pytest.mark.asyncio
+async def test_force_rescore_allows_timed_out_retry(
+    scoring_service, mock_session_completed
+):
+    """Test that force_rescore=True allows re-scoring of TIMED_OUT scores."""
+    session_id = "test-session-123"
+
+    # Create a TIMED_OUT score
+    timed_out_score = SessionScore(
+        score_id=str(uuid4()),
+        session_id=session_id,
+        prompt_hash=CURRENT_PROMPT_HASH,
+        status=ScoringStatus.TIMED_OUT,
+        score_triggered_by="test-user",
+        scored_at_us=now_us(),
+        started_at_us=now_us(),
+        completed_at_us=now_us(),
+        error_message="Scoring timed out after 300s (timeout: 300s)",
+    )
+
+    # Create a new pending score
+    new_score = SessionScore(
+        score_id=str(uuid4()),
+        session_id=session_id,
+        prompt_hash=CURRENT_PROMPT_HASH,
+        status=ScoringStatus.PENDING,
+        score_triggered_by="test-user",
+        scored_at_us=now_us(),
+        started_at_us=now_us(),
+    )
+
+    with patch.object(
+        scoring_service.history_service,
+        "get_session",
+        return_value=mock_session_completed,
+    ):
+        with patch.object(
+            scoring_service, "_get_latest_score", return_value=timed_out_score
+        ):
+            with patch.object(
+                scoring_service, "_create_score_record", return_value=new_score
+            ) as mock_create:
+                with patch("asyncio.create_task"):
+                    # force_rescore should allow re-scoring TIMED_OUT scores
+                    result = await scoring_service.initiate_scoring(
+                        session_id, "test-user", force_rescore=True
+                    )
+
+                    # Verify a new score was created
+                    mock_create.assert_called_once()
+                    assert result.score_id == new_score.score_id
+                    assert result.status == ScoringStatus.PENDING

@@ -100,6 +100,7 @@ def isolated_test_settings():
     settings.alert_processing_timeout = 900  # Default 15 minute timeout
     settings.llm_iteration_timeout = 210  # Default 3.5 minute iteration timeout
     settings.mcp_tool_call_timeout = 70  # Default 70 second tool timeout
+    settings.scoring_timeout = 300  # Default 5 minute scoring timeout
     settings.xai_api_key = "test-xai-key"
     settings.github_token = "test-github-token"
     settings.default_llm_provider = "gemini"

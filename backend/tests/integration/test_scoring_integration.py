@@ -361,3 +361,43 @@ Comprehensive final analysis.
             assert final_score.error_message is not None
             assert "Could not extract the total score" in final_score.error_message
             assert final_score.total_score is None
+
+    @pytest.mark.asyncio
+    async def test_scoring_integration_timeout(
+        self, scoring_service, completed_session, mock_llm_client
+    ):
+        """Test end-to-end scoring timeout with actual asyncio.wait_for()."""
+        session_id = completed_session.session_id
+
+        # Mock LLM client to sleep beyond scoring_timeout
+        async def mock_slow_generate_response(*args, **kwargs):
+            await asyncio.sleep(10)  # Sleep much longer than timeout
+            conversation = kwargs.get("conversation")
+            conversation.append_assistant_message("Score: 85/100")
+            return conversation
+
+        mock_llm_client.generate_response = AsyncMock(
+            side_effect=mock_slow_generate_response
+        )
+
+        with patch.object(
+            scoring_service, "_get_llm_client", return_value=mock_llm_client
+        ):
+            with patch.object(scoring_service.settings, "scoring_timeout", 0.1):
+                score_record = await scoring_service.initiate_scoring(
+                    session_id=session_id, triggered_by="test-user"
+                )
+
+                # Wait for background task to timeout
+                await asyncio.sleep(0.5)
+
+                # Retrieve the score from database
+                final_score = await scoring_service._get_score_by_id(score_record.score_id)
+
+                # Verify timeout state
+                assert final_score.status == ScoringStatus.TIMED_OUT
+                assert final_score.completed_at_us is not None
+                assert final_score.error_message is not None
+                assert "Scoring timed out after" in final_score.error_message
+                assert "timeout: 0.1s" in final_score.error_message or "timeout: 0s" in final_score.error_message
+                assert final_score.total_score is None
