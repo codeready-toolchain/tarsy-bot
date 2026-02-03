@@ -229,6 +229,9 @@ class SessionOverview(BaseModel):
     
     chat_message_count: Optional[int] = None  # Number of user messages in follow-up chat (if chat exists)
     
+    # Executive summary for quick view
+    final_analysis_summary: Optional[str] = None  # Executive summary without pulling full session details
+    
     # Calculated properties
     @computed_field
     @property

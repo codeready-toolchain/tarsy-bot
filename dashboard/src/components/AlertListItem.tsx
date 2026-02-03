@@ -1,6 +1,6 @@
-import React from 'react';
-import { TableRow, TableCell, Typography, IconButton, Tooltip, Chip } from '@mui/material';
-import { OpenInNew, Chat as ChatIcon, CallSplit } from '@mui/icons-material';
+import React, { useState } from 'react';
+import { TableRow, TableCell, Typography, IconButton, Tooltip, Chip, Collapse, Box } from '@mui/material';
+import { OpenInNew, Chat as ChatIcon, CallSplit, ExpandMore, ExpandLess } from '@mui/icons-material';
 import StatusBadge from './StatusBadge';
 import TokenUsageDisplay from './TokenUsageDisplay';
 import { highlightSearchTermNodes } from '../utils/search';
@@ -11,8 +11,11 @@ import { formatTimestamp, formatDurationMs, formatDuration } from '../utils/time
  * AlertListItem component represents a single session row in the alerts table
  * Displays basic session information with Phase 4 search highlighting support
  * Uses Unix timestamp utilities for optimal performance and consistent formatting
+ * Supports expandable executive summary preview without fetching full session details
  */
 const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchTerm }) => {
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
+  
   const handleRowClick = () => {
     if (onClick) {
       if (!session.session_id) {
@@ -31,12 +34,21 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
       window.open(url, '_blank', 'noopener,noreferrer');
     }
   };
+  
+  // Handle summary expand/collapse
+  const handleSummaryToggle = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent row click
+    setSummaryExpanded(!summaryExpanded);
+  };
 
   // Calculate duration if not provided
   const duration = session.duration_ms || 
     (session.completed_at_us ? formatDuration(session.started_at_us, session.completed_at_us) : null);
 
+  const hasSummary = session.final_analysis_summary && session.final_analysis_summary.trim().length > 0;
+
   return (
+    <>
     <TableRow 
       hover 
       onClick={handleRowClick}
@@ -88,9 +100,29 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
         </Typography>
       </TableCell>
       <TableCell>
-        <Typography variant="body2" color="text.secondary">
-          {formatTimestamp(session.started_at_us, 'short')}
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Typography variant="body2" color="text.secondary">
+            {formatTimestamp(session.started_at_us, 'short')}
+          </Typography>
+          {hasSummary && (
+            <Tooltip title={summaryExpanded ? "Hide summary" : "Show executive summary"}>
+              <IconButton
+                size="small"
+                onClick={handleSummaryToggle}
+                sx={{
+                  padding: 0.5,
+                  opacity: 0.6,
+                  '&:hover': {
+                    opacity: 1,
+                    backgroundColor: 'action.hover',
+                  },
+                }}
+              >
+                {summaryExpanded ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
+              </IconButton>
+            </Tooltip>
+          )}
+        </Box>
       </TableCell>
       <TableCell>
         <Typography variant="body2" color="text.secondary">
@@ -154,6 +186,45 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
         </Tooltip>
       </TableCell>
     </TableRow>
+    {/* Expandable summary row */}
+    {hasSummary && (
+      <TableRow>
+        <TableCell 
+          colSpan={10} 
+          sx={{ 
+            paddingTop: 0, 
+            paddingBottom: 0, 
+            borderBottom: summaryExpanded ? undefined : 'none'
+          }}
+        >
+          <Collapse in={summaryExpanded} timeout="auto" unmountOnExit>
+            <Box sx={{ 
+              padding: 2, 
+              backgroundColor: 'background.default',
+              borderRadius: 1,
+              margin: 1
+            }}>
+              <Typography 
+                variant="subtitle2" 
+                sx={{ fontWeight: 600, mb: 1, color: 'primary.main' }}
+              >
+                Executive Summary
+              </Typography>
+              <Typography 
+                variant="body2" 
+                sx={{ 
+                  whiteSpace: 'pre-wrap',
+                  color: 'text.primary'
+                }}
+              >
+                {session.final_analysis_summary}
+              </Typography>
+            </Box>
+          </Collapse>
+        </TableCell>
+      </TableRow>
+    )}
+    </>
   );
 };
 
