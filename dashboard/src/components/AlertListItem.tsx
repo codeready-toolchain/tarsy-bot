@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { TableRow, TableCell, Typography, IconButton, Tooltip, Chip, Box, Popover, Card, Divider } from '@mui/material';
 import { OpenInNew, Chat as ChatIcon, CallSplit, Summarize } from '@mui/icons-material';
+import ReactMarkdown from 'react-markdown';
 import StatusBadge from './StatusBadge';
 import TokenUsageDisplay from './TokenUsageDisplay';
 import { highlightSearchTermNodes } from '../utils/search';
+import { executiveSummaryMarkdownStyles } from '../utils/markdownComponents';
 import type { AlertListItemProps } from '../types';
 import { formatTimestamp, formatDurationMs, formatDuration } from '../utils/timestamp';
 
@@ -105,9 +107,11 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
                     </Typography>
                   </Box>
                   <Divider sx={{ mb: 1.5 }} />
-                  <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
-                    {session.final_analysis_summary}
-                  </Typography>
+                  <Box sx={executiveSummaryMarkdownStyles}>
+                    <ReactMarkdown>
+                      {session.final_analysis_summary}
+                    </ReactMarkdown>
+                  </Box>
                 </Card>
               </Popover>
             </>

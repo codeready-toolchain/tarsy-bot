@@ -21,6 +21,7 @@ import ReactMarkdown, { defaultUrlTransform } from 'react-markdown';
 import type { FinalAnalysisCardProps } from '../types';
 import CopyButton from './CopyButton';
 import { isTerminalSessionStatus, SESSION_STATUS } from '../utils/statusConstants';
+import { executiveSummaryMarkdownStyles } from '../utils/markdownComponents';
 
 /**
  * Generate a fake analysis message for terminal sessions without analysis
@@ -352,53 +353,7 @@ const FinalAnalysisCard = forwardRef<HTMLDivElement, FinalAnalysisCardProps>(({ 
                   tooltip="Copy summary"
                 />
               </Box>
-              <Box sx={{
-                // Ensure markdown content renders inline properly
-                '& p': {
-                  margin: 0,
-                  marginBottom: 1,
-                  lineHeight: 1.7,
-                  fontSize: '0.95rem',
-                  color: 'text.primary',
-                  '&:last-child': { marginBottom: 0 }
-                },
-                '& strong': {
-                  fontWeight: 'bold'
-                },
-                '& em': {
-                  fontStyle: 'italic'
-                },
-                // Inline code styling - using native CSS for proper inline behavior
-                '& code': {
-                  fontFamily: '"JetBrains Mono", "Fira Code", "SF Mono", Consolas, monospace',
-                  fontSize: '0.875em',
-                  backgroundColor: (theme) => alpha(theme.palette.grey[900], 0.08),
-                  color: 'error.main',
-                  padding: '1px 6px',
-                  borderRadius: '4px',
-                  border: '1px solid',
-                  borderColor: (theme) => alpha(theme.palette.grey[900], 0.12),
-                  whiteSpace: 'nowrap',
-                  verticalAlign: 'baseline'
-                },
-                // Block code
-                '& pre': {
-                  display: 'block',
-                  fontFamily: '"JetBrains Mono", "Fira Code", "SF Mono", Consolas, monospace',
-                  fontSize: '0.875em',
-                  backgroundColor: (theme) => alpha(theme.palette.grey[900], 0.06),
-                  padding: 1.5,
-                  borderRadius: 1,
-                  overflowX: 'auto',
-                  margin: '8px 0',
-                  '& code': {
-                    backgroundColor: 'transparent',
-                    border: 'none',
-                    padding: 0,
-                    whiteSpace: 'pre'
-                  }
-                }
-              }}>
+              <Box sx={executiveSummaryMarkdownStyles}>
                 <ReactMarkdown>
                   {summary}
                 </ReactMarkdown>
