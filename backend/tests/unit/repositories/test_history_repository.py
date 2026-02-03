@@ -514,6 +514,73 @@ class TestHistoryRepository:
         assert sessions_by_id["session-null"].author is None  # Should be None for old sessions
     
     @pytest.mark.unit
+    def test_get_alert_sessions_includes_final_analysis_summary(self, repository):
+        """Test that SessionOverview includes final_analysis_summary for quick view."""
+        from tarsy.utils.timestamp import now_us
+        
+        # Create sessions with different summary states
+        session_with_summary = AlertSession(
+            session_id="session-with-summary",
+            alert_data={},
+            agent_type="TestAgent",
+            alert_type="test",
+            author="test-user",
+            status="completed",
+            started_at_us=now_us(),
+            completed_at_us=now_us(),
+            chain_id="chain-summary",
+            final_analysis="**Root Cause:** Database connection timeout.\n\n**Resolution:** Increased timeout settings.",
+            final_analysis_summary="Database connection issue resolved by adjusting timeout configuration."
+        )
+        
+        session_without_summary = AlertSession(
+            session_id="session-no-summary",
+            alert_data={},
+            agent_type="TestAgent",
+            alert_type="test",
+            author="test-user",
+            status="completed",
+            started_at_us=now_us(),
+            completed_at_us=now_us(),
+            chain_id="chain-no-summary",
+            final_analysis="Analysis completed.",
+            final_analysis_summary=None  # No summary generated
+        )
+        
+        session_in_progress = AlertSession(
+            session_id="session-in-progress",
+            alert_data={},
+            agent_type="TestAgent",
+            alert_type="test",
+            author="test-user",
+            status="in_progress",
+            started_at_us=now_us(),
+            chain_id="chain-progress",
+            final_analysis_summary=None  # Not completed yet
+        )
+        
+        repository.create_alert_session(session_with_summary)
+        repository.create_alert_session(session_without_summary)
+        repository.create_alert_session(session_in_progress)
+        
+        # Query all sessions
+        result = repository.get_alert_sessions()
+        assert len(result.sessions) == 3
+        
+        # Verify final_analysis_summary is included in SessionOverview
+        sessions_by_id = {s.session_id: s for s in result.sessions}
+        
+        # Session with summary should have the summary text
+        assert sessions_by_id["session-with-summary"].final_analysis_summary is not None
+        assert sessions_by_id["session-with-summary"].final_analysis_summary == "Database connection issue resolved by adjusting timeout configuration."
+        
+        # Session without summary should have None
+        assert sessions_by_id["session-no-summary"].final_analysis_summary is None
+        
+        # In-progress session should have None
+        assert sessions_by_id["session-in-progress"].final_analysis_summary is None
+    
+    @pytest.mark.unit
     def test_get_alert_sessions_with_date_filters(self, repository):
         """Test getting alert sessions with date range filters."""
         # Create sessions with different timestamps
@@ -2688,6 +2755,52 @@ class TestHistoryRepositoryChatMessageCount:
         
         assert overview is not None
         assert overview.chat_message_count is None
+    
+    @pytest.mark.unit
+    def test_get_session_overview_includes_final_analysis_summary(self, repository):
+        """Test that get_session_overview includes final_analysis_summary field."""
+        from tarsy.models.constants import AlertSessionStatus
+        from tarsy.models.db_models import AlertSession
+        from tarsy.utils.timestamp import now_us
+        
+        # Create session with executive summary
+        session_with_summary = AlertSession(
+            session_id="overview-with-summary",
+            alert_type="kubernetes",
+            agent_type="chain",
+            chain_id="test-chain-overview-summary",
+            status=AlertSessionStatus.COMPLETED.value,
+            alert_data={"test": "data"},
+            started_at_us=now_us(),
+            completed_at_us=now_us() + 1000000,
+            final_analysis="Detailed root cause analysis and resolution steps.",
+            final_analysis_summary="Quick summary: Issue identified and resolved successfully."
+        )
+        repository.create_alert_session(session_with_summary)
+        
+        # Create session without summary
+        session_without_summary = AlertSession(
+            session_id="overview-no-summary",
+            alert_type="kubernetes",
+            agent_type="chain",
+            chain_id="test-chain-overview-no-summary",
+            status=AlertSessionStatus.IN_PROGRESS.value,
+            alert_data={"test": "data"},
+            started_at_us=now_us(),
+            final_analysis_summary=None
+        )
+        repository.create_alert_session(session_without_summary)
+        
+        # Verify session with summary includes it
+        overview_with = repository.get_session_overview("overview-with-summary")
+        assert overview_with is not None
+        assert overview_with.final_analysis_summary is not None
+        assert overview_with.final_analysis_summary == "Quick summary: Issue identified and resolved successfully."
+        
+        # Verify session without summary returns None
+        overview_without = repository.get_session_overview("overview-no-summary")
+        assert overview_without is not None
+        assert overview_without.final_analysis_summary is None
 
 
 class TestGetLastLLMInteractionWithConversation:

@@ -1778,7 +1778,9 @@ class TestHistoryControllerResponseFormat:
             # Parallel stages indicator
             "has_parallel_stages",
             # Slack message fingerprint for notification threading
-            "slack_message_fingerprint"
+            "slack_message_fingerprint",
+            # Executive summary for quick view in dashboard
+            "final_analysis_summary"
         }
         actual_fields = set(session.keys())
         assert required_fields.issubset(actual_fields)

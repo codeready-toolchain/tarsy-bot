@@ -75,18 +75,18 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
                 onMouseEnter={handleSummaryMouseEnter}
                 onMouseLeave={handleSummaryMouseLeave}
                 onClick={(e) => e.stopPropagation()} // Prevent row click
-                sx={{ 
+                sx={(theme) => ({ 
                   cursor: 'pointer',
                   height: 24,
                   fontSize: '0.75rem',
                   fontWeight: 500,
                   transition: 'all 0.2s ease-in-out',
                   '&:hover': {
-                    backgroundColor: '#757575 !important', // Darker grey background
-                    color: '#ffffff !important', // White text
-                    borderColor: '#757575 !important',
+                    backgroundColor: `${theme.palette.grey[700]} !important`,
+                    color: `${theme.palette.common.white} !important`,
+                    borderColor: `${theme.palette.grey[700]} !important`,
                   },
-                }}
+                })}
               />
               <Popover
                 sx={{ pointerEvents: 'none' }}
