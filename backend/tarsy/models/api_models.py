@@ -158,7 +158,7 @@ class SessionScoreResponse(BaseModel):
 
     # Async status fields
     status: ScoringStatus = Field(
-        description="Scoring status (pending|in_progress|completed|failed)"
+        description="Scoring status (pending|in_progress|completed|failed|timed_out)"
     )
     started_at_us: int = Field(
         description="Processing start time (microseconds since epoch)"
@@ -193,7 +193,7 @@ class SessionScoreRequest(BaseModel):
 
     force_rescore: bool = Field(
         default=False,
-        description="If true, re-score even if score already exists. Returns 409 if scoring is in progress."
+        description="If true, re-score even if score already exists. Returns 409 if scoring is in progress.",
     )
 
 

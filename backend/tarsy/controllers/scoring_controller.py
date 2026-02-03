@@ -130,7 +130,7 @@ async def score_session(
 
         # Determine HTTP status code based on score status
         # 202: New scoring initiated (pending/in_progress)
-        # 200: Existing score returned (completed/failed)
+        # 200: Existing score returned (completed/failed/timed_out)
         if score.status in ScoringStatus.active_values():
             response.status_code = 202
         else:
@@ -182,6 +182,7 @@ async def score_session(
     - in_progress: Scoring currently executing
     - completed: Scoring finished successfully
     - failed: Scoring encountered an error
+    - timed_out: Scoring timed out
     """,
     responses={
         200: {
