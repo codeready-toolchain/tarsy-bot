@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { TableRow, TableCell, Typography, IconButton, Tooltip, Chip, Collapse, Box } from '@mui/material';
-import { OpenInNew, Chat as ChatIcon, CallSplit, ExpandMore, ExpandLess } from '@mui/icons-material';
+import { TableRow, TableCell, Typography, IconButton, Tooltip, Chip, Box, Popover, Card, Divider } from '@mui/material';
+import { OpenInNew, Chat as ChatIcon, CallSplit, Summarize } from '@mui/icons-material';
 import StatusBadge from './StatusBadge';
 import TokenUsageDisplay from './TokenUsageDisplay';
 import { highlightSearchTermNodes } from '../utils/search';
@@ -11,10 +11,10 @@ import { formatTimestamp, formatDurationMs, formatDuration } from '../utils/time
  * AlertListItem component represents a single session row in the alerts table
  * Displays basic session information with Phase 4 search highlighting support
  * Uses Unix timestamp utilities for optimal performance and consistent formatting
- * Supports expandable executive summary preview without fetching full session details
+ * Supports hover card executive summary preview without fetching full session details
  */
 const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchTerm }) => {
-  const [summaryExpanded, setSummaryExpanded] = useState(false);
+  const [summaryAnchorEl, setSummaryAnchorEl] = useState<HTMLElement | null>(null);
   
   const handleRowClick = () => {
     if (onClick) {
@@ -35,10 +35,13 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
     }
   };
   
-  // Handle summary expand/collapse
-  const handleSummaryToggle = (e: React.MouseEvent) => {
-    e.stopPropagation(); // Prevent row click
-    setSummaryExpanded(!summaryExpanded);
+  // Handle summary hover card
+  const handleSummaryMouseEnter = (e: React.MouseEvent<HTMLElement>) => {
+    setSummaryAnchorEl(e.currentTarget);
+  };
+
+  const handleSummaryMouseLeave = () => {
+    setSummaryAnchorEl(null);
   };
 
   // Calculate duration if not provided
@@ -46,9 +49,9 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
     (session.completed_at_us ? formatDuration(session.started_at_us, session.completed_at_us) : null);
 
   const hasSummary = session.final_analysis_summary && session.final_analysis_summary.trim().length > 0;
+  const summaryPopoverOpen = Boolean(summaryAnchorEl);
 
   return (
-    <>
     <TableRow 
       hover 
       onClick={handleRowClick}
@@ -60,7 +63,56 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
       }}
     >
       <TableCell>
-        <StatusBadge status={session.status} />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <StatusBadge status={session.status} />
+          {hasSummary && (
+            <>
+              <Chip
+                label="Summary"
+                size="small"
+                variant="outlined"
+                color="primary"
+                onMouseEnter={handleSummaryMouseEnter}
+                onMouseLeave={handleSummaryMouseLeave}
+                onClick={(e) => e.stopPropagation()} // Prevent row click
+                sx={{ 
+                  cursor: 'pointer',
+                  height: 24,
+                  fontSize: '0.75rem',
+                  fontWeight: 500,
+                  transition: 'all 0.2s ease-in-out',
+                  '&:hover': {
+                    backgroundColor: '#757575 !important', // Darker grey background
+                    color: '#ffffff !important', // White text
+                    borderColor: '#757575 !important',
+                  },
+                }}
+              />
+              <Popover
+                sx={{ pointerEvents: 'none' }}
+                open={summaryPopoverOpen}
+                anchorEl={summaryAnchorEl}
+                anchorOrigin={{ vertical: 'top', horizontal: 'left' }}
+                transformOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+                onClose={handleSummaryMouseLeave}
+                disableRestoreFocus
+              >
+                <Card sx={{ maxWidth: 500, p: 2.5, boxShadow: 3 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+                    <Summarize color="primary" />
+                    <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'primary.main' }}>
+                      Executive Summary
+                    </Typography>
+                  </Box>
+                  <Divider sx={{ mb: 1.5 }} />
+                  <Typography variant="body2" sx={{ whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                    {session.final_analysis_summary}
+                  </Typography>
+                </Card>
+              </Popover>
+            </>
+          )}
+        </Box>
       </TableCell>
       {/* Parallel agents indicator column - narrow, no header */}
       <TableCell sx={{ width: 40, textAlign: 'center', px: 0.5 }}>
@@ -100,29 +152,9 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
         </Typography>
       </TableCell>
       <TableCell>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Typography variant="body2" color="text.secondary">
-            {formatTimestamp(session.started_at_us, 'short')}
-          </Typography>
-          {hasSummary && (
-            <Tooltip title={summaryExpanded ? "Hide summary" : "Show executive summary"}>
-              <IconButton
-                size="small"
-                onClick={handleSummaryToggle}
-                sx={{
-                  padding: 0.5,
-                  opacity: 0.6,
-                  '&:hover': {
-                    opacity: 1,
-                    backgroundColor: 'action.hover',
-                  },
-                }}
-              >
-                {summaryExpanded ? <ExpandLess fontSize="small" /> : <ExpandMore fontSize="small" />}
-              </IconButton>
-            </Tooltip>
-          )}
-        </Box>
+        <Typography variant="body2" color="text.secondary">
+          {formatTimestamp(session.started_at_us, 'short')}
+        </Typography>
       </TableCell>
       <TableCell>
         <Typography variant="body2" color="text.secondary">
@@ -186,45 +218,6 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
         </Tooltip>
       </TableCell>
     </TableRow>
-    {/* Expandable summary row */}
-    {hasSummary && (
-      <TableRow>
-        <TableCell 
-          colSpan={10} 
-          sx={{ 
-            paddingTop: 0, 
-            paddingBottom: 0, 
-            borderBottom: summaryExpanded ? undefined : 'none'
-          }}
-        >
-          <Collapse in={summaryExpanded} timeout="auto" unmountOnExit>
-            <Box sx={{ 
-              padding: 2, 
-              backgroundColor: 'background.default',
-              borderRadius: 1,
-              margin: 1
-            }}>
-              <Typography 
-                variant="subtitle2" 
-                sx={{ fontWeight: 600, mb: 1, color: 'primary.main' }}
-              >
-                Executive Summary
-              </Typography>
-              <Typography 
-                variant="body2" 
-                sx={{ 
-                  whiteSpace: 'pre-wrap',
-                  color: 'text.primary'
-                }}
-              >
-                {session.final_analysis_summary}
-              </Typography>
-            </Box>
-          </Collapse>
-        </TableCell>
-      </TableRow>
-    )}
-    </>
   );
 };
 
