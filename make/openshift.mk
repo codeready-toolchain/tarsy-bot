@@ -10,9 +10,10 @@ NC := \033[0m # No Color
 
 # OpenShift variables
 OPENSHIFT_NAMESPACE := tarsy-dev
-OPENSHIFT_REGISTRY := $(shell oc get route default-route -n openshift-image-registry --template='{{ .spec.host }}' 2>/dev/null || echo "registry.not.found")
-BACKEND_IMAGE := $(OPENSHIFT_REGISTRY)/$(OPENSHIFT_NAMESPACE)/tarsy-backend
-DASHBOARD_IMAGE := $(OPENSHIFT_REGISTRY)/$(OPENSHIFT_NAMESPACE)/tarsy-dashboard
+# Use lazy evaluation (=) instead of immediate (:=) to avoid running oc commands unless needed
+OPENSHIFT_REGISTRY = $(shell oc get route default-route -n openshift-image-registry --template='{{ .spec.host }}' 2>/dev/null || echo "registry.not.found")
+BACKEND_IMAGE = $(OPENSHIFT_REGISTRY)/$(OPENSHIFT_NAMESPACE)/tarsy-backend
+DASHBOARD_IMAGE = $(OPENSHIFT_REGISTRY)/$(OPENSHIFT_NAMESPACE)/tarsy-dashboard
 IMAGE_TAG := dev
 
 # Push tool selection
@@ -22,8 +23,8 @@ USE_SKOPEO ?=
 # Container management (reuse existing)
 PODMAN_COMPOSE := COMPOSE_PROJECT_NAME=tarsy podman compose -f deploy/podman-compose.yml
 
-# Auto-detect OpenShift cluster domain
-CLUSTER_DOMAIN := $(shell oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}' 2>/dev/null)
+# Auto-detect OpenShift cluster domain (lazy evaluation to avoid running oc unless needed)
+CLUSTER_DOMAIN = $(shell oc get ingresses.config.openshift.io cluster -o jsonpath='{.spec.domain}' 2>/dev/null)
 
 # Auto-load deploy/openshift.env ONLY when running OpenShift targets
 # Check if any OpenShift target is in the command line goals
