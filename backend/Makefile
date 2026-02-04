@@ -9,7 +9,7 @@ UV := uv
 TEST_DIR := tests
 APP_DIR := app
 PYTEST := TESTING=true $(UV) run python -m pytest
-E2E_TEST_COUNT := 19
+E2E_TEST_COUNT := 27
 
 # Colors for output
 GREEN := \033[0;32m
@@ -130,6 +130,33 @@ test-e2e: check-test-deps clean-test-db ## Run end-to-end tests only (one by one
 	@$(MAKE) clean-test-db
 	@echo "$(YELLOW)Running 19th of $(E2E_TEST_COUNT) E2E tests (parallel LLM failure)...$(NC)"
 	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_parallel_llm_failure_e2e.py -v --tb=short -m e2e || exit 1
+	@$(MAKE) clean-test-db
+	@echo ""
+	@echo "$(GREEN)═══ GROUP 5: Slack Integration Tests ═══$(NC)"
+	@echo "$(YELLOW)Running 20th of $(E2E_TEST_COUNT) E2E tests (Slack - threaded notification completed)...$(NC)"
+	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_slack_integration_e2e.py::TestSlackThreadedNotificationCompleted -v --tb=short -m e2e || exit 1
+	@$(MAKE) clean-test-db
+	@echo "$(YELLOW)Running 21st of $(E2E_TEST_COUNT) E2E tests (Slack - direct channel notification completed)...$(NC)"
+	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_slack_integration_e2e.py::TestSlackDirectChannelNotificationCompleted -v --tb=short -m e2e || exit 1
+	@$(MAKE) clean-test-db
+	@echo "$(YELLOW)Running 22nd of $(E2E_TEST_COUNT) E2E tests (Slack - threaded notification failed)...$(NC)"
+	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_slack_integration_e2e.py::TestSlackThreadedNotificationFailed -v --tb=short -m e2e || exit 1
+	@$(MAKE) clean-test-db
+	@echo "$(YELLOW)Running 23rd of $(E2E_TEST_COUNT) E2E tests (Slack - direct channel notification failed)...$(NC)"
+	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_slack_integration_e2e.py::TestSlackDirectChannelNotificationFailed -v --tb=short -m e2e || exit 1
+	@$(MAKE) clean-test-db
+	@echo "$(YELLOW)Running 24th of $(E2E_TEST_COUNT) E2E tests (Slack - threaded notification paused)...$(NC)"
+	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_slack_integration_e2e.py::TestSlackThreadedNotificationPaused -v --tb=short -m e2e || exit 1
+	@$(MAKE) clean-test-db
+	@echo "$(YELLOW)Running 25th of $(E2E_TEST_COUNT) E2E tests (Slack - directed notification paused)...$(NC)"
+	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_slack_integration_e2e.py::TestSlackDirectedNotificationPaused -v --tb=short -m e2e || exit 1
+	@$(MAKE) clean-test-db
+	@echo "$(YELLOW)Running 26th of $(E2E_TEST_COUNT) E2E tests (Slack - message not found)...$(NC)"
+	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_slack_integration_e2e.py::TestSlackThreadedNotificationMessageNotFound -v --tb=short -m e2e || exit 1
+	@$(MAKE) clean-test-db
+	@echo "$(YELLOW)Running 27th of $(E2E_TEST_COUNT) E2E tests (Slack - API error resilience)...$(NC)"
+	@TESTING=true .venv/bin/python -m pytest $(TEST_DIR)/e2e/test_slack_integration_e2e.py::TestSlackApiErrorResilience -v --tb=short -m e2e || exit 1
+	@$(MAKE) clean-test-db
 	@echo ""
 	@echo "$(GREEN)All E2E tests completed successfully!$(NC)"
 

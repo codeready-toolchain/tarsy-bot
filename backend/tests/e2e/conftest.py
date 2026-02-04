@@ -228,6 +228,8 @@ current-context: test-context
     e2e_isolation.set_isolated_env("OPENAI_API_KEY", "test-key-123")
     e2e_isolation.set_isolated_env("LLM_PROVIDER", "openai-default")
     e2e_isolation.set_isolated_env("KUBECONFIG", kubeconfig_path)
+    e2e_isolation.set_isolated_env("SLACK_BOT_TOKEN", "xoxb-test-slack-token-123")
+    e2e_isolation.set_isolated_env("SLACK_CHANNEL", "#test-alerts")
     
     # Create real Settings object with isolated environment
     settings = Settings()
@@ -237,6 +239,8 @@ current-context: test-context
     settings.agent_config_path = str(test_agents_path)
     settings.openai_api_key = "test-key-123"
     settings.llm_provider = "openai-default"
+    settings.slack_bot_token = "xoxb-test-slack-token-123"
+    settings.slack_channel = "#test-alerts"
     
     # Patch global settings
     e2e_isolation.patch_settings(settings)
