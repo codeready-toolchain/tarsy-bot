@@ -39,6 +39,25 @@ from tarsy.utils.timestamp import now_us
 logger = get_logger(__name__)
 
 
+class SessionNotFoundError(RuntimeError):
+    """
+    Raised when the session is not found in the database.
+
+    Inherits from RuntimeError because that's what's used in the rest of the codebase for
+    generic errors.
+    """
+
+    pass
+
+
+class SessionNotCompletedError(RuntimeError):
+    """
+    Raised on attempt to score a session that is not successfully completed.
+    """
+
+    pass
+
+
 class ScoringService:
     """
     Core service for managing alert session scoring.
@@ -476,7 +495,9 @@ class ScoringService:
             Pending SessionScore record
 
         Raises:
-            ValueError: Session not found or not completed
+            SessionNotFoundError: Session was not found
+            SessionNotCompletedError: When the session that should be scored is not completed
+            ValueError: Rescore is not forcable because of the status of the existing scoring
             RuntimeError: Database operation failed
         """
         logger.info(
@@ -486,10 +507,10 @@ class ScoringService:
         # Validate session exists and is COMPLETED
         session = self.history_service.get_session(session_id)
         if not session:
-            raise ValueError(f"Session {session_id} not found")
+            raise SessionNotFoundError(f"Session {session_id} was not found")
 
         if session.status != AlertSessionStatus.COMPLETED.value:
-            raise ValueError(
+            raise SessionNotCompletedError(
                 f"Session must be completed (current status: {session.status})"
             )
 
@@ -501,7 +522,7 @@ class ScoringService:
             else:
                 if existing_score.status in ScoringStatus.active_values():
                     raise ValueError(
-                        f"Cannot force rescore while scoring is {existing_score.status}"
+                        f"Cannot force rescore while an already existing scoring is {existing_score.status.value}"
                     )
 
         # Create pending score record
@@ -552,8 +573,7 @@ class ScoringService:
 
         try:
             await asyncio.wait_for(
-                self._execute_scoring(score_id, session_id),
-                timeout=timeout
+                self._execute_scoring(score_id, session_id), timeout=timeout
             )
         except asyncio.TimeoutError:
             # Calculate elapsed time in seconds

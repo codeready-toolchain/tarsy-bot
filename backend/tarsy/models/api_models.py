@@ -158,7 +158,7 @@ class SessionScoreResponse(BaseModel):
 
     # Async status fields
     status: ScoringStatus = Field(
-        description="Scoring status (pending|in_progress|completed|failed)"
+        description="Scoring status (pending|in_progress|completed|failed|timed_out)"
     )
     started_at_us: int = Field(
         description="Processing start time (microseconds since epoch)"
@@ -182,6 +182,19 @@ class SessionScoreResponse(BaseModel):
             True if prompt_hash matches current hash, False otherwise
         """
         return self.prompt_hash == CURRENT_PROMPT_HASH
+
+
+class SessionScoreRequest(BaseModel):
+    """
+    Request body for session scoring endpoint.
+
+    Controls whether to force re-scoring even if a score already exists.
+    """
+
+    force_rescore: bool = Field(
+        default=False,
+        description="If true, re-score even if score already exists. Returns 409 if scoring is in progress.",
+    )
 
 
 # ===== Session Control API Models =====
