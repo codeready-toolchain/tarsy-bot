@@ -1781,6 +1781,10 @@ class TestHistoryControllerResponseFormat:
             "slack_message_fingerprint",
             # Executive summary for quick view in dashboard
             "final_analysis_summary"
+            "slack_message_fingerprint"
+            # session scores
+            "score_total",
+            "score_status",
         }
         actual_fields = set(session.keys())
         assert required_fields.issubset(actual_fields)
