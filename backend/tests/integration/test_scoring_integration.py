@@ -285,7 +285,10 @@ Comprehensive final analysis.
         with patch.object(
             scoring_service, "_get_llm_client", return_value=mock_llm_client
         ):
-            with pytest.raises(ValueError, match="Cannot force rescore while scoring"):
+            with pytest.raises(
+                ValueError,
+                match="Cannot force rescore while an already existing scoring is pending",
+            ):
                 await scoring_service.initiate_scoring(
                     session_id=session_id, triggered_by="test-user", force_rescore=True
                 )
