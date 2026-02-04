@@ -194,6 +194,11 @@ class ScoringStatus(Enum):
         """All status values as strings."""
         return [status.value for status in cls]
 
+    @classmethod
+    def terminal_values(cls) -> list['ScoringStatus']:
+        """Terminal status enum instances (scoring finished - success or failure)."""
+        return [cls.COMPLETED, cls.FAILED, cls.TIMED_OUT]
+
 
 class LLMInteractionType(str, Enum):
     """

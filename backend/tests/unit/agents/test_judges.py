@@ -1,6 +1,5 @@
 """Tests for judge prompts and hashing."""
 
-import hashlib
 from tarsy.agents.prompts.judges import (
     JUDGE_PROMPT_SCORE,
     JUDGE_PROMPT_FOLLOWUP_MISSING_TOOLS,
@@ -14,8 +13,10 @@ class TestJudgePrompts:
 
     def test_judge_prompt_score_contains_placeholders(self):
         """Test that JUDGE_PROMPT_SCORE contains required placeholders."""
-        assert "{{SESSION_CONVERSATION}}" in JUDGE_PROMPT_SCORE
         assert "{{ALERT_DATA}}" in JUDGE_PROMPT_SCORE
+        assert "{{FINAL_ANALYSIS}}" in JUDGE_PROMPT_SCORE
+        assert "{{LLM_CONVERSATION}}" in JUDGE_PROMPT_SCORE
+        assert "{{CHAT_CONVERSATION}}" in JUDGE_PROMPT_SCORE
         assert "{{OUTPUT_SCHEMA}}" in JUDGE_PROMPT_SCORE
 
     def test_judge_prompt_followup_contains_content(self):

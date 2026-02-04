@@ -3,14 +3,18 @@ Judge prompts for scoring evaluation task quality.
 
 This module contains hardcoded prompts for the LLM judge that evaluates
 evaluation task quality and methodology. Supports placeholder substitution for:
-- {{SESSION_CONVERSATION}}: Full conversation from History Service
-- {{ALERT_DATA}}: Original input data
+- {{ALERT_DATA}}: Original alert data (JSON)
+- {{FINAL_ANALYSIS}}: Agent's final analysis text (markdown)
+- {{LLM_CONVERSATION}}: Complete LLM conversation with MCP tool interactions (JSON)
+- {{CHAT_CONVERSATION}}: Follow-up chat conversation if exists (JSON, or "No chat conversation")
 - {{OUTPUT_SCHEMA}}: Format instructions (injected by code)
 
 The SHA256 hash of both prompts combined provides criteria versioning.
 """
 
 import hashlib
+
+JUDGE_SYSTEM_PROMPT = """You are a computer security expert specializing in DevOps and Kubernetes security operations."""
 
 # Prompt 1: Main scoring evaluation
 JUDGE_PROMPT_SCORE = """You are an expert evaluator with deep domain knowledge in the subject matter.
@@ -191,14 +195,27 @@ Include **new tool suggestions** that would have:
 Below is the complete conversation from the evaluation session.
 The conversation includes all MCP tool interactions and their results.
 
------------------------- Conversation start ------------------------
-{{SESSION_CONVERSATION}}
-------------------------  Conversation end  ------------------------
-
-Original Input Data:
+### Original Input Data:
 ------------------------ Input data start ------------------------
 {{ALERT_DATA}}
 ------------------------  Input data end  ------------------------
+
+### Final Analysis
+The agent's final conclusions and analysis:
+------------------------ Final analysis start ------------------------
+{{FINAL_ANALYSIS}}
+------------------------  Final analysis end  ------------------------
+
+### Investigation Conversation
+Complete LLM conversation history including all MCP tool interactions and their results:
+------------------------ Investigation conversation start ------------------------
+{{LLM_CONVERSATION}}
+------------------------  Investigation conversation end  ------------------------
+
+### Follow-up Chat (if any)
+------------------------ Chat conversation start ------------------------
+{{CHAT_CONVERSATION}}
+------------------------  Chat conversation end  ------------------------
 
 ## YOUR TASK NOW
 
@@ -306,6 +323,11 @@ Include **new tool suggestions** that would have:
 
 If no critical tools are missing, simply state "No critical missing tools identified.\""""
 
+JUDGE_PROMPT_SCORE_REMINDER = """
+I failed to parse your answer according to my instructions. Respond solely with your score according to the following instructions:
+
+{{OUTPUT_SCHEMA}}
+"""
 
 def get_current_prompt_hash() -> str:
     """
@@ -321,7 +343,7 @@ def get_current_prompt_hash() -> str:
     combined_prompts = JUDGE_PROMPT_SCORE + JUDGE_PROMPT_FOLLOWUP_MISSING_TOOLS
 
     # Compute SHA256 hash
-    hash_obj = hashlib.sha256(combined_prompts.encode('utf-8'))
+    hash_obj = hashlib.sha256(combined_prompts.encode("utf-8"))
 
     return hash_obj.hexdigest()
 
