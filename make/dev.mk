@@ -24,18 +24,18 @@ COOKIE_SECURE ?= false
 # Auto-load from config/oauth.env if it exists
 -include config/oauth.env.mk
 
-# If config/oauth.env exists (shell format), convert it to make format
-ifneq (,$(wildcard config/oauth.env))
-    $(info 📝 Loading OAuth2 config from config/oauth.env)
-    # Parse export statements and strip quotes
-    OAUTH_ENV_VARS := $(shell sed -n 's/^export \([^=]*\)="\?\([^"]*\)"\?/\1=\2/p' config/oauth.env)
-    $(foreach var,$(OAUTH_ENV_VARS),$(eval $(var)))
-endif
-
 OAUTH2_CLIENT_ID ?= 
 OAUTH2_CLIENT_SECRET ?= 
 GITHUB_ORG ?= 
 GITHUB_TEAM ?=
+
+# Internal target to load OAuth config (only called by container targets)
+.PHONY: _load-oauth-config
+_load-oauth-config:
+	@if [ -f config/oauth.env ]; then \
+		echo "📝 Loading OAuth2 config from config/oauth.env"; \
+		set -a && . config/oauth.env && set +a; \
+	fi
 
 # Prerequisites check
 .PHONY: check-prereqs
@@ -151,33 +151,23 @@ check-config: ## Ensure required configuration files exist (internal target)
 		echo -e "$(YELLOW)Please ensure the template file exists$(NC)"; \
 		exit 1; \
 	fi
-	@echo -e "$(BLUE)Checking OAuth2 environment variables...$(NC)"
-	@if [ -z "$(OAUTH2_CLIENT_ID)" ]; then \
-		echo -e "$(RED)❌ Error: OAUTH2_CLIENT_ID not set$(NC)"; \
-		echo -e "$(YELLOW)Please export OAUTH2_CLIENT_ID=your-client-id$(NC)"; \
+	@echo -e "$(BLUE)Loading and checking OAuth2 configuration...$(NC)"
+	@if [ ! -f config/oauth.env ]; then \
+		echo -e "$(RED)❌ Error: config/oauth.env not found$(NC)"; \
+		echo -e "$(YELLOW)Please create config/oauth.env with OAuth2 credentials$(NC)"; \
 		echo -e "$(YELLOW)See config/README.md for setup instructions$(NC)"; \
 		exit 1; \
 	fi
-	@if [ -z "$(OAUTH2_CLIENT_SECRET)" ]; then \
-		echo -e "$(RED)❌ Error: OAUTH2_CLIENT_SECRET not set$(NC)"; \
-		echo -e "$(YELLOW)Please export OAUTH2_CLIENT_SECRET=your-secret$(NC)"; \
-		exit 1; \
-	fi
-	@if [ -z "$(GITHUB_ORG)" ]; then \
-		echo -e "$(YELLOW)⚠️  Warning: GITHUB_ORG not set, using placeholder$(NC)"; \
-	fi
-	@if [ -z "$(GITHUB_TEAM)" ]; then \
-		echo -e "$(YELLOW)⚠️  Warning: GITHUB_TEAM not set, using placeholder$(NC)"; \
-	fi
 	@echo -e "$(BLUE)Generating OAuth2-proxy config from template...$(NC)"
 	@mkdir -p config
-	@sed -e 's|{{ROUTE_HOST}}|$(ROUTE_HOST)|g' \
-	     -e 's|{{COOKIE_SECURE}}|$(COOKIE_SECURE)|g' \
-	     -e 's|{{OAUTH2_CLIENT_ID}}|$(OAUTH2_CLIENT_ID)|g' \
-	     -e 's|{{OAUTH2_CLIENT_SECRET}}|$(OAUTH2_CLIENT_SECRET)|g' \
-	     -e 's|{{GITHUB_ORG}}|$(or $(GITHUB_ORG),your-org)|g' \
-	     -e 's|{{GITHUB_TEAM}}|$(or $(GITHUB_TEAM),your-team)|g' \
-	     config/oauth2-proxy-container.cfg.template > config/oauth2-proxy-container.cfg && \
+	@set -a && . config/oauth.env && set +a && \
+	sed -e "s|{{ROUTE_HOST}}|$(ROUTE_HOST)|g" \
+	    -e "s|{{COOKIE_SECURE}}|$(COOKIE_SECURE)|g" \
+	    -e "s|{{OAUTH2_CLIENT_ID}}|$$OAUTH2_CLIENT_ID|g" \
+	    -e "s|{{OAUTH2_CLIENT_SECRET}}|$$OAUTH2_CLIENT_SECRET|g" \
+	    -e "s|{{GITHUB_ORG}}|$${GITHUB_ORG:-your-org}|g" \
+	    -e "s|{{GITHUB_TEAM}}|$${GITHUB_TEAM:-your-team}|g" \
+	    config/oauth2-proxy-container.cfg.template > config/oauth2-proxy-container.cfg && \
 	chmod 644 config/oauth2-proxy-container.cfg
 	@echo -e "$(GREEN)✅ OAuth2-proxy config generated and secured (permissions: 644)$(NC)"
 	@echo -e "$(GREEN)✅ Configuration files ready$(NC)"
