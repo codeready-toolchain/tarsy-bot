@@ -235,7 +235,12 @@ class Settings(BaseSettings):
         default=70,
         description="Timeout in seconds for a single MCP tool call (default: 70 seconds)"
     )
-    
+    scoring_timeout: int = Field(
+        default=300,
+        description="Timeout in seconds for scoring a single session (default: 5 minutes). "
+                    "Allows for 2 LLM turns (120s each) + retries + overhead."
+    )
+
     # Agent Configuration
     agent_config_path: str = Field(
         default="../config/agents.yaml",
