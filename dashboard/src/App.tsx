@@ -35,6 +35,7 @@ function AppContent() {
             {/* Session detail routes - Unified wrapper prevents duplicate API calls */}
             <Route path="/sessions/:sessionId" element={<SessionDetailWrapper />} />
             <Route path="/sessions/:sessionId/technical" element={<SessionDetailWrapper />} />
+            <Route path="/sessions/:sessionId/score" element={<SessionDetailWrapper />} />
             
             {/* Manual Alert Submission route - EP-0018 */}
             <Route path="/submit-alert" element={<ManualAlertSubmission />} />

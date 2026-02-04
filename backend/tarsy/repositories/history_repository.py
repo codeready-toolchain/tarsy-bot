@@ -676,7 +676,41 @@ class HistoryRepository:
                 except Exception as e:
                     # Don't fail entire query if parallel stages check fails
                     logger.error(f"Failed to check for parallel stages: {e}")
-                
+
+                # Fetch latest scores for sessions (most recent scoring attempt per session)
+                score_data = {}
+                try:
+                    from tarsy.models.db_models import SessionScore
+
+                    # Get latest score for each session (most recent started_at_us)
+                    # Use subquery to get max started_at_us per session, then join to get full record
+                    subquery = select(
+                        SessionScore.session_id,
+                        func.max(SessionScore.started_at_us).label('max_started_at')
+                    ).where(
+                        SessionScore.session_id.in_(session_ids)
+                    ).group_by(SessionScore.session_id).subquery()
+
+                    score_query = select(SessionScore).join(
+                        subquery,
+                        and_(
+                            SessionScore.session_id == subquery.c.session_id,
+                            SessionScore.started_at_us == subquery.c.max_started_at
+                        )
+                    )
+
+                    score_results = self.session.exec(score_query).all()
+                    score_data = {
+                        score.session_id: {
+                            'total_score': score.total_score,
+                            'status': score.status
+                        }
+                        for score in score_results
+                    }
+                except Exception as e:
+                    # Don't fail entire query if score fetching fails
+                    logger.error(f"Failed to fetch session scores: {e}")
+
                 # Combine counts for each session
                 for session_id in session_ids:
                     tokens = token_sums.get(session_id, {})
@@ -687,7 +721,9 @@ class HistoryRepository:
                         'output_tokens': tokens.get('output_tokens'),
                         'total_tokens': tokens.get('total_tokens'),
                         'chat_message_count': chat_message_counts.get(session_id),
-                        'has_parallel_stages': parallel_stages_flags.get(session_id, False)
+                        'has_parallel_stages': parallel_stages_flags.get(session_id, False),
+                        'score_total': score_data.get(session_id, {}).get('total_score'),
+                        'score_status': score_data.get(session_id, {}).get('status'),
                     }
             
             session_overviews = []
@@ -738,6 +774,10 @@ class HistoryRepository:
                     # Executive summary for quick view
                     final_analysis_summary=alert_session.final_analysis_summary,
                     
+                    # Scoring information for dashboard display
+                    score_total=session_counts.get('score_total'),
+                    score_status=session_counts.get('score_status'),
+
                     # Optional fields that may need calculation elsewhere (defaults from SessionOverview)
                     total_stages=None,
                     completed_stages=None,
@@ -963,7 +1003,24 @@ class HistoryRepository:
             session_input_tokens = session_input_tokens if session_input_tokens > 0 else None
             session_output_tokens = session_output_tokens if session_output_tokens > 0 else None  
             session_total_tokens = session_total_tokens if session_total_tokens > 0 else None
-            
+
+            score_total = None
+            score_status = None
+            try:
+                from tarsy.models.db_models import SessionScore
+
+                # Get latest score (most recent started_at_us)
+                score_query = select(SessionScore).where(
+                    SessionScore.session_id == session_id
+                ).order_by(SessionScore.started_at_us.desc()).limit(1)
+
+                latest_score = self.session.exec(score_query).first()
+                if latest_score:
+                    score_total = latest_score.total_score
+                    score_status = latest_score.status
+            except Exception as e:
+                logger.error(f"Failed to fetch score for session {session_id}: {e}")
+
             # Create DetailedSession
             return DetailedSession(
                 # Core session data
@@ -977,7 +1034,7 @@ class HistoryRepository:
                 started_at_us=session.started_at_us,
                 completed_at_us=session.completed_at_us,
                 error_message=session.error_message,
-                
+
                 # Full session details
                 alert_data=session.alert_data,
                 final_analysis=session.final_analysis,
@@ -985,7 +1042,7 @@ class HistoryRepository:
                 executive_summary_error=session.executive_summary_error,
                 session_metadata=session.session_metadata,
                 pause_metadata=session.pause_metadata,
-                
+
                 # Chain execution details
                 chain_id=session.chain_id,
                 chain_definition=session.chain_definition or {},
@@ -999,15 +1056,19 @@ class HistoryRepository:
                 total_interactions=total_llm + total_mcp,
                 llm_interaction_count=total_llm,
                 mcp_communication_count=total_mcp,
-                
+
                 # Token usage aggregations
                 session_input_tokens=session_input_tokens,
                 session_output_tokens=session_output_tokens,
                 session_total_tokens=session_total_tokens,
-                
+
+                # EP-0028: Scoring information
+                score_total=score_total,
+                score_status=score_status,
+
                 # Complete stage executions with interactions
                 stages=detailed_stages,
-                
+
                 # Session-level interactions (not associated with any specific stage)
                 session_level_interactions=session_level_interactions
             )

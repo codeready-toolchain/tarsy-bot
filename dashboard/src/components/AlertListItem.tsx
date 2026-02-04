@@ -3,6 +3,7 @@ import { TableRow, TableCell, Typography, IconButton, Tooltip, Chip, Box, Popove
 import { OpenInNew, Chat as ChatIcon, CallSplit, Summarize } from '@mui/icons-material';
 import ReactMarkdown from 'react-markdown';
 import StatusBadge from './StatusBadge';
+import ScoreBadge from './ScoreBadge';
 import TokenUsageDisplay from './TokenUsageDisplay';
 import { highlightSearchTermNodes } from '../utils/search';
 import { executiveSummaryMarkdownStyles } from '../utils/markdownComponents';
@@ -15,7 +16,7 @@ import { formatTimestamp, formatDurationMs, formatDuration } from '../utils/time
  * Uses Unix timestamp utilities for optimal performance and consistent formatting
  * Supports hover card executive summary preview without fetching full session details
  */
-const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchTerm }) => {
+const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, onScoreClick, searchTerm }) => {
   const [summaryAnchorEl, setSummaryAnchorEl] = useState<HTMLElement | null>(null);
   
   const handleRowClick = () => {
@@ -44,6 +45,14 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
 
   const handleSummaryMouseLeave = () => {
     setSummaryAnchorEl(null);
+  };
+
+  // Handle score badge click - navigate to score tab
+  const handleScoreClick = (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent row click
+    if (onScoreClick && session.session_id) {
+      onScoreClick(session.session_id);
+    }
   };
 
   // Calculate duration if not provided
@@ -184,6 +193,14 @@ const AlertListItem: React.FC<AlertListItemProps> = ({ session, onClick, searchT
         ) : (
           <Typography variant="body2" color="text.secondary">-</Typography>
         )}
+      </TableCell>
+      {/* EP-0028: Score badge */}
+      <TableCell>
+        <ScoreBadge
+          score={session.score_total ?? null}
+          status={session.score_status}
+          onClick={onScoreClick ? handleScoreClick : undefined}
+        />
       </TableCell>
       {/* Chat indicator badge */}
       <TableCell sx={{ width: 40, textAlign: 'center', px: 0.5 }}>

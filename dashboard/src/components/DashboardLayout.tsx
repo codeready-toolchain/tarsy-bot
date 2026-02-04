@@ -18,6 +18,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   onRefreshActive,
   onRefreshHistorical,
   onSessionClick,
+  onScoreClick,
   // Phase 4: Filter props
   filters,
   filteredCount,
@@ -46,6 +47,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         error={historicalError}
         onRefresh={onRefreshHistorical}
         onSessionClick={onSessionClick}
+        onScoreClick={onScoreClick}
         filters={filters}
         filteredCount={filteredCount}
         // Phase 6: Enhanced functionality props
