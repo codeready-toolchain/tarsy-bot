@@ -5,6 +5,7 @@ from tarsy.models.constants import ScoringStatus
 from tarsy.models.db_models import SessionScore
 from tarsy.models.api_models import SessionScoreResponse
 from tarsy.utils.timestamp import now_us
+from tarsy.agents.prompts.judges import CURRENT_PROMPT_HASH
 
 
 @pytest.mark.unit
@@ -29,8 +30,8 @@ class TestScoringStatusEnum:
         assert "timed_out" in all_values
 
 @pytest.mark.unit
-class TestSessionScoreDB:
-    """Test SessionScoreDB model validation."""
+class TestSessionScore:
+    """Test SessionScore model validation."""
 
     def test_create_session_score_with_required_fields(self):
         """Test creating SessionScoreDB with minimum required fields."""
@@ -68,11 +69,11 @@ class TestSessionScoreDB:
         assert len(score1.score_id) == 36  # UUID format
 
 @pytest.mark.unit
-class TestSessionScoreAPIModel:
-    """Test SessionScore API model."""
+class TestSessionScoreResponse:
+    """Test SessionScoreResponse."""
 
     def test_db_to_api_model_conversion(self):
-        """Test converting SessionScoreDB to SessionScore."""
+        """Test converting SessionScore to SessionScoreResponse."""
         timestamp = now_us()
         db_score = SessionScore(
             score_id="score-123",
@@ -109,13 +110,13 @@ class TestSessionScoreAPIModel:
         assert api_score.prompt_hash == "hash789"
         assert api_score.total_score == 75
         assert api_score.score_analysis == "Good investigation"
-        assert api_score.status == "completed"
+        assert api_score.status == ScoringStatus.COMPLETED
 
-    def test_current_prompt_used_defaults_to_false(self):
-        """Test that current_prompt_used defaults to False."""
+    def test_current_prompt_used_with_matching_hash(self):
+        """Test that current_prompt_used returns True when hash matches."""
         db_score = SessionScore(
             session_id="session-456",
-            prompt_hash="oldhash",
+            prompt_hash=CURRENT_PROMPT_HASH,  # Use current hash
             score_triggered_by="user:alice",
             status=ScoringStatus.COMPLETED,
         )
@@ -130,5 +131,49 @@ class TestSessionScoreAPIModel:
             started_at_us=db_score.started_at_us,
         )
 
-        # Defaults to False
+        # Should return True since hash matches current
+        assert api_score.current_prompt_used is True
+
+    def test_current_prompt_used_with_obsolete_hash(self):
+        """Test that current_prompt_used returns False for obsolete hash."""
+        db_score = SessionScore(
+            session_id="session-456",
+            prompt_hash="obsolete_hash_from_old_criteria",
+            score_triggered_by="user:alice",
+            status=ScoringStatus.COMPLETED,
+        )
+
+        api_score = SessionScoreResponse(
+            score_id=db_score.score_id,
+            session_id=db_score.session_id,
+            prompt_hash=db_score.prompt_hash,
+            score_triggered_by=db_score.score_triggered_by,
+            scored_at_us=db_score.scored_at_us,
+            status=db_score.status,
+            started_at_us=db_score.started_at_us,
+        )
+
+        # Should return False since hash doesn't match current
         assert api_score.current_prompt_used is False
+
+    def test_current_prompt_used_is_computed_field(self):
+        """Test that current_prompt_used is computed, not stored."""
+        # Create with one hash
+        api_score = SessionScoreResponse(
+            score_id="score-123",
+            session_id="session-456",
+            prompt_hash="old_hash",
+            score_triggered_by="user:alice",
+            scored_at_us=now_us(),
+            status=ScoringStatus.COMPLETED,
+            started_at_us=now_us(),
+        )
+
+        # Should be False for old hash
+        assert api_score.current_prompt_used is False
+
+        # Update prompt_hash to current
+        api_score.prompt_hash = CURRENT_PROMPT_HASH
+
+        # Should now be True (computed dynamically)
+        assert api_score.current_prompt_used is True
