@@ -264,7 +264,7 @@ Clients subscribe to channels via existing WebSocket infrastructure. Real-time u
 
 **Goal:** Establish data structures and persistence layer
 
-* [ ] Create Alembic migration for session_scores table
+* [x] Create Alembic migration for session_scores table
   * Table name: `session_scores`
   * Columns:
     * `score_id` (UUID, primary key)
@@ -285,27 +285,27 @@ Clients subscribe to channels via existing WebSocket infrastructure. Real-time u
   * Forward migration: CREATE TABLE with indexes and constraints
   * Rollback migration: DROP TABLE
 
-* [ ] Implement database model (SQLModel): SessionScoreDB
+* [x] Implement database model (SQLModel): SessionScoreDB
   * Main score record with freeform text fields
   * Includes async fields: status, started_at_us, completed_at_us, error_message
   * Maps to session_scores table
 
-* [ ] Implement API model (Pydantic): SessionScore
+* [x] Implement API model (Pydantic): SessionScore
   * API response model with all database fields including status
   * Computed field: `current_prompt_used` (boolean)
     * Compares stored `prompt_hash` to current hardcoded prompts hash
     * Current hash computed once at TARSy startup (set to 0 in this phase)
 
-* [ ] Implement ScoringStatus enum (similar to AlertSessionStatus)
+* [x] Implement ScoringStatus enum (similar to AlertSessionStatus)
   * Values: PENDING, IN_PROGRESS, COMPLETED, FAILED
   * Helper method: `terminal_values()` returns [COMPLETED, FAILED]
 
-* [ ] Create repository layer with simple CRUD operations
+* [x] Create repository layer with simple CRUD operations
   * Basic CRUD for session_scores table
   * Hash comparison logic for `current_prompt_used`
   * Database to API model mapping
 
-* [ ] Test database schema and basic model operations
+* [x] Test database schema and basic model operations
   * Unit tests for model validation
   * Migration up/down testing
 
