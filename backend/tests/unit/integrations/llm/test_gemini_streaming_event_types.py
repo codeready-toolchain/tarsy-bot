@@ -28,7 +28,8 @@ class TestGeminiStreamingEventTypes:
     @pytest.fixture
     def client(self) -> GeminiNativeThinkingClient:
         """Create a Gemini client with streaming enabled."""
-        with patch("tarsy.integrations.llm.gemini_client.get_settings") as mock_settings:
+        with patch("tarsy.integrations.llm.gemini_client.get_settings") as mock_settings, \
+             patch('tarsy.integrations.llm.gemini_client.genai.Client'):
             settings = MagicMock()
             settings.enable_llm_streaming = True
             mock_settings.return_value = settings
@@ -58,12 +59,10 @@ class TestGeminiStreamingEventTypes:
             (False, StreamingEventType.FINAL_ANSWER),          # Final iteration
         ],
     )
-    @patch("tarsy.integrations.llm.gemini_client.genai")
     @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
     async def test_streaming_uses_correct_event_type_based_on_finality(
         self,
         mock_context: MagicMock,
-        mock_genai: MagicMock,
         client: GeminiNativeThinkingClient,
         sample_conversation: LLMConversation,
         has_tool_calls: bool,
@@ -113,7 +112,7 @@ class TestGeminiStreamingEventTypes:
         mock_native_client.aio.models.generate_content_stream = AsyncMock(
             return_value=multi_chunk_stream()
         )
-        mock_genai.Client.return_value = mock_native_client
+        client._native_client = mock_native_client
         
         mock_ctx = MagicMock()
         mock_ctx.interaction = MagicMock(interaction_id="test-interaction-123")
