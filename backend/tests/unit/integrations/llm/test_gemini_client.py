@@ -109,7 +109,8 @@ class TestNativeThinkingResponse:
 class TestGeminiNativeThinkingClientInit:
     """Tests for GeminiNativeThinkingClient initialization."""
 
-    def test_init_with_google_provider_succeeds(self) -> None:
+    @patch('tarsy.integrations.llm.gemini_client.genai.Client')
+    def test_init_with_google_provider_succeeds(self, mock_genai_client: MagicMock) -> None:
         """Test that initialization with Google provider succeeds."""
         config = LLMProviderConfig(
             type=LLMProviderType.GOOGLE,
@@ -126,7 +127,8 @@ class TestGeminiNativeThinkingClientInit:
         assert client.temperature == 0.7
         assert client.provider_name == "custom-provider"
 
-    def test_init_without_provider_name_uses_model(self) -> None:
+    @patch('tarsy.integrations.llm.gemini_client.genai.Client')
+    def test_init_without_provider_name_uses_model(self, mock_genai_client: MagicMock) -> None:
         """Test that provider_name defaults to model name when not specified."""
         config = LLMProviderConfig(
             type=LLMProviderType.GOOGLE,
@@ -184,13 +186,14 @@ class TestGeminiNativeThinkingClientParseFunctionName:
     @pytest.fixture
     def client(self) -> GeminiNativeThinkingClient:
         """Create a GeminiNativeThinkingClient for testing."""
-        config = LLMProviderConfig(
-            type=LLMProviderType.GOOGLE,
-            model="gemini-2.5-pro",
-            api_key_env="GOOGLE_API_KEY",
-            api_key="test-key",
-        )
-        return GeminiNativeThinkingClient(config)
+        with patch('tarsy.integrations.llm.gemini_client.genai.Client'):
+            config = LLMProviderConfig(
+                type=LLMProviderType.GOOGLE,
+                model="gemini-2.5-pro",
+                api_key_env="GOOGLE_API_KEY",
+                api_key="test-key",
+            )
+            return GeminiNativeThinkingClient(config)
 
     @pytest.mark.parametrize(
         "func_name,expected_server,expected_tool",
@@ -238,13 +241,14 @@ class TestGeminiNativeThinkingClientConvertMCPTools:
     @pytest.fixture
     def client(self) -> GeminiNativeThinkingClient:
         """Create a GeminiNativeThinkingClient for testing."""
-        config = LLMProviderConfig(
-            type=LLMProviderType.GOOGLE,
-            model="gemini-2.5-pro",
-            api_key_env="GOOGLE_API_KEY",
-            api_key="test-key",
-        )
-        return GeminiNativeThinkingClient(config)
+        with patch('tarsy.integrations.llm.gemini_client.genai.Client'):
+            config = LLMProviderConfig(
+                type=LLMProviderType.GOOGLE,
+                model="gemini-2.5-pro",
+                api_key_env="GOOGLE_API_KEY",
+                api_key="test-key",
+            )
+            return GeminiNativeThinkingClient(config)
 
     @pytest.fixture
     def sample_mcp_tools(self) -> List[ToolWithServer]:
@@ -334,13 +338,14 @@ class TestGeminiNativeThinkingClientConvertConversation:
     @pytest.fixture
     def client(self) -> GeminiNativeThinkingClient:
         """Create a GeminiNativeThinkingClient for testing."""
-        config = LLMProviderConfig(
-            type=LLMProviderType.GOOGLE,
-            model="gemini-2.5-pro",
-            api_key_env="GOOGLE_API_KEY",
-            api_key="test-key",
-        )
-        return GeminiNativeThinkingClient(config)
+        with patch('tarsy.integrations.llm.gemini_client.genai.Client'):
+            config = LLMProviderConfig(
+                type=LLMProviderType.GOOGLE,
+                model="gemini-2.5-pro",
+                api_key_env="GOOGLE_API_KEY",
+                api_key="test-key",
+            )
+            return GeminiNativeThinkingClient(config)
 
     def test_convert_system_message(self, client: GeminiNativeThinkingClient) -> None:
         """Test that SYSTEM messages are converted to user role with prefix."""
@@ -839,7 +844,8 @@ class TestGeminiNativeThinkingClientGenerate:
 class TestGeminiNativeThinkingClientModelSpecificConfig:
     """Tests for model-specific thinking configuration."""
 
-    def test_get_thinking_config_gemini_25_pro(self) -> None:
+    @patch('tarsy.integrations.llm.gemini_client.genai.Client')
+    def test_get_thinking_config_gemini_25_pro(self, mock_genai_client: MagicMock) -> None:
         """Test that Gemini 2.5 Pro uses 32768 token thinking budget."""
         config = LLMProviderConfig(
             type=LLMProviderType.GOOGLE,
@@ -855,7 +861,8 @@ class TestGeminiNativeThinkingClientModelSpecificConfig:
         assert thinking_config.include_thoughts is True
         assert not hasattr(thinking_config, 'thinking_level') or thinking_config.thinking_level is None
 
-    def test_get_thinking_config_gemini_25_flash(self) -> None:
+    @patch('tarsy.integrations.llm.gemini_client.genai.Client')
+    def test_get_thinking_config_gemini_25_flash(self, mock_genai_client: MagicMock) -> None:
         """Test that Gemini 2.5 Flash uses 24576 token thinking budget."""
         config = LLMProviderConfig(
             type=LLMProviderType.GOOGLE,
@@ -871,7 +878,8 @@ class TestGeminiNativeThinkingClientModelSpecificConfig:
         assert thinking_config.include_thoughts is True
         assert not hasattr(thinking_config, 'thinking_level') or thinking_config.thinking_level is None
 
-    def test_get_thinking_config_gemini_3_pro(self) -> None:
+    @patch('tarsy.integrations.llm.gemini_client.genai.Client')
+    def test_get_thinking_config_gemini_3_pro(self, mock_genai_client: MagicMock) -> None:
         """Test that Gemini 3 Pro uses 'high' thinking level."""
         config = LLMProviderConfig(
             type=LLMProviderType.GOOGLE,
@@ -887,7 +895,8 @@ class TestGeminiNativeThinkingClientModelSpecificConfig:
         assert thinking_config.include_thoughts is True
         assert not hasattr(thinking_config, 'thinking_budget') or thinking_config.thinking_budget is None
 
-    def test_get_thinking_config_unknown_model(self) -> None:
+    @patch('tarsy.integrations.llm.gemini_client.genai.Client')
+    def test_get_thinking_config_unknown_model(self, mock_genai_client: MagicMock) -> None:
         """Test that unknown models fall back to 24576 token thinking budget."""
         config = LLMProviderConfig(
             type=LLMProviderType.GOOGLE,

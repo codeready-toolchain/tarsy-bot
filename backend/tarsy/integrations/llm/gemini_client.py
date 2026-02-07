@@ -112,6 +112,8 @@ class GeminiNativeThinkingClient:
         self.settings = get_settings()
         # Use shared streaming publisher utility
         self._streaming_publisher = StreamingPublisher(self.settings)
+        # Initialize native Google client once for reuse across requests
+        self._native_client = genai.Client(api_key=self.config.api_key)
         
         logger.info(f"Initialized GeminiNativeThinkingClient for model {self.model}")
     
@@ -320,13 +322,8 @@ class GeminiNativeThinkingClient:
         if native_tools_override is not None:
             logger.info(f"[{request_id}] Applied session-level native tools override")
         
-        # Create native Google client once (before retry loop)
-        # Any exceptions from client creation are surfaced immediately
-        try:
-            native_client = genai.Client(api_key=self.config.api_key)
-        except Exception as e:
-            logger.error(f"[{request_id}] Failed to create native Google client: {e}")
-            raise
+        # Use cached native Google client (initialized once in __init__)
+        native_client = self._native_client
         
         # Convert conversation to native Google format once (before retry loop)
         # Any exceptions from conversion are surfaced immediately

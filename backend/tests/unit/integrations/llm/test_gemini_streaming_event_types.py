@@ -28,7 +28,8 @@ class TestGeminiStreamingEventTypes:
     @pytest.fixture
     def client(self) -> GeminiNativeThinkingClient:
         """Create a Gemini client with streaming enabled."""
-        with patch("tarsy.integrations.llm.gemini_client.get_settings") as mock_settings:
+        with patch("tarsy.integrations.llm.gemini_client.get_settings") as mock_settings, \
+             patch('tarsy.integrations.llm.gemini_client.genai.Client'):
             settings = MagicMock()
             settings.enable_llm_streaming = True
             mock_settings.return_value = settings
