@@ -322,9 +322,6 @@ class GeminiNativeThinkingClient:
         if native_tools_override is not None:
             logger.info(f"[{request_id}] Applied session-level native tools override")
         
-        # Use cached native Google client (initialized once in __init__)
-        native_client = self._native_client
-        
         # Convert conversation to native Google format once (before retry loop)
         # Any exceptions from conversion are surfaced immediately
         try:
@@ -421,7 +418,7 @@ class GeminiNativeThinkingClient:
                     
                     async with asyncio.timeout(timeout_seconds):
                         # Use async streaming generate_content for real-time updates
-                        async for chunk in await native_client.aio.models.generate_content_stream(
+                        async for chunk in await self._native_client.aio.models.generate_content_stream(
                             model=self.model,
                             contents=contents,
                             config=gen_config

@@ -441,14 +441,15 @@ class TestGeminiNativeThinkingClientGenerate:
     @pytest.fixture
     def client(self) -> GeminiNativeThinkingClient:
         """Create a GeminiNativeThinkingClient for testing."""
-        config = LLMProviderConfig(
-            type=LLMProviderType.GOOGLE,
-            model="gemini-2.5-pro",
-            api_key_env="GOOGLE_API_KEY",
-            api_key="test-key",
-            temperature=0.5,
-        )
-        return GeminiNativeThinkingClient(config, provider_name="test-provider")
+        with patch('tarsy.integrations.llm.gemini_client.genai.Client'):
+            config = LLMProviderConfig(
+                type=LLMProviderType.GOOGLE,
+                model="gemini-2.5-pro",
+                api_key_env="GOOGLE_API_KEY",
+                api_key="test-key",
+                temperature=0.5,
+            )
+            return GeminiNativeThinkingClient(config, provider_name="test-provider")
 
     @pytest.fixture
     def sample_conversation(self) -> LLMConversation:
@@ -559,12 +560,10 @@ class TestGeminiNativeThinkingClientGenerate:
         return response
 
     @pytest.mark.asyncio
-    @patch("tarsy.integrations.llm.gemini_client.genai")
     @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
     async def test_generate_final_response_no_tools(
         self,
         mock_context: MagicMock,
-        mock_genai: MagicMock,
         client: GeminiNativeThinkingClient,
         sample_conversation: LLMConversation,
         mock_response_final: MagicMock,
@@ -575,7 +574,7 @@ class TestGeminiNativeThinkingClientGenerate:
         mock_native_client.aio.models.generate_content_stream = AsyncMock(
             return_value=mock_stream_response(mock_response_final)
         )
-        mock_genai.Client.return_value = mock_native_client
+        client._native_client = mock_native_client
 
         # Mock the context manager
         mock_ctx = MagicMock()
@@ -598,12 +597,10 @@ class TestGeminiNativeThinkingClientGenerate:
         assert result.thought_signature == b"test_signature"
 
     @pytest.mark.asyncio
-    @patch("tarsy.integrations.llm.gemini_client.genai")
     @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
     async def test_generate_with_thinking_content(
         self,
         mock_context: MagicMock,
-        mock_genai: MagicMock,
         client: GeminiNativeThinkingClient,
         sample_conversation: LLMConversation,
         mock_response_with_thinking: MagicMock,
@@ -613,7 +610,7 @@ class TestGeminiNativeThinkingClientGenerate:
         mock_native_client.aio.models.generate_content_stream = AsyncMock(
             return_value=mock_stream_response(mock_response_with_thinking)
         )
-        mock_genai.Client.return_value = mock_native_client
+        client._native_client = mock_native_client
 
         mock_ctx = MagicMock()
         mock_ctx.interaction = MagicMock()
@@ -632,12 +629,10 @@ class TestGeminiNativeThinkingClientGenerate:
         assert "The pod is crashing" in result.content
 
     @pytest.mark.asyncio
-    @patch("tarsy.integrations.llm.gemini_client.genai")
     @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
     async def test_generate_with_tool_calls(
         self,
         mock_context: MagicMock,
-        mock_genai: MagicMock,
         client: GeminiNativeThinkingClient,
         sample_conversation: LLMConversation,
         sample_mcp_tools: List[ToolWithServer],
@@ -648,7 +643,7 @@ class TestGeminiNativeThinkingClientGenerate:
         mock_native_client.aio.models.generate_content_stream = AsyncMock(
             return_value=mock_stream_response(mock_response_with_tool_calls)
         )
-        mock_genai.Client.return_value = mock_native_client
+        client._native_client = mock_native_client
 
         mock_ctx = MagicMock()
         mock_ctx.interaction = MagicMock()
@@ -672,12 +667,10 @@ class TestGeminiNativeThinkingClientGenerate:
         assert result.tool_calls[0].parameters == {"ns": "default"}
 
     @pytest.mark.asyncio
-    @patch("tarsy.integrations.llm.gemini_client.genai")
     @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
     async def test_generate_timeout_raises_timeout_error(
         self,
         mock_context: MagicMock,
-        mock_genai: MagicMock,
         client: GeminiNativeThinkingClient,
         sample_conversation: LLMConversation,
     ) -> None:
@@ -693,7 +686,7 @@ class TestGeminiNativeThinkingClientGenerate:
         mock_native_client.aio.models.generate_content_stream = AsyncMock(
             return_value=slow_stream()
         )
-        mock_genai.Client.return_value = mock_native_client
+        client._native_client = mock_native_client
 
         mock_ctx = MagicMock()
         mock_ctx.interaction = MagicMock()
@@ -711,12 +704,10 @@ class TestGeminiNativeThinkingClientGenerate:
             )
 
     @pytest.mark.asyncio
-    @patch("tarsy.integrations.llm.gemini_client.genai")
     @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
     async def test_generate_with_native_tools_override(
         self,
         mock_context: MagicMock,
-        mock_genai: MagicMock,
         client: GeminiNativeThinkingClient,
         sample_conversation: LLMConversation,
         mock_response_final: MagicMock,
@@ -726,7 +717,7 @@ class TestGeminiNativeThinkingClientGenerate:
         mock_native_client.aio.models.generate_content_stream = AsyncMock(
             return_value=mock_stream_response(mock_response_final)
         )
-        mock_genai.Client.return_value = mock_native_client
+        client._native_client = mock_native_client
 
         mock_ctx = MagicMock()
         mock_ctx.interaction = MagicMock()
@@ -752,12 +743,10 @@ class TestGeminiNativeThinkingClientGenerate:
         mock_native_client.aio.models.generate_content_stream.assert_called_once()
 
     @pytest.mark.asyncio
-    @patch("tarsy.integrations.llm.gemini_client.genai")
     @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
     async def test_generate_with_thought_signature_continuity(
         self,
         mock_context: MagicMock,
-        mock_genai: MagicMock,
         client: GeminiNativeThinkingClient,
         sample_conversation: LLMConversation,
         mock_response_final: MagicMock,
@@ -767,7 +756,7 @@ class TestGeminiNativeThinkingClientGenerate:
         mock_native_client.aio.models.generate_content_stream = AsyncMock(
             return_value=mock_stream_response(mock_response_final)
         )
-        mock_genai.Client.return_value = mock_native_client
+        client._native_client = mock_native_client
 
         mock_ctx = MagicMock()
         mock_ctx.interaction = MagicMock()
@@ -792,12 +781,10 @@ class TestGeminiNativeThinkingClientGenerate:
 
     @pytest.mark.asyncio
     @patch("tarsy.integrations.llm.gemini_client.asyncio.sleep", new_callable=AsyncMock)
-    @patch("tarsy.integrations.llm.gemini_client.genai")
     @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
     async def test_generate_handles_empty_response(
         self,
         mock_context: MagicMock,
-        mock_genai: MagicMock,
         mock_sleep: AsyncMock,
         client: GeminiNativeThinkingClient,
         sample_conversation: LLMConversation,
@@ -816,7 +803,7 @@ class TestGeminiNativeThinkingClientGenerate:
         mock_native_client.aio.models.generate_content_stream = AsyncMock(
             side_effect=[empty_stream() for _ in range(4)]
         )
-        mock_genai.Client.return_value = mock_native_client
+        client._native_client = mock_native_client
 
         mock_ctx = MagicMock()
         mock_ctx.interaction = MagicMock()
@@ -912,22 +899,21 @@ class TestGeminiNativeThinkingClientModelSpecificConfig:
         assert thinking_config.include_thoughts is True
 
     @pytest.mark.asyncio
-    @patch("tarsy.integrations.llm.gemini_client.genai")
     @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
     async def test_generate_applies_model_specific_config(
         self,
         mock_context: MagicMock,
-        mock_genai: MagicMock,
     ) -> None:
         """Test that generate() applies model-specific thinking config automatically."""
         # Create client with 2.5 Pro model
-        config = LLMProviderConfig(
-            type=LLMProviderType.GOOGLE,
-            model="gemini-2.5-pro",
-            api_key_env="GOOGLE_API_KEY",
-            api_key="test-key",
-        )
-        client = GeminiNativeThinkingClient(config)
+        with patch('tarsy.integrations.llm.gemini_client.genai.Client'):
+            config = LLMProviderConfig(
+                type=LLMProviderType.GOOGLE,
+                model="gemini-2.5-pro",
+                api_key_env="GOOGLE_API_KEY",
+                api_key="test-key",
+            )
+            client = GeminiNativeThinkingClient(config)
         
         # Create a valid response to avoid triggering retry logic
         response = MagicMock()
@@ -943,7 +929,7 @@ class TestGeminiNativeThinkingClientModelSpecificConfig:
         mock_native_client.aio.models.generate_content_stream = AsyncMock(
             return_value=mock_stream_response(response)
         )
-        mock_genai.Client.return_value = mock_native_client
+        client._native_client = mock_native_client
 
         mock_ctx = MagicMock()
         mock_ctx.interaction = MagicMock()
@@ -985,7 +971,8 @@ class TestGeminiNativeThinkingStreaming:
         """Create a client for testing."""
         with patch(
             "tarsy.integrations.llm.gemini_client.get_settings"
-        ) as mock_settings:
+        ) as mock_settings, \
+             patch('tarsy.integrations.llm.gemini_client.genai.Client'):
             settings = MagicMock()
             settings.enable_llm_streaming = True
             mock_settings.return_value = settings
@@ -1010,12 +997,10 @@ class TestGeminiNativeThinkingStreaming:
         )
 
     @pytest.mark.asyncio
-    @patch("tarsy.integrations.llm.gemini_client.genai")
     @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
     async def test_streaming_publishes_thinking_chunks(
         self,
         mock_context: MagicMock,
-        mock_genai: MagicMock,
         client: GeminiNativeThinkingClient,
         sample_conversation: LLMConversation,
     ) -> None:
@@ -1053,7 +1038,7 @@ class TestGeminiNativeThinkingStreaming:
         mock_native_client.aio.models.generate_content_stream = AsyncMock(
             return_value=multi_chunk_stream()
         )
-        mock_genai.Client.return_value = mock_native_client
+        client._native_client = mock_native_client
 
         mock_ctx = MagicMock()
         mock_ctx.interaction = MagicMock()
@@ -1083,18 +1068,17 @@ class TestGeminiNativeThinkingStreaming:
         assert mock_publish.call_count >= 1
 
     @pytest.mark.asyncio
-    @patch("tarsy.integrations.llm.gemini_client.genai")
     @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
     async def test_streaming_disabled_via_settings(
         self,
         mock_context: MagicMock,
-        mock_genai: MagicMock,
         sample_conversation: LLMConversation,
     ) -> None:
         """Test that streaming can be disabled via settings."""
         with patch(
             "tarsy.integrations.llm.gemini_client.get_settings"
-        ) as mock_settings:
+        ) as mock_settings, \
+             patch('tarsy.integrations.llm.gemini_client.genai.Client'):
             settings = MagicMock()
             settings.enable_llm_streaming = False
             mock_settings.return_value = settings
@@ -1108,36 +1092,36 @@ class TestGeminiNativeThinkingStreaming:
             )
             client = GeminiNativeThinkingClient(config, "test-provider")
 
-        response = MagicMock()
-        part = MagicMock()
-        part.thought = False
-        part.text = "Response text."
-        part.thought_signature = None
-        response.candidates = [MagicMock(content=MagicMock(parts=[part]))]
-        response.function_calls = None
-        response.usage_metadata = None
+            response = MagicMock()
+            part = MagicMock()
+            part.thought = False
+            part.text = "Response text."
+            part.thought_signature = None
+            response.candidates = [MagicMock(content=MagicMock(parts=[part]))]
+            response.function_calls = None
+            response.usage_metadata = None
 
-        mock_native_client = MagicMock()
-        mock_native_client.aio.models.generate_content_stream = AsyncMock(
-            return_value=mock_stream_response(response)
-        )
-        mock_genai.Client.return_value = mock_native_client
+            mock_native_client = MagicMock()
+            mock_native_client.aio.models.generate_content_stream = AsyncMock(
+                return_value=mock_stream_response(response)
+            )
+            client._native_client = mock_native_client
 
-        mock_ctx = MagicMock()
-        mock_ctx.interaction = MagicMock()
-        mock_ctx.complete_success = AsyncMock()
-        mock_context_cm = MagicMock()
-        mock_context_cm.__aenter__ = AsyncMock(return_value=mock_ctx)
-        mock_context_cm.__aexit__ = AsyncMock(return_value=None)
-        mock_context.return_value = mock_context_cm
+            mock_ctx = MagicMock()
+            mock_ctx.interaction = MagicMock()
+            mock_ctx.complete_success = AsyncMock()
+            mock_context_cm = MagicMock()
+            mock_context_cm.__aenter__ = AsyncMock(return_value=mock_ctx)
+            mock_context_cm.__aexit__ = AsyncMock(return_value=None)
+            mock_context.return_value = mock_context_cm
 
-        # Even though we call generate, streaming events should not be published
-        # when streaming is disabled (the _publish_stream_chunk returns early)
-        result = await client.generate(
-            conversation=sample_conversation, session_id="test-session", mcp_tools=[]
-        )
+            # Even though we call generate, streaming events should not be published
+            # when streaming is disabled (the _publish_stream_chunk returns early)
+            result = await client.generate(
+                conversation=sample_conversation, session_id="test-session", mcp_tools=[]
+            )
 
-        assert result.content == "Response text."
+            assert result.content == "Response text."
 
 
 @pytest.mark.unit
@@ -1147,14 +1131,15 @@ class TestGeminiNativeThinkingRetryLogic:
     @pytest.fixture
     def client(self) -> GeminiNativeThinkingClient:
         """Create a client for testing."""
-        config = LLMProviderConfig(
-            type=LLMProviderType.GOOGLE,
-            model="gemini-2.5-flash",
-            api_key_env="GOOGLE_API_KEY",
-            api_key="test-api-key",
-            temperature=0.7,
-        )
-        return GeminiNativeThinkingClient(config, "test-provider")
+        with patch('tarsy.integrations.llm.gemini_client.genai.Client'):
+            config = LLMProviderConfig(
+                type=LLMProviderType.GOOGLE,
+                model="gemini-2.5-flash",
+                api_key_env="GOOGLE_API_KEY",
+                api_key="test-api-key",
+                temperature=0.7,
+            )
+            return GeminiNativeThinkingClient(config, "test-provider")
 
     @pytest.fixture
     def sample_conversation(self) -> LLMConversation:
@@ -1168,12 +1153,10 @@ class TestGeminiNativeThinkingRetryLogic:
 
     @pytest.mark.asyncio
     @patch("tarsy.integrations.llm.gemini_client.asyncio.sleep", new_callable=AsyncMock)
-    @patch("tarsy.integrations.llm.gemini_client.genai")
     @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
     async def test_empty_response_retries_and_succeeds(
         self,
         mock_context: MagicMock,
-        mock_genai: MagicMock,
         mock_sleep: AsyncMock,
         client: GeminiNativeThinkingClient,
         sample_conversation: LLMConversation,
@@ -1206,7 +1189,7 @@ class TestGeminiNativeThinkingRetryLogic:
         mock_native_client.aio.models.generate_content_stream = AsyncMock(
             side_effect=[stream_empty_response(), stream_valid_response()]
         )
-        mock_genai.Client.return_value = mock_native_client
+        client._native_client = mock_native_client
 
         mock_ctx = MagicMock()
         mock_ctx.interaction = MagicMock()
@@ -1228,20 +1211,15 @@ class TestGeminiNativeThinkingRetryLogic:
         assert mock_sleep.call_count == 1
         mock_sleep.assert_called_with(3)
 
-        # Verify Client was created only once (not on each retry)
-        assert mock_genai.Client.call_count == 1
-
         # Verify generate_content_stream was called twice (original + 1 retry)
         assert mock_native_client.aio.models.generate_content_stream.call_count == 2
 
     @pytest.mark.asyncio
     @patch("tarsy.integrations.llm.gemini_client.asyncio.sleep", new_callable=AsyncMock)
-    @patch("tarsy.integrations.llm.gemini_client.genai")
     @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
     async def test_empty_response_all_attempts_injects_error(
         self,
         mock_context: MagicMock,
-        mock_genai: MagicMock,
         mock_sleep: AsyncMock,
         client: GeminiNativeThinkingClient,
         sample_conversation: LLMConversation,
@@ -1260,7 +1238,7 @@ class TestGeminiNativeThinkingRetryLogic:
         mock_native_client.aio.models.generate_content_stream = AsyncMock(
             side_effect=[empty_stream() for _ in range(4)]  # 4 attempts (1 + 3 retries)
         )
-        mock_genai.Client.return_value = mock_native_client
+        client._native_client = mock_native_client
 
         mock_ctx = MagicMock()
         mock_ctx.interaction = MagicMock()
@@ -1282,19 +1260,14 @@ class TestGeminiNativeThinkingRetryLogic:
         # Verify sleep was called 3 times (between attempts)
         assert mock_sleep.call_count == 3
 
-        # Verify Client was created only once (not on each retry)
-        assert mock_genai.Client.call_count == 1
-
         # Verify generate_content_stream was called 4 times
         assert mock_native_client.aio.models.generate_content_stream.call_count == 4
 
     @pytest.mark.asyncio
-    @patch("tarsy.integrations.llm.gemini_client.genai")
     @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
     async def test_thinking_only_response_retries(
         self,
         mock_context: MagicMock,
-        mock_genai: MagicMock,
         client: GeminiNativeThinkingClient,
         sample_conversation: LLMConversation,
     ) -> None:
@@ -1331,7 +1304,7 @@ class TestGeminiNativeThinkingRetryLogic:
         mock_native_client.aio.models.generate_content_stream = AsyncMock(
             side_effect=[thinking_stream(), valid_stream()]
         )
-        mock_genai.Client.return_value = mock_native_client
+        client._native_client = mock_native_client
 
         mock_ctx = MagicMock()
         mock_ctx.interaction = MagicMock()
@@ -1356,19 +1329,14 @@ class TestGeminiNativeThinkingRetryLogic:
         # Verify retry occurred (sleep called once)
         assert mock_sleep.call_count == 1
 
-        # Verify Client was created only once (not on each retry)
-        assert mock_genai.Client.call_count == 1
-
         # Verify two attempts were made
         assert mock_native_client.aio.models.generate_content_stream.call_count == 2
 
     @pytest.mark.asyncio
-    @patch("tarsy.integrations.llm.gemini_client.genai")
     @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
     async def test_empty_content_with_tool_calls_does_not_retry(
         self,
         mock_context: MagicMock,
-        mock_genai: MagicMock,
         client: GeminiNativeThinkingClient,
         sample_conversation: LLMConversation,
     ) -> None:
@@ -1391,7 +1359,7 @@ class TestGeminiNativeThinkingRetryLogic:
         mock_native_client.aio.models.generate_content_stream = AsyncMock(
             return_value=tool_call_stream()
         )
-        mock_genai.Client.return_value = mock_native_client
+        client._native_client = mock_native_client
 
         mock_ctx = MagicMock()
         mock_ctx.interaction = MagicMock()
@@ -1417,19 +1385,14 @@ class TestGeminiNativeThinkingRetryLogic:
         assert result.is_final is False
         assert len(result.tool_calls) == 1
 
-        # Verify Client was created only once
-        assert mock_genai.Client.call_count == 1
-
         # Verify only one attempt was made (no retry)
         assert mock_native_client.aio.models.generate_content_stream.call_count == 1
 
     @pytest.mark.asyncio
-    @patch("tarsy.integrations.llm.gemini_client.genai")
     @patch("tarsy.integrations.llm.gemini_client.llm_interaction_context")
     async def test_whitespace_only_response_retries(
         self,
         mock_context: MagicMock,
-        mock_genai: MagicMock,
         client: GeminiNativeThinkingClient,
         sample_conversation: LLMConversation,
     ) -> None:
@@ -1466,7 +1429,7 @@ class TestGeminiNativeThinkingRetryLogic:
         mock_native_client.aio.models.generate_content_stream = AsyncMock(
             side_effect=[whitespace_stream(), valid_stream()]
         )
-        mock_genai.Client.return_value = mock_native_client
+        client._native_client = mock_native_client
 
         mock_ctx = MagicMock()
         mock_ctx.interaction = MagicMock()
