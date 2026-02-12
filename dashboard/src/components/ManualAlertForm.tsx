@@ -68,17 +68,6 @@ const filterMCPSelection = (config: MCPSelectionConfig | undefined): MCPSelectio
 const DEFAULT_RUNBOOK = 'Default Runbook';
 
 /**
- * Parse free-text input - just wraps it in a message field
- * Text is sent as-is to the backend without parsing
- */
-const parseFreeText = (text: string): { success: boolean; data: Record<string, any> } => {
-  return {
-    success: true,
-    data: { message: text }
-  };
-};
-
-/**
  * Validate runbook URL to prevent SSRF attacks
  * Only allows:
  * - Default runbook option
@@ -420,12 +409,9 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = () => {
         return;
       }
 
-      // Parse free text
-      const parsed = parseFreeText(freeText);
-
       // Build alert data
       const alertData: any = {
-        data: parsed.data
+        data: { message: freeText }
       };
       
       // Only include alert_type if it's different from the default
