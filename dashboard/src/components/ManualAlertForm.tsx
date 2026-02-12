@@ -68,126 +68,6 @@ const filterMCPSelection = (config: MCPSelectionConfig | undefined): MCPSelectio
 const DEFAULT_RUNBOOK = 'Default Runbook';
 
 /**
- * Check if text looks like structured data (YAML, JSON, etc.)
- * Complex structured data should be preserved as-is, not parsed line-by-line
- */
-const isStructuredData = (text: string): boolean => {
-  const trimmed = text.trim();
-  
-  // Check for JSON
-  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || 
-      (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
-    try {
-      JSON.parse(trimmed);
-      return true;
-    } catch {
-      // Not valid JSON, continue checking other formats
-    }
-  }
-  
-  // Check for YAML-like indicators:
-  // - Indented lines (suggesting nested structure)
-  // - List items starting with "-"
-  // - Multi-level nesting
-  const lines = text.split('\n');
-  let hasIndentation = false;
-  let hasListItems = false;
-  let hasMultipleColons = 0;
-  
-  for (const line of lines) {
-    // Check for indentation (spaces at start)
-    if (line.match(/^\s{2,}/)) {
-      hasIndentation = true;
-    }
-    
-    // Check for YAML list items
-    if (line.trim().match(/^-\s+/)) {
-      hasListItems = true;
-    }
-    
-    // Count lines with colons (key: value)
-    if (line.includes(':')) {
-      hasMultipleColons++;
-    }
-  }
-  
-  // If it has indentation, list items, or many colons (suggesting nested YAML/structured data)
-  if (hasIndentation || hasListItems || hasMultipleColons > 5) {
-    return true;
-  }
-  
-  return false;
-};
-
-/**
- * Parse free-text input into key-value pairs
- * - For complex structured data (YAML, JSON, etc.): preserves as-is in 'message' field
- * - For simple text: attempts to parse "Key: Value" or "Key=Value" patterns line by line
- * - Falls back to 'message' field if parsing fails
- */
-const parseFreeText = (text: string): { success: boolean; data: Record<string, any> } => {
-  // Check if this is structured data that should be preserved as-is
-  if (isStructuredData(text)) {
-    return {
-      success: true,
-      data: { message: text }
-    };
-  }
-
-  const lines = text.split('\n');
-  const data: Record<string, any> = {};
-  let successCount = 0;
-  let failedLines = 0;
-
-  for (const line of lines) {
-    const trimmedLine = line.trim();
-    if (!trimmedLine) continue;
-
-    // Try parsing "Key: Value" format (but not YAML-like nested structures)
-    const colonMatch = trimmedLine.match(/^([^:]+):\s*(.*)$/);
-    if (colonMatch && !trimmedLine.startsWith('-')) {
-      const key = colonMatch[1].trim();
-      const value = colonMatch[2].trim();
-      if (key && !key.includes(' ')) { // Simple keys only (no spaces = likely real key)
-        data[key] = value;
-        successCount++;
-        continue;
-      }
-    }
-
-    // Try parsing "Key=Value" format
-    const equalsMatch = trimmedLine.match(/^([^=]+)=(.*)$/);
-    if (equalsMatch) {
-      const key = equalsMatch[1].trim();
-      const value = equalsMatch[2].trim();
-      if (key && !key.includes(' ')) { // Simple keys only
-        data[key] = value;
-        successCount++;
-        continue;
-      }
-    }
-    
-    // If we couldn't parse this line, count it as failed
-    failedLines++;
-  }
-
-  // If we failed to parse more than 30% of non-empty lines, treat as raw message
-  const totalLines = lines.filter(l => l.trim()).length;
-  if (totalLines > 0 && failedLines / totalLines > 0.3) {
-    return {
-      success: true,
-      data: { message: text }
-    };
-  }
-
-  // Consider parsing successful if we extracted at least one key-value pair
-  return {
-    success: successCount > 0,
-    data: successCount > 0 ? data : { message: text }
-  };
-};
-
-/**
  * Validate runbook URL to prevent SSRF attacks
  * Only allows:
  * - Default runbook option
@@ -529,12 +409,9 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = () => {
         return;
       }
 
-      // Parse free text
-      const parsed = parseFreeText(freeText);
-
       // Build alert data
       const alertData: any = {
-        data: parsed.data
+        data: { message: freeText }
       };
       
       // Only include alert_type if it's different from the default
@@ -563,7 +440,6 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = () => {
       const response = await apiClient.submitAlert(alertData);
       
       console.log(`Alert submitted successfully! Session ID: ${response.session_id}`);
-      console.log(`Parsing: ${parsed.success ? 'Structured data extracted' : 'Sent as message field'}`);
       
       // Navigate directly to session detail page
       // The session is guaranteed to exist in the database
@@ -606,7 +482,7 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = () => {
           color="text.secondary"
           sx={{ fontSize: '1rem', lineHeight: 1.6 }}
         >
-          Enter alert details as text or use structured key-value pairs. 
+          Enter alert details as plain text or use structured key-value pairs. 
           Select a runbook from the dropdown or use the default.
         </Typography>
       </Box>
@@ -1088,7 +964,7 @@ const ManualAlertForm: React.FC<ManualAlertFormProps> = () => {
                   Alert Data
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  Paste or type your alert details naturally. We'll automatically parse structured data.
+                  Paste or type your alert details. Text will be sent as-is to the agent.
                 </Typography>
               </Box>
 
@@ -1173,25 +1049,6 @@ Message: The 'tarsy' Argo CD application is stuck in 'Progressing' status`}
                     </Typography>
                   </Box>
                 )}
-                <Box 
-                  sx={{ 
-                    position: 'absolute',
-                    top: 16,
-                    right: 16,
-                    bgcolor: 'success.main',
-                    color: 'success.contrastText',
-                    px: 2,
-                    py: 0.75,
-                    borderRadius: 2,
-                    fontSize: '0.7rem',
-                    fontWeight: 700,
-                    letterSpacing: 1,
-                    pointerEvents: 'none',
-                    boxShadow: 1
-                  }}
-                >
-                  AUTO-PARSE
-                </Box>
               </Paper>
 
               {/* M3 Submit Button */}
