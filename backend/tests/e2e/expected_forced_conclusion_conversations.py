@@ -423,7 +423,11 @@ Your task:
 
 Focus on solving the original alert/issue, not on meta-analyzing agent performance or comparing approaches.
 
-Use the internet search tool to gather the latest information related to the original alert/issue to help with your task."""
+## Web Search and URL Context Capabilities
+
+You have access to Google Search and URL Context. Use them to look up anything from the investigations that you are not fully certain about — such as unfamiliar processes, tools, software, container images, domains, error messages, or configurations. If the investigations reference URLs, documentation links, or external resources, use URL Context to fetch and review their content. Up-to-date information from the web can help you make a more accurate and confident assessment rather than relying solely on your internal knowledge.
+
+Your primary focus remains critically evaluating and integrating the parallel investigation results."""
         },
         {
             "role": "user",
