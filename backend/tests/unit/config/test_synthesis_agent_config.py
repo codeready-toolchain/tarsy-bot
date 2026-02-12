@@ -119,12 +119,13 @@ class TestSynthesisAgentConfiguration:
             "evidence",
             "quality",
             "analysis",
-            "root cause"
+            "root cause",
+            "internet search"
         ]
         
         found_concepts = [concept for concept in key_concepts if concept in instructions]
         
-        assert len(found_concepts) >= 3, f"Instructions should contain at least 3 key concepts, found: {found_concepts}"
+        assert len(found_concepts) >= 4, f"Instructions should contain at least 4 key concepts, found: {found_concepts}"
 
     def test_synthesis_agent_default_iteration_strategy(
         self, isolated_test_settings, patch_settings_for_tests
