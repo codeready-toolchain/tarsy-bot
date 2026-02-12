@@ -79,5 +79,7 @@ Your task:
 6. PROVIDE definitive root cause analysis based on the most reliable evidence
 7. GENERATE actionable recommendations leveraging insights from the strongest investigations
 
-Focus on solving the original alert/issue, not on meta-analyzing agent performance or comparing approaches."""
+Focus on solving the original alert/issue, not on meta-analyzing agent performance or comparing approaches.
+
+Use the internet search tool to gather the latest information related to the original alert/issue to help with your task."""
 
