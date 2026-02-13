@@ -106,7 +106,7 @@ class TestHistoryServiceIntegration:
         mock_settings.database_url = "sqlite:///:memory:"
         mock_settings.history_retention_days = 90
         
-        with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
+        with patch('tarsy.services.base_service.get_settings', return_value=mock_settings):
             service = HistoryService()
             
             # CRITICAL: Replace the DatabaseManager's engine with our test engine

@@ -14,6 +14,7 @@ from tarsy.config.settings import Settings
 from tarsy.models.constants import AlertSessionStatus
 from tarsy.models.db_models import AlertSession
 from tarsy.models.unified_interactions import LLMConversation, LLMMessage, MessageRole
+from tarsy.repositories.retries import DatabaseRetries
 from tarsy.services.history_service import (
     HistoryService,
     HistoryServiceInitializationError,
@@ -33,9 +34,15 @@ class TestHistoryService:
     @pytest.fixture
     def history_service(self, mock_settings):
         """Create HistoryService instance with mocked dependencies."""
-        with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
+        with patch('tarsy.services.base_service.get_settings', return_value=mock_settings):
             service = HistoryService()
             service._infra._set_healthy_for_testing()
+            service._infra.retries = DatabaseRetries(
+                db_manager=None, # technically incorrect, but works in the testsuite
+                max_retries=service._infra.max_retries, 
+                base_delay=service._infra.base_delay, 
+                max_delay=service._infra.max_delay
+            )
             return service
     
     @pytest.mark.unit
@@ -46,7 +53,7 @@ class TestHistoryService:
             database_url=expected_url
         )
         
-        with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
+        with patch('tarsy.services.base_service.get_settings', return_value=mock_settings):
             service = HistoryService()
             assert service._infra.settings.database_url == expected_url
     
@@ -56,7 +63,7 @@ class TestHistoryService:
         ("schema_failure", False, True, False),  # Schema creation failure
     ])
     @pytest.mark.unit
-    @patch('tarsy.services.history_service.base_infrastructure.DatabaseManager')
+    @patch('tarsy.services.base_service.DatabaseManager')
     def test_initialize_scenarios(self, mock_db_manager_class, failure_type, expected_result, expected_attempted, expected_healthy):
         """Test service initialization for various failure scenarios."""
         # Create mock settings based on scenario
@@ -76,7 +83,7 @@ class TestHistoryService:
             mock_db_instance.create_tables.side_effect = Exception("Schema creation failed")
             mock_db_manager_class.return_value = mock_db_instance
         
-        with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
+        with patch('tarsy.services.base_service.get_settings', return_value=mock_settings):
             service = HistoryService()
             result = service.initialize()
             
@@ -752,12 +759,13 @@ class TestHistoryServiceStageExecution:
     async def test_create_stage_execution_no_repository_raises_error(self, sample_stage_execution):
         """Test that RuntimeError is raised when repository is unavailable - covers bug fix."""
         service = HistoryService()
-        
+        service._infra._ready_for_testing()
+
         # Mock get_repository to return None (repository unavailable)
         with patch.object(service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = None
             mock_get_repo.return_value.__exit__.return_value = None
-            
+
             # Should raise RuntimeError instead of returning fallback ID
             with pytest.raises(RuntimeError, match="Failed to create stage execution record"):
                 await service.create_stage_execution(sample_stage_execution)
@@ -952,7 +960,7 @@ class TestHistoryServiceErrorHandling:
         mock_settings.database_url = "sqlite:///test_history.db"
         mock_settings.history_retention_days = 90
         
-        with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
+        with patch('tarsy.services.base_service.get_settings', return_value=mock_settings):
             service = HistoryService()
             service._infra._set_healthy_for_testing(is_healthy=False)
             return service
@@ -1118,6 +1126,7 @@ class TestDashboardMethods:
                 
                 result = service.get_filter_options()
                 
+                assert result is not None
                 assert len(result.agent_types) == expected_agent_types
                 assert len(result.alert_types) == expected_alert_types
                 assert len(result.status_options) == 4
@@ -1129,7 +1138,7 @@ class TestDashboardMethods:
         """Test that None is returned when repository is unavailable (with retry logic)."""
         service = HistoryService()
         service._infra._set_healthy_for_testing(is_healthy=False)
-        
+
         with patch.object(service._infra, 'get_repository') as mock_get_repo:
             mock_get_repo.return_value.__enter__.return_value = None
             mock_get_repo.return_value.__exit__.return_value = None
@@ -1144,11 +1153,12 @@ class TestHistoryServiceRetryLogicDuplicatePrevention:
     @pytest.fixture
     def history_service(self):
         """Create HistoryService instance for testing."""
-        with patch('tarsy.services.history_service.base_infrastructure.get_settings') as mock_settings:
+        with patch('tarsy.services.base_service.get_settings') as mock_settings:
             mock_settings.return_value.database_url = "sqlite:///test.db"
             mock_settings.return_value.history_retention_days = 90
             
             service = HistoryService()
+            service._infra._ready_for_testing()
             return service
     
     def test_retry_operation_success_on_first_attempt(self, history_service):
@@ -1438,50 +1448,51 @@ class TestHistoryServicePostgreSQLRetryLogic:
     @pytest.fixture
     def history_service_postgresql(self):
         """Create HistoryService instance with PostgreSQL database URL."""
-        with patch('tarsy.services.history_service.base_infrastructure.get_settings') as mock_settings:
+        with patch('tarsy.services.base_service.get_settings') as mock_settings:
             mock_settings.return_value.database_url = "postgresql://user:pass@localhost/testdb"
             mock_settings.return_value.history_retention_days = 90
             
             service = HistoryService()
             # Set up db_manager with PostgreSQL URL
-            service._infra._set_healthy_for_testing()
             mock_db_manager = Mock()
             mock_db_manager.database_url = "postgresql://user:pass@localhost/testdb"
             service._infra.db_manager = mock_db_manager
+            service._infra._ready_for_testing()
             return service
     
     def test_is_postgresql_detection(self, history_service_postgresql):
         """Test that _is_postgresql correctly detects PostgreSQL backend."""
-        assert history_service_postgresql._infra._is_postgresql() is True
+        assert history_service_postgresql._infra.retries._is_postgresql() is True
         
         # Also test with postgres:// URL variant
         history_service_postgresql._infra.db_manager.database_url = "postgres://user:pass@localhost/testdb"
-        assert history_service_postgresql._infra._is_postgresql() is True
+        assert history_service_postgresql._infra.retries._is_postgresql() is True
     
     def test_is_postgresql_returns_false_for_sqlite(self):
         """Test that _is_postgresql returns False for SQLite backend."""
-        with patch('tarsy.services.history_service.base_infrastructure.get_settings') as mock_settings:
+        with patch('tarsy.services.base_service.get_settings') as mock_settings:
             mock_settings.return_value.database_url = "sqlite:///test.db"
             mock_settings.return_value.history_retention_days = 90
             
             service = HistoryService()
-            service._infra._set_healthy_for_testing()
             mock_db_manager = Mock()
             mock_db_manager.database_url = "sqlite:///test.db"
             service._infra.db_manager = mock_db_manager
+            service._infra._ready_for_testing()
             
-            assert service._infra._is_postgresql() is False
+            assert service._infra.retries._is_postgresql() is False
     
     def test_is_postgresql_returns_false_when_no_db_manager(self):
         """Test that _is_postgresql returns False when db_manager is not initialized."""
-        with patch('tarsy.services.history_service.base_infrastructure.get_settings') as mock_settings:
+        with patch('tarsy.services.base_service.get_settings') as mock_settings:
             mock_settings.return_value.database_url = "postgresql://user:pass@localhost/testdb"
             mock_settings.return_value.history_retention_days = 90
             
             service = HistoryService()
             service._infra.db_manager = None
+            service._infra._ready_for_testing()
             
-            assert service._infra._is_postgresql() is False
+            assert service._infra.retries._is_postgresql() is False
     
     def test_get_sqlstate_extracts_pgcode(self, history_service_postgresql):
         """Test that _get_sqlstate extracts SQLSTATE from psycopg2/psycopg3 errors."""
@@ -1492,7 +1503,7 @@ class TestHistoryServicePostgreSQLRetryLogic:
         mock_orig.pgcode = '40001'
         mock_exc = DBAPIError(statement="SELECT 1", params=None, orig=mock_orig)
         
-        sqlstate = history_service_postgresql._infra._get_sqlstate(mock_exc)
+        sqlstate = history_service_postgresql._infra.retries._get_sqlstate(mock_exc)
         assert sqlstate == '40001'
     
     def test_get_sqlstate_extracts_sqlstate_attribute(self, history_service_postgresql):
@@ -1505,13 +1516,13 @@ class TestHistoryServicePostgreSQLRetryLogic:
         mock_orig.sqlstate = '40P01'
         mock_exc = DBAPIError(statement="SELECT 1", params=None, orig=mock_orig)
         
-        sqlstate = history_service_postgresql._infra._get_sqlstate(mock_exc)
+        sqlstate = history_service_postgresql._infra.retries._get_sqlstate(mock_exc)
         assert sqlstate == '40P01'
     
     def test_get_sqlstate_returns_none_for_non_dbapi_error(self, history_service_postgresql):
         """Test that _get_sqlstate returns None for non-DBAPIError exceptions."""
         exc = ValueError("Not a database error")
-        sqlstate = history_service_postgresql._infra._get_sqlstate(exc)
+        sqlstate = history_service_postgresql._infra.retries._get_sqlstate(exc)
         assert sqlstate is None
     
     def test_retry_postgresql_sqlstate_serialization_failure(self, history_service_postgresql):
@@ -1765,6 +1776,7 @@ class TestHistoryServicePostgreSQLRetryLogic:
 async def test_cleanup_orphaned_sessions():
     """Test cleanup of orphaned sessions based on timeout."""
     history_service = HistoryService()
+    history_service._infra._ready_for_testing()
     
     from tarsy.models.constants import AlertSessionStatus, StageStatus
     from tarsy.models.db_models import StageExecution
@@ -1876,6 +1888,7 @@ async def test_cleanup_orphaned_sessions():
 async def test_cleanup_orphaned_sessions_no_repository():
     """Test cleanup handles gracefully when repository is unavailable."""
     history_service = HistoryService()
+    history_service._infra._ready_for_testing()
     history_service._infra.get_repository = Mock(return_value=Mock(__enter__=Mock(return_value=None), __exit__=Mock(return_value=None)))
     
     cleaned_count = history_service.cleanup_orphaned_sessions()
@@ -1888,6 +1901,7 @@ async def test_cleanup_orphaned_sessions_no_repository():
 async def test_cleanup_orphaned_sessions_no_active_sessions():
     """Test cleanup when there are no orphaned sessions."""
     history_service = HistoryService()
+    history_service._infra._ready_for_testing()
     
     mock_repo = Mock()
     mock_repo.find_orphaned_sessions.return_value = []  # No orphaned sessions found
@@ -1916,6 +1930,7 @@ async def test_cleanup_never_touches_failed_sessions():
     cleaned up by the orphan detection mechanism.
     """
     history_service = HistoryService()
+    history_service._infra._ready_for_testing()
     
     from tarsy.models.constants import AlertSessionStatus
     
@@ -1955,11 +1970,12 @@ async def test_cleanup_never_touches_failed_sessions():
 async def test_cleanup_never_touches_completed_sessions():
     """
     CRITICAL TEST: Ensure cleanup NEVER marks completed sessions as failed.
-    
+
     Completed sessions should never be touched by orphan detection.
     """
     history_service = HistoryService()
-    
+    history_service._infra._ready_for_testing()
+
     from tarsy.models.constants import AlertSessionStatus
     
     # Create a session that is COMPLETED (should NEVER be touched by cleanup)
@@ -1996,12 +2012,13 @@ async def test_cleanup_never_touches_completed_sessions():
 async def test_cleanup_never_touches_null_last_interaction():
     """
     CRITICAL TEST: Sessions with NULL last_interaction_at should never be cleaned up.
-    
+
     Sessions where last_interaction_at is NULL (not yet set) should not be
     considered orphaned, even if they're IN_PROGRESS.
     """
     history_service = HistoryService()
-    
+    history_service._infra._ready_for_testing()
+
     from tarsy.models.constants import AlertSessionStatus
     
     # Create IN_PROGRESS session with NULL last_interaction_at
@@ -2037,11 +2054,12 @@ async def test_cleanup_never_touches_null_last_interaction():
 async def test_cleanup_only_touches_in_progress_with_old_interaction():
     """
     Test that cleanup ONLY affects IN_PROGRESS sessions with old last_interaction_at.
-    
+
     This is the positive test case for the orphan detection mechanism.
     """
     history_service = HistoryService()
-    
+    history_service._infra._ready_for_testing()
+
     from tarsy.models.constants import AlertSessionStatus
     from tarsy.utils.timestamp import now_us
     
@@ -2084,8 +2102,8 @@ async def test_cleanup_only_touches_in_progress_with_old_interaction():
 async def test_cleanup_orphaned_sessions_session_not_found():
     """Test cleanup handles gracefully when update fails."""
     history_service = HistoryService()
-    
-    
+    history_service._infra._ready_for_testing()
+
     # Create an orphaned session
     orphaned_session = AlertSession(
         session_id="orphaned-1",
@@ -2123,7 +2141,7 @@ class TestHistoryAPIResponseStructure:
     @pytest.fixture
     def history_service(self, isolated_test_settings):
         """Create HistoryService instance for testing."""
-        with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=isolated_test_settings):
+        with patch('tarsy.services.base_service.get_settings', return_value=isolated_test_settings):
             service = HistoryService()
             service._infra._set_healthy_for_testing()
             return service
@@ -2307,7 +2325,7 @@ class TestHistoryServiceTokenAggregations:
     @pytest.fixture
     def history_service(self, isolated_test_settings):
         """Create HistoryService instance for testing."""
-        with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=isolated_test_settings):
+        with patch('tarsy.services.base_service.get_settings', return_value=isolated_test_settings):
             service = HistoryService()
             service._infra._set_healthy_for_testing()
             return service
@@ -2516,7 +2534,7 @@ class TestConversationHistory:
     @pytest.fixture
     def history_service(self, mock_settings):
         """Create HistoryService instance with mocked dependencies."""
-        with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
+        with patch('tarsy.services.base_service.get_settings', return_value=mock_settings):
             service = HistoryService()
             service._infra._set_healthy_for_testing()
             return service
