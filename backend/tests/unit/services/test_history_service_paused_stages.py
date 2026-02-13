@@ -52,7 +52,7 @@ class TestGetPausedStages:
     @pytest.fixture
     def history_service(self, mock_settings):
         """Create HistoryService instance with mocked dependencies."""
-        with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
+        with patch('tarsy.services.base_service.get_settings', return_value=mock_settings):
             service = HistoryService()
             service._infra._set_healthy_for_testing()
             return service
@@ -267,7 +267,7 @@ class TestCancelAllPausedStages:
     @pytest.fixture
     def history_service(self, mock_settings):
         """Create HistoryService instance with mocked dependencies."""
-        with patch('tarsy.services.history_service.base_infrastructure.get_settings', return_value=mock_settings):
+        with patch('tarsy.services.base_service.get_settings', return_value=mock_settings):
             service = HistoryService()
             service._infra._set_healthy_for_testing()
             return service
