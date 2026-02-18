@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 JWT Token Generator for Tarsy API Authentication
-Usage: python generate_token.py [days] [private_key_path] [subject] [issuer]
+Usage: python generate_token.py [days] [private_key_path] [subject] [issuer] [email]
 
 Default private_key_path: config/keys/jwt_private_key.pem (project root)
 """
@@ -37,7 +37,13 @@ def _load_private_key(private_key_path: Path) -> str:
         raise type(e)(f"Unable to read private key at {private_key_path}: {e}") from e
 
 
-def generate_jwt_token(private_key_path: Path, expiration_days: int = 30, subject: str = "monitoring-system", issuer: str = "http://localhost:8000") -> str:
+def generate_jwt_token(
+    private_key_path: Path,
+    expiration_days: int = 30,
+    subject: str = "monitoring-system",
+    issuer: str = "http://localhost:8000",
+    email: str = "tarsy-bot@example.com",
+) -> str:
     """Generate a JWT token for API authentication.
     
     Args:
@@ -45,6 +51,7 @@ def generate_jwt_token(private_key_path: Path, expiration_days: int = 30, subjec
         expiration_days: Number of days until token expires (default: 30)
         subject: Subject claim for the token (default: "monitoring-system")
         issuer: Issuer claim for the token (default: "http://localhost:8000")
+        email: Email claim for the token (default: "tarsy-bot@example.com")
         
     Returns:
         Encoded JWT token string
@@ -63,6 +70,7 @@ def generate_jwt_token(private_key_path: Path, expiration_days: int = 30, subjec
         'iss': issuer,                # Issuer (must be a valid URL for oauth2-proxy, where the issuer URL has a .well-known/openid-configuration or a .well-known/jwks.json)
         'aud': 'tarsy-api',           # Audience
         'sub': subject,               # Subject (configurable)
+        'email': email,               # Email (configurable)
         'exp': now_utc + datetime.timedelta(days=expiration_days),
         'iat': now_utc,               # Issued at
         'scope': 'api:read api:write' # Scopes
@@ -87,6 +95,7 @@ def main() -> None:
     private_key_path = project_root / "config/keys/jwt_private_key.pem"
     subject = "monitoring-system"  # Default
     issuer = "http://localhost:8000"  # Default
+    email = "tarsy-bot@example.com"  # Default
     
     if len(sys.argv) > 1:
         try:
@@ -95,7 +104,7 @@ def main() -> None:
                 raise ValueError("Expiration days must be positive")
         except ValueError as e:
             print(f"Error: {e}")
-            print("Usage: python generate_token.py [days] [private_key_path] [subject] [issuer]")
+            print("Usage: python generate_token.py [days] [private_key_path] [subject] [issuer] [email]")
             sys.exit(1)
     
     if len(sys.argv) > 2 and sys.argv[2].strip():
@@ -107,14 +116,17 @@ def main() -> None:
     if len(sys.argv) > 4 and sys.argv[4].strip():
         issuer = sys.argv[4]
     
+    if len(sys.argv) > 5 and sys.argv[5].strip():
+        email = sys.argv[5]
+    
     # Resolve relative paths from current working directory
     if not private_key_path.is_absolute():
         private_key_path = private_key_path.resolve()
     
     # Generate and print token
     try:
-        token = generate_jwt_token(private_key_path, expiration_days, subject, issuer)
-        print(f"Generated JWT token for '{subject}' from issuer '{issuer}' (expires in {expiration_days} days):")
+        token = generate_jwt_token(private_key_path, expiration_days, subject, issuer, email)
+        print(f"Generated JWT token for '{subject}' <{email}> from issuer '{issuer}' (expires in {expiration_days} days):")
         print(token)
     except (FileNotFoundError, PermissionError, OSError) as e:
         print(f"Error: {e}")

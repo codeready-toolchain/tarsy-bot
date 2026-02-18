@@ -294,25 +294,27 @@ generate-jwt-keys: ## Generate RSA key pair for JWT signing/validation
 	@echo "$(YELLOW)Public key: config/keys/jwt_public_key.pem$(NC)"
 
 .PHONY: generate-api-token
-generate-api-token: ## Generate JWT token for API access (365-day expiration, subject: monitoring-system, issuer: http://localhost:8000)
+generate-api-token: ## Generate JWT token for API access (365-day expiration, subject: monitoring-system, issuer: http://localhost:8000, Usage: make generate-api-token [EMAIL=tarsy-bot@example.com])
 	@echo "$(GREEN)Generating JWT API token...$(NC)"
-	@$(UV) run python3 generate_token.py 365
+	@$(UV) run --no-project --with "PyJWT[crypto]" python3 generate_token.py 365 "" "" "" \
+		$$(if [ -n "$(EMAIL)" ]; then echo "$(EMAIL)"; else echo "tarsy-bot@example.com"; fi)
 
 .PHONY: generate-api-token-exp
-generate-api-token-exp: ## Generate JWT token with custom expiration (Usage: make generate-api-token-exp DAYS=365 [SUBJECT=monitoring-system] [ISSUER=http://localhost:8000] [KEY_PATH=/custom/path.pem])
+generate-api-token-exp: ## Generate JWT token with custom expiration (Usage: make generate-api-token-exp DAYS=365 [SUBJECT=monitoring-system] [ISSUER=http://localhost:8000] [KEY_PATH=/custom/path.pem] [EMAIL=tarsy-bot@example.com])
 	@if [ -z "$(DAYS)" ]; then \
-		echo "$(RED)Usage: make generate-api-token-exp DAYS=<number> [SUBJECT=<subject>] [ISSUER=<issuer>] [KEY_PATH=<path>]$(NC)"; \
-		echo "$(YELLOW)Example: make generate-api-token-exp DAYS=365 SUBJECT=prometheus ISSUER=https://api.production.com$(NC)"; \
+		echo "$(RED)Usage: make generate-api-token-exp DAYS=<number> [SUBJECT=<subject>] [ISSUER=<issuer>] [KEY_PATH=<path>] [EMAIL=<email>]$(NC)"; \
+		echo "$(YELLOW)Example: make generate-api-token-exp DAYS=365 SUBJECT=prometheus ISSUER=https://api.production.com EMAIL=sre@company.com$(NC)"; \
 		exit 1; \
 	fi
 	@echo "$(GREEN)Generating JWT API token ($(DAYS) days expiration)...$(NC)"
-	@if [ -n "$(SUBJECT)" ] || [ -n "$(ISSUER)" ] || [ -n "$(KEY_PATH)" ]; then \
-		$(UV) run python3 generate_token.py $(DAYS) \
+	@if [ -n "$(SUBJECT)" ] || [ -n "$(ISSUER)" ] || [ -n "$(KEY_PATH)" ] || [ -n "$(EMAIL)" ]; then \
+		$(UV) run --no-project --with "PyJWT[crypto]" python3 generate_token.py $(DAYS) \
 			$$(if [ -n "$(KEY_PATH)" ]; then echo "$(KEY_PATH)"; else echo "$$(cd .. && pwd)/config/keys/jwt_private_key.pem"; fi) \
 			$$(if [ -n "$(SUBJECT)" ]; then echo "$(SUBJECT)"; else echo "monitoring-system"; fi) \
-			$$(if [ -n "$(ISSUER)" ]; then echo "$(ISSUER)"; else echo "http://localhost:8000"; fi); \
+			$$(if [ -n "$(ISSUER)" ]; then echo "$(ISSUER)"; else echo "http://localhost:8000"; fi) \
+			$$(if [ -n "$(EMAIL)" ]; then echo "$(EMAIL)"; else echo "tarsy-bot@example.com"; fi); \
 	else \
-		$(UV) run python3 generate_token.py $(DAYS); \
+		$(UV) run --no-project --with "PyJWT[crypto]" python3 generate_token.py $(DAYS); \
 	fi
 
 .PHONY: verify-jwt-setup
