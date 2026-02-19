@@ -1,6 +1,21 @@
 [![CI Pipeline](https://github.com/codeready-toolchain/tarsy-bot/workflows/CI%20Pipeline/badge.svg)](https://github.com/codeready-toolchain/tarsy-bot/actions)
 [![codecov](https://codecov.io/gh/codeready-toolchain/tarsy-bot/branch/master/graph/badge.svg)](https://codecov.io/gh/codeready-toolchain/tarsy-bot)
 
+---
+
+> [!WARNING]
+> ## ⚠️ THIS PROJECT IS DEPRECATED
+>
+> **This Python-based implementation of TARSy is no longer actively developed.**
+>
+> All further development has moved to the new **Go + Python hybrid rewrite**:
+>
+> ### 👉 [https://github.com/codeready-toolchain/tarsy](https://github.com/codeready-toolchain/tarsy)
+>
+> The new TARSy features a Go orchestrator paired with a stateless Python LLM service for better performance, type safety, and scalability. Please use the new repository for all new deployments and contributions.
+
+---
+
 <div align="center">
   <img src="./docs/img/TARSy-logo.png" alt="TARSy" width="100"/>
 </div>
